@@ -12,6 +12,7 @@ from app.api.v1.matters import router as matters_router
 from app.api.v1.metrics import router as metrics_router
 from app.api.v1.mfa import router as mfa_router
 from app.api.v1.org_units import router as org_units_router
+from app.api.v1.plans import router as plans_router
 from app.api.v1.public import router as public_router
 from app.api.v1.roles import router as roles_router
 from app.api.v1.security import router as security_router
@@ -26,6 +27,7 @@ api_router.include_router(auth_router)
 api_router.include_router(backup_router)
 api_router.include_router(act_types_router)
 api_router.include_router(org_units_router)
+api_router.include_router(plans_router)
 api_router.include_router(editions_router)
 api_router.include_router(imports_router)
 api_router.include_router(legacy_router)

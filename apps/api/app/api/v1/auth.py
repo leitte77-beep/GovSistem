@@ -18,6 +18,7 @@ from app.core.security import (
     verify_password,
 )
 from app.models.organization import Organization
+from app.models.plan import Plan
 from app.models.role import Role
 from app.models.user import User
 from app.models.user_role import UserRole
@@ -69,9 +70,13 @@ async def register_organization(
     if existing_email.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Email already registered")
 
+    free_plan = await db.execute(select(Plan).where(Plan.slug == "free"))
+    free_plan = free_plan.scalar_one_or_none()
+
     org = Organization(
         name=payload.organization_name,
         slug=payload.organization_slug,
+        plan_id=free_plan.id if free_plan else None,
         is_active=True,
     )
     db.add(org)

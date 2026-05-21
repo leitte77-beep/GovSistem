@@ -1,6 +1,7 @@
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import Boolean, String, Text
+from sqlalchemy import Boolean, ForeignKey, String, Text
+from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
 
@@ -11,6 +12,7 @@ if TYPE_CHECKING:
     from app.models.file import File
     from app.models.matter import Matter
     from app.models.org_unit import OrgUnit
+    from app.models.plan import Plan
     from app.models.signing_credential import SigningCredential
     from app.models.tenant_domain import TenantDomain
     from app.models.user import User
@@ -32,8 +34,17 @@ class Organization(Base, TimestampMixin, SoftDeleteMixin):
         String(255), nullable=True,
         comment="Default public portal URL for this organization",
     )
+    plan_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("plans.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
+    plan: Mapped[Optional["Plan"]] = relationship(
+        "Plan", back_populates="organizations", lazy="selectin"
+    )
     org_units: Mapped[List["OrgUnit"]] = relationship(
         "OrgUnit", back_populates="organization", lazy="selectin"
     )

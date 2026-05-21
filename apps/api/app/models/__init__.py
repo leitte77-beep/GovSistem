@@ -15,6 +15,7 @@ from app.models.matter import Matter
 from app.models.matter_attachment import MatterAttachment
 from app.models.org_unit import OrgUnit
 from app.models.organization import Organization
+from app.models.plan import Plan
 from app.models.refresh_token import RefreshToken
 from app.models.role import Role
 from app.models.search_index import SearchIndex
@@ -46,6 +47,7 @@ __all__ = [
     "MatterAttachment",
     "Organization",
     "OrgUnit",
+    "Plan",
     "Role",
     "SearchIndex",
     "SystemSetting",

@@ -342,11 +342,12 @@ CREATE TABLE subscriptions (
 - [x] Endpoint `POST /auth/switch-organization` — reemite JWT com nova org
 - [x] Frontend: `switchOrganization()` no auth context + dropdown no sidebar
 
-### Fase 4 — Onboarding e Deploy (2 semanas)
-- [ ] Fluxo de auto-cadastro de novas organizações
-- [ ] Setup automático de domínio personalizado
-- [ ] Wildcard SSL + Nginx dinâmico
-- [ ] CI/CD para deploy único
+### Fase 4 — Onboarding e Deploy (2 semanas) ✅ (em andamento)
+- [x] `POST /auth/register` — endpoint de auto-cadastro (cria org + admin + JWT)
+- [x] Página `/cadastrar` no portal público
+- [x] Link "Criar Organização" no footer
+- [ ] Setup automático de domínio personalizado (pendente)
+- [ ] Wildcard SSL + Nginx dinâmico (pendente)
 
 ### Fase 5 — Faturamento (1-2 semanas)
 - [ ] Tabelas de planos e assinaturas
