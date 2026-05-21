@@ -1,5 +1,8 @@
-# Production Docker Compose
-# Usage: docker compose -f infra/docker-compose.prod.yml up -d
+# Staging Docker Compose
+# Usage: docker compose -p sistemaweb-staging -f infra/docker-compose.staging.yml up -d --build
+#
+# Acessar: http://<SERVER_IP>:8080 para o portal público
+#          http://<SERVER_IP>:8081 para o admin
 
 x-logging: &default-logging
   driver: "json-file"
@@ -10,40 +13,25 @@ x-logging: &default-logging
 x-restart: &restart-policy
   restart: unless-stopped
 
-x-security: &security-hardening
-  cap_drop:
-    - ALL
-  security_opt:
-    - no-new-privileges:true
-  read_only: true
-  tmpfs:
-    - /tmp:rw,noexec,nosuid,size=64M
-
 services:
   postgres:
     image: postgres:16-alpine
     <<: [*restart-policy]
     logging: *default-logging
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-doe}
-      POSTGRES_USER: ${POSTGRES_USER:-doe_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${STG_POSTGRES_DB:-doe_staging}
+      POSTGRES_USER: ${STG_POSTGRES_USER:-doe_user}
+      POSTGRES_PASSWORD: ${STG_POSTGRES_PASSWORD:-staging_password}
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
       - internal
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-doe_user} -d ${POSTGRES_DB:-doe}"]
+      test: ["CMD-SHELL", "pg_isready -U ${STG_POSTGRES_USER:-doe_user} -d ${STG_POSTGRES_DB:-doe_staging}"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 10s
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-        reservations:
-          memory: 256M
 
   redis:
     image: redis:7-alpine
@@ -59,12 +47,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-        reservations:
-          memory: 64M
 
   minio:
     image: minio/minio:latest
@@ -72,8 +54,8 @@ services:
     logging: *default-logging
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio_admin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_ROOT_USER: ${STG_MINIO_ROOT_USER:-minio_admin}
+      MINIO_ROOT_PASSWORD: ${STG_MINIO_ROOT_PASSWORD:-minio_password}
     volumes:
       - miniodata:/data
     networks:
@@ -84,12 +66,6 @@ services:
       timeout: 5s
       retries: 5
       start_period: 10s
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-        reservations:
-          memory: 128M
 
   minio-init:
     image: minio/mc:latest
@@ -97,8 +73,8 @@ services:
       - /bin/sh
       - -c
       - |
-        mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD}
-        mc mb myminio/${MINIO_BUCKET:-doe-publicacoes} --with-lock --ignore-existing
+        mc alias set myminio http://minio:9000 ${STG_MINIO_ROOT_USER:-minio_admin} ${STG_MINIO_ROOT_PASSWORD:-minio_password}
+        mc mb myminio/${STG_MINIO_BUCKET:-doe-publicacoes-staging} --with-lock --ignore-existing
         exit 0
     depends_on:
       minio:
@@ -114,23 +90,22 @@ services:
     logging: *default-logging
     environment:
       POSTGRES_HOST: postgres
-      POSTGRES_DB: ${POSTGRES_DB:-doe}
-      POSTGRES_USER: ${POSTGRES_USER:-doe_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${STG_POSTGRES_DB:-doe_staging}
+      POSTGRES_USER: ${STG_POSTGRES_USER:-doe_user}
+      POSTGRES_PASSWORD: ${STG_POSTGRES_PASSWORD:-staging_password}
       REDIS_HOST: redis
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minio_access}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minio_secret}
-      MINIO_BUCKET: ${MINIO_BUCKET:-doe-publicacoes}
+      MINIO_ACCESS_KEY: ${STG_MINIO_ROOT_USER:-minio_admin}
+      MINIO_SECRET_KEY: ${STG_MINIO_ROOT_PASSWORD:-minio_password}
+      MINIO_BUCKET: ${STG_MINIO_BUCKET:-doe-publicacoes-staging}
       MINIO_SECURE: "false"
       SIGNER_URL: http://signer:8100
-      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
-      CORS_ORIGINS: '["https://admin.govsistem.com.br","https://govsistem.com.br"]'
-      PUBLIC_URL: https://govsistem.com.br
-      PDF_API_BASE_URL: https://govsistem.com.br
-      DEBUG: "false"
-      SECRET_KEY: ${SECRET_KEY}
-      SENTRY_DSN: ${SENTRY_DSN:-}
+      INTERNAL_API_KEY: ${STG_INTERNAL_API_KEY:-staging-internal-key-123}
+      CORS_ORIGINS: '["http://localhost:8080","http://localhost:8081"]'
+      PUBLIC_URL: http://localhost:8080
+      PDF_API_BASE_URL: http://localhost:8080
+      DEBUG: "true"
+      SECRET_KEY: ${STG_SECRET_KEY:-staging-secret-key-change-me}
     volumes:
       - uploads:/app/uploads
     depends_on:
@@ -149,33 +124,27 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-        reservations:
-          memory: 256M
 
   worker:
     build:
       context: ../apps/worker
       dockerfile: Dockerfile.prod
-    <<: [*restart-policy, *security-hardening]
+    <<: [*restart-policy]
     logging: *default-logging
     environment:
       POSTGRES_HOST: postgres
-      POSTGRES_DB: ${POSTGRES_DB:-doe}
-      POSTGRES_USER: ${POSTGRES_USER:-doe_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${STG_POSTGRES_DB:-doe_staging}
+      POSTGRES_USER: ${STG_POSTGRES_USER:-doe_user}
+      POSTGRES_PASSWORD: ${STG_POSTGRES_PASSWORD:-staging_password}
       REDIS_HOST: redis
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minio_access}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minio_secret}
-      MINIO_BUCKET: ${MINIO_BUCKET:-doe-publicacoes}
+      MINIO_ACCESS_KEY: ${STG_MINIO_ROOT_USER:-minio_admin}
+      MINIO_SECRET_KEY: ${STG_MINIO_ROOT_PASSWORD:-minio_password}
+      MINIO_BUCKET: ${STG_MINIO_BUCKET:-doe-publicacoes-staging}
       MINIO_SECURE: "false"
       SIGNER_URL: http://signer:8100
       API_URL: http://api:8000
-      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      INTERNAL_API_KEY: ${STG_INTERNAL_API_KEY:-staging-internal-key-123}
     volumes:
       - uploads:/app/uploads
     depends_on:
@@ -191,12 +160,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 20s
-    deploy:
-      resources:
-        limits:
-          memory: 1G
-        reservations:
-          memory: 256M
 
   beat:
     build:
@@ -206,12 +169,12 @@ services:
     logging: *default-logging
     environment:
       POSTGRES_HOST: postgres
-      POSTGRES_DB: ${POSTGRES_DB:-doe}
-      POSTGRES_USER: ${POSTGRES_USER:-doe_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${STG_POSTGRES_DB:-doe_staging}
+      POSTGRES_USER: ${STG_POSTGRES_USER:-doe_user}
+      POSTGRES_PASSWORD: ${STG_POSTGRES_PASSWORD:-staging_password}
       REDIS_HOST: redis
       API_URL: http://api:8000
-      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-123}
+      INTERNAL_API_KEY: ${STG_INTERNAL_API_KEY:-staging-internal-key-123}
     command: celery -A app.worker beat --loglevel=info --schedule /tmp/celerybeat-schedule
     depends_on:
       redis:
@@ -220,23 +183,17 @@ services:
         condition: service_healthy
     networks:
       - internal
-    deploy:
-      resources:
-        limits:
-          memory: 128M
-        reservations:
-          memory: 64M
 
   signer:
     build:
       context: ../apps/signer
       dockerfile: Dockerfile.prod
-    <<: [*restart-policy, *security-hardening]
+    <<: [*restart-policy]
     logging: *default-logging
     environment:
       SIGNER_PROVIDER: ${SIGNER_PROVIDER:-a1}
       SIGNER_A1_PFX_PATH: /certs/cert.pfx
-      SIGNER_A1_PASSWORD: ${SIGNER_A1_PASSWORD}
+      SIGNER_A1_PASSWORD: ${STG_SIGNER_A1_PASSWORD:-}
     volumes:
       - ${SIGNER_CERTS_DIR:-./certs}:/certs:ro
     networks:
@@ -247,19 +204,13 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-        reservations:
-          memory: 128M
 
   web-admin:
     build:
       context: ../apps/web-admin
       dockerfile: Dockerfile.prod
       args:
-        NEXT_PUBLIC_API_URL: https://api.govsistem.com.br/api/v1
+        NEXT_PUBLIC_API_URL: http://localhost:8081/api/v1
     <<: [*restart-policy]
     logging: *default-logging
     environment:
@@ -267,7 +218,7 @@ services:
       PORT: 3000
       HOSTNAME: 0.0.0.0
       API_URL: http://api:8000/api/v1
-      NEXT_PUBLIC_API_URL: https://api.govsistem.com.br/api/v1
+      NEXT_PUBLIC_API_URL: http://localhost:8081/api/v1
     networks:
       - internal
       - public
@@ -277,20 +228,14 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-        reservations:
-          memory: 128M
 
   web-public:
     build:
       context: ../apps/web-public
       dockerfile: Dockerfile.prod
       args:
-        NEXT_PUBLIC_API_URL: https://api.govsistem.com.br/api/v1
-        NEXT_PUBLIC_ADMIN_URL: https://admin.govsistem.com.br
+        NEXT_PUBLIC_API_URL: http://localhost:8080/api/v1
+        NEXT_PUBLIC_ADMIN_URL: http://localhost:8081
     <<: [*restart-policy]
     logging: *default-logging
     environment:
@@ -298,8 +243,8 @@ services:
       PORT: 3000
       HOSTNAME: 0.0.0.0
       API_URL: http://api:8000/api/v1
-      NEXT_PUBLIC_API_URL: https://api.govsistem.com.br/api/v1
-      NEXT_PUBLIC_ADMIN_URL: https://admin.govsistem.com.br
+      NEXT_PUBLIC_API_URL: http://localhost:8080/api/v1
+      NEXT_PUBLIC_ADMIN_URL: http://localhost:8081
     networks:
       - internal
       - public
@@ -309,25 +254,17 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-        reservations:
-          memory: 128M
 
   nginx:
     image: nginx:1.25-alpine
     <<: [*restart-policy]
     logging: *default-logging
     ports:
-      - "80:80"
-      - "443:443"
+      - "8080:80"
+      - "8081:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/sites:/etc/nginx/sites:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
-      - certbot-www:/var/www/certbot
+      - ./nginx/sites-staging:/etc/nginx/sites:ro
     depends_on:
       - api
       - web-admin
@@ -339,19 +276,6 @@ services:
       interval: 60s
       timeout: 5s
       retries: 3
-    deploy:
-      resources:
-        limits:
-          memory: 128M
-        reservations:
-          memory: 64M
-
-  certbot:
-    image: certbot/certbot:v3.3.0
-    volumes:
-      - certbot-www:/var/www/certbot
-      - ./nginx/ssl:/etc/letsencrypt
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
 
 volumes:
   pgdata:
@@ -361,8 +285,6 @@ volumes:
   miniodata:
     driver: local
   uploads:
-    driver: local
-  certbot-www:
     driver: local
 
 networks:
