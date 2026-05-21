@@ -14,11 +14,13 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.tenant import resolve_tenant_from_domain
 from app.models.edition import Edition
 from app.models.edition_item import EditionItem
 from app.models.enums import EditionStatus
 from app.models.matter import Matter
 from app.models.matter_attachment import MatterAttachment
+from app.models.organization import Organization
 from app.models.signature import Signature
 
 router = APIRouter(tags=["public"])
@@ -96,12 +98,15 @@ async def public_list_editions(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    tenant: Organization | None = Depends(resolve_tenant_from_domain),
 ):
     query = (
         select(Edition)
         .where(Edition.status == EditionStatus.PUBLISHED)
         .options(selectinload(Edition.items), selectinload(Edition.signatures))
     )
+    if tenant:
+        query = query.where(Edition.organization_id == tenant.id)
     if year:
         query = query.where(Edition.year == year)
     if type:
@@ -140,14 +145,18 @@ async def public_get_edition(
     number: int,
     request: Request,
     db: AsyncSession = Depends(get_db),
+    tenant: Organization | None = Depends(resolve_tenant_from_domain),
 ):
+    filters = [
+        Edition.year == year,
+        Edition.number == number,
+        Edition.status == EditionStatus.PUBLISHED,
+    ]
+    if tenant:
+        filters.append(Edition.organization_id == tenant.id)
     result = await db.execute(
         select(Edition)
-        .where(
-            Edition.year == year,
-            Edition.number == number,
-            Edition.status == EditionStatus.PUBLISHED,
-        )
+        .where(*filters)
         .options(
             selectinload(Edition.items).selectinload(EditionItem.matter)
                 .selectinload(Matter.act_type),
@@ -220,10 +229,14 @@ async def public_get_edition(
 async def public_get_matter(
     matter_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    tenant: Organization | None = Depends(resolve_tenant_from_domain),
 ):
+    filters = [Matter.id == matter_id, Matter.status == "published"]
+    if tenant:
+        filters.append(Matter.organization_id == tenant.id)
     result = await db.execute(
         select(Matter)
-        .where(Matter.id == matter_id, Matter.status == "published")
+        .where(*filters)
         .options(
             selectinload(Matter.act_type),
             selectinload(Matter.org_unit),
@@ -349,10 +362,14 @@ async def public_search(
 async def public_verify(
     code: str,
     db: AsyncSession = Depends(get_db),
+    tenant: Organization | None = Depends(resolve_tenant_from_domain),
 ):
+    filters = [Edition.verification_code == code]
+    if tenant:
+        filters.append(Edition.organization_id == tenant.id)
     result = await db.execute(
         select(Edition)
-        .where(Edition.verification_code == code)
+        .where(*filters)
         .options(selectinload(Edition.signatures))
     )
     edition = result.scalar_one_or_none()

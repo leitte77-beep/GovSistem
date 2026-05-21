@@ -92,11 +92,14 @@ async def inspect_credential(
 @router.get("/signing-credentials", response_model=list[SigningCredentialOut])
 async def list_credentials(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_roles("ADMIN")),
+    user: User = Depends(require_roles("ADMIN")),
 ):
     result = await db.execute(
         select(SigningCredential)
-        .where(SigningCredential.deleted_at.is_(None))
+        .where(
+            SigningCredential.organization_id == user.organization_id,
+            SigningCredential.deleted_at.is_(None),
+        )
         .order_by(SigningCredential.created_at.desc())
     )
     return result.scalars().all()

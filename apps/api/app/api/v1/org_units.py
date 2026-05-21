@@ -24,9 +24,11 @@ class OrgUnitOut(BaseModel):
 @router.get("/org-units", response_model=list[OrgUnitOut])
 async def list_org_units(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(get_current_user),
+    user: User = Depends(get_current_user),
 ):
     result = await db.execute(
-        select(OrgUnit).order_by(OrgUnit.name)
+        select(OrgUnit)
+        .where(OrgUnit.organization_id == user.organization_id)
+        .order_by(OrgUnit.name)
     )
     return result.scalars().all()

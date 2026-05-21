@@ -18,10 +18,11 @@ router = APIRouter(tags=["users"], dependencies=[Depends(require_roles("ADMIN"))
 @router.get("/users", response_model=list[UserOut])
 async def list_users(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_roles("ADMIN")),
+    user: User = Depends(require_roles("ADMIN")),
 ):
     result = await db.execute(
-        select(User).where(User.deleted_at.is_(None))
+        select(User)
+        .where(User.organization_id == user.organization_id, User.deleted_at.is_(None))
     )
     return result.scalars().all()
 

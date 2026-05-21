@@ -179,7 +179,7 @@ async def list_matters(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    query = select(Matter)
+    query = select(Matter).where(Matter.organization_id == user.organization_id)
     user_roles = {ur.role.name for ur in user.user_roles}
 
     if "ADMIN" not in user_roles and "AUDITOR" not in user_roles:
