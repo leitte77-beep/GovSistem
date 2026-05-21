@@ -1,0 +1,58 @@
+# Production build for API service
+# Uses multi-stage build: builder → runner (distroless)
+
+FROM python:3.12-slim AS builder
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
+
+WORKDIR /app
+
+COPY pyproject.toml requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir gunicorn
+
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+        curl ca-certificates \
+        postgresql-client \
+        poppler-utils \
+        libpango-1.0-0 \
+        libpangocairo-1.0-0 \
+        libgdk-pixbuf-2.0-0 \
+        libcairo2 \
+        libffi8 \
+        shared-mime-info \
+        fonts-liberation \
+        fonts-dejavu-core && \
+    fc-cache -fv && \
+    update-ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+COPY --from=builder /usr/local /usr/local
+COPY . .
+
+RUN adduser --disabled-password --gecos '' appuser && \
+    mkdir -p /app/uploads /app/uploads/backups && \
+    chown -R appuser:appuser /app/uploads /app/uploads/backups
+
+USER appuser
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:8000/api/v1/health || exit 1
+
+CMD ["gunicorn", "app.main:app", "--worker-class", "uvicorn.workers.UvicornWorker", \
+     "--bind", "0.0.0.0:8000", "--workers", "4", "--max-requests", "10000", \
+     "--max-requests-jitter", "1000", "--timeout", "120", "--keep-alive", "5", \
+     "--access-logfile", "-", "--error-logfile", "-"]

@@ -1,0 +1,768 @@
+A melhor abordagem é criar primeiro um assinador PAdES ICP-Brasil AD-RB para PDF, usando certificado A1 em arquivo .pfx/.p12, sem API paga, com Java + PDFBox + Bouncy Castle. Para Diário Oficial, PDF assinado é o formato mais adequado. Depois, você pode evoluir para AD-RT, AD-RC ou AD-RA, mas isso exige carimbo do tempo de uma ACT credenciada; sem uma ACT válida, o sistema não deve prometer “carimbo ICP-Brasil”.
+
+Há um ponto importante: o A1 ainda pode ser usado, mas está em transição. O ITI informa que certificados A1 serão admitidos até 02/03/2029 e que, a partir de 03/03/2029, não será mais possível utilizar A1, A2, S1, S2, S3 e S4. Portanto, o projeto deve aceitar somente A1 agora, mas deixar a camada de chave preparada para migração futura.
+
+1. Base normativa que o projeto deve seguir
+
+Para assinatura ICP-Brasil, não basta “assinar com RSA”. O assinador precisa gerar a estrutura conforme os DOC-ICP de assinatura: DOC-ICP-15, DOC-ICP-15.01, DOC-ICP-15.02 e DOC-ICP-15.03. A página oficial de Documentos Principais do ITI lista esses documentos, incluindo DOC-ICP-15, DOC-ICP-15.01, DOC-ICP-15.02 e DOC-ICP-15.03.
+
+Para o seu caso, o MVP deve usar PAdES AD-RB, porque é PDF e não exige carimbo do tempo. O DOC-ICP-15.03 define a política AD-RB baseada em PAdES e, na versão atual 1.3, o OID é 2.16.76.1.7.1.11.1.3.
+
+A política AD-RB permite validação durante o prazo de validade dos certificados dos signatários; como não usa carimbo do tempo, validação posterior depende de referências temporais externas ou regra de negócio específica. Para AD-RT, AD-RC ou AD-RA, o DOC-ICP exige carimbo do tempo emitido por ACT credenciada na ICP-Brasil.
+
+Em PAdES, os campos assinados mínimos incluem id-contentType, id-messageDigest, id-aa-signingCertificateV2 e id-aa-ets-sigPolicyId. O id-signingTime não deve ser usado em PAdES; o horário declarado deve ir na entrada M do dicionário PDF. O dicionário de assinatura PAdES ICP-Brasil exige, entre outros, Type, Filter, SubFilter, Contents e ByteRange, com valores padrão PBAD_PAdES e PBAD.PAdES para Filter e SubFilter.
+
+O PDF deve ser, no mínimo, PDF 1.7; se usar PDF/A, use PDF/A-2 ou superior, porque PDF/A-1 não suporta assinaturas CAdES, requisito do PAdES ICP-Brasil. Para homologar tecnicamente seus testes, use o Validador oficial do ITI, que permite validar assinaturas eletrônicas ICP-Brasil.
+
+Projeto proposto: Assinador Digital ICP-Brasil A1 para Diário Oficial
+Escopo do MVP
+
+O MVP deve entregar:
+
+Assinatura de PDF final do Diário Oficial.
+Certificado somente A1 em .pfx ou .p12.
+Assinatura PAdES ICP-Brasil AD-RB.
+API REST para assinar, verificar e inspecionar certificado.
+Validação prévia do certificado, cadeia, data de validade e tipo A1.
+Registro de auditoria com hash do PDF antes e depois da assinatura.
+Testes automatizados e validação manual no Validador ITI.
+Nenhuma API paga para assinatura.
+
+Fora do MVP:
+
+Certificado A3, token ou cartão.
+Assinatura XAdES ou CAdES avulsa.
+Carimbo do tempo obrigatório.
+AD-RT, AD-RC e AD-RA completos.
+Serviço de emissão de certificado.
+Arquitetura sugerida
+
+Use Java 21 + Spring Boot + Apache PDFBox + Bouncy Castle + PostgreSQL.
+
+Estrutura sugerida:
+
+assinador-icpbrasil/
+  pom.xml
+  README.md
+  docker-compose.yml
+
+  signature-api/
+    REST controllers
+    autenticação
+    DTOs
+    tratamento de erros
+
+  signature-core/
+    domínio
+    contratos
+    modelos de assinatura
+    auditoria
+
+  certificate-a1/
+    leitura de PKCS#12
+    inspeção de certificado
+    validação de tipo A1
+    seleção da chave privada
+
+  icp-validation/
+    cadeia ICP-Brasil
+    LCR/CRL
+    OCSP
+    cache de validação
+    trust anchors
+
+  pades-signer/
+    PDFBox
+    criação do dicionário PDF
+    ByteRange
+    assinatura incremental
+    assinatura visível opcional
+
+  cms-cades/
+    Bouncy Castle
+    CMS SignedData
+    atributos assinados
+    SignaturePolicyIdentifier
+    SigningCertificateV2
+
+  policy-repository/
+    artefatos de política ICP-Brasil
+    OIDs
+    hash da política
+    LPA futura
+
+  storage/
+    armazenamento de PDFs
+    criptografia de PFX
+    limpeza segura de temporários
+
+  worker/
+    fila de assinatura
+    processamento assíncrono
+
+  cli/
+    assinador local para testes
+Fluxo técnico da assinatura
+
+O fluxo principal deve ser:
+
+1. Sistema do Diário Oficial gera o PDF definitivo.
+2. PDF é congelado: nenhuma alteração posterior.
+3. O assinador calcula SHA-256 do PDF original.
+4. O serviço carrega o certificado A1 do .pfx/.p12.
+5. O serviço valida:
+   - senha correta;
+   - existe chave privada;
+   - certificado está dentro da validade;
+   - certificado é ICP-Brasil;
+   - certificado é A1;
+   - cadeia é confiável;
+   - certificado não está revogado, quando possível.
+6. O serviço prepara o PDF para assinatura incremental.
+7. Cria dicionário de assinatura PAdES:
+   - Type = Sig;
+   - Filter = PBAD_PAdES;
+   - SubFilter = PBAD.PAdES;
+   - ByteRange;
+   - Contents;
+   - M.
+8. Calcula o hash do ByteRange.
+9. Gera CMS/CAdES detached com:
+   - id-contentType;
+   - id-messageDigest;
+   - id-aa-signingCertificateV2;
+   - id-aa-ets-sigPolicyId.
+10. Embute o CMS no campo Contents do PDF.
+11. Reabre o PDF assinado e valida a assinatura localmente.
+12. Calcula SHA-256 do PDF assinado.
+13. Registra auditoria.
+14. Publica o PDF assinado.
+15. Opcionalmente, envia o arquivo para validação manual no Validador ITI.
+Modelo de API
+
+Endpoints mínimos:
+
+POST /api/certificates/inspect
+
+Recebe .pfx/.p12 + senha e retorna dados do certificado, validade, titular, emissor, cadeia e se é A1.
+
+POST /api/sign/pdf
+
+Recebe PDF + certificado A1 + senha + opções de assinatura. Retorna PDF assinado.
+
+POST /api/sign/pdf/job
+
+Cria assinatura assíncrona para Diário Oficial grande.
+
+GET /api/sign/jobs/{id}
+
+Consulta o status da assinatura.
+
+POST /api/signatures/verify
+
+Verifica assinatura de PDF já assinado.
+
+GET /api/health
+
+Health check.
+
+Modelo de dados
+
+Tabelas principais:
+
+documents
+  id
+  diario_id
+  filename
+  mime_type
+  sha256_original
+  sha256_signed
+  status
+  created_at
+  signed_at
+
+signatures
+  id
+  document_id
+  signer_subject_dn
+  signer_serial_number
+  signer_issuer_dn
+  certificate_not_before
+  certificate_not_after
+  certificate_policy_oids
+  signature_policy_oid
+  algorithm
+  digest_algorithm
+  profile
+  status
+  validation_report_json
+  created_at
+
+signature_jobs
+  id
+  document_id
+  status
+  error_code
+  error_message
+  created_at
+  started_at
+  finished_at
+
+audit_events
+  id
+  actor_id
+  event_type
+  document_id
+  ip_address
+  user_agent
+  payload_json
+  created_at
+
+stored_certificates
+  id
+  alias
+  subject_dn
+  serial_number
+  encrypted_pfx
+  encryption_metadata_json
+  active
+  created_at
+
+Para maior segurança, comece com assinatura “one-shot”: o usuário envia PFX e senha no momento da assinatura. Só implemente armazenamento de PFX se houver necessidade operacional real.
+
+Regras de segurança obrigatórias
+
+Nunca grave senha do PFX em texto puro. Nunca registre senha em log. Nunca registre o PFX em log. Não deixe PDF temporário ou PFX temporário em diretórios públicos. Use HTTPS obrigatório. Apague arquivos temporários após uso. Desabilite heap dump em produção, porque a senha ou chave pode aparecer na memória. Restrinja o endpoint de assinatura por autenticação forte e permissão específica.
+
+Para PFX armazenado, use criptografia local com AES-GCM e uma chave mestra fora do banco. A senha do certificado deve ser informada no momento da assinatura ou protegida separadamente com política de rotação.
+
+Passo a passo com prompts para seu agente
+
+Abaixo estão os prompts em ordem. Use um prompt por etapa.
+
+Passo 0 — Prompt mestre do agente
+Você é um engenheiro sênior especialista em Java, criptografia aplicada, assinatura digital ICP-Brasil, PAdES, CMS/CAdES, PDFBox e Bouncy Castle.
+
+Crie um projeto de assinador digital ICP-Brasil para sistema de Diário Oficial.
+
+Restrições obrigatórias:
+- O assinador deve funcionar somente com certificado A1 em arquivo .pfx ou .p12.
+- Não usar API paga de assinatura.
+- Não usar serviço externo para assinar.
+- Não implementar A3, token, cartão, HSM ou assinatura remota.
+- O perfil inicial é PAdES ICP-Brasil AD-RB para PDF.
+- O sistema deve ser preparado para AD-RT no futuro, mas sem exigir carimbo do tempo no MVP.
+- O código deve ser limpo, testável, seguro e documentado.
+- Use Java 21, Spring Boot, Maven, PDFBox e Bouncy Castle.
+- Não use iText comercial.
+- Não grave senhas em logs.
+- Não inclua certificados reais, senhas reais ou PFX reais no repositório.
+- Gere testes com certificado self-signed apenas para teste unitário; testes ICP-Brasil reais devem usar variáveis de ambiente locais.
+
+Critério geral de aceite:
+- Deve assinar um PDF usando certificado A1.
+- Deve gerar assinatura PAdES AD-RB.
+- Deve validar localmente a assinatura gerada.
+- Deve registrar auditoria com hash antes e depois.
+- Deve ter README explicando como validar o resultado no Validador ITI.
+Passo 1 — Criar o esqueleto do monorepo
+Crie o esqueleto de um projeto Maven multi-module chamado "assinador-icpbrasil".
+
+Módulos:
+- signature-api
+- signature-core
+- certificate-a1
+- icp-validation
+- policy-repository
+- cms-cades
+- pades-signer
+- storage
+- worker
+- cli
+
+Inclua:
+- Java 21.
+- Spring Boot no módulo signature-api.
+- PDFBox no módulo pades-signer.
+- Bouncy Castle no módulo cms-cades e certificate-a1.
+- JUnit 5, AssertJ e Mockito nos testes.
+- Checkstyle ou Spotless.
+- Docker Compose com PostgreSQL.
+- README inicial com visão geral do projeto.
+
+Não implemente assinatura ainda. Apenas estrutura, dependências e build funcionando.
+
+Critérios de aceite:
+- "mvn clean test" deve passar.
+- Todos os módulos devem compilar.
+- README deve explicar a finalidade de cada módulo.
+Passo 2 — Modelar domínio e contratos
+No módulo signature-core, crie os modelos e interfaces principais do assinador.
+
+Crie enums:
+- SignatureProfile: PADES_AD_RB, PADES_AD_RT_FUTURE
+- CertificateType: A1, A3, A4, SE_S, SE_H, UNKNOWN
+- SignatureStatus: CREATED, SIGNING, SIGNED, FAILED, VALID, INVALID
+- DigestAlgorithm: SHA256, SHA512
+- KeyAlgorithm: RSA, ECDSA, ED25519, ED448, UNKNOWN
+
+Crie records/classes:
+- SignPdfRequest
+- SignPdfResult
+- CertificateInfo
+- CertificateValidationResult
+- SignatureValidationResult
+- AuditEvent
+- DocumentHash
+- SignaturePolicy
+
+Crie interfaces:
+- CertificateLoader
+- CertificateInspector
+- CertificateValidator
+- PdfSigner
+- CmsSignatureBuilder
+- SignaturePolicyRepository
+- SignatureVerifier
+- AuditService
+- DocumentStorage
+
+Inclua JavaDoc explicando o papel de cada contrato.
+
+Critérios de aceite:
+- Contratos não devem depender de Spring.
+- Nenhum contrato deve conhecer detalhes de PDFBox ou Bouncy Castle.
+- Testes simples devem verificar criação dos modelos.
+Passo 3 — Implementar leitura de certificado A1
+No módulo certificate-a1, implemente leitura de certificado A1 em PKCS#12.
+
+Funcionalidades:
+- Carregar .pfx/.p12 a partir de byte[] e senha char[].
+- Localizar alias com chave privada.
+- Extrair PrivateKey.
+- Extrair certificado do signatário.
+- Extrair cadeia de certificados, quando disponível.
+- Retornar CertificateInfo com:
+  - subjectDN
+  - issuerDN
+  - serialNumber
+  - notBefore
+  - notAfter
+  - publicKeyAlgorithm
+  - keySize
+  - certificatePolicyOids
+  - keyUsage
+  - extendedKeyUsage
+  - basicConstraints
+  - isCa
+  - sha256Fingerprint
+
+Regras:
+- Não converter senha para String.
+- Limpar char[] quando possível.
+- Não logar senha, PFX ou chave privada.
+- Lançar exceções de domínio para senha inválida, PFX inválido, sem chave privada, certificado ausente.
+
+Critérios de aceite:
+- Teste com PKCS#12 self-signed gerado em teste.
+- Teste para senha inválida.
+- Teste para arquivo que não é PFX.
+- Teste para PFX sem chave privada.
+Passo 4 — Enforçar “somente A1”
+No módulo certificate-a1, implemente um detector de tipo de certificado ICP-Brasil.
+
+Regras:
+- Ler Certificate Policies do certificado.
+- Classificar como A1 se houver OID de política compatível com A1, no padrão 2.16.76.1.2.1.n.
+- Classificar como A3 se 2.16.76.1.2.3.n.
+- Classificar como A4 se 2.16.76.1.2.4.n.
+- Classificar como SE-S se 2.16.76.1.2.201.n.
+- Classificar como SE-H se 2.16.76.1.2.202.n.
+- Classificar como UNKNOWN se não identificar.
+- Criar regra de negócio que rejeita qualquer tipo diferente de A1.
+
+Observação:
+Mesmo que versões recentes de políticas PAdES tenham conjunto de políticas de certificado aceitável vazio, este sistema deve rejeitar não-A1 por requisito de negócio do produto.
+
+Critérios de aceite:
+- Certificado com OID 2.16.76.1.2.1.10 deve ser A1.
+- Certificado com OID A3 deve ser rejeitado.
+- Certificado com OID SE-S deve ser rejeitado.
+- Certificado sem policy OID deve ser rejeitado ou marcado como UNKNOWN, conforme configuração.
+Passo 5 — Validação ICP-Brasil da cadeia
+No módulo icp-validation, implemente validação de cadeia de certificado.
+
+Funcionalidades:
+- TrustStore ICP-Brasil configurável.
+- Permitir carregar certificados raiz ICP-Brasil a partir de resources.
+- Implementar PKIX CertPathBuilder/CertPathValidator.
+- Validar:
+  - período de validade;
+  - cadeia até raiz confiável;
+  - basic constraints das ACs;
+  - key usage do certificado final;
+  - algorithm constraints configuráveis;
+  - revogação por CRL e/ou OCSP quando disponível.
+
+Crie cache de CRL/OCSP com TTL configurável.
+
+Não baixe recursos externos em teste unitário. Crie abstrações:
+- CrlClient
+- OcspClient
+- RevocationCache
+
+Critérios de aceite:
+- Testes unitários para certificado expirado.
+- Testes para cadeia ausente.
+- Testes para trust anchor ausente.
+- Testes mockados de CRL/OCSP.
+- Configuração para modo "strict" e modo "best-effort".
+Passo 6 — Repositório de política PAdES AD-RB
+No módulo policy-repository, implemente o repositório de políticas ICP-Brasil.
+
+Inclua no MVP:
+- Perfil: PADES_AD_RB
+- Nome: POLITICA ICP-BRASIL PARA ASSINATURA DIGITAL COM REFERENCIA BASICA NO FORMATO PDF
+- Versão: 1.3
+- OID: 2.16.76.1.7.1.11.1.3
+- Digest algorithm padrão: SHA-256
+
+Crie a classe SignaturePolicyRepositoryImpl.
+
+Ela deve retornar:
+- policyOid
+- policyName
+- policyVersion
+- policyDigestAlgorithm
+- policyDigest
+- policyArtifact, quando configurado
+
+Importante:
+- Não invente o hash da política.
+- Permita configurar o artefato real da política por arquivo externo.
+- Se o hash real não estiver configurado, o sistema deve falhar em modo strict.
+- Para desenvolvimento, permita modo dev com policy digest fake apenas para testes, nunca para produção.
+
+Critérios de aceite:
+- Teste que PADES_AD_RB retorna OID correto.
+- Teste que modo strict falha sem hash real da política.
+- Teste que modo dev permite execução com aviso explícito.
+Passo 7 — Implementar CMS/CAdES detached para PAdES
+No módulo cms-cades, implemente CmsSignatureBuilder usando Bouncy Castle.
+
+Entrada:
+- bytes ou InputStream do conteúdo a assinar, correspondente ao ByteRange do PDF;
+- PrivateKey;
+- certificado do signatário;
+- cadeia de certificados;
+- SignaturePolicy;
+- algoritmo de assinatura.
+
+Saída:
+- byte[] contendo CMS SignedData detached.
+
+Atributos assinados obrigatórios:
+- id-contentType
+- id-messageDigest
+- id-aa-signingCertificateV2
+- id-aa-ets-sigPolicyId
+
+Regras PAdES:
+- Não incluir id-signingTime.
+- O horário deve ser colocado no dicionário PDF, entrada M.
+- signingCertificateV2 deve referenciar apenas o certificado do signatário.
+- O campo certificates do SignedData deve incluir ao menos o certificado do signatário; inclua cadeia quando disponível.
+- Usar SHA256withRSA para RSA por padrão.
+- Mapear ECDSA se o certificado for EC.
+- Rejeitar algoritmo desconhecido.
+
+Critérios de aceite:
+- Teste unitário verifica presença dos atributos obrigatórios.
+- Teste verifica ausência de id-signingTime.
+- Teste verifica que CMS é detached.
+- Teste verifica assinatura criptográfica com Bouncy Castle.
+Passo 8 — Implementar assinatura PDF PAdES com PDFBox
+No módulo pades-signer, implemente PdfSigner usando Apache PDFBox.
+
+Funcionalidades:
+- Abrir PDF.
+- Rejeitar PDF criptografado sem senha.
+- Detectar presença de JavaScript ou ações suspeitas e retornar alerta.
+- Assinar em modo incremental.
+- Criar dicionário de assinatura com:
+  - Type = Sig
+  - Filter = PBAD_PAdES
+  - SubFilter = PBAD.PAdES
+  - Contents
+  - ByteRange
+  - M
+- Permitir assinatura invisível.
+- Permitir assinatura visível opcional na primeira ou última página.
+- Reservar espaço suficiente em Contents para o CMS.
+- Calcular ByteRange corretamente.
+- Enviar ByteRange para CmsSignatureBuilder.
+- Inserir CMS retornado no PDF.
+
+Critérios de aceite:
+- Assinar PDF simples.
+- PDF assinado abre em leitor PDF.
+- ByteRange cobre todo o PDF exceto Contents.
+- O hash antes e depois é registrado.
+- A assinatura local é verificável.
+Passo 9 — Implementar verificação local de assinatura
+Implemente SignatureVerifier.
+
+Funcionalidades:
+- Ler PDF assinado.
+- Encontrar assinaturas.
+- Para cada assinatura:
+  - validar ByteRange;
+  - extrair CMS;
+  - validar integridade;
+  - validar assinatura criptográfica;
+  - extrair certificado do signatário;
+  - validar cadeia ICP-Brasil;
+  - validar revogação conforme modo configurado;
+  - validar se contém os atributos obrigatórios;
+  - validar se a política esperada é PADES_AD_RB;
+  - validar se o certificado é A1, conforme regra de negócio.
+
+Saída:
+- SignatureValidationResult com status, mensagens, warnings e detalhes técnicos.
+
+Critérios de aceite:
+- PDF assinado pelo próprio sistema deve validar.
+- PDF alterado após assinatura deve falhar.
+- PDF assinado com certificado não-A1 deve falhar pela regra de negócio.
+- PDF com política ausente deve falhar.
+Passo 10 — Implementar API REST
+No módulo signature-api, implemente os endpoints REST.
+
+Endpoints:
+1. POST /api/certificates/inspect
+   - multipart: pfx, password
+   - retorna CertificateInfo e CertificateValidationResult
+
+2. POST /api/sign/pdf
+   - multipart: pdf, pfx, password, profile, visibleSignatureOptions opcional
+   - retorna application/pdf assinado
+
+3. POST /api/signatures/verify
+   - multipart: pdf
+   - retorna SignatureValidationResult
+
+4. POST /api/sign/pdf/job
+   - cria job assíncrono
+
+5. GET /api/sign/jobs/{id}
+   - consulta job
+
+Regras:
+- Nunca logar senha.
+- Sanitizar nomes de arquivos.
+- Limitar tamanho máximo de upload.
+- Responder erros com códigos de domínio.
+- Incluir correlationId em todos os logs.
+
+Critérios de aceite:
+- Testes de controller com MockMvc.
+- Teste de upload inválido.
+- Teste de assinatura completa via endpoint.
+- Teste de resposta application/pdf.
+Passo 11 — Implementar auditoria
+Implemente AuditService e persistência em PostgreSQL.
+
+Eventos obrigatórios:
+- CERTIFICATE_INSPECTED
+- PDF_SIGN_REQUESTED
+- PDF_SIGN_STARTED
+- PDF_SIGN_SUCCEEDED
+- PDF_SIGN_FAILED
+- PDF_VERIFY_REQUESTED
+- PDF_VERIFY_SUCCEEDED
+- PDF_VERIFY_FAILED
+
+Cada evento deve salvar:
+- actorId
+- correlationId
+- IP
+- userAgent
+- documentId
+- sha256Original
+- sha256Signed quando existir
+- signerSubjectDn
+- signerSerialNumber
+- signaturePolicyOid
+- status
+- timestamp
+
+Regras:
+- Nunca salvar senha.
+- Nunca salvar PFX.
+- Nunca salvar chave privada.
+- Payload JSON deve ser sanitizado.
+
+Critérios de aceite:
+- Toda assinatura gera eventos de início e fim.
+- Falhas também geram auditoria.
+- Testes garantem que senha não aparece no JSON de auditoria.
+Passo 12 — Implementar armazenamento seguro
+No módulo storage, implemente armazenamento de documentos e, opcionalmente, PFX criptografado.
+
+Documentos:
+- Salvar PDF original em storage privado.
+- Salvar PDF assinado em storage privado.
+- Calcular SHA-256.
+- Garantir imutabilidade lógica após assinatura.
+
+PFX:
+- No MVP, priorize assinatura one-shot sem armazenar PFX.
+- Se habilitar armazenamento, criptografar com AES-GCM.
+- Chave mestra deve vir de variável de ambiente ou arquivo protegido fora do banco.
+- Nunca armazenar senha do PFX em texto puro.
+- Criar configuração para desabilitar armazenamento de PFX em produção.
+
+Critérios de aceite:
+- Documento assinado não pode ser sobrescrito.
+- Tentativa de alterar documento publicado deve falhar.
+- PFX armazenado deve estar cifrado.
+- Teste garante que bytes originais do PFX não aparecem no banco.
+Passo 13 — Integrar com fluxo do Diário Oficial
+Crie um serviço DiarioOficialSigningService.
+
+Fluxo:
+1. Receber diarioId.
+2. Buscar PDF final gerado pelo sistema.
+3. Conferir se status do diário é "PRONTO_PARA_ASSINATURA".
+4. Bloquear edição do diário.
+5. Gerar hash SHA-256 do PDF original.
+6. Assinar PDF.
+7. Validar assinatura localmente.
+8. Salvar PDF assinado.
+9. Atualizar status para "ASSINADO".
+10. Registrar auditoria.
+11. Liberar publicação.
+
+Regras:
+- Depois de assinado, o PDF não pode ser alterado.
+- Se houver erro de assinatura, status deve voltar para "ERRO_ASSINATURA" ou "PRONTO_PARA_ASSINATURA", conforme regra configurada.
+- Retificação deve gerar novo PDF e nova assinatura, nunca alterar o assinado.
+
+Critérios de aceite:
+- Fluxo feliz assina e publica.
+- Falha de senha não publica.
+- Falha de validação não publica.
+- PDF assinado fica imutável.
+Passo 14 — Criar CLI local
+Crie módulo cli para assinatura local por linha de comando.
+
+Comandos:
+- inspect-cert --pfx caminho --password-env PFX_PASSWORD
+- sign-pdf --input diario.pdf --output diario-assinado.pdf --pfx cert.p12 --password-env PFX_PASSWORD
+- verify-pdf --input diario-assinado.pdf
+
+Regras:
+- Senha deve ser lida de variável de ambiente ou prompt seguro.
+- Não aceitar senha como argumento direto.
+- Retornar exit code 0 para sucesso e diferente de 0 para erro.
+
+Critérios de aceite:
+- CLI assina PDF de exemplo.
+- CLI verifica PDF assinado.
+- CLI não imprime senha.
+Passo 15 — Testes de conformidade
+Crie uma suíte de testes de conformidade.
+
+Inclua:
+- PDF simples sem assinatura.
+- PDF com assinatura válida gerada pelo sistema.
+- PDF alterado depois da assinatura.
+- PDF assinado com certificado expirado, usando fixture controlada.
+- PDF com CMS sem política de assinatura.
+- PDF com id-signingTime indevidamente presente.
+- PDF com certificado não-A1.
+- PDF com ByteRange inválido.
+- PDF com Contents insuficiente.
+- PDF com JavaScript, gerando alerta.
+
+Crie relatório em Markdown:
+- cenário;
+- resultado esperado;
+- resultado obtido;
+- evidência técnica.
+
+Critérios de aceite:
+- Todos os testes automatizados passam.
+- O README explica quais testes precisam de certificado ICP-Brasil real.
+- O README orienta validar manualmente no Validador ITI.
+Passo 16 — Preparar AD-RT futuro sem implementar no MVP
+Crie interfaces para futuro carimbo do tempo, sem ativar no MVP.
+
+Interfaces:
+- TimeStampClient
+- TimeStampTokenValidator
+- TimeStampConfig
+
+Implemente apenas stub:
+- DisabledTimeStampClient
+- erro claro: "AD-RT não disponível; configure ACT ICP-Brasil compatível"
+
+Documente:
+- AD-RB não usa carimbo do tempo.
+- AD-RT requer carimbo de uma ACT credenciada ICP-Brasil.
+- Sem ACT, o sistema não deve declarar assinatura AD-RT.
+
+Critérios de aceite:
+- PADES_AD_RB funciona sem timestamp.
+- PADES_AD_RT_FUTURE retorna erro explícito.
+- Código deixa claro o ponto de extensão futuro.
+Passo 17 — Segurança, hardening e deploy
+Prepare o projeto para produção.
+
+Inclua:
+- Dockerfile multi-stage.
+- docker-compose para API + PostgreSQL.
+- Profiles: dev, test, prod.
+- Configuração de tamanho máximo de upload.
+- CORS restrito.
+- Rate limit no endpoint de assinatura.
+- Logs JSON com correlationId.
+- Redaction de campos sensíveis.
+- Desabilitar stacktrace detalhado em produção.
+- Health check.
+- Métricas básicas.
+- Guia de backup dos PDFs assinados.
+- Guia de rotação de chave mestra se PFX armazenado estiver habilitado.
+
+Critérios de aceite:
+- Aplicação sobe com docker-compose.
+- Health check funciona.
+- Logs não contêm senha.
+- Endpoint de assinatura exige autenticação.
+- Documentação de produção concluída.
+Checklist de conformidade para o MVP
+
+Antes de considerar pronto, confirme:
+
+[ ] Assina apenas PDF.
+[ ] Usa somente certificado A1.
+[ ] Rejeita A3, A4, SE-S, SE-H e desconhecidos.
+[ ] Usa PAdES AD-RB.
+[ ] Usa OID da política PAdES AD-RB correta.
+[ ] Inclui id-contentType.
+[ ] Inclui id-messageDigest.
+[ ] Inclui id-aa-signingCertificateV2.
+[ ] Inclui id-aa-ets-sigPolicyId.
+[ ] Não inclui id-signingTime no CMS PAdES.
+[ ] Usa entrada M no dicionário PDF.
+[ ] Usa ByteRange correto.
+[ ] Usa Contents suficiente.
+[ ] Usa Filter/SubFilter conforme PAdES ICP-Brasil.
+[ ] Valida assinatura localmente após assinar.
+[ ] Registra hash do PDF original.
+[ ] Registra hash do PDF assinado.
+[ ] Não altera PDF depois da assinatura.
+[ ] Não grava senha.
+[ ] Não grava PFX sem criptografia.
+[ ] Gera relatório de validação.
+[ ] Foi testado no Validador ITI.

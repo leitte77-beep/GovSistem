@@ -1,0 +1,373 @@
+# Production Docker Compose
+# Usage: docker compose -f infra/docker-compose.prod.yml up -d
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-restart: &restart-policy
+  restart: unless-stopped
+
+x-security: &security-hardening
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  read_only: true
+  tmpfs:
+    - /tmp:rw,noexec,nosuid,size=64M
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    <<: [*restart-policy]
+    logging: *default-logging
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-doe}
+      POSTGRES_USER: ${POSTGRES_USER:-doe_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-doe_user} -d ${POSTGRES_DB:-doe}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+
+  redis:
+    image: redis:7-alpine
+    <<: [*restart-policy]
+    logging: *default-logging
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redisdata:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 64M
+
+  minio:
+    image: minio/minio:latest
+    <<: [*restart-policy]
+    logging: *default-logging
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio_admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    volumes:
+      - miniodata:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 128M
+
+  minio-init:
+    image: minio/mc:latest
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD}
+        mc mb myminio/${MINIO_BUCKET:-doe-publicacoes} --with-lock --ignore-existing
+        exit 0
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - internal
+
+  api:
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile.prod
+    <<: [*restart-policy]
+    logging: *default-logging
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-doe}
+      POSTGRES_USER: ${POSTGRES_USER:-doe_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: redis
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minio_access}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minio_secret}
+      MINIO_BUCKET: ${MINIO_BUCKET:-doe-publicacoes}
+      MINIO_SECURE: "false"
+      SIGNER_URL: http://signer:8100
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      CORS_ORIGINS: '["https://admin.govsistem.com.br","https://govsistem.com.br"]'
+      PUBLIC_URL: https://govsistem.com.br
+      PDF_API_BASE_URL: https://govsistem.com.br
+      DEBUG: "false"
+      SECRET_KEY: ${SECRET_KEY}
+      SENTRY_DSN: ${SENTRY_DSN:-}
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - internal
+      - public
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  worker:
+    build:
+      context: ../apps/worker
+      dockerfile: Dockerfile.prod
+    <<: [*restart-policy, *security-hardening]
+    logging: *default-logging
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-doe}
+      POSTGRES_USER: ${POSTGRES_USER:-doe_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: redis
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minio_access}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minio_secret}
+      MINIO_BUCKET: ${MINIO_BUCKET:-doe-publicacoes}
+      MINIO_SECURE: "false"
+      SIGNER_URL: http://signer:8100
+      API_URL: http://api:8000
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.worker inspect ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+        reservations:
+          memory: 256M
+
+  beat:
+    build:
+      context: ../apps/worker
+      dockerfile: Dockerfile.prod
+    <<: [*restart-policy]
+    logging: *default-logging
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-doe}
+      POSTGRES_USER: ${POSTGRES_USER:-doe_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: redis
+      API_URL: http://api:8000
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-123}
+    command: celery -A app.worker beat --loglevel=info --schedule /tmp/celerybeat-schedule
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+
+  signer:
+    build:
+      context: ../apps/signer
+      dockerfile: Dockerfile.prod
+    <<: [*restart-policy, *security-hardening]
+    logging: *default-logging
+    environment:
+      SIGNER_PROVIDER: ${SIGNER_PROVIDER:-a1}
+      SIGNER_A1_PFX_PATH: /certs/cert.pfx
+      SIGNER_A1_PASSWORD: ${SIGNER_A1_PASSWORD}
+    volumes:
+      - ${SIGNER_CERTS_DIR:-./certs}:/certs:ro
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+
+  web-admin:
+    build:
+      context: ../apps/web-admin
+      dockerfile: Dockerfile.prod
+      args:
+        NEXT_PUBLIC_API_URL: https://api.govsistem.com.br/api/v1
+    <<: [*restart-policy]
+    logging: *default-logging
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      API_URL: http://api:8000/api/v1
+      NEXT_PUBLIC_API_URL: https://api.govsistem.com.br/api/v1
+    networks:
+      - internal
+      - public
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+
+  web-public:
+    build:
+      context: ../apps/web-public
+      dockerfile: Dockerfile.prod
+      args:
+        NEXT_PUBLIC_API_URL: https://api.govsistem.com.br/api/v1
+        NEXT_PUBLIC_ADMIN_URL: /admin
+    <<: [*restart-policy]
+    logging: *default-logging
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      API_URL: http://api:8000/api/v1
+      NEXT_PUBLIC_API_URL: https://api.govsistem.com.br/api/v1
+      NEXT_PUBLIC_ADMIN_URL: /admin
+    networks:
+      - internal
+      - public
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+
+  nginx:
+    image: nginx:1.25-alpine
+    <<: [*restart-policy]
+    logging: *default-logging
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/sites:/etc/nginx/sites:ro
+      - ./nginx/ssl:/etc/nginx/ssl:ro
+      - certbot-www:/var/www/certbot
+    depends_on:
+      - api
+      - web-admin
+      - web-public
+    networks:
+      - public
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+        reservations:
+          memory: 64M
+
+  certbot:
+    image: certbot/certbot:v3.3.0
+    volumes:
+      - certbot-www:/var/www/certbot
+      - ./nginx/ssl:/etc/letsencrypt
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+volumes:
+  pgdata:
+    driver: local
+  redisdata:
+    driver: local
+  miniodata:
+    driver: local
+  uploads:
+    driver: local
+  certbot-www:
+    driver: local
+
+networks:
+  internal:
+    driver: bridge
+    internal: true
+  public:
+    driver: bridge

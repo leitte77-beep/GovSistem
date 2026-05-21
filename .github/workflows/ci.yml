@@ -1,0 +1,176 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
+
+jobs:
+  # ── Lint ──────────────────────────────────────────────────────────────────
+
+  lint-python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - name: Install Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+      - name: Ruff check (api)
+        run: uvx ruff check apps/api
+      - name: Ruff check (worker)
+        run: uvx ruff check apps/worker
+      - name: Ruff check (signer)
+        run: uvx ruff check apps/signer
+
+  lint-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            apps/web-admin/package-lock.json
+            apps/web-public/package-lock.json
+      - name: Install web-admin deps
+        run: npm ci
+        working-directory: apps/web-admin
+      - name: Install web-public deps
+        run: npm ci
+        working-directory: apps/web-public
+      - name: ESLint (web-admin)
+        run: npm run lint
+        working-directory: apps/web-admin
+      - name: ESLint (web-public)
+        run: npm run lint
+        working-directory: apps/web-public
+
+  # ── Tests ─────────────────────────────────────────────────────────────────
+
+  test-api:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - name: Install Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+      - name: Install API deps
+        run: |
+          cd apps/api
+          uv pip install --system -r requirements.txt
+      - name: pytest (api)
+        run: |
+          cd apps/api
+          DEBUG=true SECRET_KEY=ci-test POSTGRES_PASSWORD=ci-test python -m pytest tests/ -v
+
+  test-worker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - name: Install Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+      - name: Install Worker deps
+        run: |
+          cd apps/worker
+          uv pip install --system -r requirements.txt
+      - name: pytest (worker)
+        run: |
+          cd apps/worker
+          POSTGRES_PASSWORD=ci-test python -m pytest tests/ -v
+
+  test-signer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+      - name: Install Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+      - name: Install Signer deps
+        run: |
+          cd apps/signer
+          uv pip install --system -r requirements.txt
+      - name: pytest (signer)
+        run: |
+          cd apps/signer
+          python -m pytest tests/ -v
+
+  test-e2e:
+    runs-on: ubuntu-latest
+    needs: [test-api]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: apps/web-admin/package-lock.json
+      - name: Install deps
+        run: npm ci
+        working-directory: apps/web-admin
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps chromium
+        working-directory: apps/web-admin
+      - name: Run Playwright e2e tests
+        run: npm run test:e2e
+        working-directory: apps/web-admin
+
+  # ── Build (verify Docker images compile) ──────────────────────────────────
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [lint-python, lint-frontend, test-api, test-worker, test-signer]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Build API image
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/api
+          file: apps/api/Dockerfile.prod
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build Worker image
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/worker
+          file: apps/worker/Dockerfile.prod
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build Signer image
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/signer
+          file: apps/signer/Dockerfile.prod
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build web-admin image
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/web-admin
+          file: apps/web-admin/Dockerfile.prod
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build web-public image
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/web-public
+          file: apps/web-public/Dockerfile.prod
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
