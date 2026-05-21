@@ -329,9 +329,12 @@ CREATE TABLE subscriptions (
 - [ ] ~~Adicionar per-org settings no system_settings~~ (pendente)
 
 ### Fase 3 — Frontend Multi-Tenant (em andamento)
-- [ ] Detecção de organização por subdomínio no frontend
-- [ ] Personalização de logo, nome e cores por organização
-- [ ] Portal público dinâmico por organização
+- [x] Model Organization com `theme_config` (JSON) e `public_url`
+- [x] Migration `5a6b7c8d9e0f` adicionando campos ao banco
+- [x] Endpoint `GET /api/public/v1/organization` — retorna config do tenant por domínio
+- [x] Frontend `api.ts` — método `getOrganization()` adicionado
+- [ ] Detecção de organização por subdomínio no Navbar/Header
+- [ ] Personalização dinâmica de logo, nome e cores no portal público
 - [ ] Seletor de organização para admins multi-org
 
 ### Fase 4 — Onboarding e Deploy (2 semanas)

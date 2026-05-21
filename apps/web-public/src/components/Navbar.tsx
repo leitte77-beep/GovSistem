@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useOrg } from "@/lib/org-context";
 import AccessibilityPanel from "./AccessibilityPanel";
 
 const NAV_LINKS = [
@@ -12,13 +13,22 @@ const NAV_LINKS = [
 
 export default function Navbar() {
   const pathname = usePathname();
+  const { org } = useOrg();
+  const siteName = org?.name || "Diário Oficial";
+  const logoSrc = org?.logo_url || null;
 
   return (
-    <header className="bg-surface border-b border-outline-variant shadow-sm h-20 flex items-center sticky top-0 z-50">
+    <header
+      className="bg-surface border-b border-outline-variant shadow-sm h-20 flex items-center sticky top-0 z-50"
+      style={org ? { "--tw-text-primary": org.theme.primary_color } as React.CSSProperties : undefined}
+    >
       <div className="flex justify-between items-center w-full px-gutter max-w-container-max mx-auto h-20">
         <div className="flex items-center gap-8">
-          <Link href="/" className="text-headline-sm font-headline-sm font-bold text-primary">
-            Diário Oficial
+          <Link href="/" className="text-headline-sm font-headline-sm font-bold text-primary flex items-center gap-2">
+            {logoSrc ? (
+              <img src={logoSrc} alt={siteName} className="h-8 w-auto" />
+            ) : null}
+            {siteName}
           </Link>
           <nav className="hidden md:flex items-center gap-6">
             {NAV_LINKS.map((link) => {

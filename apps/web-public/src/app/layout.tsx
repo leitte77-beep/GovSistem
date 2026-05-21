@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
 import AccessibilityProvider from "@/components/AccessibilityProvider";
+import { OrgProvider } from "@/lib/org-context";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -17,11 +18,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       </head>
       <body className="bg-background text-on-surface antialiased min-h-screen flex flex-col">
         <AccessibilityProvider>
-          <Navbar />
-          <main className="flex-1">
-            {children}
-          </main>
-          <Footer />
+          <OrgProvider>
+            <Navbar />
+            <main className="flex-1">
+              {children}
+            </main>
+            <Footer />
+          </OrgProvider>
         </AccessibilityProvider>
       </body>
     </html>
