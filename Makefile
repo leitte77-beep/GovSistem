@@ -1,4 +1,4 @@
-.PHONY: dev dev-up dev-build test lint migrate migrate-create clean down
+.PHONY: dev dev-up dev-build test lint migrate migrate-create clean down staging staging-up prod-up deploy-staging deploy-prod
 
 dev:
 	docker compose -f infra/docker-compose.yml up
@@ -53,3 +53,33 @@ clean:
 
 logs:
 	docker compose -f infra/docker-compose.yml logs -f
+
+# ── Staging ────────────────────────────────────────────────────────────────────
+
+staging:
+	docker compose -p sistemaweb-staging -f infra/docker-compose.staging.yml up
+
+staging-up:
+	docker compose -p sistemaweb-staging -f infra/docker-compose.staging.yml up -d --build --remove-orphans
+
+staging-down:
+	docker compose -p sistemaweb-staging -f infra/docker-compose.staging.yml down
+
+staging-logs:
+	docker compose -p sistemaweb-staging -f infra/docker-compose.staging.yml logs -f
+
+# ── Produção ───────────────────────────────────────────────────────────────────
+
+prod-up:
+	docker compose -f infra/docker-compose.prod.yml up -d --build --remove-orphans
+
+prod-down:
+	docker compose -f infra/docker-compose.prod.yml down
+
+# ── Deploy manual ──────────────────────────────────────────────────────────────
+
+deploy-staging:
+	bash scripts/deploy-staging.sh
+
+deploy-prod:
+	bash scripts/deploy-production.sh
