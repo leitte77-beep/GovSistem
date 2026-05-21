@@ -76,7 +76,10 @@ async def login(
     refresh_jti = uuid.uuid4()
     _ = get_client_info(request)
     return TokenResponse(
-        access_token=create_access_token(user.id, roles),
+        access_token=create_access_token(
+            user.id, roles,
+            organization_id=user.organization_id,
+        ),
         refresh_token=create_refresh_token(user.id, refresh_jti),
     )
 
@@ -112,7 +115,10 @@ async def refresh_token(
 
     roles = _user_roles(user)
     return TokenResponse(
-        access_token=create_access_token(user.id, roles),
+        access_token=create_access_token(
+            user.id, roles,
+            organization_id=user.organization_id,
+        ),
         refresh_token=create_refresh_token(user.id, uuid.uuid4()),
     )
 

@@ -11,6 +11,7 @@ if TYPE_CHECKING:
     from app.models.matter import Matter
     from app.models.org_unit import OrgUnit
     from app.models.signing_credential import SigningCredential
+    from app.models.tenant_domain import TenantDomain
     from app.models.user import User
 
 
@@ -41,6 +42,10 @@ class Organization(Base, TimestampMixin, SoftDeleteMixin):
     )
     signing_credentials: Mapped[List["SigningCredential"]] = relationship(
         "SigningCredential", back_populates="organization", lazy="selectin"
+    )
+    tenant_domains: Mapped[List["TenantDomain"]] = relationship(
+        "TenantDomain", back_populates="organization", lazy="selectin",
+        cascade="all, delete-orphan",
     )
 
     def __repr__(self) -> str:

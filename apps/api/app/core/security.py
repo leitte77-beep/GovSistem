@@ -20,7 +20,9 @@ def verify_password(password: str, password_hash: str) -> bool:
 
 
 def create_access_token(
-    user_id: uuid.UUID, roles: list[str], org_unit_id: uuid.UUID | None = None
+    user_id: uuid.UUID, roles: list[str],
+    org_unit_id: uuid.UUID | None = None,
+    organization_id: uuid.UUID | None = None,
 ) -> str:
     now = datetime.now(timezone.utc)
     payload = {
@@ -30,6 +32,7 @@ def create_access_token(
         "iat": now,
         "exp": now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES),
         "org_unit_id": str(org_unit_id) if org_unit_id else None,
+        "organization_id": str(organization_id) if organization_id else None,
     }
     return jwt.encode(payload, settings.SECRET_KEY.get_secret_value(), algorithm=settings.ALGORITHM)
 

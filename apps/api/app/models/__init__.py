@@ -23,6 +23,7 @@ from app.models.signature import Signature
 from app.models.signing_credential import SigningCredential
 from app.models.signing_document import SigningDocument
 from app.models.signing_job import SigningJob
+from app.models.tenant_domain import TenantDomain
 from app.models.user import User
 from app.models.user_role import UserRole
 
@@ -52,6 +53,7 @@ __all__ = [
     "SigningCredential",
     "SigningDocument",
     "SigningJob",
+    "TenantDomain",
     "User",
     "UserRole",
 ]

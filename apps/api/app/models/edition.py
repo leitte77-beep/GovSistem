@@ -20,7 +20,8 @@ if TYPE_CHECKING:
 class Edition(Base, TimestampMixin):
     __tablename__ = "editions"
     __table_args__ = (
-        UniqueConstraint("year", "number", "type", name="uq_edition_year_number_type"),
+        UniqueConstraint("organization_id", "year", "number", "type",
+                         name="uq_edition_org_year_number_type"),
     )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
