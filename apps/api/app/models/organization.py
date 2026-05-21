@@ -1,3 +1,4 @@
+import uuid
 from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import Boolean, ForeignKey, String, Text
