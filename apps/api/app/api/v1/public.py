@@ -14,7 +14,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.tenant import resolve_tenant_from_domain
+from app.core.tenant import require_tenant, resolve_tenant_from_domain
 from app.models.edition import Edition
 from app.models.edition_item import EditionItem
 from app.models.enums import EditionStatus
@@ -64,6 +64,26 @@ def _public_pdf_path(edition: Edition) -> str | None:
             if certificate_info.get("sha256_signed") == edition.pdf_hash:
                 return edition.signed_pdf_path
     return edition.pdf_path
+
+
+@router.get("/public/organization")
+async def public_get_organization(
+    tenant: Organization = Depends(require_tenant),
+):
+    """Return public configuration for the organization identified by the domain."""
+    theme = tenant.theme_config or {}
+    return {
+        "id": str(tenant.id),
+        "name": tenant.name,
+        "slug": tenant.slug,
+        "logo_url": tenant.logo_url,
+        "description": tenant.description,
+        "theme": {
+            "primary_color": theme.get("primary_color", "#1a56db"),
+            "secondary_color": theme.get("secondary_color", "#7c3aed"),
+            "font_family": theme.get("font_family", "Inter, sans-serif"),
+        },
+    }
 
 
 @router.get("/public/download/{file_path:path}")

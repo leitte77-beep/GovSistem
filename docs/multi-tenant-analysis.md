@@ -8,6 +8,37 @@ Abaixo está a análise completa do que existe, do que falta e do caminho para t
 
 ---
 
+## Status da Implementação
+
+| Fase | Status | Data |
+|------|--------|------|
+| **Fase 1 — Fundação** | ✅ Concluída | 2026-05-21 |
+| **Fase 2 — Isolamento** | ✅ Concluída | 2026-05-21 |
+| **Fase 3 — Frontend** | 🔄 Em andamento | - |
+| **Fase 4 — Onboarding** | ⬜ Pendente | - |
+| **Fase 5 — Faturamento** | ⬜ Pendente | - |
+
+### Fase 1 (Concluído)
+- [x] Adicionar `organization_id` nas tabelas `signing_documents`, `signing_jobs`, `search_index`
+- [x] Alterar unique constraint da editions para incluir `organization_id`
+- [x] Criar tabela `tenant_domains` + model Python
+- [x] Criar middleware de tenant (`app.core.tenant.resolve_tenant_from_domain`)
+- [x] Adicionar `organization_id` no payload do JWT
+- [x] Migration `4ed27b7a7ed6` aplicada no banco
+
+### Fase 2 (Concluído)
+- [x] `GET /editions` — filtro por `user.organization_id`
+- [x] `GET /matters` — filtro por `user.organization_id`
+- [x] `GET /org-units` — filtro por `user.organization_id`
+- [x] `GET /users` — filtro por `user.organization_id`
+- [x] `GET /signing-credentials` — filtro por `user.organization_id`
+- [x] `GET /public/editions` — filtro por tenant do domínio
+- [x] `GET /public/editions/{year}/{number}` — filtro por tenant do domínio
+- [x] `GET /public/matters/{id}` — filtro por tenant do domínio
+- [x] `GET /public/verify/{code}` — filtro por tenant do domínio
+
+---
+
 ## 1. Estratégia de Isolamento Recomendada
 
 ### Modelo: **Shared Database, Scoped by Organization**
@@ -282,22 +313,22 @@ CREATE TABLE subscriptions (
 
 ## 10. Roadmap de Implementação
 
-### Fase 1 — Fundação (2-3 semanas)
-- [ ] Adicionar `organization_id` nas tabelas faltantes (signing_documents, signing_jobs, search_index)
-- [ ] Alterar unique constraint da editions para incluir `organization_id`
-- [ ] Tornar `organization_id` NOT NULL onde for nullable
-- [ ] Criar tabela `tenant_domains`
-- [ ] Criar middleware de tenant (detecção por domínio)
-- [ ] Adicionar `organization_id` no JWT
+### Fase 1 — Fundação ✅
+- [x] Adicionar `organization_id` nas tabelas faltantes (signing_documents, signing_jobs, search_index)
+- [x] Alterar unique constraint da editions para incluir `organization_id`
+- [ ] ~~Tornar `organization_id` NOT NULL onde for nullable~~ (parcial — audit_events e users ainda nullable)
+- [x] Criar tabela `tenant_domains`
+- [x] Criar middleware de tenant (detecção por domínio)
+- [x] Adicionar `organization_id` no JWT
 
-### Fase 2 — Isolamento de Dados (2 semanas)
-- [ ] Adicionar filtro `organization_id` em TODOS os endpoints de listagem
-- [ ] Corrigir endpoints públicos para filtrar por tenant
-- [ ] Adicionar prefixo de organização no storage de arquivos
-- [ ] Migrar arquivos existentes para nova estrutura
-- [ ] Adicionar per-org settings no system_settings
+### Fase 2 — Isolamento de Dados ✅
+- [x] Adicionar filtro `organization_id` em TODOS os endpoints de listagem
+- [x] Corrigir endpoints públicos para filtrar por tenant
+- [ ] ~~Adicionar prefixo de organização no storage de arquivos~~ (pendente)
+- [ ] ~~Migrar arquivos existentes para nova estrutura~~ (pendente)
+- [ ] ~~Adicionar per-org settings no system_settings~~ (pendente)
 
-### Fase 3 — Frontend Multi-Tenant (2-3 semanas)
+### Fase 3 — Frontend Multi-Tenant (em andamento)
 - [ ] Detecção de organização por subdomínio no frontend
 - [ ] Personalização de logo, nome e cores por organização
 - [ ] Portal público dinâmico por organização
@@ -347,14 +378,14 @@ CREATE TABLE subscriptions (
 
 ## 12. Estimativa de Esforço
 
-| Fase | Dias | Recursos |
-|------|------|----------|
-| Fase 1 — Fundação | 12-15 | 1 dev backend |
-| Fase 2 — Isolamento | 8-10 | 1 dev backend |
-| Fase 3 — Frontend | 10-15 | 1 dev fullstack |
-| Fase 4 — Onboarding | 8-10 | 1 dev fullstack + DevOps |
-| Fase 5 — Faturamento | 5-8 | 1 dev fullstack |
-| **Total** | **43-58 dias** | |
+| Fase | Estimativa | Real (acumulado) | Recursos |
+|------|-----------|-------------------|----------|
+| Fase 1 — Fundação | 12-15 dias | ✅ ~4h (assistido por IA) | 1 dev backend |
+| Fase 2 — Isolamento | 8-10 dias | ✅ ~1h (assistido por IA) | 1 dev backend |
+| Fase 3 — Frontend | 10-15 dias | 🔄 Em andamento | 1 dev fullstack |
+| Fase 4 — Onboarding | 8-10 dias | ⬜ Pendente | 1 dev fullstack + DevOps |
+| Fase 5 — Faturamento | 5-8 dias | ⬜ Pendente | 1 dev fullstack |
+| **Total** | **43-58 dias** | **~5h** | |
 
 ---
 
