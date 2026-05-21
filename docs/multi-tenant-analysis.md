@@ -333,9 +333,11 @@ CREATE TABLE subscriptions (
 - [x] Migration `5a6b7c8d9e0f` adicionando campos ao banco
 - [x] Endpoint `GET /api/public/v1/organization` — retorna config do tenant por domínio
 - [x] Frontend `api.ts` — método `getOrganization()` adicionado
-- [ ] Detecção de organização por subdomínio no Navbar/Header
-- [ ] Personalização dinâmica de logo, nome e cores no portal público
-- [ ] Seletor de organização para admins multi-org
+- [x] OrgContext (React context) criado no frontend
+- [x] Navbar exibe logo, nome e cores dinâmicos da organização
+- [x] Homepage exibe nome e descrição dinâmicos do tenant
+- [x] Endpoint retorna default quando não há tenant configurado
+- [ ] Seletor de organização para admins multi-org (pendente)
 
 ### Fase 4 — Onboarding e Deploy (2 semanas)
 - [ ] Fluxo de auto-cadastro de novas organizações
