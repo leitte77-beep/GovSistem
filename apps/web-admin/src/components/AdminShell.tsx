@@ -19,6 +19,12 @@ const NAV_ITEMS = [
   { label: "Configurações", href: "/settings", icon: "settings" },
 ];
 
+const PLATFORM_ITEMS = [
+  { label: "Organizações", href: "/admin/organizacoes", icon: "business" },
+  { label: "Planos", href: "/admin/planos", icon: "card_membership" },
+  { label: "Usuários Globais", href: "/admin/usuarios", icon: "supervisor_account" },
+];
+
 export default function AdminShell({ children }: { children: React.ReactNode }) {
   const { user, loading, logout, switchOrganization } = useAuth();
   const router = useRouter();
@@ -28,6 +34,8 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const [greeting, setGreeting] = useState("");
   const [orgs, setOrgs] = useState<{ id: string; name: string; slug: string }[]>([]);
   const [orgSelectorOpen, setOrgSelectorOpen] = useState(false);
+
+  const isSuperAdmin = user?.roles.some((r) => r.name === "SUPER_ADMIN") ?? false;
 
   useEffect(() => {
     api.listOrganizations().then(setOrgs).catch(() => {});
@@ -120,6 +128,34 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               </Link>
             );
           })}
+
+          {/* Platform admin section (visible only to SUPER_ADMIN) */}
+          {isSuperAdmin && (
+            <>
+              <div className="pt-6 pb-2 px-4">
+                <span className="text-[10px] uppercase tracking-widest text-on-primary/50 font-semibold">
+                  Administração da Plataforma
+                </span>
+              </div>
+              {PLATFORM_ITEMS.map((item) => {
+                const isActive = pathname.startsWith(item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`flex items-center px-4 py-3 gap-3 rounded-lg transition-all duration-200 ${
+                      isActive
+                        ? "bg-on-primary-fixed-variant text-on-primary"
+                        : "text-on-primary/70 hover:text-on-primary hover:bg-on-primary-fixed-variant/50"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined">{item.icon}</span>
+                    <span className="text-label-md font-label-md">{item.label}</span>
+                  </Link>
+                );
+              })}
+            </>
+          )}
         </nav>
 
         {/* User section */}

@@ -349,11 +349,14 @@ CREATE TABLE subscriptions (
 - [ ] Setup automático de domínio personalizado (pendente)
 - [ ] Wildcard SSL + Nginx dinâmico (pendente)
 
-### Fase 5 — Faturamento (1-2 semanas)
-- [ ] Tabelas de planos e assinaturas
-- [ ] Integração com gateway de pagamento (Stripe/PagSeguro)
-- [ ] Gating de features por plano
-- [ ] Upgrade/downgrade automático
+### Fase 5 — Planos e Faturamento (preparação) ✅
+- [x] Model `Plan` + migration com seed de 4 planos (Gratuito, Básico, Profissional, Enterprise)
+- [x] `plan_id` na tabela `organizations` (FK para plans)
+- [x] CRUD completo de planos (`GET/POST/PUT/DELETE /api/v1/plans`)
+- [x] Endpoint público `GET /api/v1/plans/public` (sem auth)
+- [x] Plano gratuito atribuído automaticamente no registro
+- [ ] Integração com gateway de pagamento (Stripe/PagSeguro) — pendente
+- [ ] Gating de features por plano — pendente
 
 ---
 
