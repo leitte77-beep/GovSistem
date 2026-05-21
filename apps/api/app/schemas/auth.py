@@ -40,6 +40,14 @@ class UserMeResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class RegisterOrganizationRequest(BaseModel):
+    organization_name: str
+    organization_slug: str
+    admin_name: str
+    admin_email: str
+    admin_password: str
+
+
 class UserCreateRequest(BaseModel):
     name: str
     email: str

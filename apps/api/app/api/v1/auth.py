@@ -14,12 +14,17 @@ from app.core.security import (
     create_access_token,
     create_refresh_token,
     decode_token,
+    hash_password,
     verify_password,
 )
 from app.models.organization import Organization
+from app.models.role import Role
 from app.models.user import User
 from app.models.user_role import UserRole
-from app.schemas.auth import LoginRequest, RefreshRequest, TokenResponse, UserMeResponse, UserRoleOut
+from app.schemas.auth import (
+    LoginRequest, RefreshRequest, RegisterOrganizationRequest,
+    TokenResponse, UserMeResponse, UserRoleOut,
+)
 
 login_limiter = Limiter(key_func=get_remote_address)
 
@@ -43,6 +48,62 @@ def _user_me(user: User) -> UserMeResponse:
             if user_role.role
         ],
         created_at=user.created_at,
+    )
+
+
+@router.post("/auth/register", response_model=TokenResponse, status_code=201)
+async def register_organization(
+    payload: RegisterOrganizationRequest,
+    db: AsyncSession = Depends(get_db),
+) -> TokenResponse:
+    """Register a new organization with an admin user."""
+    existing_slug = await db.execute(
+        select(Organization).where(Organization.slug == payload.organization_slug)
+    )
+    if existing_slug.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Organization slug already exists")
+
+    existing_email = await db.execute(
+        select(User).where(User.email == payload.admin_email)
+    )
+    if existing_email.scalar_one_or_none():
+        raise HTTPException(status_code=409, detail="Email already registered")
+
+    org = Organization(
+        name=payload.organization_name,
+        slug=payload.organization_slug,
+        is_active=True,
+    )
+    db.add(org)
+    await db.flush()
+
+    admin_role = await db.execute(select(Role).where(Role.name == "ADMIN"))
+    role = admin_role.scalar_one_or_none()
+    if role is None:
+        raise HTTPException(status_code=500, detail="Default ADMIN role not found")
+
+    user = User(
+        name=payload.admin_name,
+        email=payload.admin_email,
+        password_hash=hash_password(payload.admin_password),
+        organization_id=org.id,
+        is_active=True,
+    )
+    db.add(user)
+    await db.flush()
+
+    db.add(UserRole(user_id=user.id, role_id=role.id))
+    await db.commit()
+    await db.refresh(user)
+
+    roles = [role.name]
+    refresh_jti = uuid.uuid4()
+    return TokenResponse(
+        access_token=create_access_token(
+            user.id, roles,
+            organization_id=org.id,
+        ),
+        refresh_token=create_refresh_token(user.id, refresh_jti),
     )
 
 

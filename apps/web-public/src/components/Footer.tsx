@@ -6,6 +6,7 @@ const FOOTER_LINKS = [
   { href: "/acessibilidade", label: "Acessibilidade" },
   { href: "/mapa-do-site", label: "Mapa do Site" },
   { href: "/contato", label: "Contato" },
+  { href: "/cadastrar", label: "Criar Organização" },
 ];
 
 export default function Footer() {

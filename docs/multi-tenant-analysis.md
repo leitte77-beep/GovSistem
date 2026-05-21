@@ -337,7 +337,10 @@ CREATE TABLE subscriptions (
 - [x] Navbar exibe logo, nome e cores dinâmicos da organização
 - [x] Homepage exibe nome e descrição dinâmicos do tenant
 - [x] Endpoint retorna default quando não há tenant configurado
-- [ ] Seletor de organização para admins multi-org (pendente)
+- [x] Seletor de organização no admin sidebar (multi-org)
+- [x] Endpoint `GET /auth/organizations` — lista orgs acessíveis
+- [x] Endpoint `POST /auth/switch-organization` — reemite JWT com nova org
+- [x] Frontend: `switchOrganization()` no auth context + dropdown no sidebar
 
 ### Fase 4 — Onboarding e Deploy (2 semanas)
 - [ ] Fluxo de auto-cadastro de novas organizações
