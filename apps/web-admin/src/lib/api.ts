@@ -143,6 +143,17 @@ export const api = {
     }>("/auth/me");
   },
 
+  listOrganizations() {
+    return request<{ id: string; name: string; slug: string; is_active: boolean }[]>("/auth/organizations");
+  },
+
+  switchOrganization(organization_id: string) {
+    return request<{ access_token: string; refresh_token: string }>("/auth/switch-organization", {
+      method: "POST",
+      body: JSON.stringify({ organization_id }),
+    });
+  },
+
   // Matters
   listMatters(params?: {
     status?: string;

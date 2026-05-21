@@ -8,7 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.auth import get_client_info, get_current_user
+from app.core.auth import get_client_info, get_current_user, require_roles
 from app.core.database import get_db
 from app.core.security import (
     create_access_token,
@@ -16,6 +16,7 @@ from app.core.security import (
     decode_token,
     verify_password,
 )
+from app.models.organization import Organization
 from app.models.user import User
 from app.models.user_role import UserRole
 from app.schemas.auth import LoginRequest, RefreshRequest, TokenResponse, UserMeResponse, UserRoleOut
@@ -126,3 +127,76 @@ async def refresh_token(
 @router.get("/auth/me", response_model=UserMeResponse)
 async def me(current_user: User = Depends(get_current_user)) -> UserMeResponse:
     return _user_me(current_user)
+
+
+@router.get("/auth/organizations")
+async def list_user_organizations(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """List organizations accessible by the current user."""
+    user_role_names = {ur.role.name for ur in current_user.user_roles}
+
+    if "ADMIN" in user_role_names or "SUPER_ADMIN" in user_role_names:
+        result = await db.execute(
+            select(Organization).where(Organization.is_active == True)
+        )
+        orgs = result.scalars().all()
+    else:
+        if current_user.organization_id is None:
+            return []
+        result = await db.execute(
+            select(Organization).where(
+                Organization.id == current_user.organization_id,
+                Organization.is_active == True,
+            )
+        )
+        orgs = [result.scalar_one_or_none()] if result.scalar_one_or_none() else []
+
+    return [
+        {
+            "id": str(o.id),
+            "name": o.name,
+            "slug": o.slug,
+            "is_active": o.is_active,
+        }
+        for o in orgs
+    ]
+
+
+@router.post("/auth/switch-organization", response_model=TokenResponse)
+async def switch_organization(
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """Switch the active organization and reissue JWT."""
+    org_id = body.get("organization_id")
+    if not org_id:
+        raise HTTPException(status_code=400, detail="organization_id is required")
+
+    user_role_names = {ur.role.name for ur in current_user.user_roles}
+    is_multi_org = "ADMIN" in user_role_names or "SUPER_ADMIN" in user_role_names
+
+    if not is_multi_org and current_user.organization_id != uuid.UUID(org_id):
+        raise HTTPException(status_code=403, detail="Access denied to this organization")
+
+    result = await db.execute(
+        select(Organization).where(
+            Organization.id == uuid.UUID(org_id),
+            Organization.is_active == True,
+        )
+    )
+    org = result.scalar_one_or_none()
+    if org is None:
+        raise HTTPException(status_code=404, detail="Organization not found")
+
+    roles = _user_roles(current_user)
+    refresh_jti = uuid.uuid4()
+    return TokenResponse(
+        access_token=create_access_token(
+            current_user.id, roles,
+            organization_id=org.id,
+        ),
+        refresh_token=create_refresh_token(current_user.id, refresh_jti),
+    )

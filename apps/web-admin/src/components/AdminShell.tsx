@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
+import { api } from "@/lib/api";
 import NotificationsPanel from "./NotificationsPanel";
 
 const NAV_ITEMS = [
@@ -19,12 +20,18 @@ const NAV_ITEMS = [
 ];
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
-  const { user, loading, logout } = useAuth();
+  const { user, loading, logout, switchOrganization } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [logoutConfirm, setLogoutConfirm] = useState(false);
   const [greeting, setGreeting] = useState("");
+  const [orgs, setOrgs] = useState<{ id: string; name: string; slug: string }[]>([]);
+  const [orgSelectorOpen, setOrgSelectorOpen] = useState(false);
+
+  useEffect(() => {
+    api.listOrganizations().then(setOrgs).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const h = new Date().getHours();
@@ -121,7 +128,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             <div className="w-10 h-10 rounded-full bg-primary-container border-2 border-on-primary/20 flex items-center justify-center font-bold text-on-primary flex-shrink-0">
               {user.name.charAt(0).toUpperCase()}
             </div>
-            <div className="flex flex-col min-w-0">
+            <div className="flex flex-col min-w-0 flex-1">
               <span className="text-label-md text-on-primary truncate">
                 {user.name}
               </span>
@@ -130,6 +137,42 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               </span>
             </div>
           </div>
+
+          {/* Org selector */}
+          {orgs.length > 1 && (
+            <div className="relative mt-2">
+              <button
+                onClick={() => setOrgSelectorOpen(!orgSelectorOpen)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-on-primary/70 hover:text-on-primary hover:bg-on-primary-fixed-variant/30 rounded-lg transition-all"
+              >
+                <span className="material-symbols-outlined text-[16px]">business</span>
+                <span className="truncate flex-1 text-left">
+                  {orgs.find((o) => o.id === user.organization_id)?.name || "Organização"}
+                </span>
+                <span className="material-symbols-outlined text-[14px]">expand_more</span>
+              </button>
+              {orgSelectorOpen && (
+                <div className="absolute bottom-full left-0 right-0 mb-1 bg-primary-container rounded-lg shadow-lg border border-on-primary/10 overflow-hidden">
+                  {orgs.map((org) => (
+                    <button
+                      key={org.id}
+                      onClick={() => {
+                        switchOrganization(org.id);
+                        setOrgSelectorOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-xs transition-colors ${
+                        org.id === user.organization_id
+                          ? "text-on-primary font-bold bg-on-primary-fixed-variant/30"
+                          : "text-on-primary/70 hover:text-on-primary hover:bg-on-primary-fixed-variant/20"
+                      }`}
+                    >
+                      {org.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {logoutConfirm ? (
             <div className="mt-2 flex gap-1">
