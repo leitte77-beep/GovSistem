@@ -158,11 +158,24 @@ def _edition_detail_response(edition: Edition) -> EditionDetail:
 @router.get(
     "/api/public/v1/organization",
     summary="Get current organization by domain",
-    description="Returns public organization info based on the request domain/tenant.",
+    description="Returns public organization info based on the request domain/tenant. Returns null/default if no tenant configured.",
 )
 async def v1_get_organization(
-    tenant: Organization = Depends(require_tenant),
+    tenant: Organization | None = Depends(resolve_tenant_from_domain),
 ):
+    if tenant is None:
+        return {
+            "id": None,
+            "name": "Diário Oficial Eletrônico",
+            "slug": "default",
+            "logo_url": None,
+            "description": "Portal de Consulta Pública",
+            "theme": {
+                "primary_color": "#1a56db",
+                "secondary_color": "#7c3aed",
+                "font_family": "Inter, sans-serif",
+            },
+        }
     theme = tenant.theme_config or {}
     return {
         "id": str(tenant.id),
