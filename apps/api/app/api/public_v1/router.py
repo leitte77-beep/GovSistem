@@ -12,11 +12,13 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.tenant import require_tenant, resolve_tenant_from_domain
 from app.models.edition import Edition
 from app.models.edition_item import EditionItem
 from app.models.enums import EditionStatus
 from app.models.matter import Matter
 from app.models.matter_attachment import MatterAttachment
+from app.models.organization import Organization
 
 from .schemas import (
     EditionDetail,
@@ -151,6 +153,29 @@ def _edition_detail_response(edition: Edition) -> EditionDetail:
         items=items,
         signatures=sigs,
     )
+
+
+@router.get(
+    "/api/public/v1/organization",
+    summary="Get current organization by domain",
+    description="Returns public organization info based on the request domain/tenant.",
+)
+async def v1_get_organization(
+    tenant: Organization = Depends(require_tenant),
+):
+    theme = tenant.theme_config or {}
+    return {
+        "id": str(tenant.id),
+        "name": tenant.name,
+        "slug": tenant.slug,
+        "logo_url": tenant.logo_url,
+        "description": tenant.description,
+        "theme": {
+            "primary_color": theme.get("primary_color", "#1a56db"),
+            "secondary_color": theme.get("secondary_color", "#7c3aed"),
+            "font_family": theme.get("font_family", "Inter, sans-serif"),
+        },
+    }
 
 
 @router.get(

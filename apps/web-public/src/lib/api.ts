@@ -51,6 +51,19 @@ export interface MatterListResponse {
   pagination: PaginationMeta;
 }
 
+export interface OrganizationInfo {
+  id: string;
+  name: string;
+  slug: string;
+  logo_url: string | null;
+  description: string | null;
+  theme: {
+    primary_color: string;
+    secondary_color: string;
+    font_family: string;
+  };
+}
+
 export interface VerifyResult {
   valid: boolean;
   edition_id: string | null;
@@ -100,6 +113,10 @@ export const api = {
     if (params?.page !== undefined) p.set("page", String(params.page));
     if (params?.page_size !== undefined) p.set("page_size", String(params.page_size));
     return get<MatterListResponse>(`/api/public/v1/matters${p.toString() ? `?${p.toString()}` : ""}`);
+  },
+
+  getOrganization(): Promise<OrganizationInfo> {
+    return get<OrganizationInfo>("/api/public/v1/organization");
   },
 
   verify(code: string): Promise<VerifyResult> {
