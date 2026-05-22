@@ -71,9 +71,21 @@ staging-logs:
 # ── Produção ───────────────────────────────────────────────────────────────────
 
 prod-up:
+	@BRANCH=$$(git rev-parse --abbrev-ref HEAD); \
+	if [ "$$BRANCH" != "master" ] && [ "$$BRANCH" != "main" ]; then \
+		echo "ERRO: Você está na branch '$$BRANCH'. Produção só pode ser atualizada a partir de 'master' ou 'main'."; \
+		echo "Use: make deploy-prod  (ou bash scripts/deploy-production.sh)"; \
+		exit 1; \
+	fi
 	docker compose -f infra/docker-compose.prod.yml up -d --build --remove-orphans
 
 prod-down:
+	@BRANCH=$$(git rev-parse --abbrev-ref HEAD); \
+	if [ "$$BRANCH" != "master" ] && [ "$$BRANCH" != "main" ]; then \
+		echo "ERRO: Você está na branch '$$BRANCH'."; \
+		echo "Produção só pode ser gerenciada a partir de 'master' ou 'main'."; \
+		exit 1; \
+	fi
 	docker compose -f infra/docker-compose.prod.yml down
 
 # ── Deploy manual ──────────────────────────────────────────────────────────────
