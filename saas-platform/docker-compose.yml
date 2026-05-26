@@ -1,0 +1,125 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    logging: *default-logging
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-saas_platform}
+      POSTGRES_USER: ${POSTGRES_USER:-saas_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-saas_password}
+    ports:
+      - "9432:5432"
+    volumes:
+      - saas_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-saas_user} -d ${POSTGRES_DB:-saas_platform}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - saas-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    logging: *default-logging
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "9379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - saas-network
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    logging: *default-logging
+    environment:
+      APP_NAME: "GovSistem API"
+      DEBUG: ${DEBUG:-true}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-saas_platform}
+      POSTGRES_USER: ${POSTGRES_USER:-saas_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-saas_password}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      SECRET_KEY: ${SECRET_KEY:-dev-saas-secret-key-change-in-production}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-saas}
+      DIARIO_MODULE_INTERNAL_API_URL: http://host.docker.internal:9201/api/v1
+      DIARIO_MODULE_ADMIN_URL: https://doe-admin.govsistem.com.br
+      CORS_ORIGINS: '["http://localhost:9002","http://localhost:9202","https://doe-admin.govsistem.com.br"]'
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+      ASAAS_ENV: ${ASAAS_ENV:-sandbox}
+      ASAAS_API_KEY: ${ASAAS_API_KEY:-}
+      ASAAS_WEBHOOK_TOKEN: ${ASAAS_WEBHOOK_TOKEN:-}
+      ASAAS_BASE_URL_SANDBOX: ${ASAAS_BASE_URL_SANDBOX:-https://sandbox.asaas.com/api/v3}
+      ASAAS_BASE_URL_PRODUCTION: ${ASAAS_BASE_URL_PRODUCTION:-https://api.asaas.com/v3}
+      PAYMENT_WEBHOOK_PUBLIC_URL: ${PAYMENT_WEBHOOK_PUBLIC_URL:-http://localhost:9009/api/v1/webhooks/payments/asaas}
+      FISCAL_PROVIDER: ${FISCAL_PROVIDER:-sandbox}
+      FISCAL_ENV: ${FISCAL_ENV:-sandbox}
+      FOCUS_NFE_LOGIN: ${FOCUS_NFE_LOGIN:-}
+      FOCUS_NFE_TOKEN: ${FOCUS_NFE_TOKEN:-}
+      FOCUS_BASE_URL_SANDBOX: ${FOCUS_BASE_URL_SANDBOX:-https://homologacao.focusnfe.com.br}
+      FOCUS_BASE_URL_PRODUCTION: ${FOCUS_BASE_URL_PRODUCTION:-https://api.focusnfe.com.br}
+    ports:
+      - "9009:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - saas-network
+    restart: unless-stopped
+    volumes:
+      - ./api:/app
+
+  web-admin:
+    build:
+      context: ./web-admin
+      dockerfile: Dockerfile
+    logging: *default-logging
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://localhost:9009/api/v1
+      SAAS_API_INTERNAL_URL: http://api:8000
+      NEXT_TELEMETRY_DISABLED: "1"
+    ports:
+      - "9002:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    volumes:
+      - ./web-admin:/app
+    networks:
+      - saas-network
+    restart: unless-stopped
+
+networks:
+  saas-network:
+    driver: bridge
+
+volumes:
+  saas_pgdata:
+    driver: local
