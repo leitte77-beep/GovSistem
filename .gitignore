@@ -41,6 +41,7 @@ infra/nginx/ssl/
 
 # Clone/backup
 modulo-diario-clone/
+backups/
 
 # Test
 .coverage

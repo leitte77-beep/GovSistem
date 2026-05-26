@@ -17,7 +17,7 @@ from app.models.enums import EditionStatus
 from app.services.pdf_utils import compute_hash, detect_landscape, format_date
 
 TEMPLATE_DIR = Path(__file__).parent.parent / "templates" / "pdf"
-OUTPUT_DIR = Path(settings.UPLOAD_DIR) / "pdf"
+OUTPUT_DIR = Path(settings.UPLOAD_DIR)
 WEEKDAYS_PT = [
     "SEGUNDA-FEIRA", "TERCA-FEIRA", "QUARTA-FEIRA", "QUINTA-FEIRA",
     "SEXTA-FEIRA", "SABADO", "DOMINGO",
@@ -120,6 +120,7 @@ def generate_edition_pdf_sync(
                     "id": matter["id"],
                     "anchor": f"matter-{matter['id']}",
                     "title": matter["title"],
+                    "section_title": section["title"],
                     "metadata": _summary_metadata(
                         matter["title"],
                         matter["act_type"],
