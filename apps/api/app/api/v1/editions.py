@@ -152,6 +152,7 @@ async def list_editions(
     user: User = Depends(get_current_user),
 ):
     query = select(Edition).options(selectinload(Edition.items), selectinload(Edition.signatures))
+    query = query.where(Edition.organization_id == user.organization_id)
     if year:
         query = query.where(Edition.year == year)
     if status:

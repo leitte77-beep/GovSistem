@@ -11,6 +11,22 @@ from app.models.role import Role
 from app.models.user import User
 from app.models.user_role import UserRole
 from app.schemas.auth import UserCreateRequest, UserOut, UserUpdateRequest
+import re
+
+
+def _clean_cpf(cpf: str) -> str:
+    return re.sub(r"\D", "", cpf)
+
+
+async def _check_cpf_exists(db: AsyncSession, cpf: str, exclude_id: uuid.UUID | None = None) -> bool:
+    cleaned = _clean_cpf(cpf)
+    if not cleaned:
+        return False
+    query = select(User).where(User.cpf == cleaned, User.deleted_at.is_(None))
+    if exclude_id:
+        query = query.where(User.id != exclude_id)
+    result = await db.execute(query)
+    return result.scalar_one_or_none() is not None
 
 router = APIRouter(tags=["users"], dependencies=[Depends(require_roles("ADMIN"))])
 
@@ -18,10 +34,11 @@ router = APIRouter(tags=["users"], dependencies=[Depends(require_roles("ADMIN"))
 @router.get("/users", response_model=list[UserOut])
 async def list_users(
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_roles("ADMIN")),
+    user: User = Depends(require_roles("ADMIN")),
 ):
     result = await db.execute(
-        select(User).where(User.deleted_at.is_(None))
+        select(User)
+        .where(User.organization_id == user.organization_id, User.deleted_at.is_(None))
     )
     return result.scalars().all()
 
@@ -53,9 +70,17 @@ async def create_user(
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Email already registered")
 
+    if body.cpf:
+        cleaned_cpf = _clean_cpf(body.cpf)
+        if await _check_cpf_exists(db, cleaned_cpf):
+            raise HTTPException(status_code=409, detail="CPF already registered")
+    else:
+        cleaned_cpf = None
+
     user = User(
         name=body.name,
         email=body.email,
+        cpf=cleaned_cpf,
         password_hash=hash_password(body.password),
         organization_id=body.organization_id,
         is_active=True,
@@ -94,6 +119,13 @@ async def update_user(
         user.name = body.name
     if body.email is not None:
         user.email = body.email
+    if body.password is not None:
+        user.password_hash = hash_password(body.password)
+    if body.cpf is not None:
+        cleaned_cpf = _clean_cpf(body.cpf)
+        if await _check_cpf_exists(db, cleaned_cpf, exclude_id=user.id):
+            raise HTTPException(status_code=409, detail="CPF already registered")
+        user.cpf = cleaned_cpf
     if body.is_active is not None:
         user.is_active = body.is_active
 

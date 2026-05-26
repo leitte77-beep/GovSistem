@@ -45,6 +45,7 @@ def _make_user():
     u.id = uuid.uuid4()
     u.email = "user@example.com"
     u.name = "Test User"
+    u.cpf = None
     u.is_active = True
     u.organization_id = uuid.uuid4()
     u.created_at = datetime(2026, 1, 1)
@@ -185,6 +186,24 @@ async def test_update_user(mock_select, client, override_auth_and_db):
     assert response.status_code == 200
     data = response.json()
     assert data["id"] == str(user.id)
+
+
+@patch("app.api.v1.users.hash_password", return_value="new_hashed")
+@pytest.mark.anyio
+async def test_update_user_password(mock_hash, client, override_auth_and_db):
+    mock_db, _ = override_auth_and_db
+    user = _make_user()
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = user
+    mock_db.execute.return_value = mock_result
+
+    payload = {"name": "Updated Name", "password": "NovaSenha123"}
+    response = await client.put(f"/api/v1/users/{user.id}", json=payload)
+    assert response.status_code == 200
+    data = response.json()
+    assert data["id"] == str(user.id)
+    assert user.password_hash == "new_hashed"
+    assert user.name == "Updated Name"
 
 
 @pytest.mark.anyio

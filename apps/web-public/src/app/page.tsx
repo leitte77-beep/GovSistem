@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { api, EditionSummary as Edition } from "@/lib/api";
+import { useOrg } from "@/lib/org-context";
 import { formatSummary } from "@/lib/summary";
 import ShareDialog from "@/components/ShareDialog";
 
@@ -37,6 +38,7 @@ function formatDate(dateStr: string): string {
 
 export default function HomePage() {
   const router = useRouter();
+  const { org } = useOrg();
   const [editions, setEditions] = useState<Edition[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -71,11 +73,10 @@ export default function HomePage() {
       <section className="bg-surface py-stack-lg border-b border-outline-variant">
         <div className="max-w-container-max mx-auto px-gutter text-center">
           <h1 className="font-headline-lg text-headline-lg text-primary mb-stack-sm">
-            Diário Oficial do Município de Farol
+            Diário Oficial Eletrônico
           </h1>
           <p className="text-body-lg font-body-lg text-on-surface-variant mb-stack-md max-w-2xl mx-auto">
-            Acesse publicações oficiais, atos normativos e transparência
-            governamental com facilidade e segurança jurídica.
+            Acesse publicações oficiais, atos normativos e transparência governamental com facilidade e segurança jurídica.
           </p>
 
           <div className="bg-surface-container-lowest p-2 rounded-xl shadow-lg border border-outline-variant max-w-4xl mx-auto">

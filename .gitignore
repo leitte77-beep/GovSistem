@@ -33,6 +33,16 @@ Thumbs.db
 *.p12
 certs/
 
+# Uploads
+**/uploads/
+
+# SSL / certs
+infra/nginx/ssl/
+
+# Clone/backup
+modulo-diario-clone/
+backups/
+
 # Test
 .coverage
 htmlcov/

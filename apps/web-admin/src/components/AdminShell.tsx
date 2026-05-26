@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
+import { api } from "@/lib/api";
 import NotificationsPanel from "./NotificationsPanel";
 
 const NAV_ITEMS = [
@@ -15,16 +16,31 @@ const NAV_ITEMS = [
   { label: "Usuários", href: "/users", icon: "group" },
   { label: "Certificados", href: "/settings/certificates", icon: "verified_user" },
   { label: "Verificar PDF", href: "/verify", icon: "picture_as_pdf" },
+  { label: "Voltar ao SaaS", href: "https://admin.govsistem.com.br", icon: "arrow_back", external: true },
   { label: "Configurações", href: "/settings", icon: "settings" },
 ];
 
+const PLATFORM_ITEMS = [
+  { label: "Organizações", href: "/admin/organizacoes", icon: "business" },
+  { label: "Planos", href: "/admin/planos", icon: "card_membership" },
+  { label: "Usuários Globais", href: "/admin/usuarios", icon: "supervisor_account" },
+];
+
 export default function AdminShell({ children }: { children: React.ReactNode }) {
-  const { user, loading, logout } = useAuth();
+  const { user, loading, logout, switchOrganization } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [logoutConfirm, setLogoutConfirm] = useState(false);
   const [greeting, setGreeting] = useState("");
+  const [orgs, setOrgs] = useState<{ id: string; name: string; slug: string }[]>([]);
+  const [orgSelectorOpen, setOrgSelectorOpen] = useState(false);
+
+  const isSuperAdmin = user?.roles.some((r) => r.name === "SUPER_ADMIN") ?? false;
+
+  useEffect(() => {
+    api.listOrganizations().then(setOrgs).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const h = new Date().getHours();
@@ -98,6 +114,20 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               item.href === "/"
                 ? pathname === "/"
                 : pathname.startsWith(item.href);
+            if (item.external) {
+              return (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center px-4 py-3 gap-3 rounded-lg transition-all duration-200 text-on-primary/70 hover:text-on-primary hover:bg-on-primary-fixed-variant/50"
+                >
+                  <span className="material-symbols-outlined">{item.icon}</span>
+                  <span className="text-label-md font-label-md">{item.label}</span>
+                </a>
+              );
+            }
             return (
               <Link
                 key={item.href}
@@ -113,6 +143,34 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               </Link>
             );
           })}
+
+          {/* Platform admin section (visible only to SUPER_ADMIN) */}
+          {isSuperAdmin && (
+            <>
+              <div className="pt-6 pb-2 px-4">
+                <span className="text-[10px] uppercase tracking-widest text-on-primary/50 font-semibold">
+                  Administração da Plataforma
+                </span>
+              </div>
+              {PLATFORM_ITEMS.map((item) => {
+                const isActive = pathname.startsWith(item.href);
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={`flex items-center px-4 py-3 gap-3 rounded-lg transition-all duration-200 ${
+                      isActive
+                        ? "bg-on-primary-fixed-variant text-on-primary"
+                        : "text-on-primary/70 hover:text-on-primary hover:bg-on-primary-fixed-variant/50"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined">{item.icon}</span>
+                    <span className="text-label-md font-label-md">{item.label}</span>
+                  </Link>
+                );
+              })}
+            </>
+          )}
         </nav>
 
         {/* User section */}
@@ -121,7 +179,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             <div className="w-10 h-10 rounded-full bg-primary-container border-2 border-on-primary/20 flex items-center justify-center font-bold text-on-primary flex-shrink-0">
               {user.name.charAt(0).toUpperCase()}
             </div>
-            <div className="flex flex-col min-w-0">
+            <div className="flex flex-col min-w-0 flex-1">
               <span className="text-label-md text-on-primary truncate">
                 {user.name}
               </span>
@@ -130,6 +188,42 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               </span>
             </div>
           </div>
+
+          {/* Org selector */}
+          {orgs.length > 1 && (
+            <div className="relative mt-2">
+              <button
+                onClick={() => setOrgSelectorOpen(!orgSelectorOpen)}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-on-primary/70 hover:text-on-primary hover:bg-on-primary-fixed-variant/30 rounded-lg transition-all"
+              >
+                <span className="material-symbols-outlined text-[16px]">business</span>
+                <span className="truncate flex-1 text-left">
+                  {orgs.find((o) => o.id === user.organization_id)?.name || "Organização"}
+                </span>
+                <span className="material-symbols-outlined text-[14px]">expand_more</span>
+              </button>
+              {orgSelectorOpen && (
+                <div className="absolute bottom-full left-0 right-0 mb-1 bg-primary-container rounded-lg shadow-lg border border-on-primary/10 overflow-hidden">
+                  {orgs.map((org) => (
+                    <button
+                      key={org.id}
+                      onClick={() => {
+                        switchOrganization(org.id);
+                        setOrgSelectorOpen(false);
+                      }}
+                      className={`w-full text-left px-3 py-2 text-xs transition-colors ${
+                        org.id === user.organization_id
+                          ? "text-on-primary font-bold bg-on-primary-fixed-variant/30"
+                          : "text-on-primary/70 hover:text-on-primary hover:bg-on-primary-fixed-variant/20"
+                      }`}
+                    >
+                      {org.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           {logoutConfirm ? (
             <div className="mt-2 flex gap-1">
@@ -174,7 +268,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               waving_hand
             </span>
             <h2 className="text-body-md text-primary font-medium italic">
-              {greeting}, bem-vindo ao DOE Admin
+              {greeting}, {user?.name || "Admin"}
             </h2>
           </div>
           <div className="flex items-center gap-6">

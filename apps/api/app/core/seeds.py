@@ -5,9 +5,13 @@ from typing import List
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.security import hash_password
 from app.models.act_type import ActType
 from app.models.organization import Organization
+from app.models.org_unit import OrgUnit
 from app.models.role import Role
+from app.models.user import User
+from app.models.user_role import UserRole
 
 SEED_ORG = {
     "name": "Prefeitura Municipal",
@@ -57,6 +61,12 @@ SEED_ROLES: List[dict] = [
         "name": "AUDITOR",
         "label": "Auditor",
         "description": "Acesso somente leitura a logs e auditoria",
+        "is_system": True,
+    },
+    {
+        "name": "SUPER_ADMIN",
+        "label": "Super Administrador",
+        "description": "Acesso total a todas as organizações e configurações da plataforma",
         "is_system": True,
     },
 ]
@@ -182,14 +192,72 @@ async def seed_settings(db: AsyncSession) -> list:
     return created
 
 
+async def seed_super_admin(db: AsyncSession) -> User | None:
+    """Create or return the platform super-admin user."""
+    result = await db.execute(
+        select(User).where(User.email == "admin@doeapp.com.br")
+    )
+    user = result.scalar_one_or_none()
+    if user:
+        return user
+
+    result = await db.execute(select(Role).where(Role.name == "SUPER_ADMIN"))
+    super_admin_role = result.scalar_one_or_none()
+    if not super_admin_role:
+        return None
+
+    user = User(
+        name="Administrador da Plataforma",
+        email="admin@doeapp.com.br",
+        password_hash=hash_password("admin123"),
+        is_active=True,
+    )
+    db.add(user)
+    await db.flush()
+    db.add(UserRole(user_id=user.id, role_id=super_admin_role.id))
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+SEED_ORG_UNITS: List[dict] = [
+    {"name": "Prefeitura Municipal", "description": "Órgão do poder executivo municipal"},
+    {"name": "Câmara Municipal", "description": "Órgão do poder legislativo municipal"},
+]
+
+
+async def seed_org_units(db: AsyncSession, org: Organization) -> list:
+    created = []
+    for data in SEED_ORG_UNITS:
+        result = await db.execute(
+            select(OrgUnit).where(
+                OrgUnit.organization_id == org.id,
+                OrgUnit.name == data["name"],
+            )
+        )
+        existing = result.scalar_one_or_none()
+        if existing:
+            created.append(existing.name)
+            continue
+        unit = OrgUnit(organization_id=org.id, **data)
+        db.add(unit)
+        created.append(data["name"])
+    await db.commit()
+    return created
+
+
 async def run_all_seeds(db: AsyncSession) -> dict:
     org = await seed_organization(db)
     roles = await seed_roles(db)
     act_types = await seed_act_types(db)
     settings = await seed_settings(db)
+    super_admin = await seed_super_admin(db)
+    org_units = await seed_org_units(db, org)
     return {
         "organization": org.slug,
         "roles": [r.name for r in roles],
         "act_types": [a.name for a in act_types],
         "settings": settings,
+        "super_admin": super_admin.email if super_admin else None,
+        "org_units": org_units,
     }

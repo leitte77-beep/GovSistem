@@ -24,6 +24,7 @@ export default function NewUserPage() {
   const { user: currentUser } = useAuth();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [cpf, setCpf] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
@@ -60,6 +61,7 @@ export default function NewUserPage() {
         name: name.trim(),
         email: email.trim(),
         password,
+        cpf: cpf.replace(/\D/g, "") || undefined,
         organization_id: currentUser?.organization_id || "",
         role_names: selectedRoles,
       });
@@ -138,6 +140,23 @@ export default function NewUserPage() {
                 />
               </div>
               {errors.email && <p className="text-xs text-error mt-1">{errors.email}</p>}
+            </div>
+            <div className="space-y-2">
+              <label className="block text-label-md font-label-md text-on-surface-variant" htmlFor="cpf">
+                CPF
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 material-symbols-outlined text-outline">badge</span>
+                <input
+                  id="cpf"
+                  className="w-full pl-10 pr-4 py-3 rounded-lg border border-outline-variant focus:border-primary focus:ring-2 focus:ring-primary/10 transition-all outline-none"
+                  placeholder="000.000.000-00"
+                  type="text"
+                  value={cpf}
+                  onChange={(e) => setCpf(e.target.value)}
+                  maxLength={14}
+                />
+              </div>
             </div>
             <div className="space-y-2 md:col-span-2">
               <label className="block text-label-md font-label-md text-on-surface-variant" htmlFor="password">

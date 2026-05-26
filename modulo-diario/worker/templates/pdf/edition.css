@@ -1,0 +1,294 @@
+/* ─── Page Setup ─────────────────────────────────────────────────────────── */
+
+@page {
+  size: A4;
+  margin: 2.5cm 2cm 2.5cm 2cm;
+  @bottom-center {
+    content: counter(page);
+    font-family: "Times New Roman", serif;
+    font-size: 10pt;
+    color: #333;
+  }
+  @bottom-right {
+    content: "Cód. " attr(data-preliminary);
+    font-family: "Times New Roman", serif;
+    font-size: 8pt;
+    color: #666;
+  }
+}
+
+@page landscape {
+  size: A4 landscape;
+  margin: 2cm 2.5cm 2cm 2.5cm;
+  @bottom-center {
+    content: counter(page);
+    font-family: "Times New Roman", serif;
+    font-size: 10pt;
+    color: #333;
+  }
+}
+
+@page :first {
+  @top-center {
+    content: "";
+  }
+}
+
+/* ─── General ────────────────────────────────────────────────────────────── */
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: "Times New Roman", Georgia, serif;
+  font-size: 11pt;
+  line-height: 1.6;
+  color: #1a1a1a;
+}
+
+/* ─── Header ─────────────────────────────────────────────────────────────── */
+
+.header {
+  text-align: center;
+  border-bottom: 2px solid #1a1a1a;
+  padding-bottom: 12pt;
+  margin-bottom: 18pt;
+}
+
+.header .coat-of-arms {
+  font-size: 28pt;
+  margin-bottom: 4pt;
+  line-height: 1;
+}
+
+.header .organ-name {
+  font-size: 14pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1pt;
+  margin-bottom: 2pt;
+}
+
+.header .edition-meta {
+  font-size: 10pt;
+  color: #444;
+  margin-top: 4pt;
+}
+
+.header .edition-meta span {
+  margin: 0 6pt;
+}
+
+.header .edition-title {
+  font-size: 12pt;
+  font-weight: bold;
+  margin-top: 6pt;
+}
+
+/* ─── Table of Contents ─────────────────────────────────────────────────── */
+
+.toc {
+  margin-bottom: 18pt;
+  page-break-after: avoid;
+}
+
+.toc h2 {
+  font-size: 12pt;
+  text-transform: uppercase;
+  border-bottom: 1px solid #666;
+  padding-bottom: 4pt;
+  margin-bottom: 8pt;
+}
+
+.toc ul {
+  list-style: none;
+  padding-left: 0;
+}
+
+.toc li {
+  font-size: 10pt;
+  padding: 2pt 0;
+  border-bottom: 1px dotted #ccc;
+}
+
+.toc li .page-num {
+  float: right;
+}
+
+/* ─── Sections ───────────────────────────────────────────────────────────── */
+
+.section {
+  margin-bottom: 20pt;
+  page-break-before: always;
+}
+
+.section:first-of-type {
+  page-break-before: avoid;
+}
+
+.section h2 {
+  font-size: 13pt;
+  font-weight: bold;
+  text-transform: uppercase;
+  border-bottom: 1px solid #333;
+  padding-bottom: 4pt;
+  margin-bottom: 12pt;
+}
+
+/* ─── Matters ────────────────────────────────────────────────────────────── */
+
+.matter {
+  margin-bottom: 16pt;
+  page-break-inside: avoid;
+}
+
+.matter-landscape {
+  page: landscape;
+  page-break-inside: auto;
+}
+
+.matter .matter-title {
+  font-size: 11pt;
+  font-weight: bold;
+  margin-bottom: 4pt;
+}
+
+.matter .matter-meta {
+  font-size: 9pt;
+  color: #555;
+  margin-bottom: 6pt;
+}
+
+.matter .matter-summary {
+  font-style: italic;
+  margin-bottom: 6pt;
+  color: #333;
+}
+
+.matter-image-content .matter-title {
+  margin-bottom: 8pt;
+}
+
+.matter-image-content .matter-summary {
+  margin-bottom: 8pt;
+  line-height: 1.18;
+}
+
+.matter-image-content .matter-content p {
+  margin: 0;
+  text-indent: 0;
+  text-align: center !important;
+  page-break-inside: avoid;
+}
+
+.matter-image-content .matter-content img {
+  display: block;
+  max-width: 100%;
+  max-height: 225mm;
+  width: auto;
+  height: auto;
+  margin: 0 auto;
+  object-fit: contain;
+}
+
+.matter .matter-content {
+  text-align: justify;
+}
+
+.matter .matter-content p {
+  margin: 4pt 0;
+  text-indent: 1.5em;
+}
+
+.matter .matter-content h1,
+.matter .matter-content h2,
+.matter .matter-content h3,
+.matter .matter-content h4 {
+  margin: 8pt 0 4pt;
+  page-break-after: avoid;
+}
+
+.matter .matter-content h1 { font-size: 12pt; }
+.matter .matter-content h2 { font-size: 11pt; }
+.matter .matter-content h3 { font-size: 11pt; font-style: italic; }
+
+/* ─── Tables ─────────────────────────────────────────────────────────────── */
+
+.matter .matter-content table {
+  width: 100%;
+  border-collapse: collapse;
+  border-spacing: 0;
+  margin: 8pt 0;
+  font-size: 8.5pt;
+  line-height: 1.15;
+  page-break-inside: auto;
+  table-layout: fixed;
+  border: 1px solid #333;
+}
+
+.matter .matter-content table tr {
+  page-break-inside: auto;
+}
+
+.matter .matter-content thead {
+  display: table-header-group;
+}
+
+.matter .matter-content tbody {
+  display: table-row-group;
+}
+
+.matter .matter-content th,
+.matter .matter-content td {
+  border: 0.8pt solid #333 !important;
+  padding: 3pt 5pt;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.matter .matter-content table tr > th:first-child,
+.matter .matter-content table tr > td:first-child {
+  width: 8%;
+}
+
+.matter .matter-content table tr > th:nth-child(2),
+.matter .matter-content table tr > td:nth-child(2) {
+  width: 42%;
+}
+
+.matter .matter-content td p,
+.matter .matter-content th p {
+  margin: 0;
+  text-indent: 0;
+  text-align: inherit !important;
+}
+
+.matter .matter-content th {
+  background-color: #f0f0f0;
+  font-weight: bold;
+  text-align: center;
+}
+
+/* ─── Lists ──────────────────────────────────────────────────────────────── */
+
+.matter .matter-content ul,
+.matter .matter-content ol {
+  margin: 4pt 0;
+  padding-left: 2em;
+}
+
+.matter .matter-content li {
+  margin: 2pt 0;
+}
+
+/* ─── Footer ─────────────────────────────────────────────────────────────── */
+
+.footer-note {
+  text-align: center;
+  font-size: 8pt;
+  color: #888;
+  border-top: 1px solid #ccc;
+  padding-top: 6pt;
+  margin-top: 18pt;
+}
