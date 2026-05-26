@@ -1,0 +1,10 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+body { @apply bg-gray-50 text-gray-900 antialiased; }
+* { scrollbar-width: thin; scrollbar-color: #94a3b8 #f1f5f9; }
+
+.tiptap { outline: none; min-height: 200px; }
+.tiptap h1 { font-size: 1.5rem; font-weight: 700; margin: 0.5rem 0; }
+.tiptap h2 { font-size: 1.25rem; font-weight: 600; margin: 0.5rem 0; }
+.tiptap p { margin: 0.25rem 0; }

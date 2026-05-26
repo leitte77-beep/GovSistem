@@ -125,9 +125,9 @@ services:
       MINIO_SECURE: "false"
       SIGNER_URL: http://signer:8100
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
-      CORS_ORIGINS: '["https://admin.govsistem.com.br","https://govsistem.com.br"]'
-      PUBLIC_URL: https://govsistem.com.br
-      PDF_API_BASE_URL: https://govsistem.com.br
+      CORS_ORIGINS: '["https://admin.govsistem.com.br","https://diario.govsistem.com.br","https://govsistem.com.br"]'
+      PUBLIC_URL: https://diario.govsistem.com.br
+      PDF_API_BASE_URL: https://diario.govsistem.com.br
       DEBUG: "false"
       SECRET_KEY: ${SECRET_KEY}
       SENTRY_DSN: ${SENTRY_DSN:-}

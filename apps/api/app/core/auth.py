@@ -56,7 +56,13 @@ async def get_current_user(
             detail="Invalid or expired token",
         )
 
-    if payload.get("type") != "access":
+    token_type = payload.get("type")
+    if token_type == "module_access" and payload.get("module") != "diario":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid module token",
+        )
+    if token_type not in {"access", "module_access"}:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token type",

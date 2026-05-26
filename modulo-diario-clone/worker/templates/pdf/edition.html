@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Diário Oficial - {{ edition.year }}/{{ edition.number }}</title>
+<link rel="stylesheet" href="{{ css_path }}">
+</head>
+<body>
+
+<div class="header">
+  <div class="coat-of-arms">⚖</div>
+  <div class="organ-name">{{ organ_name }}</div>
+  <div class="edition-title">{{ edition.title }}</div>
+  <div class="edition-meta">
+    <span>Edição nº {{ edition.number }}</span> •
+    <span>{{ edition.year }}</span> •
+    <span>{{ edition_type_label }}</span> •
+    <span>{{ publication_date }}</span>
+  </div>
+  {% if edition.subtitle %}
+  <div class="edition-meta">{{ edition.subtitle }}</div>
+  {% endif %}
+</div>
+
+{% if sections %}
+<div class="toc">
+  <h2>Sumário</h2>
+  <ul>
+    {% for section in sections %}
+    <li>
+      {% if section.title %}<strong>{{ section.title }}</strong>{% endif %}
+      <ul>
+        {% for matter in section.matters %}
+        <li>{{ matter.title }}</li>
+        {% endfor %}
+      </ul>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+
+{% for section in sections %}
+<div class="section">
+  {% if section.title %}
+  <h2>{{ section.title }}</h2>
+  {% endif %}
+
+  {% for matter in section.matters %}
+  <div class="matter{% if matter.is_landscape %} matter-landscape{% endif %}{% if matter.is_pdf_image_content %} matter-image-content{% endif %}">
+    <div class="matter-title">{{ matter.title }}</div>
+    <div class="matter-meta">
+      {{ matter.act_type }}
+      {% if matter.org_unit %} • {{ matter.org_unit }}{% endif %}
+      {% if matter.author %} • {{ matter.author }}{% endif %}
+    </div>
+
+    {% if matter.summary %}
+    <div class="matter-summary">{{ matter.summary }}</div>
+    {% endif %}
+
+    <div class="matter-content">
+      {{ matter.content_html | safe }}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endfor %}
+
+<div class="footer-note">
+  Documento preliminar • Cód. {{ preliminary_code }} • Verifique em {{ verification_url }}/{{ preliminary_code }}
+</div>
+
+</body>
+</html>

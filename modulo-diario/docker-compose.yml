@@ -1,0 +1,186 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    logging: *default-logging
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-modulo_diario}
+      POSTGRES_USER: ${POSTGRES_USER:-diario_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-diario_password}
+    ports:
+      - "9532:5432"
+    volumes:
+      - diario_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-diario_user} -d ${POSTGRES_DB:-modulo_diario}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - diario-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    logging: *default-logging
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "9479:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - diario-network
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    logging: *default-logging
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio_admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_password}
+    ports:
+      - "9900:9000"
+      - "9901:9001"
+    volumes:
+      - diario_miniodata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - diario-network
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    logging: *default-logging
+    environment:
+      APP_NAME: "Modulo Diario API"
+      DEBUG: ${DEBUG:-true}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-modulo_diario}
+      POSTGRES_USER: ${POSTGRES_USER:-diario_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-diario_password}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minio_admin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minio_password}
+      MINIO_BUCKET: ${MINIO_BUCKET:-diario-publicacoes}
+      MINIO_SECURE: "false"
+      SIGNER_URL: http://signer:8100
+      SECRET_KEY: ${SECRET_KEY:-dev-saas-secret-key-change-in-production}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-saas}
+      CORS_ORIGINS: '["http://localhost:9102","http://localhost:9002"]'
+      ENVIRONMENT: development
+    ports:
+      - "9101:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - diario-network
+    restart: unless-stopped
+    volumes:
+      - ./api:/app
+
+  worker:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    logging: *default-logging
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-modulo_diario}
+      POSTGRES_USER: ${POSTGRES_USER:-diario_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-diario_password}
+      REDIS_HOST: redis
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minio_admin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minio_password}
+      MINIO_BUCKET: ${MINIO_BUCKET:-diario-publicacoes}
+      SIGNER_URL: http://signer:8100
+      API_URL: http://api:8000
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-saas}
+      SECRET_KEY: ${SECRET_KEY:-dev-saas-secret-key-change-in-production}
+    command: sleep infinity
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - diario-network
+    restart: unless-stopped
+    volumes:
+      - ./api:/app
+
+  signer:
+    build:
+      context: ./signer
+      dockerfile: Dockerfile
+    logging: *default-logging
+    environment:
+      SIGNER_PROVIDER: ${SIGNER_PROVIDER:-a1}
+    ports:
+      - "9110:8100"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - diario-network
+    restart: unless-stopped
+
+  web-admin:
+    build:
+      context: ./web-admin
+      dockerfile: Dockerfile
+    logging: *default-logging
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: http://localhost:9101/api/v1
+      NEXT_PUBLIC_SAAS_API_URL: http://localhost:9009/api/v1
+      MODULE_API_INTERNAL_URL: http://api:8000
+      NEXT_TELEMETRY_DISABLED: "1"
+    ports:
+      - "9102:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - diario-network
+    restart: unless-stopped
+
+networks:
+  diario-network:
+    driver: bridge
+
+volumes:
+  diario_pgdata:
+    driver: local
+  diario_miniodata:
+    driver: local

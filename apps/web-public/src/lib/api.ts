@@ -1,7 +1,17 @@
 const BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001/api/v1").replace(/\/api\/v1$/, "");
 
+function getTenantSlug(): string | null {
+  if (typeof window === "undefined") return null;
+  const first = window.location.pathname.split("/").filter(Boolean)[0];
+  if (first && /^[a-z0-9][a-z0-9-]{1,62}$/.test(first)) return first;
+  const match = document.cookie.match(/(?:^|;\s*)tenant_slug=([^;]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
 async function get<T>(path: string): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, { next: { revalidate: 60 } });
+  const tenantSlug = getTenantSlug();
+  const headers: HeadersInit = tenantSlug ? { "X-Tenant-Slug": tenantSlug } : {};
+  const res = await fetch(`${BASE}${path}`, { headers, next: { revalidate: 60 } });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }
