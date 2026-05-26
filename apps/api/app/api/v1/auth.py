@@ -217,7 +217,8 @@ async def list_user_organizations(
                 Organization.is_active == True,
             )
         )
-        orgs = [result.scalar_one_or_none()] if result.scalar_one_or_none() else []
+        org = result.scalar_one_or_none()
+        orgs = [org] if org else []
 
     return [
         {

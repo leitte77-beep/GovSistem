@@ -16,6 +16,7 @@ const NAV_ITEMS = [
   { label: "Usuários", href: "/users", icon: "group" },
   { label: "Certificados", href: "/settings/certificates", icon: "verified_user" },
   { label: "Verificar PDF", href: "/verify", icon: "picture_as_pdf" },
+  { label: "Voltar ao SaaS", href: "https://admin.govsistem.com.br", icon: "arrow_back", external: true },
   { label: "Configurações", href: "/settings", icon: "settings" },
 ];
 
@@ -113,6 +114,20 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               item.href === "/"
                 ? pathname === "/"
                 : pathname.startsWith(item.href);
+            if (item.external) {
+              return (
+                <a
+                  key={item.href}
+                  href={item.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center px-4 py-3 gap-3 rounded-lg transition-all duration-200 text-on-primary/70 hover:text-on-primary hover:bg-on-primary-fixed-variant/50"
+                >
+                  <span className="material-symbols-outlined">{item.icon}</span>
+                  <span className="text-label-md font-label-md">{item.label}</span>
+                </a>
+              );
+            }
             return (
               <Link
                 key={item.href}
@@ -253,7 +268,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               waving_hand
             </span>
             <h2 className="text-body-md text-primary font-medium italic">
-              {greeting}, bem-vindo ao DOE Admin
+              {greeting}, {user?.name || "Admin"}
             </h2>
           </div>
           <div className="flex items-center gap-6">

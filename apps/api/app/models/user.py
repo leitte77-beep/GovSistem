@@ -26,6 +26,9 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
     email: Mapped[str] = mapped_column(
         String(255), unique=True, nullable=False, index=True
     )
+    cpf: Mapped[Optional[str]] = mapped_column(
+        String(11), unique=True, nullable=True
+    )
     password_hash: Mapped[Optional[str]] = mapped_column(
         String(255), nullable=True
     )

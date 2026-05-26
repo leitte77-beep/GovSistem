@@ -10,7 +10,7 @@ from sqlalchemy import func as sa_func
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import require_roles
+from app.core.auth import get_current_user, require_roles
 from app.core.database import get_db
 from app.models.audit_event import AuditEvent
 from app.models.edition import Edition
@@ -128,7 +128,7 @@ async def operations_health(
 @router.get("/operations/dashboard")
 async def operations_dashboard(
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ADMIN", "AUDITOR")),
+    user: User = Depends(get_current_user),
 ):
     """Admin dashboard with system status."""
     total_editions = await db.execute(select(sa_func.count(Edition.id)))

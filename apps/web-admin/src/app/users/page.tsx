@@ -100,6 +100,7 @@ export default function UsersPage() {
                 <tr className="bg-surface-container-high/50">
                   <th className="px-6 py-4 text-label-md font-label-md text-on-surface-variant uppercase tracking-wider">Usuário</th>
                   <th className="px-6 py-4 text-label-md font-label-md text-on-surface-variant uppercase tracking-wider">E-mail</th>
+                  <th className="px-6 py-4 text-label-md font-label-md text-on-surface-variant uppercase tracking-wider">CPF</th>
                   <th className="px-6 py-4 text-label-md font-label-md text-on-surface-variant uppercase tracking-wider text-center">Status</th>
                   <th className="px-6 py-4 text-label-md font-label-md text-on-surface-variant uppercase tracking-wider">Data de Criação</th>
                   <th className="px-6 py-4 text-label-md font-label-md text-on-surface-variant uppercase tracking-wider text-right">Ações</th>
@@ -122,6 +123,7 @@ export default function UsersPage() {
                         </div>
                       </td>
                       <td className="px-6 py-4 text-body-md text-on-surface">{u.email}</td>
+                      <td className="px-6 py-4 text-body-md text-on-surface-variant font-mono">{u.cpf ? `${u.cpf.slice(0, 3)}.***.${u.cpf.slice(6, 9)}-**` : "—"}</td>
                       <td className="px-6 py-4 text-center">
                         <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-label-md font-label-md ${u.is_active ? "bg-secondary-container text-on-secondary-container" : "bg-error-container text-on-error-container"}`}>
                           <span className={`w-2 h-2 rounded-full ${u.is_active ? "bg-secondary" : "bg-error"}`} />
