@@ -1,7 +1,27 @@
-const BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001/api/v1").replace(/\/api\/v1$/, "");
+const BASE = (process.env.NEXT_PUBLIC_API_URL || "/api/v1").replace(/\/api\/v1$/, "");
+
+const RESERVED_HOSTS = new Set([
+  "www",
+  "api",
+  "admin",
+  "doe-admin",
+  "diario",
+]);
+
+function getTenantFromHostname(): string | null {
+  if (typeof window === "undefined") return null;
+  const host = window.location.hostname.toLowerCase();
+  const parts = host.split(".");
+  if (parts.length < 3) return null;
+  const subdomain = parts[0];
+  if (!subdomain || RESERVED_HOSTS.has(subdomain)) return null;
+  return /^[a-z0-9][a-z0-9-]{1,62}$/.test(subdomain) ? subdomain : null;
+}
 
 function getTenantSlug(): string | null {
   if (typeof window === "undefined") return null;
+  const hostTenant = getTenantFromHostname();
+  if (hostTenant) return hostTenant;
   const first = window.location.pathname.split("/").filter(Boolean)[0];
   if (first && /^[a-z0-9][a-z0-9-]{1,62}$/.test(first)) return first;
   const match = document.cookie.match(/(?:^|;\s*)tenant_slug=([^;]+)/);

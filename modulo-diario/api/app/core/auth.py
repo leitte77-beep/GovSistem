@@ -1,6 +1,5 @@
 import logging
 import uuid
-from datetime import datetime, timezone
 from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, Request, status
@@ -11,11 +10,11 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.security import decode_module_token
+from app.core.security import decode_token
 from app.models.user import User
 from app.models.user_role import UserRole
 
-logger = logging.getLogger("diario.auth")
+logger = logging.getLogger(__name__)
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
@@ -36,77 +35,83 @@ async def require_internal_key(
         )
 
 
-class CurrentUser:
-    def __init__(self, user_id: uuid.UUID, organization_id: uuid.UUID, roles: list[str], user: User | None = None):
-        self.id = user_id
-        self.organization_id = organization_id
-        self.roles = roles
-        self._user = user
-
-    @property
-    def user(self) -> User | None:
-        return self._user
-
-
 async def get_current_user(
     request: Request,
     credentials: Annotated[
         HTTPAuthorizationCredentials | None, Depends(bearer_scheme)
     ] = None,
     db: AsyncSession = Depends(get_db),
-) -> CurrentUser:
+) -> User:
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
         )
     try:
-        payload = decode_module_token(credentials.credentials)
+        payload = decode_token(credentials.credentials)
     except Exception:
         logger.warning("Token decode failed", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired module token",
+            detail="Invalid or expired token",
         )
 
-    if payload.get("type") != "module_access":
+    token_type = payload.get("type")
+    if token_type == "module_access" and payload.get("module") != "diario":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid module token",
+        )
+    if token_type not in {"access", "module_access"}:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token type",
         )
-    if payload.get("module") != "diario":
+
+    user_id = payload.get("sub")
+    if user_id is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token not valid for this module",
+            detail="Invalid token payload",
         )
-
-    user_id = uuid.UUID(payload["sub"])
-    organization_id = uuid.UUID(payload["organization_id"])
-    roles = payload.get("roles", [])
 
     result = await db.execute(
         select(User)
-        .where(User.id == user_id)
+        .where(User.id == uuid.UUID(user_id))
         .options(selectinload(User.user_roles).selectinload(UserRole.role))
     )
     user = result.scalar_one_or_none()
 
     if user is None or user.deleted_at is not None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
     if not user.is_active:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Inactive user",
+        )
 
-    return CurrentUser(user_id=user_id, organization_id=organization_id, roles=roles, user=user)
+    if token_type == "module_access" and payload.get("module") != "diario":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token not valid for this module",
+        )
+
+    return user
 
 
 def require_roles(*roles: str):
-    async def _check(current: CurrentUser = Depends(get_current_user)) -> CurrentUser:
-        if not any(r in current.roles for r in roles):
+    async def _check(user: User = Depends(get_current_user)) -> User:
+        user_roles = {ur.role.name for ur in user.user_roles}
+        if not user_roles.intersection(roles):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions",
             )
-        return current
+        return user
+
     return _check
 
 
@@ -116,4 +121,7 @@ def get_client_info(request: Request) -> dict:
         ip = forwarded.split(",")[0].strip()
     else:
         ip = request.client.host if request.client else "unknown"
-    return {"ip_address": ip, "user_agent": request.headers.get("user-agent", "")}
+    return {
+        "ip_address": ip,
+        "user_agent": request.headers.get("user-agent", ""),
+    }

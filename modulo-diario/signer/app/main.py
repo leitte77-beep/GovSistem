@@ -1,8 +1,15 @@
 from fastapi import FastAPI
 
-app = FastAPI(title="Signer Service - Modulo Diario", version="1.0.0")
+from app.api.health import router as health_router
+from app.api.internal import router as internal_router
+from app.api.routes import router as signer_router
 
+app = FastAPI(
+    title="DOE Signer",
+    description="Diário Oficial Eletrônico - Serviço de Assinatura Digital",
+    version="0.1.0",
+)
 
-@app.get("/api/v1/health")
-async def health():
-    return {"status": "ok", "service": "signer-modulo-diario"}
+app.include_router(health_router, prefix="/api/v1")
+app.include_router(signer_router, prefix="/api/v1")
+app.include_router(internal_router)

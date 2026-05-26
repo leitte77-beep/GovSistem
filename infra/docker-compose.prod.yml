@@ -125,7 +125,7 @@ services:
       MINIO_SECURE: "false"
       SIGNER_URL: http://signer:8100
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
-      CORS_ORIGINS: '["https://admin.govsistem.com.br","https://diario.govsistem.com.br","https://govsistem.com.br"]'
+      CORS_ORIGINS: '["https://admin.govsistem.com.br","https://diario.govsistem.com.br","https://govsistem.com.br","https://farol.govsistem.com.br"]'
       PUBLIC_URL: https://diario.govsistem.com.br
       PDF_API_BASE_URL: https://diario.govsistem.com.br
       DEBUG: "false"
@@ -237,6 +237,7 @@ services:
       SIGNER_PROVIDER: ${SIGNER_PROVIDER:-a1}
       SIGNER_A1_PFX_PATH: /certs/cert.pfx
       SIGNER_A1_PASSWORD: ${SIGNER_A1_PASSWORD}
+      VERIFICATION_BASE_URL: https://govsistem.com.br/verificar
     volumes:
       - ${SIGNER_CERTS_DIR:-./certs}:/certs:ro
     networks:
@@ -327,12 +328,16 @@ services:
       - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./nginx/sites:/etc/nginx/sites:ro
       - ./nginx/ssl:/etc/nginx/ssl:ro
+      - uploads:/app/uploads
       - certbot-www:/var/www/certbot
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       - api
       - web-admin
       - web-public
     networks:
+      - internal
       - public
     healthcheck:
       test: ["CMD", "nginx", "-t"]

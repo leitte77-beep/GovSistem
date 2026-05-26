@@ -73,10 +73,10 @@ export default function HomePage() {
       <section className="bg-surface py-stack-lg border-b border-outline-variant">
         <div className="max-w-container-max mx-auto px-gutter text-center">
           <h1 className="font-headline-lg text-headline-lg text-primary mb-stack-sm">
-            {org?.name || "Diário Oficial Eletrônico"}
+            Diário Oficial Eletrônico
           </h1>
           <p className="text-body-lg font-body-lg text-on-surface-variant mb-stack-md max-w-2xl mx-auto">
-            {org?.description || "Acesse publicações oficiais, atos normativos e transparência governamental com facilidade e segurança jurídica."}
+            Acesse publicações oficiais, atos normativos e transparência governamental com facilidade e segurança jurídica.
           </p>
 
           <div className="bg-surface-container-lowest p-2 rounded-xl shadow-lg border border-outline-variant max-w-4xl mx-auto">

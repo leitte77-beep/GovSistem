@@ -1,5 +1,6 @@
 from enum import Enum
 
+
 class MatterStatus(str, Enum):
     DRAFT = "draft"
     REVIEW = "review"
@@ -20,22 +21,28 @@ class MatterStatus(str, Enum):
         }
 
     def can_transition_to(self, target: "MatterStatus") -> bool:
-        if self == target: return True
+        if self == target:
+            return True
         allowed = self.valid_transitions().get(self, [])
         return target in allowed
 
     def assert_transition(self, target: "MatterStatus") -> None:
         if not self.can_transition_to(target):
-            raise ValueError(f"Status transition from '{self.value}' to '{target.value}' is not allowed")
+            raise ValueError(
+                f"Status transition from '{self.value}' to '{target.value}' "
+                f"is not allowed for Matter"
+            )
 
     @classmethod
     def can_edit(cls, status: "MatterStatus") -> bool:
         return status in (cls.DRAFT, cls.REVIEW, cls.REJECTED)
 
+
 class EditionType(str, Enum):
     NORMAL = "normal"
     EXTRA = "extra"
     SUPLEMENTAR = "suplementar"
+
 
 class EditionStatus(str, Enum):
     DRAFT = "draft"
@@ -61,13 +68,17 @@ class EditionStatus(str, Enum):
         }
 
     def can_transition_to(self, target: "EditionStatus") -> bool:
-        if self == target: return True
+        if self == target:
+            return True
         allowed = self.valid_transitions().get(self, [])
         return target in allowed
 
     def assert_transition(self, target: "EditionStatus") -> None:
         if not self.can_transition_to(target):
-            raise ValueError(f"Status transition from '{self.value}' to '{target.value}' is not allowed")
+            raise ValueError(
+                f"Status transition from '{self.value}' to '{target.value}' "
+                f"is not allowed for Edition"
+            )
 
     @classmethod
     def can_edit(cls, status: "EditionStatus") -> bool:
@@ -94,11 +105,13 @@ class EditionStatus(str, Enum):
         status = cls(status)
         return status == cls.SIGNED
 
+
 class AttachmentType(str, Enum):
     ANNEX = "annex"
     APPENDIX = "appendix"
     REFERENCE = "reference"
     OTHER = "other"
+
 
 class SignatureProviderType(str, Enum):
     A1 = "a1"
@@ -106,6 +119,7 @@ class SignatureProviderType(str, Enum):
     HSM = "hsm"
     CLOUD = "cloud"
     SEAL = "seal"
+
 
 class AuditAction(str, Enum):
     MATTER_CREATED = "matter.created"

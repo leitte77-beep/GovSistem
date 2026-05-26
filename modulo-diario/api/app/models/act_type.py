@@ -1,17 +1,19 @@
-import uuid
 from typing import Optional
-from sqlalchemy import ForeignKey, String, Text
-from sqlalchemy.dialects.postgresql import UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-from app.models.base import Base, TimestampMixin
-from app.models.organization import Organization
 
-class ActType(Base, TimestampMixin):
+from sqlalchemy import Boolean, String, Text
+from sqlalchemy.orm import Mapped, mapped_column
+
+from app.models.base import Base, SoftDeleteMixin, TimestampMixin
+
+
+class ActType(Base, TimestampMixin, SoftDeleteMixin):
     __tablename__ = "act_types"
-    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
-    organization_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True)
-    name: Mapped[str] = mapped_column(String(100), nullable=False)
-    slug: Mapped[str] = mapped_column(String(100), nullable=False)
+
+    name: Mapped[str] = mapped_column(
+        String(100), unique=True, nullable=False, index=True
+    )
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    requires_org_unit: Mapped[bool] = mapped_column(default=False)
-    organization: Mapped["Organization"] = relationship("Organization")
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    def __repr__(self) -> str:
+        return f"<ActType {self.name}>"

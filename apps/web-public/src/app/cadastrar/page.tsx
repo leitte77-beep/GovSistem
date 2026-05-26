@@ -16,7 +16,7 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const BASE = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001/api/v1").replace(/\/api\/v1$/, "");
+  const BASE = (process.env.NEXT_PUBLIC_API_URL || "/api/v1").replace(/\/api\/v1$/, "");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

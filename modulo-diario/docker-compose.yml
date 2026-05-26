@@ -13,9 +13,9 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-diario_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-diario_password}
     ports:
-      - "9532:5432"
+      - "9632:5432"
     volumes:
-      - diario_pgdata:/var/lib/postgresql/data
+      - modulo_diario_pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-diario_user} -d ${POSTGRES_DB:-modulo_diario}"]
       interval: 10s
@@ -31,7 +31,7 @@ services:
     logging: *default-logging
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
     ports:
-      - "9479:6379"
+      - "9579:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -49,10 +49,10 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio_admin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_password}
     ports:
-      - "9900:9000"
-      - "9901:9001"
+      - "9990:9000"
+      - "9991:9001"
     volumes:
-      - diario_miniodata:/data
+      - modulo_diario_miniodata:/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 10s
@@ -71,11 +71,11 @@ services:
     environment:
       APP_NAME: "Modulo Diario API"
       DEBUG: ${DEBUG:-true}
-      POSTGRES_HOST: postgres
+      POSTGRES_HOST: infra-postgres-1
       POSTGRES_PORT: 5432
-      POSTGRES_DB: ${POSTGRES_DB:-modulo_diario}
-      POSTGRES_USER: ${POSTGRES_USER:-diario_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-diario_password}
+      POSTGRES_DB: doe
+      POSTGRES_USER: doe_user
+      POSTGRES_PASSWORD: doe_password
       REDIS_HOST: redis
       REDIS_PORT: 6379
       MINIO_ENDPOINT: minio:9000
@@ -86,13 +86,11 @@ services:
       SIGNER_URL: http://signer:8100
       SECRET_KEY: ${SECRET_KEY:-dev-saas-secret-key-change-in-production}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-saas}
-      CORS_ORIGINS: '["http://localhost:9102","http://localhost:9002"]'
+      CORS_ORIGINS: '["http://localhost:9202","http://localhost:9200","https://farol.govsistem.com.br"]'
       ENVIRONMENT: development
     ports:
-      - "9101:8000"
+      - "9201:8000"
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
     healthcheck:
@@ -104,12 +102,10 @@ services:
     networks:
       - diario-network
     restart: unless-stopped
-    volumes:
-      - ./api:/app
 
   worker:
     build:
-      context: ./api
+      context: ./worker
       dockerfile: Dockerfile
     logging: *default-logging
     environment:
@@ -133,8 +129,6 @@ services:
     networks:
       - diario-network
     restart: unless-stopped
-    volumes:
-      - ./api:/app
 
   signer:
     build:
@@ -143,8 +137,9 @@ services:
     logging: *default-logging
     environment:
       SIGNER_PROVIDER: ${SIGNER_PROVIDER:-a1}
+      VERIFICATION_BASE_URL: https://govsistem.com.br/verificar
     ports:
-      - "9110:8100"
+      - "9210:8100"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8100/api/v1/health"]
       interval: 30s
@@ -159,18 +154,57 @@ services:
     build:
       context: ./web-admin
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: https://doe-admin.govsistem.com.br/api/v1
+        NEXT_PUBLIC_ADMIN_URL: https://doe-admin.govsistem.com.br
     logging: *default-logging
     environment:
-      NODE_ENV: development
-      NEXT_PUBLIC_API_URL: http://localhost:9101/api/v1
-      NEXT_PUBLIC_SAAS_API_URL: http://localhost:9009/api/v1
-      MODULE_API_INTERNAL_URL: http://api:8000
-      NEXT_TELEMETRY_DISABLED: "1"
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      API_URL: http://api:8000/api/v1
+      NEXT_PUBLIC_API_URL: https://doe-admin.govsistem.com.br/api/v1
+      NEXT_PUBLIC_ADMIN_URL: https://doe-admin.govsistem.com.br
     ports:
-      - "9102:3000"
+      - "9202:3000"
     depends_on:
       api:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - diario-network
+    restart: unless-stopped
+
+  web-public:
+    build:
+      context: ./web-public
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_ADMIN_URL: ${NEXT_PUBLIC_ADMIN_URL:-http://localhost:9202}
+    logging: *default-logging
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      API_URL: http://api:8000/api/v1
+      NEXT_PUBLIC_API_URL: http://localhost:9201/api/v1
+      NEXT_PUBLIC_ADMIN_URL: http://localhost:9202
+    ports:
+      - "9200:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
     networks:
       - diario-network
     restart: unless-stopped
@@ -180,7 +214,7 @@ networks:
     driver: bridge
 
 volumes:
-  diario_pgdata:
+  modulo_diario_pgdata:
     driver: local
-  diario_miniodata:
+  modulo_diario_miniodata:
     driver: local

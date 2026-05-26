@@ -61,8 +61,11 @@ def _public_pdf_path(edition: Edition) -> str | None:
     if edition.signed_pdf_path:
         for signature in edition.signatures or []:
             certificate_info = signature.certificate_info or {}
-            if certificate_info.get("sha256_signed") == edition.pdf_hash:
+            signed_path = Path(settings.UPLOAD_DIR) / edition.signed_pdf_path
+            if certificate_info.get("sha256_signed") == edition.pdf_hash and signed_path.exists():
                 return edition.signed_pdf_path
+    if edition.pdf_path and (Path(settings.UPLOAD_DIR) / edition.pdf_path).exists():
+        return edition.pdf_path
     return edition.pdf_path
 
 

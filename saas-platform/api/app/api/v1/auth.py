@@ -84,6 +84,8 @@ async def login(
         roles.append(user.platform_role)
     elif user.is_platform_admin:
         roles.append("PLATFORM_ADMIN")
+    elif user.is_organization_admin:
+        roles.append("ADMIN")
     if user.organization_id:
         roles.append("ORG_MEMBER")
 
@@ -225,6 +227,8 @@ async def get_module_access(
         roles.append(user.platform_role)
     elif user.is_platform_admin:
         roles.append("PLATFORM_ADMIN")
+    elif user.is_organization_admin:
+        roles.append("ADMIN")
     if user.organization_id:
         roles.append("ORG_MEMBER")
 
@@ -234,7 +238,7 @@ async def get_module_access(
             await db.execute(
                 select(Organization).where(Organization.is_active.is_(True))
             )
-        ).scalar_one_or_none()
+        ).scalars().first()
         if org_id:
             org_id = org_id.id
 

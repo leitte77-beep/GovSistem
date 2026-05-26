@@ -17,14 +17,37 @@ const RESERVED = new Set([
   "mapa-do-site",
 ]);
 
+const RESERVED_HOSTS = new Set(["www", "api", "admin", "doe-admin", "diario"]);
+
 function isTenantSlug(value: string) {
   return /^[a-z0-9][a-z0-9-]{1,62}$/.test(value) && !RESERVED.has(value);
+}
+
+function getTenantFromHostname(hostname: string) {
+  const host = hostname.toLowerCase();
+  const parts = host.split(".");
+  if (parts.length < 3) return null;
+  const subdomain = parts[0];
+  if (!subdomain || RESERVED_HOSTS.has(subdomain)) return null;
+  return isTenantSlug(subdomain) ? subdomain : null;
 }
 
 export function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
   const parts = pathname.split("/").filter(Boolean);
   const first = parts[0];
+  const hostnameTenant = getTenantFromHostname(request.nextUrl.hostname);
+
+  if (hostnameTenant) {
+    const response = NextResponse.next();
+    response.cookies.set("tenant_slug", hostnameTenant, {
+      path: "/",
+      sameSite: "lax",
+      secure: request.nextUrl.protocol === "https:",
+    });
+    response.headers.set("x-tenant-slug", hostnameTenant);
+    return response;
+  }
 
   if (first && isTenantSlug(first)) {
     const rewritePath = `/${parts.slice(1).join("/")}`;

@@ -1,5 +1,6 @@
 import uuid
 from typing import Annotated
+from urllib.parse import urlparse
 
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy import select
@@ -9,6 +10,23 @@ from sqlalchemy.orm import selectinload
 from app.core.database import get_db
 from app.models.organization import Organization
 from app.models.tenant_domain import TenantDomain
+
+
+def _candidate_slug_from_host(host: str) -> str | None:
+    domain = host.split(":")[0].lower()
+    if not domain or domain in ("localhost", "127.0.0.1"):
+        return None
+    parts = domain.split(".")
+    if len(parts) < 3:
+        return None
+    subdomain = parts[0]
+    if subdomain in {"www", "api", "admin", "doe-admin", "diario"}:
+        return None
+    if not subdomain or not subdomain[0].isalnum():
+        return None
+    if not all(ch.isalnum() or ch == "-" for ch in subdomain):
+        return None
+    return subdomain
 
 
 async def resolve_tenant_from_domain(
@@ -23,6 +41,8 @@ async def resolve_tenant_from_domain(
     host = request.headers.get("host", "")
     domain = host.split(":")[0].lower()
     tenant_slug = request.headers.get("x-tenant-slug", "").strip().lower()
+    origin = request.headers.get("origin", "").strip()
+    referer = request.headers.get("referer", "").strip()
 
     if tenant_slug:
         result = await db.execute(
@@ -32,6 +52,34 @@ async def resolve_tenant_from_domain(
             )
         )
         return result.scalar_one_or_none()
+
+    for source in (origin, referer):
+        if not source:
+            continue
+        parsed = urlparse(source)
+        candidate = _candidate_slug_from_host(parsed.netloc or parsed.hostname or "")
+        if candidate:
+            result = await db.execute(
+                select(Organization).where(
+                    Organization.slug == candidate,
+                    Organization.is_active == True,
+                )
+            )
+            org = result.scalar_one_or_none()
+            if org is not None:
+                return org
+
+    candidate = _candidate_slug_from_host(domain)
+    if candidate:
+        result = await db.execute(
+            select(Organization).where(
+                Organization.slug == candidate,
+                Organization.is_active == True,
+            )
+        )
+        org = result.scalar_one_or_none()
+        if org is not None:
+            return org
 
     if not domain or domain in ("localhost", "127.0.0.1"):
         return None
