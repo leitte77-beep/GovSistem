@@ -65,6 +65,12 @@ class Settings(BaseSettings):
     INTERNAL_API_KEY: SecretStr = SecretStr("")
     DIARIO_MODULE_INTERNAL_API_URL: str | None = None
     DIARIO_MODULE_ADMIN_URL: str | None = None
+    CHATGOV_MODULE_INTERNAL_API_URL: str | None = None
+    CHATGOV_MODULE_ADMIN_URL: str | None = None
+    GOVTASK_MODULE_INTERNAL_API_URL: str | None = None
+    GOVTASK_MODULE_ADMIN_URL: str | None = None
+    GOUVOVE_MODULE_INTERNAL_API_URL: str | None = None
+    GOUVOVE_MODULE_ADMIN_URL: str | None = None
 
     PASSWORD_MIN_LENGTH: int = 8
     PASSWORD_MIN_UPPERCASE: int = 1
@@ -89,6 +95,13 @@ class Settings(BaseSettings):
     FOCUS_NFE_TOKEN: SecretStr = SecretStr("")
     FOCUS_BASE_URL_SANDBOX: str = "https://homologacao.focusnfe.com.br"
     FOCUS_BASE_URL_PRODUCTION: str = "https://api.focusnfe.com.br"
+
+    SMTP_HOST: str = "smtp.hostinger.com"
+    SMTP_PORT: int = 465
+    SMTP_USER: str = "contato@govsistem.com.br"
+    SMTP_PASSWORD: SecretStr = SecretStr("")
+    SMTP_FROM: str = "contato@govsistem.com.br"
+    SMTP_USE_SSL: bool = True
 
     @property
     def ASAAS_BASE_URL(self) -> str:

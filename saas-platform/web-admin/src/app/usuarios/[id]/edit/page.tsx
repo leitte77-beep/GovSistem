@@ -15,6 +15,20 @@ interface Organization {
   name: string;
 }
 
+interface Module {
+  id: string;
+  slug: string;
+  name: string;
+}
+
+interface RoleCatalogItem {
+  name: string;
+  label: string;
+}
+
+type RoleCatalog = Record<string, RoleCatalogItem[]>;
+type Grants = Record<string, string[]>;
+
 const roles = [
   { value: "SUPER_ADMIN", label: "Super Admin" },
   { value: "PLATFORM_ADMIN", label: "Admin da Plataforma" },
@@ -31,6 +45,9 @@ export default function EditUsuarioPage() {
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [orgs, setOrgs] = useState<Organization[]>([]);
+  const [modules, setModules] = useState<Module[]>([]);
+  const [catalog, setCatalog] = useState<RoleCatalog>({});
+  const [grants, setGrants] = useState<Grants>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
@@ -40,8 +57,11 @@ export default function EditUsuarioPage() {
     Promise.all([
       api<any>(`/users/${id}`),
       api<{ data: Organization[] }>("/organizations?limit=200"),
+      api<Module[]>("/modules?is_active=true"),
+      api<RoleCatalog>("/users/roles/catalog"),
+      api<{ grants: Grants }>(`/users/${id}/grants`),
     ])
-      .then(([user, orgsRes]) => {
+      .then(([user, orgsRes, modulesRes, catalogRes, grantsRes]) => {
         setForm({
           name: user.name || "",
           email: user.email || "",
@@ -55,6 +75,9 @@ export default function EditUsuarioPage() {
           module_permissions: user.module_permissions || [],
         });
         setOrgs(orgsRes.data);
+        setModules(modulesRes || []);
+        setCatalog(catalogRes || {});
+        setGrants(grantsRes.grants || {});
       })
       .catch(() => toast.error("Erro ao carregar dados"))
       .finally(() => setLoading(false));
@@ -69,19 +92,35 @@ export default function EditUsuarioPage() {
     }
   };
 
+  const toggleRole = (slug: string, role: string) => {
+    setGrants((prev) => {
+      const current = prev[slug] || [];
+      const updated = current.includes(role)
+        ? current.filter((r) => r !== role)
+        : [...current, role];
+      const next = { ...prev };
+      if (updated.length > 0) next[slug] = updated;
+      else delete next[slug];
+      return next;
+    });
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     try {
+      // Module access is derived from grants: a module with at least one role.
+      const moduleSlugs = Object.keys(grants).filter((s) => (grants[s] || []).length > 0);
       const body = {
         ...form,
         cpf: form.cpf?.replace(/\D/g, "") || null,
         organization_id: form.organization_id || null,
         email: form.email || null,
-        module_permissions: form.module_permissions?.length > 0 ? form.module_permissions : [],
+        module_permissions: moduleSlugs,
       };
       if (password) body.password = password;
       await api(`/users/${id}`, { method: "PUT", body });
+      await api(`/users/${id}/grants`, { method: "PUT", body: { grants } });
       toast.success("Usuario atualizado com sucesso!");
       router.push("/usuarios");
     } catch (err: any) {
@@ -185,25 +224,36 @@ export default function EditUsuarioPage() {
 
             {!form.is_platform_admin && form.organization_id && (
               <div className="mt-4 p-4 bg-gray-50 rounded-lg border">
-                <p className="text-sm font-medium text-gray-700 mb-3">Módulos disponíveis</p>
-                <div className="flex flex-wrap gap-4">
-                  {[{id:"diario",slug:"diario",name:"Diário Oficial"},{id:"financeiro",slug:"financeiro",name:"Financeiro"}].map((mod) => (
-                    <label key={mod.slug} className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={(form.module_permissions || []).includes(mod.slug)}
-                        onChange={() => {
-                          const perms = form.module_permissions || [];
-                          const updated = perms.includes(mod.slug)
-                            ? perms.filter((p: string) => p !== mod.slug)
-                            : [...perms, mod.slug];
-                          setForm({ ...form, module_permissions: updated });
-                        }}
-                        className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                      />
-                      <span className="text-sm text-gray-700">{mod.name}</span>
-                    </label>
-                  ))}
+                <p className="text-sm font-medium text-gray-700 mb-1">Acessos por módulo</p>
+                <p className="text-xs text-gray-500 mb-4">
+                  Marque o que este usuário pode fazer em cada módulo. Sem nenhuma
+                  marcação, ele não tem acesso ao módulo.
+                </p>
+                {modules.length === 0 && <p className="text-sm text-gray-400">Nenhum módulo ativo.</p>}
+                <div className="space-y-4">
+                  {modules.map((mod) => {
+                    const roles = catalog[mod.slug] || [];
+                    if (roles.length === 0) return null;
+                    const selected = grants[mod.slug] || [];
+                    return (
+                      <div key={mod.slug} className="bg-white rounded-lg border p-3">
+                        <p className="text-sm font-semibold text-gray-800 mb-2">{mod.name}</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          {roles.map((role) => (
+                            <label key={role.name} className="flex items-center gap-2 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={selected.includes(role.name)}
+                                onChange={() => toggleRole(mod.slug, role.name)}
+                                className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                              />
+                              <span className="text-sm text-gray-700">{role.label}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}

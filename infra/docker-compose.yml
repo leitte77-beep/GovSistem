@@ -106,6 +106,10 @@ services:
       DEBUG: ${API_DEBUG:-true}
       SECRET_KEY: ${API_SECRET_KEY:-change-me-in-production}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-123}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+    volumes:
+      - uploads:/app/uploads
     ports:
       - "8001:8000"
     depends_on:
@@ -143,6 +147,8 @@ services:
       API_URL: http://api:8000
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-123}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
+    volumes:
+      - uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -244,6 +250,32 @@ services:
       - doe-network
     restart: unless-stopped
 
+  chatgov-backend:
+    build:
+      context: ../modulo-chatgov/backend
+      dockerfile: Dockerfile
+    logging: *default-logging
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-doe_user}:${POSTGRES_PASSWORD:-doe_password}@postgres:5432/${POSTGRES_DB:-doe}
+      JWT_SECRET: ${CHATGOV_JWT_SECRET:-chatgov-dev-secret-change-in-production}
+      JWT_SECRETS: ${CHATGOV_JWT_SECRETS:-dev-saas-secret-key-change-in-production}
+      PORT: 3050
+      STORAGE_DRIVER: ${CHATGOV_STORAGE_DRIVER:-local}
+      SOCKET_CORS_ORIGIN: ${CHATGOV_SOCKET_CORS_ORIGIN:-http://localhost:7201}
+      CREDS_ENCRYPTION_KEY: ${CHATGOV_CREDS_ENCRYPTION_KEY:-chatgov-dev-encryption-key-32chars}
+      RATE_LIMIT_PER_MINUTE: ${CHATGOV_RATE_LIMIT_PER_MINUTE:-30}
+      UPLOADS_DIR: /app/uploads
+    ports:
+      - "3050:3050"
+    volumes:
+      - chatgov_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - doe-network
+    restart: unless-stopped
+
   web-public:
     build:
       context: ../apps/web-public
@@ -281,14 +313,258 @@ services:
       - doe-network
     restart: unless-stopped
 
+  govtask-db-init:
+    image: postgres:16-alpine
+    logging: *default-logging
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        echo "Creating govtask database if not exists..."
+        PGPASSWORD=${POSTGRES_PASSWORD:-doe_password} psql -h postgres -U ${POSTGRES_USER:-doe_user} -d ${POSTGRES_DB:-doe} -tc "SELECT 1 FROM pg_database WHERE datname = '${GOVTASK_POSTGRES_DB:-govtask}'" | grep -q 1 || \
+        PGPASSWORD=${POSTGRES_PASSWORD:-doe_password} psql -h postgres -U ${POSTGRES_USER:-doe_user} -d ${POSTGRES_DB:-doe} -c "CREATE DATABASE ${GOVTASK_POSTGRES_DB:-govtask}"
+        echo "GovTask database ready"
+        exit 0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - doe-network
+
+  govtask-api:
+    build:
+      context: ../modulo-govtask/api
+      dockerfile: Dockerfile
+    logging: *default-logging
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${GOVTASK_POSTGRES_DB:-govtask}
+      POSTGRES_USER: ${POSTGRES_USER:-doe_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-doe_password}
+      REDIS_HOST: redis
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minio_access}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minio_secret}
+      MINIO_BUCKET: ${GOVTASK_MINIO_BUCKET:-govtask-files}
+      MINIO_SECURE: "false"
+      CORS_ORIGINS: '["http://localhost:7301","http://localhost:7300"]'
+      DEBUG: ${API_DEBUG:-true}
+      SECRET_KEY: ${GOVTASK_SECRET_KEY:-govtask-dev-secret-key-change-in-production}
+      SAAS_JWT_SECRET: ${SAAS_JWT_SECRET:-dev-saas-secret-key-change-in-production}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-123}
+    volumes:
+      - govtask_uploads:/app/uploads
+    ports:
+      - "8101:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      govtask-db-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/govtask/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - doe-network
+      - internal
+    restart: unless-stopped
+
+  govtask-web:
+    build:
+      context: ../modulo-govtask/web-admin
+      dockerfile: Dockerfile
+    logging: *default-logging
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      NEXT_PUBLIC_API_URL: http://localhost:8101
+    ports:
+      - "7301:3000"
+    depends_on:
+      govtask-api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://127.0.0.1:3000",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - doe-network
+      - internal
+    restart: unless-stopped
+
+  # =============================================
+  # GovOuve — Avaliacao & Ouvidoria
+  # =============================================
+  govouve-db-init:
+    image: postgres:16-alpine
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-doe_user}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-doe_password}
+      PGDATABASE: postgres
+    command: >
+      bash -c "
+        echo 'Creating govouve database if not exists...'
+        until pg_isready -h postgres -U ${POSTGRES_USER:-doe_user} -d postgres; do sleep 2; done
+        psql -h postgres -U ${POSTGRES_USER:-doe_user} -d postgres -tc \"SELECT 1 FROM pg_database WHERE datname = '${GOVOUVE_POSTGRES_DB:-govouve}'\" | grep -q 1 ||
+          psql -h postgres -U ${POSTGRES_USER:-doe_user} -d postgres -c \"CREATE DATABASE ${GOVOUVE_POSTGRES_DB:-govouve}\"
+        echo 'Done.'
+      "
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - doe-network
+    restart: "no"
+
+  govouve-api:
+    build:
+      context: ../modulo-govouve/api
+      dockerfile: Dockerfile
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${GOVOUVE_POSTGRES_DB:-govouve}
+      POSTGRES_USER: ${POSTGRES_USER:-doe_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-doe_password}
+      REDIS_HOST: redis
+      REDIS_DB: "3"
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minio_admin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minio_password}
+      MINIO_BUCKET: ${GOVOUVE_MINIO_BUCKET:-govouve}
+      SECRET_KEY: ${GOVOUVE_SECRET_KEY:-govouve-dev-secret-key-change-in-production}
+      SAAS_JWT_SECRET: ${SAAS_JWT_SECRET:-dev-saas-secret-key-change-in-production}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-123}
+      CORS_ORIGINS: '["http://localhost:7401","http://localhost:7400"]'
+      DEBUG: "true"
+    ports:
+      - "8201:8000"
+    volumes:
+      - govouve_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      govouve-db-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "curl",
+          "-f",
+          "http://localhost:8000/api/govouve/health",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    networks:
+      - doe-network
+      - internal
+    restart: unless-stopped
+
+  govouve-web:
+    build:
+      context: ../modulo-govouve/web-admin
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      API_INTERNAL_URL: http://govouve-api:8000
+      NEXT_PUBLIC_API_URL: http://localhost:8201
+    ports:
+      - "7401:3000"
+    depends_on:
+      govouve-api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://127.0.0.1:3000",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - doe-network
+      - internal
+    restart: unless-stopped
+
+  govouve-web-public:
+    build:
+      context: ../modulo-govouve/web-public
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      NEXT_PUBLIC_API_URL: http://govouve-api:8000
+    ports:
+      - "7400:3000"
+    depends_on:
+      govouve-api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://127.0.0.1:3000",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - doe-network
+      - internal
+    restart: unless-stopped
+
 networks:
   doe-network:
     driver: bridge
+  internal:
+    name: infra_internal
+    external: true
 
 volumes:
   pgdata:
     driver: local
   miniodata:
     driver: local
+  uploads:
+    driver: local
   api_uploads:
+    driver: local
+  chatgov_uploads:
+    driver: local
+  govtask_uploads:
+    driver: local
+  govouve_uploads:
     driver: local

@@ -1,17 +1,28 @@
 import uuid
 import re
+import logging
 from datetime import datetime, timezone
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from pydantic import BaseModel
+
 from app.core.auth import get_client_info, get_current_platform_admin, get_current_user
+from app.core.config import settings
 from app.core.database import get_db
+from app.core.roles import MODULE_ROLE_CATALOG, is_valid_grant
 from app.core.security import hash_password
 from app.models.audit_event import AuditEvent
+from app.models.module import Module
+from app.models.organization import Organization
 from app.models.user import User
+from app.models.user_module_grant import UserModuleGrant
 from app.schemas.schemas import PaginatedResponse, UserCreate, UserResponse, UserUpdate
+
+logger = logging.getLogger("saas.users")
 
 
 def _clean_cpf(cpf: str) -> str:
@@ -27,6 +38,98 @@ async def _check_cpf_exists(db: AsyncSession, cpf: str, exclude_id: uuid.UUID | 
         query = query.where(User.id != exclude_id)
     result = await db.execute(query)
     return result.scalar_one_or_none() is not None
+
+
+async def _sync_user_to_modules(user: User, db: AsyncSession) -> None:
+    if not user.organization_id:
+        return
+
+    org_result = await db.execute(
+        select(Organization).where(Organization.id == user.organization_id)
+    )
+    org = org_result.scalar_one_or_none()
+    if not org:
+        return
+
+    grant_result = await db.execute(
+        select(UserModuleGrant).where(UserModuleGrant.user_id == user.id)
+    )
+    grants = grant_result.scalars().all()
+    module_slugs = list(dict.fromkeys(g.module_slug for g in grants))
+
+    # Also include modules from legacy module_permissions JSON
+    if user.module_permissions and isinstance(user.module_permissions, dict):
+        legacy_modules = user.module_permissions.get("modules", [])
+        for slug in legacy_modules:
+            if slug not in module_slugs:
+                module_slugs.append(slug)
+
+    if not module_slugs:
+        return
+
+    internal_key = settings.INTERNAL_API_KEY.get_secret_value()
+    if not internal_key:
+        return
+
+    org_payload = {
+        "organization_id": str(org.id),
+        "name": org.name,
+        "slug": org.slug,
+        "cnpj": org.cnpj,
+        "description": org.description,
+        "logo_url": org.logo_url,
+        "public_url": org.public_url,
+        "is_active": org.is_active,
+    }
+
+    # Collect all roles for the user (platform roles + module grant roles)
+    all_roles = []
+    if user.platform_role:
+        all_roles.append(user.platform_role)
+    if user.is_platform_admin:
+        all_roles.append("PLATFORM_ADMIN")
+    if user.is_organization_admin:
+        all_roles.append("ADMIN")
+    if user.organization_id:
+        all_roles.append("ORG_MEMBER")
+    for g in grants:
+        all_roles.append(g.role_name)
+    roles = list(dict.fromkeys(all_roles))
+
+    user_payload = {
+        "user_id": str(user.id),
+        "organization_id": str(org.id),
+        "name": user.name,
+        "email": user.email,
+        "is_active": user.is_active,
+        "roles": roles,
+    }
+
+    module_configs = {
+        "chatgov": settings.CHATGOV_MODULE_INTERNAL_API_URL,
+        "diario": settings.DIARIO_MODULE_INTERNAL_API_URL,
+    }
+
+    for module_slug in module_slugs:
+        api_url = module_configs.get(module_slug)
+        if not api_url:
+            continue
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                headers = {"X-Internal-Key": internal_key}
+                await client.post(
+                    f"{api_url}/internal/sync-organization",
+                    json=org_payload,
+                    headers=headers,
+                )
+                await client.post(
+                    f"{api_url}/internal/sync-user",
+                    json=user_payload,
+                    headers=headers,
+                )
+        except Exception as e:
+            logger.warning("Failed to sync user %s to module %s: %s", user.id, module_slug, e)
+
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -130,6 +233,7 @@ async def create_user(
     db.add(audit)
     await db.commit()
     await db.refresh(user)
+    await _sync_user_to_modules(user, db)
     return user
 
 
@@ -199,6 +303,7 @@ async def update_user(
     db.add(audit)
     await db.commit()
     await db.refresh(user)
+    await _sync_user_to_modules(user, db)
     return user
 
 
@@ -232,3 +337,101 @@ async def delete_user(
     )
     db.add(audit)
     await db.commit()
+
+
+# ---------------------------------------------------------------------------
+# Per-module access grants ("quem pode o quê")
+# ---------------------------------------------------------------------------
+
+
+class ModuleRoleCatalogItem(BaseModel):
+    name: str
+    label: str
+
+
+class ModuleGrantsBody(BaseModel):
+    # { "diario": ["AUTOR", "DIAGRAMADOR"], "chatgov": ["CHATGOV_USER"] }
+    grants: dict[str, list[str]]
+
+
+@router.get("/roles/catalog")
+async def get_roles_catalog(
+    _: User = Depends(get_current_platform_admin),
+):
+    """Available per-module roles the admin can grant."""
+    return MODULE_ROLE_CATALOG
+
+
+@router.get("/{user_id}/grants")
+async def get_user_grants(
+    user_id: uuid.UUID,
+    _: User = Depends(get_current_platform_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(UserModuleGrant).where(UserModuleGrant.user_id == user_id)
+    )
+    grants: dict[str, list[str]] = {}
+    for g in result.scalars().all():
+        grants.setdefault(g.module_slug, []).append(g.role_name)
+    return {"grants": grants}
+
+
+@router.put("/{user_id}/grants")
+async def set_user_grants(
+    user_id: uuid.UUID,
+    body: ModuleGrantsBody,
+    request: Request,
+    admin: User = Depends(get_current_platform_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(User).where(User.id == user_id, User.deleted_at.is_(None))
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+    # Validate every requested (module, role) against the catalog.
+    for module_slug, role_names in body.grants.items():
+        for role_name in role_names:
+            if not is_valid_grant(module_slug, role_name):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail=f"Invalid role '{role_name}' for module '{module_slug}'",
+                )
+
+    # Replace the full set of grants (insert/delete semantics).
+    existing_result = await db.execute(
+        select(UserModuleGrant).where(UserModuleGrant.user_id == user_id)
+    )
+    for g in existing_result.scalars().all():
+        await db.delete(g)
+    await db.flush()  # apply deletes before inserts to avoid unique-key clash
+
+    for module_slug, role_names in body.grants.items():
+        for role_name in dict.fromkeys(role_names):  # dedupe, keep order
+            db.add(
+                UserModuleGrant(
+                    user_id=user_id,
+                    module_slug=module_slug,
+                    role_name=role_name,
+                )
+            )
+
+    client_info = get_client_info(request)
+    audit = AuditEvent(
+        actor_id=admin.id,
+        actor_email=admin.email,
+        organization_id=user.organization_id,
+        action="update",
+        resource_type="user_grants",
+        resource_id=str(user.id),
+        details={"grants": body.grants},
+        ip_address=client_info["ip_address"],
+        user_agent=client_info["user_agent"],
+    )
+    db.add(audit)
+    await db.commit()
+    await _sync_user_to_modules(user, db)
+    return {"grants": body.grants}

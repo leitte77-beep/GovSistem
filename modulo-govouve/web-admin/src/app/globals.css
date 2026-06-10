@@ -1,0 +1,53 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-[#F6F7F9] text-[#475467] antialiased font-sans;
+    font-feature-settings: "tnum" 1;
+  }
+
+  * {
+    @apply border-[#E4E7EC];
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-btn font-medium transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-[#1D4ED8] text-white hover:bg-[#1E40AF] focus-visible:ring-[#1D4ED8] px-5 py-2.5 text-body-sm;
+  }
+  .btn-secondary {
+    @apply btn bg-white text-[#1D4ED8] border border-[#E4E7EC] hover:bg-[#F6F7F9] px-5 py-2.5 text-body-sm;
+  }
+  .btn-ghost {
+    @apply btn bg-transparent text-[#475467] hover:bg-[#F6F7F9] px-4 py-2 text-body-sm;
+  }
+  .btn-danger {
+    @apply btn bg-[#B42318] text-white hover:bg-[#912018] focus-visible:ring-[#B42318] px-5 py-2.5 text-body-sm;
+  }
+
+  .input {
+    @apply w-full rounded-btn border border-[#E4E7EC] bg-white px-3 py-2.5 text-body-sm text-[#101828] placeholder:text-[#98A2B3] focus:outline-none focus:border-[#1D4ED8] focus:ring-1 focus:ring-[#1D4ED8] transition-colors;
+  }
+  .input-error {
+    @apply border-[#B42318] focus:border-[#B42318] focus:ring-[#B42318];
+  }
+
+  .status-pill {
+    @apply inline-flex items-center gap-1.5 rounded-pill px-3 py-1 text-meta font-medium whitespace-nowrap;
+  }
+
+  .skeleton {
+    @apply animate-pulse bg-[#E4E7EC] rounded;
+  }
+}
+
+@layer utilities {
+  .tabular-nums {
+    font-feature-settings: "tnum" 1;
+  }
+}

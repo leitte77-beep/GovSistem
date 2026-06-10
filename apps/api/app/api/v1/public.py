@@ -61,12 +61,20 @@ def _public_pdf_path(edition: Edition) -> str | None:
     if edition.signed_pdf_path:
         for signature in edition.signatures or []:
             certificate_info = signature.certificate_info or {}
-            signed_path = Path(settings.UPLOAD_DIR) / edition.signed_pdf_path
-            if certificate_info.get("sha256_signed") == edition.pdf_hash and signed_path.exists():
-                return edition.signed_pdf_path
-    if edition.pdf_path and (Path(settings.UPLOAD_DIR) / edition.pdf_path).exists():
-        return edition.pdf_path
-    return edition.pdf_path
+            if certificate_info.get("sha256_signed") == edition.pdf_hash:
+                signed_path = _resolve_upload_path(edition.signed_pdf_path)
+                if signed_path is not None:
+                    return edition.signed_pdf_path
+                break
+    if edition.pdf_path:
+        pdf_path = _resolve_upload_path(edition.pdf_path)
+        if pdf_path is not None:
+            return edition.pdf_path
+    if edition.signed_pdf_path:
+        signed_path = _resolve_upload_path(edition.signed_pdf_path)
+        if signed_path is not None:
+            return edition.signed_pdf_path
+    return None
 
 
 @router.get("/public/organization")

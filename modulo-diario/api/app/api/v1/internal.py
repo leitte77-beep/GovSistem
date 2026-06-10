@@ -40,12 +40,36 @@ class UserSyncPayload(BaseModel):
     roles: list[str] = Field(default_factory=list)
 
 
+# Roles that exist natively in this module's `roles` table.
+DIARIO_ROLES = {
+    "ADMIN",
+    "AUTOR",
+    "REVISOR",
+    "DIAGRAMADOR",
+    "ASSINADOR",
+    "PUBLICADOR",
+    "AUDITOR",
+}
+
+
 def _module_roles(platform_roles: list[str]) -> set[str]:
+    """Resolve the diário roles for a synced user.
+
+    Preference order:
+    1. If the platform sent explicit diário roles (from per-module grants),
+       use exactly those — this is how granular access is enforced.
+    2. Platform admins always get ADMIN.
+    3. Backward-compatible fallback for users without grants.
+    """
     roles = set(platform_roles)
-    if roles.intersection({"SUPER_ADMIN", "PLATFORM_ADMIN", "ADMIN", "SUPPORT"}):
+    result = roles & DIARIO_ROLES
+    if roles & {"SUPER_ADMIN", "PLATFORM_ADMIN"}:
+        result.add("ADMIN")
+    if result:
+        return result
+    # Fallback for users that have no explicit grants yet.
+    if roles & {"SUPPORT"}:
         return {"ADMIN"}
-    if "AUDITOR" in roles:
-        return {"AUDITOR"}
     return {"AUTOR"}
 
 
@@ -114,21 +138,28 @@ async def sync_user(
         user.email = payload.email
         user.is_active = payload.is_active
 
+    await db.flush()  # ensure user.id is available for new users
+
     module_roles = _module_roles(payload.roles)
     role_result = await db.execute(select(Role).where(Role.name.in_(module_roles)))
     role_by_name = {role.name: role for role in role_result.scalars().all()}
-    for role_name in module_roles:
-        role = role_by_name.get(role_name)
-        if not role:
-            continue
-        exists = await db.execute(
-            select(UserRole).where(
-                UserRole.user_id == user.id,
-                UserRole.role_id == role.id,
-            )
-        )
-        if exists.scalar_one_or_none() is None:
-            db.add(UserRole(user_id=user.id, role_id=role.id))
+    desired_role_ids = {role.id for role in role_by_name.values()}
+
+    # Replace semantics: the platform is the source of truth, so drop any
+    # role the user no longer holds (e.g. revoked ASSINADOR) and add new ones.
+    current_result = await db.execute(
+        select(UserRole).where(UserRole.user_id == user.id)
+    )
+    current_by_role_id = {ur.role_id: ur for ur in current_result.scalars().all()}
+
+    for role_id, user_role in current_by_role_id.items():
+        if role_id not in desired_role_ids:
+            await db.delete(user_role)
+
+    for role_id in desired_role_ids:
+        if role_id not in current_by_role_id:
+            db.add(UserRole(user_id=user.id, role_id=role_id))
+
     await db.commit()
     await db.refresh(user)
     return {"status": "ok", "user_id": str(user.id)}

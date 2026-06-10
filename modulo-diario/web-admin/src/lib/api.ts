@@ -261,6 +261,13 @@ export const api = {
     });
   },
 
+  formatContentWithAI(data: { content: string; act_type?: string; title?: string; summary?: string }) {
+    return request<{ structured_html: string; model: string; notes: string[] }>("/ai/format-content", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
   deleteAttachment(matterId: string, attachmentId: string) {
     return request<void>(`/matters/${matterId}/attachments/${attachmentId}`, {
       method: "DELETE",

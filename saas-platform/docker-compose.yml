@@ -57,7 +57,7 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       SECRET_KEY: ${SECRET_KEY:-dev-saas-secret-key-change-in-production}
-      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-saas}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-123}
       DIARIO_MODULE_INTERNAL_API_URL: http://host.docker.internal:9201/api/v1
       DIARIO_MODULE_ADMIN_URL: https://doe-admin.govsistem.com.br
       CORS_ORIGINS: '["http://localhost:9002","http://localhost:9202","https://doe-admin.govsistem.com.br"]'
@@ -72,6 +72,18 @@ services:
       FISCAL_ENV: ${FISCAL_ENV:-sandbox}
       FOCUS_NFE_LOGIN: ${FOCUS_NFE_LOGIN:-}
       FOCUS_NFE_TOKEN: ${FOCUS_NFE_TOKEN:-}
+      CHATGOV_MODULE_INTERNAL_API_URL: http://host.docker.internal:3050/api
+      CHATGOV_MODULE_ADMIN_URL: https://chatgov.govsistem.com.br
+      GOVTASK_MODULE_INTERNAL_API_URL: http://host.docker.internal:8101/api/govtask
+      GOVTASK_MODULE_ADMIN_URL: https://govtask.govsistem.com.br
+      GOUVOVE_MODULE_INTERNAL_API_URL: http://host.docker.internal:8201/api/govouve
+      GOUVOVE_MODULE_ADMIN_URL: https://govouve.govsistem.com.br
+      SMTP_HOST: ${SMTP_HOST:-smtp.hostinger.com}
+      SMTP_PORT: ${SMTP_PORT:-465}
+      SMTP_USER: ${SMTP_USER:-contato@govsistem.com.br}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-contato@govsistem.com.br}
+      SMTP_USE_SSL: ${SMTP_USE_SSL:-true}
       FOCUS_BASE_URL_SANDBOX: ${FOCUS_BASE_URL_SANDBOX:-https://homologacao.focusnfe.com.br}
       FOCUS_BASE_URL_PRODUCTION: ${FOCUS_BASE_URL_PRODUCTION:-https://api.focusnfe.com.br}
     ports:

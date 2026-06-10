@@ -1,4 +1,5 @@
 .PHONY: dev dev-up dev-build test lint migrate migrate-create clean down staging staging-up prod-up deploy-staging deploy-prod
+.PHONY: chatgov-up chatgov-down chatgov-build chatgov-dev
 
 dev:
 	docker compose -f infra/docker-compose.yml up
@@ -95,3 +96,17 @@ deploy-staging:
 
 deploy-prod:
 	bash scripts/deploy-production.sh
+
+# ── ChatGov ─────────────────────────────────────────────────────────────────────
+
+chatgov-up:
+	docker compose -f modulo-chatgov/docker-compose.yml up -d --build
+
+chatgov-down:
+	docker compose -f modulo-chatgov/docker-compose.yml down
+
+chatgov-build:
+	docker compose -f modulo-chatgov/docker-compose.yml build
+
+chatgov-dev:
+	cd modulo-chatgov/backend && npm install && node src/migrations/run.js && node src/index.js

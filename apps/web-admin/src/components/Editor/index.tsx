@@ -6,71 +6,30 @@ import { useEffect, useRef, useState } from "react";
 import { extensions } from "./extensions";
 import Toolbar from "./Toolbar";
 import { stripWordMso } from "@/lib/sanitize";
+import { autoformatHtml, plainTextToStructuredHtml } from "@/lib/contentAutoformat";
+import { api } from "@/lib/api";
 import HtmlPreview from "../Matter/HtmlPreview";
 
 interface EditorProps {
   content: string;
   onChange: (html: string) => void;
   onCleanWarnings?: (warnings: string[]) => void;
-}
-
-function textToHtml(text: string): string {
-  const blocks = text.replace(/\r\n?/g, "\n").split(/\n{2,}/);
-
-  return blocks
-    .map((block) => {
-      const lines = block.split("\n").filter((line) => line.trim().length > 0);
-
-      if (isTabularTextBlock(lines)) {
-        return tabularTextToHtmlTable(lines);
-      }
-
-      return `<p>${escapeHtml(block).replace(/\n/g, "<br>")}</p>`;
-    })
-    .join("");
-}
-
-function escapeHtml(text: string): string {
-  return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function isTabularTextBlock(lines: string[]): boolean {
-  if (lines.length < 2) return false;
-  return lines.every((line) => line.split("\t").filter(Boolean).length >= 2);
+  aiContext?: {
+    actType?: string;
+    title?: string;
+    summary?: string;
+  };
 }
 
 function hasTabularText(text: string): boolean {
   return text
     .replace(/\r\n?/g, "\n")
     .split(/\n{2,}/)
-    .some((block) => isTabularTextBlock(block.split("\n").filter((line) => line.trim().length > 0)));
+    .some((block) => block.split("\n").filter((line) => line.trim().length > 0).some((line) => line.includes("\t")));
 }
 
-function tabularTextToHtmlTable(lines: string): string;
-function tabularTextToHtmlTable(lines: string[]): string;
-function tabularTextToHtmlTable(lines: string | string[]): string {
-  const rows = Array.isArray(lines)
-    ? lines
-    : lines.replace(/\r\n?/g, "\n").split("\n").filter((line) => line.trim().length > 0);
-
-  const cells = rows.map((line) => line.split("\t").map((cell) => cell.trim()));
-  const columnCount = Math.max(...cells.map((row) => row.length));
-
-  const tableRows = cells
-    .map((row) => {
-      const tableCells = Array.from({ length: columnCount }, (_, index) => {
-        const value = escapeHtml(row[index] ?? "").replace(/\n/g, "<br>");
-        return `<td><p>${value || "<br>"}</p></td>`;
-      }).join("");
-
-      return `<tr>${tableCells}</tr>`;
-    })
-    .join("");
-
-  return `<table><tbody>${tableRows}</tbody></table>`;
+function htmlLooksStructured(html: string): boolean {
+  return /<(table|thead|tbody|tr|td|th|h[1-6]|ul|ol|blockquote|pre|img|figure)[\s>]/i.test(html);
 }
 
 function normalizePastedTables(html: string): string {
@@ -117,8 +76,9 @@ function normalizePastedTables(html: string): string {
   return doc.body.innerHTML;
 }
 
-export default function Editor({ content, onChange, onCleanWarnings }: EditorProps) {
+export default function Editor({ content, onChange, onCleanWarnings, aiContext }: EditorProps) {
   const [showPreview, setShowPreview] = useState(false);
+  const [aiBusy, setAiBusy] = useState(false);
   const isInternalUpdate = useRef(false);
 
   const editor = useEditor({
@@ -142,16 +102,12 @@ export default function Editor({ content, onChange, onCleanWarnings }: EditorPro
 
         const isOfficeHtml = /mso-|Mso|class="[^"]*Mso/i.test(html)
           || /<table[^>]*(?:xmlns|x:)/i.test(html);
-        const cleanHtml = html
-          ? normalizePastedTables(isOfficeHtml ? stripWordMso(html) : html)
-          : "";
-        const shouldUseTextTableFallback = Boolean(
-          text
-            && hasTabularText(text)
-        );
-        const contentToInsert = shouldUseTextTableFallback
-          ? textToHtml(text)
-          : cleanHtml || textToHtml(text);
+        const cleanHtml = html ? normalizePastedTables(isOfficeHtml ? stripWordMso(html) : html) : "";
+        const contentToInsert = cleanHtml && htmlLooksStructured(cleanHtml)
+          ? cleanHtml
+          : text
+            ? plainTextToStructuredHtml(text)
+            : autoformatHtml(cleanHtml);
 
         const element = document.createElement("div");
         element.innerHTML = contentToInsert;
@@ -159,11 +115,11 @@ export default function Editor({ content, onChange, onCleanWarnings }: EditorPro
         view.focus();
         view.dispatch(view.state.tr.replaceSelection(slice).scrollIntoView());
 
-        if (isOfficeHtml) {
+        if (isOfficeHtml || hasTabularText(text)) {
           const warnings: string[] = [];
           if (/mso-|Mso/i.test(html)) warnings.push("Formatação Word limpa");
           if (/<table[^>]*(?:xmlns|x:)/i.test(html)) warnings.push("Tabela Excel preservada");
-          if (shouldUseTextTableFallback) warnings.push("Tabela do Word reconstruída");
+          if (hasTabularText(text)) warnings.push("Tabela reconstruída");
           onCleanWarnings?.(warnings);
         }
 
@@ -192,9 +148,40 @@ export default function Editor({ content, onChange, onCleanWarnings }: EditorPro
 
   if (!editor) return null;
 
+  const handleAutoFormat = () => {
+    const structured = plainTextToStructuredHtml(editor.getText({ blockSeparator: "\n" }));
+    editor.commands.setContent(structured, false);
+    onChange(structured);
+  };
+
+  const handleAiFormat = async () => {
+    setAiBusy(true);
+    try {
+      const result = await api.formatContentWithAI({
+        content: editor.getHTML(),
+        act_type: aiContext?.actType,
+        title: aiContext?.title,
+        summary: aiContext?.summary,
+      });
+      editor.commands.setContent(result.structured_html, false);
+      onChange(result.structured_html);
+      if (result.notes.length > 0) {
+        onCleanWarnings?.(result.notes);
+      }
+    } finally {
+      setAiBusy(false);
+    }
+  };
+
   return (
     <div className="min-h-[400px]">
-      <Toolbar editor={editor} onPreview={() => setShowPreview(true)} />
+      <Toolbar
+        editor={editor}
+        onPreview={() => setShowPreview(true)}
+        onAutoFormat={handleAutoFormat}
+        onAiFormat={handleAiFormat}
+        aiBusy={aiBusy}
+      />
       <EditorContent editor={editor} />
       <HtmlPreview
         open={showPreview}

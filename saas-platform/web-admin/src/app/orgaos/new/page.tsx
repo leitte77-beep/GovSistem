@@ -1,9 +1,8 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import AppLayout from "@/components/layout/AppLayout";
-import AddressForm from "@/components/address/AddressForm";
-import type { AddressFields } from "@/components/address/AddressForm";
+import AddressForm, { type AddressFields } from "@/components/address/AddressForm";
 import api from "@/lib/api";
 import toast from "react-hot-toast";
 
@@ -29,6 +28,12 @@ interface FormData {
   admin_password: string;
 }
 
+interface ModuleItem {
+  id: string;
+  name: string;
+  slug: string;
+}
+
 const emptyForm: FormData = {
   name: "", slug: "", cnpj: "", description: "", email: "", phone: "",
   public_url: "", plan_slug: "", is_active: true,
@@ -36,11 +41,6 @@ const emptyForm: FormData = {
   address_neighborhood: "", address_city: "", address_state: "", address_zip: "",
   admin_name: "", admin_email: "", admin_password: "",
 };
-
-const addressFields: (keyof AddressFields)[] = [
-  "address_street", "address_number", "address_complement",
-  "address_neighborhood", "address_city", "address_state", "address_zip",
-];
 
 function formToAddress(form: FormData): AddressFields {
   return {
@@ -54,16 +54,18 @@ function formToAddress(form: FormData): AddressFields {
   };
 }
 
-function addressToForm(addr: AddressFields, form: FormData): FormData {
-  const updated = { ...form };
-  addressFields.forEach((f) => { (updated as any)[f] = addr[f]; });
-  return updated;
-}
-
 export default function NewOrganizacaoPage() {
   const router = useRouter();
   const [form, setForm] = useState<FormData>(emptyForm);
   const [saving, setSaving] = useState(false);
+  const [modules, setModules] = useState<ModuleItem[]>([]);
+  const [selectedModuleIds, setSelectedModuleIds] = useState<string[]>([]);
+
+  useEffect(() => {
+    api<ModuleItem[]>("/modules?is_active=true")
+      .then((r) => setModules(Array.isArray(r) ? r : []))
+      .catch(() => {});
+  }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -74,11 +76,30 @@ export default function NewOrganizacaoPage() {
     }
   };
 
+  const toggleModule = (moduleId: string) => {
+    setSelectedModuleIds((prev) =>
+      prev.includes(moduleId) ? prev.filter((id) => id !== moduleId) : [...prev, moduleId]
+    );
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
     try {
-      await api("/organizations", { method: "POST", body: form });
+      const res = await api<any>("/organizations", { method: "POST", body: form });
+      const orgId = res.id;
+
+      if (orgId && selectedModuleIds.length > 0) {
+        for (const moduleId of selectedModuleIds) {
+          try {
+            await api("/modules/organization", {
+              method: "POST",
+              body: { organization_id: orgId, module_id: moduleId },
+            });
+          } catch {}
+        }
+      }
+
       toast.success("Organização criada com sucesso!");
       router.push("/orgaos");
     } catch (err: any) {
@@ -152,6 +173,43 @@ export default function NewOrganizacaoPage() {
                   <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#002b54]" />
                 </label>
                 <span className="text-sm font-semibold text-slate-700">Organização ativa</span>
+              </div>
+            </div>
+          </section>
+
+          <section className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+            <div className="px-8 py-6 border-b border-slate-100 bg-slate-50/50">
+              <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" style={{ color: "#002b54" }}><path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" /></svg>
+                Módulos
+              </h3>
+            </div>
+            <div className="p-8">
+              <p className="text-sm text-slate-500 mb-4">Selecione os módulos que esta organização poderá acessar.</p>
+              <div className="flex flex-wrap gap-3">
+                {modules.length === 0 && (
+                  <p className="text-sm text-slate-400">Nenhum módulo ativo encontrado.</p>
+                )}
+                {modules.map((mod) => {
+                  const selected = selectedModuleIds.includes(mod.id);
+                  return (
+                    <button
+                      key={mod.id}
+                      type="button"
+                      onClick={() => toggleModule(mod.id)}
+                      className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                        selected
+                          ? "bg-emerald-50 border-emerald-300 text-emerald-700"
+                          : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
+                      }`}
+                    >
+                      {selected && (
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" /></svg>
+                      )}
+                      {mod.name}
+                    </button>
+                  );
+                })}
               </div>
             </div>
           </section>

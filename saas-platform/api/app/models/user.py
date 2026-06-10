@@ -11,6 +11,7 @@ from app.models.base import Base, SoftDeleteMixin, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.organization import Organization
+    from app.models.user_module_grant import UserModuleGrant
 
 
 class User(Base, TimestampMixin, SoftDeleteMixin):
@@ -35,6 +36,8 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
     password_changed_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     password_failures: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     locked_until: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    reset_token: Mapped[Optional[str]] = mapped_column(String(255), unique=True, nullable=True)
+    reset_token_expires_at: Mapped[Optional[datetime]] = mapped_column(nullable=True)
     cpf: Mapped[Optional[str]] = mapped_column(String(11), unique=True, nullable=True)
     phone: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     avatar_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
@@ -43,4 +46,10 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
 
     organization: Mapped[Optional["Organization"]] = relationship(
         "Organization", back_populates="users"
+    )
+    module_grants: Mapped[List["UserModuleGrant"]] = relationship(
+        "UserModuleGrant",
+        back_populates="user",
+        lazy="selectin",
+        cascade="all, delete-orphan",
     )

@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.act_types import router as act_types_router
+from app.api.v1.ai_formatter import router as ai_formatter_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.backup import router as backup_router
 from app.api.v1.editions import router as editions_router
@@ -26,6 +27,7 @@ api_router.include_router(internal_router, tags=["internal"])
 api_router.include_router(auth_router)
 api_router.include_router(backup_router)
 api_router.include_router(act_types_router)
+api_router.include_router(ai_formatter_router)
 api_router.include_router(org_units_router)
 api_router.include_router(plans_router)
 api_router.include_router(editions_router)

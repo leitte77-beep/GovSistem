@@ -3,7 +3,6 @@
 import math
 import uuid
 from datetime import date, datetime
-from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -38,18 +37,14 @@ from .schemas import (
 router = APIRouter(tags=["Public API v1"])
 
 PUBLIC_URL = settings.PUBLIC_URL or "http://localhost:7200"
-UPLOAD_DIR = Path(settings.UPLOAD_DIR)
 
 
 def _public_pdf_path(edition: Edition) -> Optional[str]:
     if edition.signed_pdf_path:
         for signature in edition.signatures or []:
             certificate_info = signature.certificate_info or {}
-            signed_path = UPLOAD_DIR / edition.signed_pdf_path
-            if certificate_info.get("sha256_signed") == edition.pdf_hash and signed_path.exists():
+            if certificate_info.get("sha256_signed") == edition.pdf_hash:
                 return edition.signed_pdf_path
-    if edition.pdf_path and (UPLOAD_DIR / edition.pdf_path).exists():
-        return edition.pdf_path
     return edition.pdf_path
 
 

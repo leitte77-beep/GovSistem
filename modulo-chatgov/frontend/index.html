@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+
+<html class="light" lang="pt-BR">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Central de Atendimento | GovSistem</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+            darkMode: "class",
+            theme: {
+                extend: {
+                    "colors": {
+                        "primary": "#2563eb",
+                        "on-primary": "#ffffff",
+                        "primary-container": "#dbeafe",
+                        "on-primary-container": "#1e40af",
+                        "background": "#f0f2f5",
+                        "surface": "#ffffff",
+                        "on-background": "#191c1e",
+                        "on-surface": "#191c1e",
+                        "surface-variant": "#f0f2f5",
+                        "on-surface-variant": "#54656f",
+                        "outline-variant": "#d1d7db",
+                        "tertiary-fixed": "#25d366",
+                        "on-tertiary-fixed-variant": "#004a1c",
+                        "error": "#ba1a1a",
+                        "surface-container-low": "#f2f4f6",
+                        "surface-container": "#ffffff",
+                        "surface-container-high": "#e9edef"
+                    },
+                    "borderRadius": {
+                        "DEFAULT": "0.25rem",
+                        "lg": "0.5rem",
+                        "xl": "0.75rem",
+                        "full": "9999px"
+                    },
+                    "fontFamily": {
+                        "body-md": ["Inter"],
+                        "headline-sm": ["Inter"],
+                        "display-lg": ["Inter"]
+                    }
+                },
+            },
+        }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body { font-family: 'Inter', sans-serif; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+        .chat-pattern {
+            background-color: #f0f2f5;
+            background-image: radial-gradient(#d1d7db 0.5px, transparent 0.5px);
+            background-size: 20px 20px;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body, #root { height: 100%; }
+        #root { flex: 1; min-width: 0; overflow: hidden; }
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-thumb { background: #D5DBE5; border-radius: 8px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .spin { animation: spin 0.8s linear infinite; }
+    </style>
+</head>
+<body class="bg-background text-on-background antialiased flex overflow-hidden h-screen">
+<div id="root"></div>
+<script type="module" src="/src/main.jsx"></script>
+<script>
+        document.querySelectorAll('button').forEach(function(btn) {
+            btn.addEventListener('click', function() { btn.classList.add('opacity-70'); setTimeout(function() { btn.classList.remove('opacity-70'); }, 100); });
+        });
+    </script>
+</body></html>

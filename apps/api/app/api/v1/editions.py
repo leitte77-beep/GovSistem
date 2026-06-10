@@ -525,7 +525,7 @@ async def sign_edition(
     generated = generate_edition_pdf_sync(edition_id=str(edition_id))
     edition.pdf_path = generated["filename"]
     edition.pdf_hash = generated["sha256"]
-    pdf_full_path = os.path.join(api_settings.UPLOAD_DIR, "pdf", edition.pdf_path)
+    pdf_full_path = os.path.join(api_settings.UPLOAD_DIR, edition.pdf_path)
 
     from app.providers.antivirus import NoopVirusScanner
     NoopVirusScanner()
@@ -535,7 +535,7 @@ async def sign_edition(
         generated = generate_edition_pdf_sync(edition_id=str(edition_id))
         edition.pdf_path = generated["filename"]
         edition.pdf_hash = generated["sha256"]
-        pdf_full_path = os.path.join(api_settings.UPLOAD_DIR, "pdf", edition.pdf_path)
+        pdf_full_path = os.path.join(api_settings.UPLOAD_DIR, edition.pdf_path)
 
     if not file_os.path.exists(pdf_full_path):
         raise HTTPException(404, "PDF file not found in storage")

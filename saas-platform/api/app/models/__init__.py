@@ -59,6 +59,7 @@ from app.models.subscription import Subscription
 from app.models.subscription_event import SubscriptionEvent
 from app.models.supplier import Supplier
 from app.models.user import User
+from app.models.user_module_grant import UserModuleGrant
 
 __all__ = [
     "Base",
@@ -122,4 +123,5 @@ __all__ = [
     "SubscriptionEvent",
     "Supplier",
     "User",
+    "UserModuleGrant",
 ]

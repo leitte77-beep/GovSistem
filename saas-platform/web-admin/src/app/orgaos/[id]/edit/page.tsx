@@ -3,11 +3,12 @@ import React, { useEffect, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import AppLayout from "@/components/layout/AppLayout";
 import AddressForm from "@/components/address/AddressForm";
-import type { AddressFields } from "@/components/address/AddressForm";
 import Modal from "@/components/ui/Modal";
+import Badge from "@/components/ui/Badge";
 import api from "@/lib/api";
 import toast from "react-hot-toast";
 import Spinner from "@/components/ui/Spinner";
+import { Power } from "lucide-react";
 
 interface FormData {
   name: string;
@@ -26,6 +27,20 @@ interface FormData {
   is_active: boolean;
 }
 
+interface ModuleItem {
+  id: string;
+  name: string;
+  slug: string;
+}
+
+interface AssignedModule {
+  id: string;
+  module_id: string;
+  organization_id: string;
+  is_active: boolean;
+  module?: ModuleItem;
+}
+
 export default function EditOrganizacaoPage() {
   const router = useRouter();
   const params = useParams();
@@ -35,10 +50,17 @@ export default function EditOrganizacaoPage() {
   const [saving, setSaving] = useState(false);
   const [showDelete, setShowDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [modules, setModules] = useState<ModuleItem[]>([]);
+  const [assignedModules, setAssignedModules] = useState<AssignedModule[]>([]);
+  const [assigning, setAssigning] = useState(false);
 
   useEffect(() => {
-    api<any>(`/organizations/${id}`)
-      .then((data) => {
+    Promise.all([
+      api<any>(`/organizations/${id}`),
+      api<ModuleItem[]>("/modules?is_active=true"),
+      api<AssignedModule[]>(`/modules/organization/${id}`).catch(() => [] as AssignedModule[]),
+    ])
+      .then(([data, mods, assigned]) => {
         setForm({
           name: data.name || "",
           slug: data.slug || "",
@@ -55,8 +77,10 @@ export default function EditOrganizacaoPage() {
           address_zip: data.address_zip || "",
           is_active: data.is_active ?? true,
         });
+        setModules(Array.isArray(mods) ? mods : []);
+        setAssignedModules(Array.isArray(assigned) ? assigned : []);
       })
-      .catch(() => toast.error("Erro ao carregar organização"))
+      .catch(() => toast.error("Erro ao carregar dados"))
       .finally(() => setLoading(false));
   }, [id]);
 
@@ -97,6 +121,29 @@ export default function EditOrganizacaoPage() {
     }
   };
 
+  const toggleModule = async (moduleId: string) => {
+    setAssigning(true);
+    try {
+      const existing = assignedModules.find((a) => a.module_id === moduleId);
+      if (existing) {
+        await api(`/modules/organization/${existing.id}`, { method: "DELETE" });
+        setAssignedModules((prev) => prev.filter((a) => a.id !== existing.id));
+        toast.success("Módulo desassociado");
+      } else {
+        const res = await api<AssignedModule>("/modules/organization", {
+          method: "POST",
+          body: { organization_id: id, module_id: moduleId },
+        });
+        setAssignedModules((prev) => [...prev, res]);
+        toast.success("Módulo associado");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao alterar associação");
+    } finally {
+      setAssigning(false);
+    }
+  };
+
   const inputClass = "w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-[#002b54]/5 focus:border-[#002b54]/30 focus:bg-white bg-white outline-none text-sm transition-all";
   const labelClass = "block text-sm font-semibold text-slate-700 mb-1.5";
 
@@ -115,6 +162,8 @@ export default function EditOrganizacaoPage() {
       </AppLayout>
     );
   }
+
+  const assignedModuleIds = new Set(assignedModules.map((a) => a.module_id));
 
   return (
     <AppLayout title="Editar Organização">
@@ -182,6 +231,45 @@ export default function EditOrganizacaoPage() {
                 <input type="checkbox" name="is_active" checked={form.is_active} onChange={handleChange} className="rounded border-slate-300 text-[#002b54] focus:ring-[#002b54]/20" />
                 <span className="text-sm font-semibold text-slate-700">Ativo</span>
               </label>
+            </div>
+          </div>
+
+          <div className="bg-white rounded-3xl border border-slate-200/60 p-8">
+            <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-3">
+              <svg className="w-5 h-5" style={{ color: "#002b54" }} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" /></svg>
+              Módulos
+            </h3>
+            <p className="text-sm text-slate-500 mb-4">Ative ou desative os módulos disponíveis para esta organização.</p>
+            <div className="space-y-2 max-h-80 overflow-y-auto">
+              {modules.length === 0 && (
+                <p className="text-sm text-slate-400 text-center py-4">Nenhum módulo ativo encontrado.</p>
+              )}
+              {modules.map((mod) => {
+                const isAssigned = assignedModuleIds.has(mod.id);
+                return (
+                  <div key={mod.id} className="flex items-center justify-between p-3 border rounded-xl hover:bg-slate-50 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium text-slate-700">{mod.name}</span>
+                      <Badge variant={isAssigned ? "success" : "warning"}>
+                        {isAssigned ? "Ativo" : "Inativo"}
+                      </Badge>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={assigning}
+                      onClick={() => toggleModule(mod.id)}
+                      className={`p-2 rounded-lg transition-colors ${
+                        isAssigned
+                          ? "bg-emerald-100 text-emerald-600 hover:bg-emerald-200"
+                          : "bg-slate-100 text-slate-400 hover:bg-slate-200"
+                      }`}
+                      title={isAssigned ? "Desativar módulo" : "Ativar módulo"}
+                    >
+                      <Power size={18} className={isAssigned ? "fill-emerald-600" : ""} />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           </div>
 

@@ -29,7 +29,9 @@ class LocalStorage(StorageBackend):
 
     async def store(self, path: str, content: bytes) -> str:
         full_path = os.path.join(self.base_path, path)
-        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+        directory = os.path.dirname(full_path)
+        if directory:
+            os.makedirs(directory, exist_ok=True)
         with open(full_path, "wb") as f:
             f.write(content)
         return path

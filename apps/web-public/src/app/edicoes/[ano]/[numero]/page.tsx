@@ -15,6 +15,7 @@ const MONTHS = [
   "JANEIRO", "FEVEREIRO", "MARÇO", "ABRIL", "MAIO", "JUNHO",
   "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO",
 ];
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "/api/v1").replace(/\/api\/v1\/?$/, "/api/v1");
 
 function formatHeaderDate(value: string) {
   const date = new Date(`${value}T12:00:00`);
@@ -24,6 +25,14 @@ function formatHeaderDate(value: string) {
 function certificateName(subject?: string) {
   const cn = subject?.match(/CN=([^,]+)/)?.[1] || subject || "MUNICÍPIO DE FAROL";
   return cn.split(":")[0].trim().replace(/^MUNICIPIO\b/i, "MUNICÍPIO").toUpperCase();
+}
+
+function toDirectPdfUrl(pdfUrl: string) {
+  if (pdfUrl.startsWith("/api/download/")) {
+    const filePath = pdfUrl.replace(/^\/api\/download\//, "");
+    return `${API_BASE}/public/download/${filePath}`;
+  }
+  return pdfUrl;
 }
 
 export default function EditionDetailPage() {
@@ -73,6 +82,7 @@ export default function EditionDetailPage() {
 
   const signature = data.signatures?.[0];
   const verificationCode = data.verification_code || signature?.verification_code;
+  const directPdfUrl = data.pdf_url ? toDirectPdfUrl(data.pdf_url) : null;
 
   return (
     <main className="w-full mx-auto px-gutter py-stack-lg min-h-screen">
@@ -85,10 +95,10 @@ export default function EditionDetailPage() {
           </p>
         </div>
         <div className="flex gap-3">
-          {data.pdf_url && (
+          {directPdfUrl && (
             <>
               <a
-                href={`${data.pdf_url}${data.pdf_url.includes("?") ? "&" : "?"}inline=1`}
+                href={`${directPdfUrl}${directPdfUrl.includes("?") ? "&" : "?"}inline=1`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex items-center gap-2 px-6 py-2.5 bg-primary text-on-primary font-bold rounded hover:opacity-90 transition-all"
@@ -97,7 +107,7 @@ export default function EditionDetailPage() {
                 <span className="text-label-md font-label-md">Visualizar PDF</span>
               </a>
               <a
-                href={data.pdf_url}
+                href={directPdfUrl}
                 download
                 className="flex items-center gap-2 px-6 py-2.5 bg-surface-container-high border border-outline-variant text-primary font-bold rounded hover:bg-surface-container-highest transition-all"
               >
@@ -129,7 +139,7 @@ export default function EditionDetailPage() {
         </div>
       </div>
 
-      {data.pdf_url && (
+      {directPdfUrl && (
         <section className="flex flex-col xl:flex-row gap-5 mb-stack-lg no-print max-w-[1680px] mx-auto">
           {signature && (
             <aside className="w-full xl:w-72 2xl:w-80 shrink-0 xl:order-first">
@@ -202,14 +212,14 @@ export default function EditionDetailPage() {
           <div className="bg-white flex-1 min-w-0 min-h-[calc(100vh-220px)] shadow-lg border border-outline-variant/30 rounded-lg overflow-hidden">
             <iframe
               title={`PDF oficial da edição ${data.number}/${data.year}`}
-              src={`${data.pdf_url}${data.pdf_url.includes("?") ? "&" : "?"}inline=1`}
+              src={`${directPdfUrl}${directPdfUrl.includes("?") ? "&" : "?"}inline=1`}
               className="w-full h-full min-h-[calc(100vh-220px)]"
             />
           </div>
         </section>
       )}
 
-      <article className={`bg-white mx-auto max-w-[900px] min-h-[1200px] p-8 md:p-16 flex flex-col shadow-lg border border-outline-variant/30 ${data.pdf_url ? "print-only" : ""}`}>
+      <article className={`bg-white mx-auto max-w-[900px] min-h-[1200px] p-8 md:p-16 flex flex-col shadow-lg border border-outline-variant/30 ${directPdfUrl ? "print-only" : ""}`}>
         {/* Document Header */}
         <header className="text-center mb-10 pb-8 border-b-2 border-primary-container">
           <div className="flex justify-center mb-6">

@@ -2,10 +2,9 @@
 import React, { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import AppLayout from "@/components/layout/AppLayout";
-import Card from "@/components/ui/Card";
 import api from "@/lib/api";
 import toast from "react-hot-toast";
-import { Save, ArrowLeft, Loader2 } from "lucide-react";
+import { Save, ArrowLeft, Loader2, User, Shield, Puzzle } from "lucide-react";
 import Link from "next/link";
 
 interface Organization {
@@ -13,38 +12,68 @@ interface Organization {
   name: string;
 }
 
-const roles = [
-  { value: "SUPER_ADMIN", label: "Super Admin" },
-  { value: "PLATFORM_ADMIN", label: "Admin da Plataforma" },
-  { value: "BILLING_MANAGER", label: "Gestor de Cobranca" },
-  { value: "SUPPORT", label: "Suporte" },
-  { value: "AUDITOR", label: "Auditor" },
-];
-
-export default function NewUsuarioPage() {
-  const router = useRouter();
 interface Module {
   id: string;
   slug: string;
   name: string;
 }
 
-const ALL_MODULES: Module[] = [
-  { id: "diario", slug: "diario", name: "Diário Oficial" },
-  { id: "financeiro", slug: "financeiro", name: "Financeiro" },
+interface RoleCatalogItem {
+  name: string;
+  label: string;
+}
+
+type RoleCatalog = Record<string, RoleCatalogItem[]>;
+type Grants = Record<string, string[]>;
+
+const platformRoles = [
+  { value: "", label: "Selecione o nivel de acesso..." },
+  { value: "SUPER_ADMIN", label: "Super Admin — acesso total a plataforma" },
+  { value: "PLATFORM_ADMIN", label: "Admin da Plataforma — gerencia usuarios e orgaos" },
+  { value: "BILLING_MANAGER", label: "Gestor de Cobranca — gerencia planos e faturas" },
+  { value: "SUPPORT", label: "Suporte — atende tickets e auxilia usuarios" },
+  { value: "AUDITOR", label: "Auditor — consulta logs e auditoria" },
 ];
 
+const MODULE_ICONS: Record<string, string> = {
+  diario: "📰",
+  financeiro: "💰",
+  chatgov: "💬",
+  govtask: "📋",
+  govouve: "📢",
+};
+
+export default function NewUsuarioPage() {
+  const router = useRouter();
   const [form, setForm] = useState({
     name: "", email: "", password: "", cpf: "", phone: "",
     is_platform_admin: false, is_organization_admin: false, platform_role: "", organization_id: "",
     is_active: true, module_permissions: [] as string[],
   });
   const [orgs, setOrgs] = useState<Organization[]>([]);
+  const [modules, setModules] = useState<Module[]>([]);
+  const [catalog, setCatalog] = useState<RoleCatalog>({});
+  const [grants, setGrants] = useState<Grants>({});
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     api<{ data: Organization[] }>("/organizations?limit=200").then((r) => setOrgs(r.data)).catch(() => {});
+    api<Module[]>("/modules?is_active=true").then((r) => setModules(r || [])).catch(() => {});
+    api<RoleCatalog>("/users/roles/catalog").then((r) => setCatalog(r || {})).catch(() => {});
   }, []);
+
+  const toggleRole = (slug: string, role: string) => {
+    setGrants((prev) => {
+      const current = prev[slug] || [];
+      const updated = current.includes(role)
+        ? current.filter((r) => r !== role)
+        : [...current, role];
+      const next = { ...prev };
+      if (updated.length > 0) next[slug] = updated;
+      else delete next[slug];
+      return next;
+    });
+  };
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -59,13 +88,17 @@ const ALL_MODULES: Module[] = [
     e.preventDefault();
     setSaving(true);
     try {
+      const moduleSlugs = Object.keys(grants).filter((s) => (grants[s] || []).length > 0);
       const body = {
         ...form,
         cpf: form.cpf.replace(/\D/g, "") || undefined,
         organization_id: form.organization_id || null,
-        module_permissions: form.module_permissions.length > 0 ? form.module_permissions : undefined,
+        module_permissions: moduleSlugs.length > 0 ? moduleSlugs : undefined,
       };
-      await api("/users", { method: "POST", body });
+      const created = await api<{ id: string }>("/users", { method: "POST", body });
+      if (created?.id && moduleSlugs.length > 0) {
+        await api(`/users/${created.id}/grants`, { method: "PUT", body: { grants } });
+      }
       toast.success("Usuario criado com sucesso!");
       router.push("/usuarios");
     } catch (err: any) {
@@ -75,28 +108,58 @@ const ALL_MODULES: Module[] = [
     }
   };
 
-  const inputClass = "w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-primary-500 focus:border-primary-500 outline-none text-sm";
+  const inputClass = "w-full px-4 py-3 border border-outline-variant bg-white rounded-lg focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none text-sm text-on-surface placeholder:text-on-surface-variant/60 transition-colors";
+  const labelClass = "block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-1.5";
+
+  const activeModules = modules.filter((mod) => (catalog[mod.slug] || []).length > 0);
 
   return (
     <AppLayout title="Novo Usuario">
-      <div className="max-w-3xl">
-        <form onSubmit={handleSubmit}>
-          <Card title="Dados do Usuario">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Nome *</label>
-                <input name="name" value={form.name} onChange={handleChange} required className={inputClass} />
+      <form onSubmit={handleSubmit} className="max-w-4xl">
+        {/* Page Header */}
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-2xl font-extrabold text-on-surface tracking-tight">Novo Usuario</h1>
+            <p className="text-body-sm text-on-surface-variant mt-1">
+              Crie um novo perfil de acesso ao sistema governamental.
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <Link
+              href="/usuarios"
+              className="px-5 py-2.5 border border-outline-variant rounded-lg text-sm font-semibold text-on-surface-variant hover:bg-surface-container-low transition-colors flex items-center gap-2"
+            >
+              <ArrowLeft size={16} /> Cancelar
+            </Link>
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-6 py-2.5 bg-primary-600 text-white rounded-lg text-sm font-semibold hover:bg-primary-700 active:scale-[0.98] transition-all shadow-md shadow-primary-600/20 disabled:opacity-50 flex items-center gap-2"
+            >
+              {saving ? <Loader2 size={17} className="animate-spin" /> : <Save size={17} />}
+              {saving ? "Salvando..." : "Salvar Usuario"}
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-6">
+          {/* Section 1: Informações Pessoais */}
+          <div className="bg-white/80 backdrop-blur-sm border border-outline-variant rounded-xl p-6 sm:p-8 shadow-sm">
+            <div className="flex items-center gap-2 mb-5 pb-4 border-b border-outline-variant">
+              <User size={20} className="text-primary-600" />
+              <h3 className="text-lg font-bold text-on-surface">Informacoes Pessoais</h3>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+              <div className="sm:col-span-2">
+                <label className={labelClass}>Nome Completo *</label>
+                <input name="name" value={form.name} onChange={handleChange} required className={inputClass} placeholder="Ex: Joao da Silva" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
-                <input name="email" type="email" value={form.email} onChange={handleChange} required className={inputClass} />
+                <label className={labelClass}>E-mail Corporativo *</label>
+                <input name="email" type="email" value={form.email} onChange={handleChange} required className={inputClass} placeholder="email@gov.br" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Senha *</label>
-                <input name="password" type="password" value={form.password} onChange={handleChange} required className={inputClass} />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">CPF</label>
+                <label className={labelClass}>CPF *</label>
                 <input name="cpf" value={form.cpf} onChange={(e) => {
                   const digits = e.target.value.replace(/\D/g, "");
                   const masked = digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4").slice(0, 14);
@@ -104,74 +167,131 @@ const ALL_MODULES: Module[] = [
                 }} placeholder="000.000.000-00" maxLength={14} className={inputClass} />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Telefone</label>
-                <input name="phone" value={form.phone} onChange={handleChange} className={inputClass} />
+                <label className={labelClass}>Telefone</label>
+                <input name="phone" value={form.phone} onChange={handleChange} className={inputClass} placeholder="(00) 00000-0000" />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Funcao</label>
-                <select name="platform_role" value={form.platform_role} onChange={handleChange} className={inputClass}>
-                  <option value="">Selecione...</option>
-                  {roles.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Orgao</label>
-                <select name="organization_id" value={form.organization_id} onChange={handleChange} className={inputClass}>
-                  <option value="">Nenhum</option>
+                <label className={labelClass}>Orgao</label>
+                <select name="organization_id" value={form.organization_id} onChange={handleChange} className={`${inputClass} appearance-none`}>
+                  <option value="">Selecione o orgao...</option>
                   {orgs.map((org) => <option key={org.id} value={org.id}>{org.name}</option>)}
                 </select>
               </div>
             </div>
-            <div className="flex flex-wrap gap-6 mt-4">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" name="is_platform_admin" checked={form.is_platform_admin} onChange={handleChange} className="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-                <span className="text-sm text-gray-700">Admin da Plataforma (acesso total)</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" name="is_organization_admin" checked={form.is_organization_admin} onChange={handleChange} className="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-                <span className="text-sm text-gray-700">Admin do Orgão (gerencia módulos)</span>
-              </label>
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" name="is_active" checked={form.is_active} onChange={handleChange} className="rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-                <span className="text-sm text-gray-700">Ativo</span>
+          </div>
+
+          {/* Section 2: Seguranca e Acessos */}
+          <div className="bg-white/80 backdrop-blur-sm border border-outline-variant rounded-xl p-6 sm:p-8 shadow-sm">
+            <div className="flex items-center gap-2 mb-5 pb-4 border-b border-outline-variant">
+              <Shield size={20} className="text-primary-600" />
+              <h3 className="text-lg font-bold text-on-surface">Seguranca e Acessos</h3>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-6">
+              <div>
+                <label className={labelClass}>Senha Temporaria *</label>
+                <input name="password" type="password" value={form.password} onChange={handleChange} required className={inputClass} placeholder="••••••••" />
+              </div>
+              <div>
+                <label className={labelClass}>Confirmar Senha *</label>
+                <input type="password" value={form.password} readOnly className={inputClass} placeholder="••••••••" />
+              </div>
+              <div className="sm:col-span-2">
+                <label className={labelClass}>Funcao no Sistema</label>
+                <select name="platform_role" value={form.platform_role} onChange={handleChange} className={`${inputClass} appearance-none`}>
+                  {platformRoles.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-3">Permissoes de Diretorio</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <label className="flex items-start gap-4 p-4 rounded-xl border border-outline-variant hover:bg-surface-container-low transition-colors cursor-pointer">
+                  <input type="checkbox" name="is_platform_admin" checked={form.is_platform_admin} onChange={handleChange} className="w-5 h-5 mt-0.5 rounded border-outline text-primary-600 focus:ring-primary-500" />
+                  <div>
+                    <p className="text-sm font-semibold text-on-surface">Admin da Plataforma</p>
+                    <p className="text-xs text-on-surface-variant mt-0.5">Acesso total a todas as configuracoes globais.</p>
+                  </div>
+                </label>
+                <label className="flex items-start gap-4 p-4 rounded-xl border border-outline-variant hover:bg-surface-container-low transition-colors cursor-pointer">
+                  <input type="checkbox" name="is_organization_admin" checked={form.is_organization_admin} onChange={handleChange} className="w-5 h-5 mt-0.5 rounded border-outline text-primary-600 focus:ring-primary-500" />
+                  <div>
+                    <p className="text-sm font-semibold text-on-surface">Admin do Orgao</p>
+                    <p className="text-xs text-on-surface-variant mt-0.5">Gerencia modulos apenas dentro do orgao.</p>
+                  </div>
+                </label>
+              </div>
+              <label className="flex items-start gap-4 p-4 rounded-xl bg-primary-50/60 border border-primary-100 transition-colors cursor-pointer">
+                <input type="checkbox" name="is_active" checked={form.is_active} onChange={handleChange} className="w-5 h-5 mt-0.5 rounded border-outline text-primary-600 focus:ring-primary-500" />
+                <div>
+                  <p className="text-sm font-semibold text-on-surface">Ativo</p>
+                  <p className="text-xs text-on-surface-variant mt-0.5">Define se o usuario tera permissao para logar imediatamente.</p>
+                </div>
               </label>
             </div>
+          </div>
 
-            {!form.is_platform_admin && form.organization_id && (
-              <div className="mt-4 p-4 bg-gray-50 rounded-lg border">
-                <p className="text-sm font-medium text-gray-700 mb-3">Módulos disponíveis neste orgão</p>
-                <div className="flex flex-wrap gap-4">
-                  {ALL_MODULES.map((mod) => (
-                    <label key={mod.slug} className="flex items-center gap-2 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={form.module_permissions.includes(mod.slug)}
-                        onChange={(e) => {
-                          const perms = e.target.checked
-                            ? [...form.module_permissions, mod.slug]
-                            : form.module_permissions.filter((p: string) => p !== mod.slug);
-                          setForm({ ...form, module_permissions: perms });
-                        }}
-                        className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
-                      />
-                      <span className="text-sm text-gray-700">{mod.name}</span>
-                    </label>
-                  ))}
-                </div>
+          {/* Section 3: Acessos por modulo */}
+          <div className="bg-white/80 backdrop-blur-sm border border-outline-variant rounded-xl p-6 sm:p-8 shadow-sm">
+            <div className="flex items-center gap-2 mb-5 pb-4 border-b border-outline-variant">
+              <Puzzle size={20} className="text-primary-600" />
+              <h3 className="text-lg font-bold text-on-surface">Acessos por modulo</h3>
+            </div>
+
+            {activeModules.length === 0 ? (
+              <p className="text-sm text-on-surface-variant py-8 text-center">
+                Nenhum modulo ativo com papeis disponiveis.
+              </p>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {activeModules.map((mod) => {
+                  const modRoles = catalog[mod.slug] || [];
+                  const selected = grants[mod.slug] || [];
+                  return (
+                    <div key={mod.slug} className="border border-outline-variant rounded-xl overflow-hidden bg-surface">
+                      <div className="bg-surface-container-low px-4 py-3 border-b border-outline-variant flex items-center gap-2.5">
+                        <span className="text-lg">{MODULE_ICONS[mod.slug] || "📦"}</span>
+                        <span className="text-sm font-semibold text-on-surface">{mod.name}</span>
+                      </div>
+                      <div>
+                        {modRoles.map((role, i) => (
+                          <label
+                            key={role.name}
+                            className={`flex items-center gap-3 px-4 py-3 cursor-pointer hover:bg-surface-container-lowest transition-colors ${
+                              i < modRoles.length - 1 ? "border-b border-outline-variant/50" : ""
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={selected.includes(role.name)}
+                              onChange={() => toggleRole(mod.slug, role.name)}
+                              className="w-4 h-4 rounded border-outline text-primary-600 focus:ring-primary-500 shrink-0"
+                            />
+                            <span className="text-sm text-on-surface">{role.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
-          </Card>
 
-          <div className="flex items-center gap-3 mt-6">
-            <button type="submit" disabled={saving} className="flex items-center gap-2 bg-primary-600 hover:bg-primary-700 text-white px-6 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50">
-              {saving ? <Loader2 size={18} className="animate-spin" /> : <Save size={18} />} Salvar
-            </button>
-            <Link href="/usuarios" className="flex items-center gap-2 border border-gray-300 text-gray-700 px-6 py-2.5 rounded-lg font-medium hover:bg-gray-50 transition-colors">
-              <ArrowLeft size={18} /> Cancelar
-            </Link>
+            {activeModules.length > 0 && (
+              <p className="text-xs text-on-surface-variant mt-4 text-center">
+                Sem nenhuma marcacao, o usuario nao tem acesso ao modulo.
+              </p>
+            )}
           </div>
-        </form>
-      </div>
+        </div>
+
+        {/* Footer Info */}
+        <div className="flex justify-center py-6 text-on-surface-variant/60">
+          <div className="flex items-center gap-2">
+            <span className="text-sm">🔒</span>
+            <p className="text-xs font-medium">Todas as alteracoes sao registradas em log de auditoria.</p>
+          </div>
+        </div>
+      </form>
     </AppLayout>
   );
 }

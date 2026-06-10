@@ -125,6 +125,8 @@ services:
       MINIO_SECURE: "false"
       SIGNER_URL: http://signer:8100
       INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
       CORS_ORIGINS: '["https://admin.govsistem.com.br","https://diario.govsistem.com.br","https://govsistem.com.br","https://farol.govsistem.com.br"]'
       PUBLIC_URL: https://diario.govsistem.com.br
       PDF_API_BASE_URL: https://diario.govsistem.com.br

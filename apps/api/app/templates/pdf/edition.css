@@ -1,27 +1,26 @@
 @page {
   size: A4;
-  margin: 1.4cm 1.7cm 1.3cm 1.7cm;
+  margin: 1.35cm 1.55cm 1.1cm 1.55cm;
   @bottom-center {
     content: counter(page);
     font-family: "Liberation Serif", "Times New Roman", serif;
-    font-size: 9pt;
-    color: #555;
+    font-size: 8.8pt;
+    color: #000;
   }
-}
 }
 
 @page landscape {
   size: A4 landscape;
-  margin: 1cm 1.3cm;
+  margin: 1.1cm 1.25cm 1cm 1.25cm;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {
-  font-family: "Liberation Sans", Arial, Helvetica, "DejaVu Sans", sans-serif;
-  font-size: 12pt;
-  line-height: 1.5;
-  color: #001b3f;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 11pt;
+  line-height: 1.28;
+  color: #000;
 }
 
 .document {
@@ -34,59 +33,52 @@ body {
 
 .cover {
   text-align: center;
-  padding: 18pt 0 28pt;
-  border-bottom: 2pt solid #002b5c;
-  margin-bottom: 30pt;
+  padding: 10pt 0 16pt;
+  border-bottom: 1.5pt solid #000;
+  margin-bottom: 18pt;
 }
 
 .coat-of-arms {
   display: block;
-  width: 78pt;
-  height: 78pt;
+  width: 54pt;
+  height: 54pt;
   object-fit: contain;
-  margin: 6pt auto 26pt;
+  margin: 0 auto 10pt;
 }
 
 .cover h1 {
-  font-size: 29pt;
-  line-height: 1.05;
-  margin: 0 0 6pt;
-  color: #001b3f;
-  font-weight: 800;
-  text-transform: uppercase;
-}
-
-.cover h2 {
-  font-size: 14pt;
-  color: #333;
-  margin: 0 0 30pt;
+  font-family: "Book Antiqua", "Times New Roman", Times, serif;
+  font-size: 18pt;
+  line-height: 1;
+  margin: 0 0 4pt;
+  color: #000;
   font-weight: 700;
   text-transform: uppercase;
 }
 
-.subtitle {
-  margin-top: 10pt;
-  color: #536170;
-  font-size: 10pt;
+.cover h2 {
+  font-family: "Book Antiqua", "Times New Roman", Times, serif;
+  font-size: 10.25pt;
+  color: #000;
+  margin: 0 0 14pt;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
 }
 
-.signature-banner {
-  margin-top: 28pt;
-  padding: 10pt 13pt;
-  border: 1pt solid #9adcb4;
-  background: #d8f8e2;
-  color: #007543;
-  text-align: left;
-  font-size: 10pt;
+.subtitle {
+  margin-top: 6pt;
+  color: #000;
+  font-size: 9.5pt;
 }
 
 .edition-strip {
   display: table;
   width: 100%;
-  border-top: 1pt solid #b6c0cc;
-  border-bottom: 1pt solid #b6c0cc;
-  color: #1f2f42;
-  font-size: 8pt;
+  border-top: 0.8pt solid #000;
+  border-bottom: 0.8pt solid #000;
+  color: #000;
+  font-size: 8.2pt;
   font-weight: 700;
   text-align: center;
   text-transform: uppercase;
@@ -94,7 +86,7 @@ body {
 
 .edition-strip > div {
   display: table-cell;
-  padding: 8pt 0;
+  padding: 6pt 0;
   width: 33.33%;
 }
 
@@ -110,26 +102,26 @@ body {
 }
 
 .section {
-  margin: 16pt 0 20pt;
+  margin: 11pt 0 18pt;
   font-family: "Times New Roman", Times, serif;
   color: #000;
 }
 
 .section h2 {
-  margin: 14pt 0 16pt;
-  padding: 3pt 8pt;
+  margin: 10pt 0 12pt;
+  padding: 2pt 8pt;
   width: 100%;
   border: 0;
-  background: #bfbfbf;
+  background: #c6c6c6;
   color: #000;
-  font-size: 15pt;
+  font-size: 12.5pt;
   font-weight: 700;
   text-align: center;
   text-transform: uppercase;
 }
 
 .matter {
-  margin-bottom: 22pt;
+  margin-bottom: 18pt;
   border-top: 0;
   padding-top: 0;
   page-break-inside: auto;
@@ -140,13 +132,13 @@ body {
 }
 
 .matter-title {
-  margin: 12pt 0 18pt;
-  padding: 3pt 8pt;
+  margin: 11pt 0 14pt;
+  padding: 2.5pt 8pt;
   width: 100%;
   border: 0;
-  background: #d2d0d0;
+  background: #d0d0d0;
   color: #000;
-  font-size: 12.5pt;
+  font-size: 11.7pt;
   font-weight: 700;
   text-align: center;
   text-transform: uppercase;
@@ -154,13 +146,13 @@ body {
 }
 
 .matter-summary {
-  margin: 16pt 46pt 18pt;
+  margin: 14pt 46pt 16pt;
   font-family: "Times New Roman", Times, serif;
-  font-size: 11.5pt;
+  font-size: 11pt;
   font-weight: 700;
   text-align: center;
   text-transform: uppercase;
-  line-height: 1.25;
+  line-height: 1.22;
 }
 
 .matter-image-content .matter-title {
@@ -193,11 +185,11 @@ body {
 .matter-content {
   text-align: justify;
   color: #000;
-  font-family: "Liberation Sans", Arial, Helvetica, "DejaVu Sans", sans-serif;
+  font-family: "Times New Roman", Times, serif;
 }
 
 .matter-content p {
-  margin: 7pt 0;
+  margin: 6pt 0;
   min-height: 1.2em;
   text-indent: 36pt;
   text-align: justify !important;
@@ -221,7 +213,7 @@ body {
 }
 
 .summary {
-  margin: 18pt 0 22pt;
+  margin: 16pt 0 20pt;
   font-family: "Times New Roman", Times, serif;
   color: #000;
   page-break-inside: avoid;
@@ -231,9 +223,9 @@ body {
 .section-title {
   display: block;
   width: 100%;
-  margin-bottom: 4pt;
-  padding: 3pt 0;
-  background: #bfbfbf;
+  margin-bottom: 3pt;
+  padding: 2pt 0;
+  background: #c6c6c6;
 }
 
 .section-title span {
@@ -241,7 +233,7 @@ body {
   width: 100%;
   color: #000;
   font-weight: 700;
-  font-size: 17pt;
+  font-size: 13pt;
   text-align: center;
   letter-spacing: 0;
   text-transform: uppercase;
@@ -250,10 +242,10 @@ body {
 .summary-row {
   display: table;
   width: 100%;
-  margin: 4pt 0;
+  margin: 3pt 0;
   color: #000;
-  font-size: 11.5pt;
-  line-height: 1.25;
+  font-size: 10.4pt;
+  line-height: 1.18;
   page-break-inside: avoid;
 }
 
@@ -289,7 +281,7 @@ body {
   display: inline;
   margin-top: 2pt;
   color: #000;
-  font-size: 11.5pt;
+  font-size: 10.4pt;
   white-space: nowrap;
 }
 
@@ -306,7 +298,7 @@ body {
 .matter-content h2,
 .matter-content h3,
 .matter-content h4 {
-  margin: 12pt 0 8pt;
+  margin: 10pt 0 7pt;
   font-weight: 700;
   text-align: center;
   text-transform: uppercase;
@@ -314,21 +306,21 @@ body {
   font-family: "Times New Roman", Times, serif;
 }
 
-.matter-content h1 { font-size: 16pt; }
-.matter-content h2 { font-size: 15pt; }
+.matter-content h1 { font-size: 13pt; }
+.matter-content h2 { font-size: 12.5pt; }
 .matter-content h3,
-.matter-content h4 { font-size: 14pt; }
+.matter-content h4 { font-size: 11.5pt; }
 
 .matter-content table {
   width: 100%;
   border-collapse: collapse;
   border-spacing: 0;
-  margin: 8pt 0;
-  font-size: 8.5pt;
-  line-height: 1.15;
+  margin: 7pt 0;
+  font-size: 8.3pt;
+  line-height: 1.12;
   page-break-inside: auto;
   table-layout: fixed;
-  border: 1px solid #333;
+  border: 0.8pt solid #333;
 }
 
 .matter-content tr { page-break-inside: auto; }
@@ -337,8 +329,8 @@ body {
 
 .matter-content th,
 .matter-content td {
-  border: 0.8pt solid #333 !important;
-  padding: 3pt 5pt;
+  border: 0.6pt solid #333 !important;
+  padding: 2.8pt 4pt;
   text-align: left;
   vertical-align: top;
   overflow-wrap: anywhere;
@@ -387,49 +379,17 @@ body {
 }
 
 .validation-box {
-  margin-top: 32pt;
-  padding: 14pt;
-  border: 1pt solid #b6c0cc;
-  color: #001b3f;
+  margin-top: 16pt;
+  padding-top: 6pt;
+  border-top: 0.5pt solid #999;
+  color: #333;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 7.8pt;
+  line-height: 1.15;
   page-break-inside: avoid;
 }
 
-.validation-box h3 {
-  margin: 0 0 12pt;
-  font-size: 10pt;
-}
-
-.validation-grid {
-  display: table;
-  width: 100%;
-}
-
-.validation-grid > div {
-  display: table-cell;
-  width: 50%;
-  padding-right: 12pt;
-}
-
-.validation-grid span {
+.validation-box span {
   display: block;
-  color: #68778a;
-  font-size: 8pt;
-  font-weight: 700;
-}
-
-.validation-grid code {
-  display: block;
-  padding: 5pt;
-  margin-top: 4pt;
-  border: 1pt solid #c7d0dc;
-  background: #f8fafc;
-  color: #1f2f42;
-  font-size: 8pt;
-  word-break: break-all;
-}
-
-.validation-box p {
-  margin-top: 10pt;
-  color: #536170;
-  font-size: 8pt;
+  margin-top: 2pt;
 }

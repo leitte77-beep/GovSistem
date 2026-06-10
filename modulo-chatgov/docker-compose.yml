@@ -1,0 +1,77 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    logging: *default-logging
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-chatgov}
+      POSTGRES_USER: ${POSTGRES_USER:-chatgov}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chatgov}
+    # sem porta publicada no host: acesso só pela rede interna (backend -> postgres:5432)
+    volumes:
+      - chatgov_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chatgov} -d ${POSTGRES_DB:-chatgov}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - chatgov-network
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    logging: *default-logging
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-chatgov}:${POSTGRES_PASSWORD:-chatgov}@postgres:5432/${POSTGRES_DB:-chatgov}
+      JWT_SECRET: ${JWT_SECRET:-chatgov-dev-secret}
+      PORT: 3050
+      STORAGE_DRIVER: ${STORAGE_DRIVER:-local}
+      SOCKET_CORS_ORIGIN: ${SOCKET_CORS_ORIGIN:-https://chatgov.govsistem.com.br}
+      CREDS_ENCRYPTION_KEY: ${CREDS_ENCRYPTION_KEY:-chatgov-dev-encryption-key-32chars}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-30}
+      # SSO: aceita tokens module_access assinados pelo saas-platform (SECRET_KEY do saas)
+      JWT_SECRETS: ${JWT_SECRETS:-dev-saas-secret-key-change-in-production}
+      # Provisionamento interno chamado pelo saas (deve casar com INTERNAL_API_KEY do saas)
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-123}
+    ports:
+      - "3050:3050"
+    volumes:
+      - chatgov_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - chatgov-network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    logging: *default-logging
+    ports:
+      - "3051:3000"
+    depends_on:
+      - backend
+    networks:
+      - chatgov-network
+    restart: unless-stopped
+
+networks:
+  chatgov-network:
+    driver: bridge
+
+volumes:
+  chatgov_pgdata:
+    driver: local
+  chatgov_uploads:
+    driver: local

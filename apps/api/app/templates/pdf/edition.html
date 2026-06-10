@@ -9,8 +9,6 @@
 {% set effective_verification_code = verification_code|default(preliminary_code|default(""), true) %}
 
 <article class="document">
-  <div class="template-metadata">{{ organ_name }} {{ edition.title }} {{ edition_type_label }} {{ publication_date }}</div>
-
   <!-- CAPA / CABEÇALHO -->
   <header class="cover">
     <img class="coat-of-arms" src="{{ logo_path }}" alt="Brasão do Município">
@@ -26,10 +24,6 @@
     {% if edition.subtitle %}
     <p class="subtitle">{{ edition.subtitle }}</p>
     {% endif %}
-
-    <div class="signature-banner">
-      Assinado digitalmente por <strong>MUNICÍPIO DE FAROL | {{ effective_verification_code }}</strong>
-    </div>
   </header>
 
   <!-- SUMÁRIO -->
@@ -45,7 +39,7 @@
         </a>
       </div>
       <a class="summary-dots" href="#{{ item.anchor }}"></a>
-      <strong><a href="#{{ item.anchor }}">{{ "%02d"|format(item.position) }}</a></strong>
+      <strong><a href="#{{ item.anchor }}">{{ "%02d"|format(item.position|default(loop.index)) }}</a></strong>
     </div>
     {% endfor %}
   </section>
@@ -94,20 +88,11 @@
 
   <!-- VALIDAÇÃO DO DOCUMENTO -->
   <footer class="validation-box">
-    <h3>Validação do Documento</h3>
-    <div class="validation-grid">
-      <div>
-        <span>CÓDIGO DE VERIFICAÇÃO</span>
-        <code>{{ effective_verification_code }}</code>
-      </div>
-      {% if edition.pdf_hash %}
-      <div>
-        <span>SHA-256 DO PDF</span>
-        <code>{{ edition.pdf_hash }}</code>
-      </div>
-      {% endif %}
-    </div>
-    <p>Verifique em {{ verification_url }}/{{ effective_verification_code }}</p>
+    <span>Código de verificação: {{ effective_verification_code }}</span>
+    {% if edition.pdf_hash %}
+    <span>SHA-256: {{ edition.pdf_hash }}</span>
+    {% endif %}
+    <span>Verifique em {{ verification_url }}/{{ effective_verification_code }}</span>
   </footer>
 </article>
 

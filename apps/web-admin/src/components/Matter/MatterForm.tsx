@@ -509,7 +509,8 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
                 </div>
                 <Editor content={contentHtml}
                   onChange={(html) => { setContentHtml(html); setTouched((p) => ({ ...p, content: true })); }}
-                  onCleanWarnings={setCleanWarnings} />
+                  onCleanWarnings={setCleanWarnings}
+                  aiContext={{ actType: selectedActType?.name, title, summary }} />
                 {errors.content && <p className="text-xs text-error px-5 pb-3 flex items-center gap-1"><span className="material-symbols-outlined text-xs">warning</span> {errors.content}</p>}
               </div>
               <div className="bg-surface-bright rounded-2xl p-6 border border-outline-variant shadow-sm">

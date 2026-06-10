@@ -34,6 +34,9 @@ import clsx from "clsx";
 interface ToolbarProps {
   editor: Editor | null;
   onPreview: () => void;
+  onAutoFormat: () => void;
+  onAiFormat: () => void;
+  aiBusy?: boolean;
 }
 
 const fontFamilies = [
@@ -53,7 +56,7 @@ const fontFamilies = [
 
 const fontSizes = ["10pt", "12pt", "14pt", "16pt", "18pt", "24pt", "32pt"];
 
-export default function Toolbar({ editor, onPreview }: ToolbarProps) {
+export default function Toolbar({ editor, onPreview, onAutoFormat, onAiFormat, aiBusy }: ToolbarProps) {
   const [clearConfirm, setClearConfirm] = useState(false);
   if (!editor) return null;
 
@@ -315,6 +318,12 @@ export default function Toolbar({ editor, onPreview }: ToolbarProps) {
 
         <Button onClick={onPreview} title="Preview HTML">
           <Eye size={17} />
+        </Button>
+        <Button onClick={onAutoFormat} title="Autoformatar conteúdo">
+          <span className="material-symbols-outlined text-[17px]">auto_fix_high</span>
+        </Button>
+        <Button onClick={onAiFormat} title="Autoformatar com IA" disabled={aiBusy}>
+          <span className="material-symbols-outlined text-[17px]">{aiBusy ? "progress_activity" : "smart_toy"}</span>
         </Button>
       </div>
     </div>
