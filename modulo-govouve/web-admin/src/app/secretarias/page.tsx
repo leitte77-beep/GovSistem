@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { api, Secretaria } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import toast from "react-hot-toast";
@@ -36,13 +37,13 @@ export default function ListaSecretarias() {
           <h1 className="text-h2 text-[#101828]">Secretarias</h1>
           <p className="text-body-sm text-[#667085] mt-1">Gerencie as secretarias do modulo de ouvidoria</p>
         </div>
-        <a href="/secretarias/nova" className="btn-primary">Nova Secretaria</a>
+        <Link href="/secretarias/nova" className="btn-primary">Nova Secretaria</Link>
       </div>
 
       {secretarias.length === 0 ? (
         <div className="bg-white rounded-card shadow-card p-12 text-center">
           <p className="text-body text-[#98A2B3]">Nenhuma secretaria cadastrada</p>
-          <a href="/secretarias/nova" className="btn-primary mt-4 inline-flex">Criar primeira secretaria</a>
+          <Link href="/secretarias/nova" className="btn-primary mt-4 inline-flex">Criar primeira secretaria</Link>
         </div>
       ) : (
         <div className="bg-white rounded-card shadow-card">

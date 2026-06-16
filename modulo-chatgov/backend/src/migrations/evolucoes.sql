@@ -405,4 +405,28 @@ BEGIN
             tbl, tbl
         );
     END LOOP;
+
+-- media_mime column for rich media in internal chat
+ALTER TABLE mensagens_internas ADD COLUMN IF NOT EXISTS media_mime text;
 END $$;
+
+-- ============================================================
+-- Atendimento WhatsApp: reações, reply/quote, exclusão (LGPD)
+-- ============================================================
+-- Reação (emoji) refletida na própria mensagem.
+ALTER TABLE mensagens ADD COLUMN IF NOT EXISTS reacao text;
+-- Reply/quote: id da mensagem (nossa) que está sendo respondida.
+ALTER TABLE mensagens ADD COLUMN IF NOT EXISTS respondendo_a UUID REFERENCES mensagens(id) ON DELETE SET NULL;
+-- Soft-delete de mensagem (exclusão pelo operador / LGPD).
+ALTER TABLE mensagens ADD COLUMN IF NOT EXISTS excluida boolean NOT NULL DEFAULT false;
+ALTER TABLE mensagens ADD COLUMN IF NOT EXISTS excluida_em TIMESTAMPTZ;
+
+-- ============================================================
+-- Iris IA — Multi-provedor (DeepSeek + OpenAI) + contexto de fila
+-- ============================================================
+ALTER TABLE config_iris ADD COLUMN IF NOT EXISTS provider TEXT NOT NULL DEFAULT 'deepseek';
+ALTER TABLE config_iris ADD COLUMN IF NOT EXISTS openai_api_key TEXT;
+ALTER TABLE config_iris ADD COLUMN IF NOT EXISTS openai_model TEXT DEFAULT 'gpt-4o-mini';
+
+-- Departamento sugerido pela Iris (para contexto entre mensagens)
+ALTER TABLE conversas ADD COLUMN IF NOT EXISTS departamento_sugerido UUID REFERENCES departamentos(id) ON DELETE SET NULL;

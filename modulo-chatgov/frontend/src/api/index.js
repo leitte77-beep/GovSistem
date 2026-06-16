@@ -13,11 +13,40 @@ export async function fetchConversas({ status, departamento, busca, arquivadas, 
   return res.json();
 }
 
-export async function fetchMensagens(convId) {
-  const res = await fetch(`/api/conversas/${convId}/mensagens`, {
+// Retorna { mensagens, temMais }. `antesDe` (ISO criado_em) carrega o lote anterior
+// para scroll infinito; sem cursor traz as últimas `limite` mensagens.
+export async function fetchMensagens(convId, { antesDe, limite = 50, signal } = {}) {
+  const params = new URLSearchParams();
+  if (antesDe) params.set('antesDe', antesDe);
+  if (limite) params.set('limite', String(limite));
+  const res = await fetch(`/api/conversas/${convId}/mensagens?${params.toString()}`, {
     headers: { Authorization: `Bearer ${getToken()}` },
+    signal,
   });
   if (!res.ok) throw new Error('Erro ao buscar mensagens');
+  const data = await res.json();
+  // Compat: aceita resposta antiga (array) ou nova ({ mensagens, temMais }).
+  if (Array.isArray(data)) return { mensagens: data, temMais: false };
+  return { mensagens: data.mensagens || [], temMais: !!data.temMais };
+}
+
+export async function excluirMensagemConversa(convId, msgId) {
+  const res = await fetch(`/api/conversas/${convId}/mensagens/${msgId}`, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.erro || 'Erro ao excluir mensagem');
+  }
+  return res.json();
+}
+
+export async function fetchMe() {
+  const res = await fetch('/api/me', {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) throw new Error('Erro ao buscar perfil');
   return res.json();
 }
 
@@ -26,6 +55,14 @@ export async function fetchDepartamentos() {
     headers: { Authorization: `Bearer ${getToken()}` },
   });
   if (!res.ok) throw new Error('Erro ao buscar departamentos');
+  return res.json();
+}
+
+export async function fetchPainelDepartamentos() {
+  const res = await fetch('/api/departamentos/painel', {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) throw new Error('Erro ao buscar painel de departamentos');
   return res.json();
 }
 
@@ -53,8 +90,20 @@ export async function fetchCanaisInternos() {
   return res.json();
 }
 
-export async function fetchMensagensInternas(canalId) {
-  const res = await fetch(`/api/canais-internos/${canalId}/mensagens`, {
+export async function fetchMensagensInternas(canalId, { antesDe, limite = 50 } = {}) {
+  const params = new URLSearchParams();
+  if (antesDe) params.set('antesDe', antesDe);
+  if (limite) params.set('limite', String(limite));
+  const qs = params.toString();
+  const res = await fetch(`/api/canais-internos/${canalId}/mensagens${qs ? '?' + qs : ''}`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) throw new Error('Erro ao buscar mensagens');
+  return res.json();
+}
+
+export async function buscarMensagensCanal(canalId, q) {
+  const res = await fetch(`/api/canais-internos/${canalId}/buscar?q=${encodeURIComponent(q)}`, {
     headers: { Authorization: `Bearer ${getToken()}` },
   });
   if (!res.ok) throw new Error('Erro ao buscar mensagens');
@@ -72,6 +121,30 @@ export async function criarCanalInterno({ tipo, nome, membros }) {
   });
   if (!res.ok) throw new Error('Erro ao criar canal');
   return res.json();
+}
+
+export async function excluirCanalInterno(id) {
+  return jsonReq(`/api/canais-internos/${id}`, 'DELETE');
+}
+
+export async function adicionarMembrosCanal(id, membros) {
+  return jsonReq(`/api/canais-internos/${id}/membros`, 'POST', { membros });
+}
+
+export async function removerMembroCanal(id, operadorId) {
+  return jsonReq(`/api/canais-internos/${id}/membros/${operadorId}`, 'DELETE');
+}
+
+export async function sairCanal(id) {
+  return jsonReq(`/api/canais-internos/${id}/sair`, 'POST');
+}
+
+export async function criarEnquete(canalId, pergunta, opcoes) {
+  return jsonReq(`/api/canais-internos/${canalId}/enquetes`, 'POST', { pergunta, opcoes });
+}
+
+export async function votarEnquete(canalId, msgId, opcaoIdx) {
+  return jsonReq(`/api/canais-internos/${canalId}/enquetes/${msgId}/votar`, 'POST', { opcao_idx: opcaoIdx });
 }
 
 export async function fetchSecretarias() {

@@ -94,13 +94,27 @@ export async function buscarLLM(tenantId, mensagem, historico = []) {
   try {
     const messages = [];
 
+    // Buscar departamentos para incluir no prompt, permitindo roteamento via LLM
+    const departamentos = await db.manyOrNone(
+      `SELECT d.id, d.nome, s.nome as secretaria_nome
+       FROM departamentos d
+       LEFT JOIN secretarias s ON s.id = d.secretaria_id
+       WHERE d.tenant_id = $1 AND d.ativo = true
+       ORDER BY d.nome`,
+      [tenantId]
+    );
+
+    const deptosPrompt = departamentos.length > 0
+      ? `\n\nDEPARTAMENTOS DISPONIVEIS PARA ROTEAMENTO:\n${departamentos.map((d) => `- ${d.nome} (id: ${d.id})${d.secretaria_nome ? ` [${d.secretaria_nome}]` : ''}`).join('\n')}\n\nSe a mensagem do cidadao indicar claramente um departamento, inclua no final da sua resposta a tag [DEPTO:uuid-do-departamento]. Caso contrario, nao inclua a tag.`
+      : '';
+
     if (config.llm_system_prompt) {
-      messages.push({ role: 'system', content: config.llm_system_prompt });
+      messages.push({ role: 'system', content: config.llm_system_prompt + deptosPrompt });
     } else {
       messages.push({
         role: 'system',
         content:
-          'Você é um assistente virtual de uma prefeitura/órgão público brasileiro. Responda de forma clara, educada e objetiva. Sempre responda em português do Brasil. Se não souber a resposta, diga que irá transferir para um atendente humano.',
+          'Você é um assistente virtual de uma prefeitura/órgão público brasileiro. Responda de forma clara, educada e objetiva. Sempre responda em português do Brasil. Se não souber a resposta, diga que irá transferir para um atendente humano.' + deptosPrompt,
       });
     }
 
@@ -111,42 +125,74 @@ export async function buscarLLM(tenantId, mensagem, historico = []) {
     messages.push({ role: 'user', content: mensagem });
 
     let resposta;
+    let apiUrl;
+    let headers;
+    let body;
 
     if (provider === 'openai') {
-      const res = await fetch('https://api.openai.com/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${config.llm_api_key}`,
-        },
-        body: JSON.stringify({ model, messages, max_tokens: 500, temperature: 0.7 }),
-      });
-      if (!res.ok) return null;
-      const data = await res.json();
-      resposta = data.choices?.[0]?.message?.content;
+      apiUrl = 'https://api.openai.com/v1/chat/completions';
+      headers = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.llm_api_key}`,
+      };
+      body = JSON.stringify({ model, messages, max_tokens: 500, temperature: 0.7 });
     } else if (provider === 'anthropic') {
       const systemMsg = messages.find((m) => m.role === 'system');
       const userMsgs = messages.filter((m) => m.role !== 'system');
-      const res = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': config.llm_api_key,
-          'anthropic-version': '2023-06-01',
-        },
-        body: JSON.stringify({
-          model,
-          max_tokens: 500,
-          system: systemMsg?.content || '',
-          messages: userMsgs,
-        }),
+      apiUrl = 'https://api.anthropic.com/v1/messages';
+      headers = {
+        'Content-Type': 'application/json',
+        'x-api-key': config.llm_api_key,
+        'anthropic-version': '2023-06-01',
+      };
+      body = JSON.stringify({
+        model,
+        max_tokens: 500,
+        system: systemMsg?.content || '',
+        messages: userMsgs,
       });
-      if (!res.ok) return null;
-      const data = await res.json();
-      resposta = data.content?.[0]?.text;
+    } else if (provider === 'deepseek') {
+      apiUrl = 'https://api.deepseek.com/chat/completions';
+      headers = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${config.llm_api_key}`,
+      };
+      body = JSON.stringify({ model: model || 'deepseek-chat', messages, max_tokens: 500, temperature: 0.7 });
     }
 
-    return resposta || null;
+    if (!apiUrl) return null;
+
+    const res = await fetch(apiUrl, { method: 'POST', headers, body });
+    if (!res.ok) return null;
+    const data = await res.json();
+
+    if (provider === 'anthropic') {
+      resposta = data.content?.[0]?.text;
+    } else {
+      resposta = data.choices?.[0]?.message?.content;
+    }
+
+    if (!resposta) return null;
+
+    // Extrai departamento_id da tag [DEPTO:uuid]
+    let departamento_id = null;
+    const deptoMatch = resposta.match(/\[DEPTO:([a-f0-9-]{36})\]/i);
+    if (deptoMatch) {
+      const deptoId = deptoMatch[1];
+      // Valida se o departamento existe
+      const deptoExiste = await db.oneOrNone(
+        'SELECT id FROM departamentos WHERE id = $1 AND tenant_id = $2 AND ativo = true',
+        [deptoId, tenantId]
+      );
+      if (deptoExiste) {
+        departamento_id = deptoId;
+      }
+    }
+
+    // Remove a tag da resposta para o cidadão
+    resposta = resposta.replace(/\[DEPTO:[a-f0-9-]{36}\]/gi, '').trim();
+
+    return { resposta, departamento_id };
   } catch (err) {
     console.error('[Chatbot] Erro LLM:', err.message);
     return null;
@@ -194,7 +240,12 @@ export async function processarMensagem(tenantId, conversaId, contatoId, texto) 
   if (config.usar_llm) {
     const resp = await buscarLLM(tenantId, texto, historico);
     if (resp) {
-      return { respondido: true, resposta: resp, origem: 'llm' };
+      return {
+        respondido: true,
+        resposta: resp.resposta || resp,
+        origem: 'llm',
+        departamento_id: resp.departamento_id || null,
+      };
     }
   }
 

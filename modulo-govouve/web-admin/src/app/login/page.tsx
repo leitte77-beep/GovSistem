@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import toast from "react-hot-toast";
 
 export default function LoginPage() {
+  const router = useRouter();
   const { login, user, loading: authLoading } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -19,15 +21,19 @@ export default function LoginPage() {
     }
   }, [authLoading, user]);
 
-  if (authLoading) {
+  useEffect(() => {
+    if (user) {
+      router.replace("/");
+    }
+  }, [user, router]);
+
+  if (authLoading || user) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600" />
       </div>
     );
   }
-
-  if (user) return null;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

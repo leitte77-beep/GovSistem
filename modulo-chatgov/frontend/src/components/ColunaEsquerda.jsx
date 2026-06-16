@@ -4,12 +4,14 @@ import { Chip } from './Chip';
 import { ItemConversa } from './ItemConversa';
 import { ItemCanal } from './ItemCanal';
 import { ModalNovaConversa } from './ModalNovaConversa';
+import { ModalSelecaoOperadores } from './ModalSelecaoOperadores';
 import { useAuth } from '../context/AuthContext';
 import { useSocket } from '../context/SocketContext';
 import { T } from '../theme';
 import {
   fetchConversas, fetchDepartamentos, fetchCanaisInternos,
-  fetchWhatsAppStatus, criarCanalInterno, fetchOperadores,
+  fetchWhatsAppStatus, criarCanalInterno, fetchOperadores, excluirCanalInterno,
+  fetchMe,
 } from '../api';
 
 export function ColunaEsquerda({
@@ -24,7 +26,9 @@ export function ColunaEsquerda({
   const [operadores, setOperadores] = useState([]);
   const [filtro, setFiltro] = useState('todas');
   const [busca, setBusca] = useState('');
+  const [carregando, setCarregando] = useState(false);
   const [waStatus, setWaStatus] = useState({ status: 'desconectado', numero: null });
+  const [waErro, setWaErro] = useState('');
   const [showNovaConversa, setShowNovaConversa] = useState(false);
   const [showNovoGrupo, setShowNovoGrupo] = useState(false);
   const [showNovaDM, setShowNovaDM] = useState(false);
@@ -35,22 +39,46 @@ export function ColunaEsquerda({
   const isAdmin = op?.papel === 'admin';
   const ehAtend = view === 'atendimento';
   const conectado = waStatus.status === 'conectado';
+  const [perfil, setPerfil] = useState(null);
+
+  useEffect(() => {
+    fetchMe().then((p) => setPerfil(p)).catch(() => {});
+  }, []);
+
+  // Filtros que o backend resolve diretamente vs. os resolvidos no cliente.
+  const FILTROS_FIXOS = ['todas', 'naolidas', 'fila', 'arquivadas', 'minhas', 'resolvidas'];
 
   const carregarConversas = useCallback(async () => {
+    setCarregando(true);
     try {
       const params = {};
-      if (filtro === 'naolidas') params.nao_lidas = 'true';
-      else if (filtro === 'fila') params.status = 'fila';
+      if (filtro === 'fila') params.status = 'fila';
       else if (filtro === 'arquivadas') params.arquivadas = 'true';
-      else if (filtro !== 'todas' && filtro !== 'naolidas' && filtro !== 'fila' && filtro !== 'arquivadas') params.departamento = filtro;
+      else if (filtro === 'resolvidas') params.status = 'resolvida';
+      else if (!FILTROS_FIXOS.includes(filtro)) params.departamento = filtro;
       if (busca) params.busca = busca;
-      setConversas(await fetchConversas(params));
+      let lista = await fetchConversas(params);
+      // 'naolidas' e 'minhas' o backend não filtra — resolvemos no cliente.
+      if (filtro === 'naolidas') lista = lista.filter((c) => (c.nao_lidas || 0) > 0);
+      else if (filtro === 'minhas') lista = lista.filter((c) => c.operador_id === op?.id);
+      setConversas(lista);
     } catch (err) { console.error(err); }
-  }, [filtro, busca]);
+    finally { setCarregando(false); }
+  }, [filtro, busca, op?.id]);
 
   const carregarCanais = useCallback(async () => {
     try { setCanais(await fetchCanaisInternos()); } catch (err) { console.error(err); }
   }, []);
+
+  const handleExcluirCanal = async (canalId) => {
+    if (!confirm('Excluir este canal permanentemente?')) return;
+    try {
+      await excluirCanalInterno(canalId);
+      carregarCanais();
+    } catch (err) {
+      console.error('Erro ao excluir canal:', err);
+    }
+  };
 
   useEffect(() => {
     fetchDepartamentos().then(setDepartamentos).catch(console.error);
@@ -70,19 +98,22 @@ export function ColunaEsquerda({
         if (conversaAtivaId === convId) onSelectConversa(null);
       }
     };
-    const onConectado = ({ numero }) => setWaStatus({ status: 'conectado', numero });
+    const onConectado = ({ numero }) => { setWaStatus({ status: 'conectado', numero }); setWaErro(''); };
     const onDesconectado = () => setWaStatus({ status: 'desconectado', numero: null });
+    const onFalha = ({ msg }) => { setWaStatus({ status: 'desconectado', numero: null }); setWaErro(msg || 'Falha na conexão do WhatsApp.'); };
     const onInterno = () => { if (!ehAtend) carregarCanais(); };
     socket.on('conversa:atualizada', onAtualizada);
     socket.on('conversa:removida', onRemovida);
     socket.on('whatsapp:conectado', onConectado);
     socket.on('whatsapp:desconectado', onDesconectado);
+    socket.on('whatsapp:falha', onFalha);
     socket.on('interno:nova', onInterno);
     return () => {
       socket.off('conversa:atualizada', onAtualizada);
       socket.off('conversa:removida', onRemovida);
       socket.off('whatsapp:conectado', onConectado);
       socket.off('whatsapp:desconectado', onDesconectado);
+      socket.off('whatsapp:falha', onFalha);
       socket.off('interno:nova', onInterno);
     };
   }, [socket, carregarConversas, carregarCanais, ehAtend, conversaAtivaId, onSelectConversa]);
@@ -137,9 +168,12 @@ export function ColunaEsquerda({
             style: { width: '100%', height: '100%', objectFit: 'cover' },
           }),
         ),
-        React.createElement('div', { style: { lineHeight: 1.2 } },
-          React.createElement('p', { style: { fontSize: 14, fontWeight: 600, color: T.text } }, 'Atendimento'),
-          React.createElement('p', { style: { fontSize: 11, color: T.textMuted } }, op?.tenantNome || 'GovSistem'),
+        React.createElement('div', { style: { lineHeight: 1.2, minWidth: 0, flex: 1 } },
+          React.createElement('p', {
+            title: perfil?.nome || op?.nome || '',
+            style: { fontSize: 14, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+          }, perfil?.nome || op?.nome || 'Carregando...'),
+          React.createElement('p', { style: { fontSize: 11, color: T.textMuted, textTransform: 'capitalize' } }, perfil?.papel || op?.papel || 'operador'),
         ),
       ),
       React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 4 } },
@@ -180,6 +214,16 @@ export function ColunaEsquerda({
       }, 'ALTERAR'),
     ),
 
+    // Banner de falha de conexão do WhatsApp (esgotou reconexões).
+    ehAtend && waErro && React.createElement('div', {
+      role: 'alert',
+      style: { padding: '8px 16px', background: T.dangerSoft, color: T.danger, fontSize: 12, fontWeight: 600, borderBottom: '1px solid #d1d7db', display: 'flex', alignItems: 'center', gap: 8 },
+    },
+      React.createElement('span', { className: 'material-symbols-outlined', style: { fontSize: 16 } }, 'error'),
+      React.createElement('span', { style: { flex: 1 } }, waErro),
+      isAdmin && React.createElement('button', { onClick: onOpenQR, style: { fontSize: 11, fontWeight: 700, color: T.danger, background: 'transparent', border: 'none', cursor: 'pointer', textDecoration: 'underline' } }, 'RECONECTAR'),
+    ),
+
     // Seach
     React.createElement('div', { style: { padding: '12px 16px' } },
       React.createElement('div', {
@@ -202,8 +246,10 @@ export function ColunaEsquerda({
 
       React.createElement('div', { style: { display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 } },
         React.createElement(Chip, { label: 'Tudo', ativo: filtro === 'todas', onClick: () => setFiltro('todas') }),
+        React.createElement(Chip, { label: 'Minhas', ativo: filtro === 'minhas', onClick: () => setFiltro('minhas') }),
         React.createElement(Chip, { label: 'N\u00e3o lidas', ativo: filtro === 'naolidas', onClick: () => setFiltro('naolidas'), badge: countNaoLidas }),
         React.createElement(Chip, { label: 'Fila', ativo: filtro === 'fila', onClick: () => setFiltro('fila'), badge: countFila }),
+        React.createElement(Chip, { label: 'Resolvidas', ativo: filtro === 'resolvidas', onClick: () => setFiltro('resolvidas') }),
         React.createElement(Chip, { label: 'Arquivadas', ativo: filtro === 'arquivadas', onClick: () => setFiltro('arquivadas') }),
         departamentos.map((dep) =>
           React.createElement(Chip, {
@@ -216,15 +262,18 @@ export function ColunaEsquerda({
     // List
     React.createElement('div', { style: { flex: 1, overflowY: 'auto', padding: '4px 8px 8px' } },
       ehAtend
-        ? (conversas.length === 0
+        ? (carregando && conversas.length === 0
+            ? React.createElement(SkeletonLista, null)
+            : conversas.length === 0
             ? React.createElement(VazioLista, { texto: 'Inicie uma conversa para ver suas mensagens aqui.' })
             : conversas.map((c) => React.createElement(ItemConversa, {
-                key: c.id, conversa: c, ativa: c.id === conversaAtivaId, onClick: () => onSelectConversa(c),
+                key: c.id, conversa: c, ativa: c.id === conversaAtivaId, opId: op?.id, onClick: () => onSelectConversa(c),
               })))
         : (canais.length === 0
             ? React.createElement(VazioLista, { texto: 'Crie uma conversa ou grupo com sua equipe.' })
             : canais.map((c) => React.createElement(ItemCanal, {
                 key: c.id, canal: c, ativo: c.id === canalAtivoId, opId: op?.id, onClick: () => onSelectCanal(c),
+                onDelete: handleExcluirCanal,
               }))),
     ),
 
@@ -248,7 +297,7 @@ export function ColunaEsquerda({
                 padding: '10px 12px', borderRadius: T.radius, border: 'none', cursor: 'pointer',
                 background: T.primary, color: '#fff', fontSize: 13, fontWeight: 600,
               },
-            }, React.createElement(Plus, { size: 16 }), 'Nova DM'),
+            }, React.createElement(Plus, { size: 16 }), 'Nova Mensagem'),
             React.createElement('button', {
               onClick: () => setShowNovoGrupo(true),
               style: {
@@ -297,6 +346,19 @@ export function ColunaEsquerda({
   );
 }
 
+function SkeletonLista() {
+  return React.createElement('div', { style: { padding: '8px 4px' }, 'aria-busy': true, 'aria-label': 'Carregando conversas' },
+    [0, 1, 2, 3, 4, 5].map((i) =>
+      React.createElement('div', { key: i, style: { display: 'flex', alignItems: 'center', gap: 12, padding: '12px 10px' } },
+        React.createElement('div', { className: 'skeleton-pulse', style: { width: 48, height: 48, borderRadius: '50%', background: T.surfaceMuted, flexShrink: 0 } }),
+        React.createElement('div', { style: { flex: 1 } },
+          React.createElement('div', { className: 'skeleton-pulse', style: { width: '60%', height: 12, borderRadius: 6, background: T.surfaceMuted, marginBottom: 8 } }),
+          React.createElement('div', { className: 'skeleton-pulse', style: { width: '85%', height: 10, borderRadius: 6, background: T.surfaceMuted } }),
+        ),
+      )),
+  );
+}
+
 function VazioLista({ texto }) {
   return React.createElement('div', {
     style: { padding: '64px 24px', textAlign: 'center', color: T.textMuted, fontSize: 13 },
@@ -309,35 +371,6 @@ function VazioLista({ texto }) {
   );
 }
 
-function ModalSelecaoOperadores({ titulo, operadores, selecaoUnica, onClose, onConfirmar }) {
-  const [sel, setSel] = useState([]);
-  const toggle = (id) => {
-    if (selecaoUnica) { onConfirmar([id]); return; }
-    setSel((p) => p.includes(id) ? p.filter((i) => i !== id) : [...p, id]);
-  };
-  return React.createElement('div', { style: overlay },
-    React.createElement('div', { style: modalCard },
-      React.createElement('h3', { style: modalTitulo }, titulo),
-      React.createElement('div', { style: { maxHeight: 280, overflowY: 'auto', margin: '8px 0' } },
-        operadores.map((o) =>
-          React.createElement('button', {
-            key: o.id, onClick: () => toggle(o.id),
-            style: {
-              ...linhaSelecao, width: '100%', border: 'none', cursor: 'pointer', textAlign: 'left',
-              background: sel.includes(o.id) ? T.primarySoft : 'transparent', borderRadius: T.radiusSm,
-            },
-          },
-            React.createElement('span', { style: { width: 8, height: 8, borderRadius: '50%', background: o.online ? T.online : T.offline } }),
-            o.nome,
-          ))),
-      React.createElement('div', { style: { display: 'flex', gap: 8, justifyContent: 'flex-end' } },
-        React.createElement('button', { onClick: onClose, style: btnSecundario }, 'Cancelar'),
-        !selecaoUnica && React.createElement('button', { onClick: () => onConfirmar(sel), style: btnPrimario }, 'Confirmar'),
-      ),
-    ),
-  );
-}
-
 const overlay = { position: 'fixed', inset: 0, background: 'rgba(15,26,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 };
 const modalCard = { background: T.surface, borderRadius: T.radiusLg, padding: 24, maxWidth: 440, width: '90%', boxShadow: T.shadowLg };
 const modalTitulo = { fontSize: 18, fontWeight: 700, marginBottom: 14, color: T.text };
@@ -346,4 +379,3 @@ const linhaSelecao = { display: 'flex', alignItems: 'center', gap: 10, padding: 
 const btnSecundario = { background: 'transparent', border: `1px solid ${T.borderStrong}`, color: T.textSecondary, padding: '9px 18px', borderRadius: T.radiusSm, cursor: 'pointer', fontSize: 13, fontWeight: 500 };
 const btnPrimario = { background: T.primary, border: 'none', color: '#fff', padding: '9px 18px', borderRadius: T.radiusSm, cursor: 'pointer', fontSize: 13, fontWeight: 600 };
 
-export { overlay, modalCard, modalTitulo, inputStyle, linhaSelecao, btnSecundario, btnPrimario };

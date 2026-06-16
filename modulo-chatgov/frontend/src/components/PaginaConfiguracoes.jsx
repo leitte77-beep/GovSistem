@@ -691,6 +691,7 @@ function AbaChatbot() {
               React.createElement('label', { style: label }, 'Provider'),
               React.createElement('select', { value: cfg?.llm_provider || 'openai', onChange: (e) => setField('llm_provider', e.target.value), style: { ...campo, marginBottom: 0 } },
                 React.createElement('option', { value: 'openai' }, 'OpenAI'),
+                React.createElement('option', { value: 'deepseek' }, 'DeepSeek'),
                 React.createElement('option', { value: 'anthropic' }, 'Anthropic (Claude)'),
               ),
             ),

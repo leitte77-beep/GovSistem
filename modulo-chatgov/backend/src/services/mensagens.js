@@ -1,7 +1,56 @@
 import db from '../db.js';
 import { v4 as uuidv4 } from 'uuid';
 
+const MAX_CONTEUDO = 8000;
+
+function validarConteudo(conteudo) {
+  if (conteudo == null) return null;
+  const txt = String(conteudo).trim();
+  if (txt.length > MAX_CONTEUDO) {
+    const err = new Error(`Mensagem excede o limite de ${MAX_CONTEUDO} caracteres`);
+    err.code = 'CONTENT_TOO_LONG';
+    throw err;
+  }
+  return txt.length === 0 ? null : txt;
+}
+
+export async function ehMembroCanal(tenantId, canalId, operadorId) {
+  const r = await db.oneOrNone(
+    `SELECT 1 FROM canal_membros cm
+     JOIN canais_internos ci ON ci.id = cm.canal_id
+     WHERE cm.canal_id = $1 AND cm.operador_id = $2 AND ci.tenant_id = $3`,
+    [canalId, operadorId, tenantId]
+  );
+  return !!r;
+}
+
+export async function assertMembroCanal(tenantId, canalId, operadorId) {
+  const ok = await ehMembroCanal(tenantId, canalId, operadorId);
+  if (!ok) {
+    const err = new Error('Sem permissao neste canal');
+    err.code = 'NOT_A_MEMBER';
+    throw err;
+  }
+}
+
+export async function listarMembrosCanal(tenantId, canalId) {
+  return db.manyOrNone(
+    `SELECT o.id, o.nome, o.online
+     FROM canal_membros cm
+     JOIN operadores o ON o.id = cm.operador_id
+     WHERE cm.canal_id = $1 AND o.tenant_id = $2
+     ORDER BY o.nome ASC`,
+    [canalId, tenantId]
+  );
+}
+
 export async function editarMensagem(tenantId, msgId, operadorId, novoConteudo) {
+  const conteudo = validarConteudo(novoConteudo);
+  if (!conteudo) {
+    const err = new Error('Conteudo vazio');
+    err.code = 'EMPTY_CONTENT';
+    throw err;
+  }
   const msg = await db.oneOrNone(
     'SELECT * FROM mensagens_internas WHERE id = $1 AND tenant_id = $2 AND remetente_id = $3',
     [msgId, tenantId, operadorId]
@@ -12,33 +61,37 @@ export async function editarMensagem(tenantId, msgId, operadorId, novoConteudo) 
   return db.one(
     `UPDATE mensagens_internas SET conteudo = $1, editada = true, editada_em = now()
      WHERE id = $2 AND tenant_id = $3 RETURNING *`,
-    [novoConteudo, msgId, tenantId]
+    [conteudo, msgId, tenantId]
   );
 }
 
 export async function excluirMensagem(tenantId, msgId, operadorId) {
   return db.oneOrNone(
-    `UPDATE mensagens_internas SET excluida = true, conteudo = 'Mensagem excluída'
+    `UPDATE mensagens_internas SET excluida = true, conteudo = 'Mensagem excluida'
      WHERE id = $1 AND tenant_id = $2 AND remetente_id = $3 RETURNING *`,
     [msgId, tenantId, operadorId]
   );
 }
 
 export async function encaminharMensagem(tenantId, msgId, canalDestinoId, operadorId) {
+  await assertMembroCanal(tenantId, canalDestinoId, operadorId);
   const original = await db.oneOrNone(
     'SELECT * FROM mensagens_internas WHERE id = $1 AND tenant_id = $2',
     [msgId, tenantId]
   );
   if (!original) return null;
-  const msgId2 = uuidv4();
+  const ehMembroOrigem = await ehMembroCanal(tenantId, original.canal_id, operadorId);
+  if (!ehMembroOrigem) return null;
+  const novoId = uuidv4();
   return db.one(
-    `INSERT INTO mensagens_internas (id, tenant_id, canal_id, remetente_id, tipo, conteudo, media_url, encaminhada_de, criado_em)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now()) RETURNING *`,
-    [msgId2, tenantId, canalDestinoId, operadorId, original.tipo, original.conteudo, original.media_url, original.canal_id]
+    `INSERT INTO mensagens_internas (id, tenant_id, canal_id, remetente_id, tipo, conteudo, media_url, media_mime, encaminhada_de, criado_em)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now()) RETURNING *`,
+    [novoId, tenantId, canalDestinoId, operadorId, original.tipo, original.conteudo, original.media_url, original.media_mime, original.id]
   );
 }
 
 export async function fixarMensagem(tenantId, canalId, mensagemId, operadorId) {
+  await assertMembroCanal(tenantId, canalId, operadorId);
   const count = await db.one(
     'SELECT COUNT(*)::int as c FROM mensagens_fixadas WHERE canal_id = $1 AND tenant_id = $2',
     [canalId, tenantId]
@@ -67,10 +120,12 @@ export async function desafixarMensagem(tenantId, canalId, mensagemId) {
 export async function getMensagensFixadas(tenantId, canalId) {
   return db.manyOrNone(
     `SELECT mf.*, mi.conteudo, mi.tipo, mi.media_url, mi.criado_em as msg_criado_em,
-            o.nome as fixada_por_nome, mi.remetente_id
+            o.nome as fixada_por_nome, mi.remetente_id,
+            autor.nome as remetente_nome
      FROM mensagens_fixadas mf
      JOIN mensagens_internas mi ON mi.id = mf.mensagem_id
      LEFT JOIN operadores o ON o.id = mf.fixada_por
+     LEFT JOIN operadores autor ON autor.id = mi.remetente_id
      WHERE mf.canal_id = $1 AND mf.tenant_id = $2
      ORDER BY mf.fixada_em ASC`,
     [canalId, tenantId]
@@ -93,19 +148,22 @@ export async function removerReacao(tenantId, mensagemId, operadorId, emoji) {
   );
 }
 
-export async function getReacoes(tenantId, mensagemId) {
+export async function getReacoes(tenantId, mensagemIds) {
+  if (!Array.isArray(mensagemIds) || mensagemIds.length === 0) return [];
   return db.manyOrNone(
-    `SELECT emoji, COUNT(*)::int as contagem,
-            json_agg(json_build_object('operador_id', operador_id, 'nome', o.nome)) as usuarios
+    `SELECT rm.mensagem_id as msg_id, rm.emoji, COUNT(*)::int as contagem,
+            json_agg(json_build_object('operador_id', rm.operador_id, 'nome', o.nome) ORDER BY o.nome) as usuarios
      FROM reacoes_mensagens rm
      LEFT JOIN operadores o ON o.id = rm.operador_id
-     WHERE rm.mensagem_id = $1 AND rm.tenant_id = $2
-     GROUP BY emoji`,
-    [mensagemId, tenantId]
+     WHERE rm.mensagem_id = ANY($1::uuid[]) AND rm.tenant_id = $2
+     GROUP BY rm.mensagem_id, rm.emoji
+     ORDER BY rm.mensagem_id`,
+    [mensagemIds, tenantId]
   );
 }
 
 export async function marcarLido(tenantId, canalId, operadorId) {
+  await assertMembroCanal(tenantId, canalId, operadorId);
   await db.none(
     `INSERT INTO leituras_mensagens (operador_id, canal_id, lido_ate)
      VALUES ($1, $2, now())
@@ -119,27 +177,36 @@ export async function marcarLido(tenantId, canalId, operadorId) {
 }
 
 export async function contarNaoLidas(tenantId, operadorId) {
-  const canais = await db.manyOrNone(
-    `SELECT cm.canal_id FROM canal_membros cm
-     JOIN canais_internos ci ON ci.id = cm.canal_id
-     WHERE cm.operador_id = $1 AND ci.tenant_id = $2`,
+  const r = await db.one(
+    `SELECT COUNT(*)::int as c
+     FROM mensagens_internas mi
+     JOIN canal_membros cm ON cm.canal_id = mi.canal_id AND cm.operador_id = $1
+     LEFT JOIN leituras_mensagens lm
+       ON lm.operador_id = cm.operador_id AND lm.canal_id = cm.canal_id
+     WHERE mi.tenant_id = $2
+       AND mi.remetente_id <> $1
+       AND mi.excluida = false
+       AND mi.criado_em > COALESCE(lm.lido_ate, '1970-01-01'::timestamp)`,
     [operadorId, tenantId]
   );
-  let total = 0;
-  for (const c of canais) {
-    const leitura = await db.oneOrNone(
-      'SELECT lido_ate FROM leituras_mensagens WHERE operador_id = $1 AND canal_id = $2',
-      [operadorId, c.canal_id]
-    );
-    const desde = leitura?.lido_ate || new Date(0);
-    const r = await db.one(
-      `SELECT COUNT(*)::int as c FROM mensagens_internas
-       WHERE canal_id = $1 AND tenant_id = $2 AND remetente_id <> $3 AND criado_em > $4`,
-      [c.canal_id, tenantId, operadorId, desde]
-    );
-    total += r.c;
-  }
-  return total;
+  return r.c;
+}
+
+export async function contarNaoLidasPorCanal(tenantId, operadorId, canalId) {
+  const r = await db.one(
+    `SELECT COUNT(*)::int as c
+     FROM mensagens_internas mi
+     JOIN canal_membros cm ON cm.canal_id = mi.canal_id AND cm.operador_id = $1
+     LEFT JOIN leituras_mensagens lm
+       ON lm.operador_id = cm.operador_id AND lm.canal_id = cm.canal_id
+     WHERE mi.tenant_id = $2
+       AND mi.canal_id = $3
+       AND mi.remetente_id <> $1
+       AND mi.excluida = false
+       AND mi.criado_em > COALESCE(lm.lido_ate, '1970-01-01'::timestamp)`,
+    [operadorId, tenantId, canalId]
+  );
+  return r.c;
 }
 
 export async function buscarMensagens(tenantId, operadorId, termo, filtros = {}) {
@@ -170,4 +237,22 @@ export async function buscarMensagens(tenantId, operadorId, termo, filtros = {})
 
   query += ' ORDER BY mi.criado_em DESC LIMIT 50';
   return db.manyOrNone(query, params);
+}
+
+export async function listarMensagensCanal(tenantId, canalId, operadorId, { antesDe, limite = 50 } = {}) {
+  await assertMembroCanal(tenantId, canalId, operadorId);
+  const lim = Math.min(Math.max(parseInt(limite, 10) || 50, 1), 200);
+  const params = [canalId, tenantId];
+  let query = `SELECT mi.*, o.nome as remetente_nome
+     FROM mensagens_internas mi
+     JOIN operadores o ON o.id = mi.remetente_id
+     WHERE mi.canal_id = $1 AND mi.tenant_id = $2`;
+  if (antesDe) {
+    params.push(antesDe);
+    query += ` AND mi.criado_em < $${params.length}`;
+  }
+  params.push(lim);
+  query += ` ORDER BY mi.criado_em DESC LIMIT $${params.length}`;
+  const rows = await db.manyOrNone(query, params);
+  return rows.reverse();
 }

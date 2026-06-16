@@ -86,6 +86,12 @@ router.put('/presenca', async (req, res) => {
 router.put('/canais-internos/:canalId/mensagens/:msgId/editar', async (req, res) => {
   try {
     const op = req.operador;
+    const { assertMembroCanal } = await import('../services/mensagens.js');
+    try {
+      await assertMembroCanal(op.tenantId, req.params.canalId, op.id);
+    } catch (e) {
+      return res.status(403).json({ erro: e.message });
+    }
     const msg = await editarMensagem(op.tenantId, req.params.msgId, op.id, req.body.conteudo);
     if (!msg) return res.status(404).json({ erro: 'Mensagem não encontrada ou prazo de edição expirado' });
     res.json(msg);
@@ -97,6 +103,12 @@ router.put('/canais-internos/:canalId/mensagens/:msgId/editar', async (req, res)
 router.delete('/canais-internos/:canalId/mensagens/:msgId', async (req, res) => {
   try {
     const op = req.operador;
+    const { assertMembroCanal } = await import('../services/mensagens.js');
+    try {
+      await assertMembroCanal(op.tenantId, req.params.canalId, op.id);
+    } catch (e) {
+      return res.status(403).json({ erro: e.message });
+    }
     const msg = await excluirMensagem(op.tenantId, req.params.msgId, op.id);
     if (!msg) return res.status(404).json({ erro: 'Mensagem não encontrada' });
     res.json(msg);
@@ -108,6 +120,12 @@ router.delete('/canais-internos/:canalId/mensagens/:msgId', async (req, res) => 
 router.post('/canais-internos/:canalId/mensagens/:msgId/encaminhar', async (req, res) => {
   try {
     const op = req.operador;
+    const { assertMembroCanal } = await import('../services/mensagens.js');
+    try {
+      await assertMembroCanal(op.tenantId, req.body.canal_destino_id, op.id);
+    } catch (e) {
+      return res.status(403).json({ erro: e.message });
+    }
     const msg = await encaminharMensagem(op.tenantId, req.params.msgId, req.body.canal_destino_id, op.id);
     if (!msg) return res.status(404).json({ erro: 'Mensagem não encontrada' });
     res.json(msg);
@@ -119,6 +137,12 @@ router.post('/canais-internos/:canalId/mensagens/:msgId/encaminhar', async (req,
 router.get('/canais-internos/:canalId/fixadas', async (req, res) => {
   try {
     const op = req.operador;
+    const { assertMembroCanal } = await import('../services/mensagens.js');
+    try {
+      await assertMembroCanal(op.tenantId, req.params.canalId, op.id);
+    } catch (e) {
+      return res.status(403).json({ erro: e.message });
+    }
     const fixadas = await getMensagensFixadas(op.tenantId, req.params.canalId);
     res.json(fixadas);
   } catch (err) {
@@ -130,7 +154,7 @@ router.post('/canais-internos/:canalId/mensagens/:msgId/fixar', async (req, res)
   try {
     const op = req.operador;
     const r = await fixarMensagem(op.tenantId, req.params.canalId, req.params.msgId, op.id);
-    res.json(r);
+    res.json(r || { ok: false });
   } catch (err) {
     res.status(500).json({ erro: 'Erro ao fixar mensagem' });
   }
@@ -139,6 +163,12 @@ router.post('/canais-internos/:canalId/mensagens/:msgId/fixar', async (req, res)
 router.delete('/canais-internos/:canalId/mensagens/:msgId/fixar', async (req, res) => {
   try {
     const op = req.operador;
+    const { assertMembroCanal } = await import('../services/mensagens.js');
+    try {
+      await assertMembroCanal(op.tenantId, req.params.canalId, op.id);
+    } catch (e) {
+      return res.status(403).json({ erro: e.message });
+    }
     await desafixarMensagem(op.tenantId, req.params.canalId, req.params.msgId);
     res.json({ ok: true });
   } catch (err) {
@@ -149,7 +179,13 @@ router.delete('/canais-internos/:canalId/mensagens/:msgId/fixar', async (req, re
 router.get('/canais-internos/:canalId/mensagens/:msgId/reacoes', async (req, res) => {
   try {
     const op = req.operador;
-    const reacoes = await getReacoes(op.tenantId, req.params.msgId);
+    const { assertMembroCanal } = await import('../services/mensagens.js');
+    try {
+      await assertMembroCanal(op.tenantId, req.params.canalId, op.id);
+    } catch (e) {
+      return res.status(403).json({ erro: e.message });
+    }
+    const reacoes = await getReacoes(op.tenantId, [req.params.msgId]);
     res.json(reacoes);
   } catch (err) {
     res.status(500).json({ erro: 'Erro ao buscar reações' });
@@ -159,6 +195,12 @@ router.get('/canais-internos/:canalId/mensagens/:msgId/reacoes', async (req, res
 router.post('/canais-internos/:canalId/mensagens/:msgId/reagir', async (req, res) => {
   try {
     const op = req.operador;
+    const { assertMembroCanal } = await import('../services/mensagens.js');
+    try {
+      await assertMembroCanal(op.tenantId, req.params.canalId, op.id);
+    } catch (e) {
+      return res.status(403).json({ erro: e.message });
+    }
     const { emoji } = req.body;
     const r = await adicionarReacao(op.tenantId, req.params.msgId, op.id, emoji);
     res.json(r || { ok: true });
@@ -170,6 +212,12 @@ router.post('/canais-internos/:canalId/mensagens/:msgId/reagir', async (req, res
 router.delete('/canais-internos/:canalId/mensagens/:msgId/reagir', async (req, res) => {
   try {
     const op = req.operador;
+    const { assertMembroCanal } = await import('../services/mensagens.js');
+    try {
+      await assertMembroCanal(op.tenantId, req.params.canalId, op.id);
+    } catch (e) {
+      return res.status(403).json({ erro: e.message });
+    }
     const { emoji } = req.body;
     await removerReacao(op.tenantId, req.params.msgId, op.id, emoji);
     res.json({ ok: true });
@@ -181,6 +229,12 @@ router.delete('/canais-internos/:canalId/mensagens/:msgId/reagir', async (req, r
 router.post('/canais-internos/:canalId/ler', async (req, res) => {
   try {
     const op = req.operador;
+    const { assertMembroCanal } = await import('../services/mensagens.js');
+    try {
+      await assertMembroCanal(op.tenantId, req.params.canalId, op.id);
+    } catch (e) {
+      return res.status(403).json({ erro: e.message });
+    }
     await marcarLido(op.tenantId, req.params.canalId, op.id);
     res.json({ ok: true });
   } catch (err) {
@@ -420,6 +474,35 @@ router.get('/arquivos/:id/download', async (req, res) => {
     res.send(result.buffer);
   } catch (err) {
     res.status(500).json({ erro: 'Erro ao baixar arquivo' });
+  }
+});
+
+// Serve o arquivo inline (sem Content-Disposition: attachment) para ser usado
+// diretamente em <img src>, <video src>, <iframe src> etc. Aceita o token
+// via query string (?token=...) para esses casos em que o navegador não envia
+// o header Authorization.
+router.get('/arquivos/:id/raw', async (req, res) => {
+  try {
+    const { verifyToken } = await import('../auth/jwt.js');
+    const { operadorFromToken } = await import('../auth/middleware.js');
+    let op = req.operador;
+    if (!op) {
+      const token = req.query.token;
+      if (!token) return res.status(401).json({ erro: 'Token não fornecido' });
+      try {
+        const decoded = verifyToken(token);
+        op = operadorFromToken(decoded);
+      } catch (e) {
+        return res.status(401).json({ erro: 'Token inválido' });
+      }
+    }
+    const result = await downloadArquivo(op.tenantId, req.params.id);
+    if (!result) return res.status(404).json({ erro: 'Arquivo não encontrado' });
+    res.setHeader('Content-Type', result.arquivo.tipo_mime || 'application/octet-stream');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    res.send(result.buffer);
+  } catch (err) {
+    res.status(500).json({ erro: 'Erro ao servir arquivo' });
   }
 });
 

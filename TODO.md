@@ -1,0 +1,29 @@
+# TODO
+- [x] Substituir <a> por <Link> no AppShell.tsx e adicionar toggle mobile
+- [x] Substituir <a> por <Link> no secretarias/page.tsx
+- [x] Criar secretarias/[id]/page.tsx (página de detalhes)
+- [x] Criar páginas placeholder para rotas vazias do web-admin
+- [x] Criar páginas para rotas vazias do web-public
+- [x] Corrigir erro silencioso no auth.tsx
+- [x] Deduplicar constantes ACCESS_TOKEN_KEY / REFRESH_TOKEN_KEY
+- [x] Adicionar coluna provider ao config_iris + departamento_sugerido à conversas
+- [x] Refatorar iris.js: multi-provedor (DeepSeek + OpenAI) + prompt enriquecido (fila, atendentes, tempo)
+- [x] Fallback inteligente JSON + salvar departamento_sugerido na conversa
+- [x] Chatbot LLM com roteamento de departamento
+- [x] Gateway: evento bot digitando + usar departamento_sugerido como contexto
+- [x] Frontend: indicador Iris digitando + atendentes online + campo provider na config
+- [x] Reações no histórico: incluir getReacoes na API REST + carregar no frontend
+- [x] Indicador online/offline no header do DM
+- [x] Upload de áudio via API (não base64 no socket)
+- [x] @menções com autocomplete
+- [x] Label "Encaminhado" + thumbnail preview de anexo + handler digitando:parou
+- [x] Undo soft-delete com delay de 5s no banco
+- [x] Suporte a Markdown nas mensagens (bold, itálico, code, links)
+- [x] Badge de não lidas na lista de canais
+- [x] Busca de mensagens no canal
+- [x] Gerenciamento de grupo: adicionar/remover membros + sair do canal
+- [x] Upload múltiplo de arquivos (até 10 por mensagem)
+- [x] Som de notificação ao receber mensagem
+- [x] Colar imagem do clipboard (Ctrl+V)
+- [x] Preview de links + Avatar do grupo + Último visto + Status
+- [x] Enquetes simples no canal

@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react";
-import { api, AuthError, bootstrapTokenFromQuery } from "./api";
+import { api, AuthError, bootstrapTokenFromQuery, ACCESS_TOKEN_KEY, REFRESH_TOKEN_KEY } from "./api";
 
 interface User {
   id: string;
@@ -29,9 +29,6 @@ const AuthContext = createContext<AuthContextType>({
   hasRole: () => false,
 });
 
-const ACCESS_TOKEN_KEY = "govouve_access_token";
-const REFRESH_TOKEN_KEY = "govouve_refresh_token";
-
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -51,6 +48,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.removeItem(ACCESS_TOKEN_KEY);
         localStorage.removeItem(REFRESH_TOKEN_KEY);
       }
+      // Non-auth errors (network, server 500, etc.) — keep the token
+      // and let the user retry by refreshing or re-logging in
+      setUser(null);
     } finally {
       setLoading(false);
     }

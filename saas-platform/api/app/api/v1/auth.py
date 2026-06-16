@@ -1,4 +1,5 @@
 import logging
+import re
 import secrets
 import smtplib
 import uuid
@@ -9,7 +10,7 @@ from email.mime.multipart import MIMEMultipart
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_client_info, get_current_user
@@ -31,11 +32,14 @@ from app.models.sso_session import SsoSession
 from app.models.user import User
 from app.models.user_module_grant import UserModuleGrant
 from app.schemas.schemas import (
+    AccessLogEntry,
+    ChangePasswordRequest,
     ForgotPasswordRequest,
     LoginRequest,
     MessageResponse,
     ModuleAccessRequest,
     ModuleTokenResponse,
+    ProfileUpdate,
     RefreshRequest,
     ResetPasswordRequest,
     TokenResponse,
@@ -197,6 +201,122 @@ async def refresh_token(
 @router.get("/me", response_model=UserResponse)
 async def get_me(user: User = Depends(get_current_user)):
     return user
+
+
+@router.put("/me", response_model=UserResponse)
+async def update_me(
+    body: ProfileUpdate,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Allow the current user to update their own profile data.
+
+    Changes are persisted to the same ``users`` table the platform admin sees
+    in the SaaS, so they show up immediately under Usuários.
+    """
+    update_data = body.model_dump(exclude_unset=True)
+
+    if "cpf" in update_data:
+        if update_data["cpf"]:
+            cleaned = re.sub(r"\D", "", update_data["cpf"])
+            if cleaned:
+                existing = await db.execute(
+                    select(User).where(
+                        User.cpf == cleaned,
+                        User.id != user.id,
+                        User.deleted_at.is_(None),
+                    )
+                )
+                if existing.scalar_one_or_none():
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="CPF já cadastrado para outro usuário.",
+                    )
+            update_data["cpf"] = cleaned or None
+        else:
+            update_data["cpf"] = None
+
+    for key, value in update_data.items():
+        setattr(user, key, value)
+
+    client_info = get_client_info(request)
+    audit = AuditEvent(
+        actor_id=user.id,
+        actor_email=user.email,
+        organization_id=user.organization_id,
+        action="update_profile",
+        resource_type="user",
+        resource_id=str(user.id),
+        details={k: v for k, v in update_data.items()},
+        ip_address=client_info["ip_address"],
+        user_agent=client_info["user_agent"],
+    )
+    db.add(audit)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@router.post("/change-password", response_model=MessageResponse)
+async def change_password(
+    body: ChangePasswordRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if not user.password_hash or not verify_password(
+        body.current_password, user.password_hash
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Senha atual incorreta.",
+        )
+
+    if len(body.new_password) < settings.PASSWORD_MIN_LENGTH:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"A nova senha deve ter no mínimo {settings.PASSWORD_MIN_LENGTH} caracteres.",
+        )
+
+    user.password_hash = hash_password(body.new_password)
+    user.password_changed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    user.password_failures = 0
+    user.locked_until = None
+
+    client_info = get_client_info(request)
+    audit = AuditEvent(
+        actor_id=user.id,
+        actor_email=user.email,
+        organization_id=user.organization_id,
+        action="change_password",
+        resource_type="user",
+        resource_id=str(user.id),
+        ip_address=client_info["ip_address"],
+        user_agent=client_info["user_agent"],
+    )
+    db.add(audit)
+    await db.commit()
+
+    return MessageResponse(message="Senha alterada com sucesso.")
+
+
+@router.get("/me/access-log", response_model=list[AccessLogEntry])
+async def get_my_access_log(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the current user's recent access events (logins / module access)."""
+    result = await db.execute(
+        select(AuditEvent)
+        .where(
+            AuditEvent.actor_id == user.id,
+            AuditEvent.action.in_(["login", "module_access"]),
+        )
+        .order_by(desc(AuditEvent.created_at))
+        .limit(10)
+    )
+    return list(result.scalars().all())
 
 
 @router.post("/module-access", response_model=ModuleTokenResponse)

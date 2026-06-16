@@ -30,13 +30,25 @@ export async function createPostgresAuthState(db_unused, tenantId) {
   };
 
   // --- creds continuam num único registro (mudam raramente, sem concorrência) ---
+  // Retry em erros transitórios (ex.: pool do Postgres ainda aquecendo no boot).
+  // Importante: NUNCA confundir falha de conexão com "sem credenciais", senão
+  // a sessão seria recriada do zero (forçando novo QR) por um timeout passageiro.
   const readCreds = async () => {
-    const row = await db.oneOrNone(
-      'SELECT creds AS data FROM whatsapp_sessoes WHERE tenant_id = $1',
-      [tenantId]
-    );
-    if (!row?.data) return null;
-    return decValue(row.data);
+    let ultimoErro;
+    for (let tentativa = 0; tentativa < 4; tentativa++) {
+      try {
+        const row = await db.oneOrNone(
+          'SELECT creds AS data FROM whatsapp_sessoes WHERE tenant_id = $1',
+          [tenantId]
+        );
+        if (!row?.data) return null;
+        return decValue(row.data);
+      } catch (err) {
+        ultimoErro = err;
+        await new Promise((r) => setTimeout(r, 800 * (tentativa + 1)));
+      }
+    }
+    throw ultimoErro;
   };
 
   const writeCreds = async (creds) => {
@@ -52,16 +64,13 @@ export async function createPostgresAuthState(db_unused, tenantId) {
     }
   };
 
-  let creds;
-  try {
-    creds = await readCreds();
-    if (!creds) {
-      creds = initAuthCreds();
-      await writeCreds(creds);
-    }
-  } catch (err) {
-    console.error(`[AuthState] Read creds error for tenant ${tenantId}:`, err.message);
+  // Só geramos credenciais novas quando confirmamos que NÃO existem (readCreds === null).
+  // Se a leitura falhar de vez (após os retries), propagamos o erro: a sessão não é
+  // iniciada agora e as credenciais existentes no banco ficam preservadas.
+  let creds = await readCreds();
+  if (!creds) {
     creds = initAuthCreds();
+    await writeCreds(creds);
   }
 
   // --- key store: uma linha por (key_type, key_id) ---

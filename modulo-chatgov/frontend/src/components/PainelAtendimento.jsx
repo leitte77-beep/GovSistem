@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Send, Paperclip, Smile, ShieldCheck, Clock, UserPlus, CheckCircle2, Building2, MessageSquare, Tag, StickyNote, ChevronDown, Archive, Trash2, ArrowRightLeft, Undo2, UserCheck, X } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { Send, Paperclip, Smile, ShieldCheck, Clock, UserPlus, CheckCircle2, Building2, MessageSquare, Tag, StickyNote, ChevronDown, Archive, Trash2, ArrowRightLeft, Undo2, UserCheck, X, MoreVertical, ArrowDown, Loader2 } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { BolhaConversa } from './BolhaConversa';
 import { DeptBadge } from './DeptBadge';
@@ -7,8 +7,23 @@ import { ModalParticipantes } from './ModalParticipantes';
 import { ModalTransferir } from './ModalTransferir';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
-import { fetchMensagens, fetchDepartamentos, fetchTemplates, fetchEtiquetas, fetchEtiquetasConversa, fetchNotasInternas, editarContato, fetchTransferenciaPendente } from '../api';
+import { fetchMensagens, fetchDepartamentos, fetchTemplates, fetchEtiquetas, fetchEtiquetasConversa, fetchNotasInternas, editarContato, fetchTransferenciaPendente, excluirMensagemConversa } from '../api';
+import { mimeParaTipo, encodeFileBase64 } from '../utils/arquivo';
 import { T } from '../theme';
+
+const EMOJIS_RAPIDOS = ['😀', '😅', '👍', '🙏', '❤️', '😊', '👏', '✅', '⚠️', '📎'];
+const PERTO_DO_FIM_PX = 120;
+const MAX_MIDIA_BYTES = 16 * 1024 * 1024; // 16 MB (limite prático do WhatsApp)
+
+// Preenche variáveis de template com dados da conversa.
+function aplicarVariaveis(texto, conversa) {
+  if (!texto) return texto;
+  return texto
+    .replace(/\{\{\s*nome\s*\}\}/gi, conversa?.contato_nome || conversa?.contato_telefone || '')
+    .replace(/\{\{\s*telefone\s*\}\}/gi, conversa?.contato_telefone || '')
+    .replace(/\{\{\s*protocolo\s*\}\}/gi, conversa?.protocolo || conversa?.protocolo_numero || '')
+    .replace(/\{\{\s*data\s*\}\}/gi, new Date().toLocaleDateString('pt-BR'));
+}
 
 export function PainelAtendimento({ conversa, onConversaUpdated }) {
   const { socket, connected } = useSocket();
@@ -32,8 +47,29 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
   const [notaTexto, setNotaTexto] = useState('');
   const [editandoNome, setEditandoNome] = useState(false);
   const [nomeEdit, setNomeEdit] = useState('');
+  const [temMais, setTemMais] = useState(false);
+  const [carregandoMais, setCarregandoMais] = useState(false);
+  const [novasAbaixo, setNovasAbaixo] = useState(0);
+  const [clienteDigitando, setClienteDigitando] = useState(false);
+  const [botDigitando, setBotDigitando] = useState(null); // null | 'iris' | 'chatbot'
+  const [showMenuMais, setShowMenuMais] = useState(false);
+  const [showEmojis, setShowEmojis] = useState(false);
+  const [anexando, setAnexando] = useState(false);
+  const [toast, setToast] = useState(null);
+  const [confirmacao, setConfirmacao] = useState(null);
   const areaMensagensRef = useRef(null);
   const inputRef = useRef(null);
+  const fileRef = useRef(null);
+  const pertoDoFimRef = useRef(true);
+
+  // Toast simples (substitui alerts). Auto-some em 3.5s.
+  const notificar = useCallback((mensagem, tipo = 'info') => {
+    setToast({ mensagem, tipo });
+    setTimeout(() => setToast(null), 3500);
+  }, []);
+
+  // Modal de confirmação (substitui confirm/prompt). `comInput` habilita um campo.
+  const pedirConfirmacao = useCallback((opcoes) => setConfirmacao(opcoes), []);
 
   const opId = auth?.operador?.id;
   const ehGestor = ['admin', 'supervisor'].includes(auth?.operador?.papel);
@@ -44,8 +80,16 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
 
   useEffect(() => {
     if (!conversa) return;
+    const ac = new AbortController();
     setMensagens([]);
-    fetchMensagens(conversa.id).then(setMensagens).catch(console.error);
+    setTemMais(false);
+    setNovasAbaixo(0);
+    setClienteDigitando(false);
+    setBotDigitando(null);
+    pertoDoFimRef.current = true;
+    fetchMensagens(conversa.id, { signal: ac.signal })
+      .then(({ mensagens, temMais }) => { setMensagens(mensagens); setTemMais(temMais); })
+      .catch((e) => { if (e.name !== 'AbortError') console.error(e); });
     fetchDepartamentos().then(setDepartamentos).catch(console.error);
     fetchTemplates().then(setTemplates).catch(console.error);
     fetchEtiquetas().then(setEtiquetas).catch(console.error);
@@ -53,15 +97,58 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
     fetchNotasInternas(conversa.id).then(setNotas).catch(console.error);
     fetchTransferenciaPendente(conversa.id).then(setTransferencia).catch(() => setTransferencia(null));
     socket?.emit('conversa:abrir', conversa.id);
+    return () => ac.abort();
   }, [conversa?.id, socket]);
+
+  // Carrega o lote anterior (scroll infinito) preservando a posição visual.
+  const carregarMais = useCallback(() => {
+    if (carregandoMais || !temMais || mensagens.length === 0) return;
+    const area = areaMensagensRef.current;
+    const alturaAntes = area ? area.scrollHeight : 0;
+    setCarregandoMais(true);
+    fetchMensagens(conversa.id, { antesDe: mensagens[0].criado_em })
+      .then(({ mensagens: antigas, temMais: mais }) => {
+        setMensagens((prev) => [...antigas, ...prev]);
+        setTemMais(mais);
+        requestAnimationFrame(() => {
+          if (area) area.scrollTop = area.scrollHeight - alturaAntes;
+        });
+      })
+      .catch(console.error)
+      .finally(() => setCarregandoMais(false));
+  }, [carregandoMais, temMais, mensagens, conversa?.id]);
 
   useEffect(() => {
     if (!socket) return;
-    const onNova = (msg) => setMensagens((prev) => [...prev, msg]);
+    const onNova = (msg) => {
+      setMensagens((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
+      // Se o usuário não está no fim, conta como "nova mensagem abaixo".
+      if (!pertoDoFimRef.current && msg.direcao === 'entrada') {
+        setNovasAbaixo((n) => n + 1);
+      }
+    };
     const onStatus = ({ waMessageId, status }) =>
       setMensagens((prev) => prev.map((m) => (m.wa_message_id === waMessageId ? { ...m, status } : m)));
+    const onReacao = ({ mensagemId, emoji }) =>
+      setMensagens((prev) => prev.map((m) => (m.id === mensagemId ? { ...m, reacao: emoji } : m)));
+    const onExcluida = ({ mensagemId }) =>
+      setMensagens((prev) => prev.map((m) => (m.id === mensagemId ? { ...m, excluida: true, conteudo: null, media_url: null } : m)));
+    const onPresenca = ({ convId, digitando, estado, bot }) => {
+      if (convId === conversa?.id) {
+        if (estado === 'bot_digitando') {
+          setClienteDigitando(false);
+          setBotDigitando(bot || 'bot');
+        } else {
+          setBotDigitando(null);
+          setClienteDigitando(!!digitando);
+        }
+      }
+    };
     socket.on('mensagem:nova', onNova);
     socket.on('mensagem:status', onStatus);
+    socket.on('mensagem:reacao', onReacao);
+    socket.on('mensagem:excluida', onExcluida);
+    socket.on('cliente:presenca', onPresenca);
     const onNotaNova = (nota) => setNotas((prev) => [nota, ...prev]);
     socket.on('nota:nova', onNotaNova);
     const onTransferencia = ({ convId }) => {
@@ -70,12 +157,41 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
       }
     };
     socket.on('transferencia:nova', onTransferencia);
-    return () => { socket.off('mensagem:nova', onNova); socket.off('mensagem:status', onStatus); socket.off('nota:nova', onNotaNova); socket.off('transferencia:nova', onTransferencia); };
+    return () => {
+      socket.off('mensagem:nova', onNova);
+      socket.off('mensagem:status', onStatus);
+      socket.off('mensagem:reacao', onReacao);
+      socket.off('mensagem:excluida', onExcluida);
+      socket.off('cliente:presenca', onPresenca);
+      socket.off('nota:nova', onNotaNova);
+      socket.off('transferencia:nova', onTransferencia);
+    };
   }, [socket, conversa?.id]);
 
+  // Auto-scroll inteligente: só rola ao fim se o usuário já estava perto do fim.
   useEffect(() => {
-    if (areaMensagensRef.current) areaMensagensRef.current.scrollTop = areaMensagensRef.current.scrollHeight;
+    const area = areaMensagensRef.current;
+    if (!area) return;
+    if (pertoDoFimRef.current) {
+      area.scrollTop = area.scrollHeight;
+    }
   }, [mensagens]);
+
+  const aoRolar = useCallback(() => {
+    const area = areaMensagensRef.current;
+    if (!area) return;
+    const perto = area.scrollHeight - area.scrollTop - area.clientHeight <= PERTO_DO_FIM_PX;
+    pertoDoFimRef.current = perto;
+    if (perto && novasAbaixo) setNovasAbaixo(0);
+    if (area.scrollTop <= 40 && temMais && !carregandoMais) carregarMais();
+  }, [novasAbaixo, temMais, carregandoMais, carregarMais]);
+
+  const irParaOFim = useCallback(() => {
+    const area = areaMensagensRef.current;
+    if (area) area.scrollTop = area.scrollHeight;
+    pertoDoFimRef.current = true;
+    setNovasAbaixo(0);
+  }, []);
 
   const enviar = (e) => {
     e?.preventDefault();
@@ -105,6 +221,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
       }
       setTexto('');
       inputRef.current?.focus();
+      irParaOFim();
       onConversaUpdated?.();
     });
   };
@@ -118,26 +235,55 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
   const assumir = () => {
     socket?.emit('conversa:assumir', conversa.id, (ack) => {
       if (ack?.ok) onConversaUpdated?.();
-      else alert(ack?.erro || 'Não foi possível assumir a conversa.');
+      else notificar(ack?.erro || 'Não foi possível assumir a conversa.', 'erro');
     });
   };
 
   const devolver = () => {
-    if (!confirm('Devolver esta conversa para a fila do setor? Você deixará de ser o responsável.')) return;
-    socket?.emit('conversa:devolver', conversa.id, (ack) => {
-      if (ack?.ok) onConversaUpdated?.();
-      else alert(ack?.erro || 'Não foi possível devolver a conversa.');
+    pedirConfirmacao({
+      titulo: 'Devolver conversa',
+      texto: 'Devolver esta conversa para a fila do setor? Você deixará de ser o responsável.',
+      confirmarLabel: 'Devolver',
+      onConfirm: () => socket?.emit('conversa:devolver', conversa.id, (ack) => {
+        if (ack?.ok) onConversaUpdated?.();
+        else notificar(ack?.erro || 'Não foi possível devolver a conversa.', 'erro');
+      }),
     });
   };
 
   const responderTransferencia = (aceitar) => {
-    let motivo = null;
     if (!aceitar) {
-      motivo = prompt('Motivo da recusa (opcional):') || null;
+      pedirConfirmacao({
+        titulo: 'Recusar transferência',
+        texto: 'Você pode informar o motivo da recusa (opcional).',
+        comInput: true,
+        inputPlaceholder: 'Motivo da recusa',
+        confirmarLabel: 'Recusar',
+        perigoso: true,
+        onConfirm: (motivo) => socket?.emit('conversa:transferencia-responder', { transferenciaId: transferencia.id, aceitar: false, motivo: motivo || null }, (ack) => {
+          if (ack?.ok) { setTransferencia(null); onConversaUpdated?.(); }
+          else notificar(ack?.erro || 'Não foi possível responder à transferência.', 'erro');
+        }),
+      });
+      return;
     }
-    socket?.emit('conversa:transferencia-responder', { transferenciaId: transferencia.id, aceitar, motivo }, (ack) => {
+    socket?.emit('conversa:transferencia-responder', { transferenciaId: transferencia.id, aceitar: true, motivo: null }, (ack) => {
       if (ack?.ok) { setTransferencia(null); onConversaUpdated?.(); }
-      else alert(ack?.erro || 'Não foi possível responder à transferência.');
+      else notificar(ack?.erro || 'Não foi possível responder à transferência.', 'erro');
+    });
+  };
+
+  const excluirMsg = (msg) => {
+    pedirConfirmacao({
+      titulo: 'Excluir mensagem',
+      texto: 'Excluir esta mensagem? Se possível, ela também será apagada no WhatsApp do cidadão.',
+      confirmarLabel: 'Excluir',
+      perigoso: true,
+      onConfirm: () => {
+        excluirMensagemConversa(conversa.id, msg.id)
+          .then(() => setMensagens((prev) => prev.map((m) => (m.id === msg.id ? { ...m, excluida: true, conteudo: null, media_url: null } : m))))
+          .catch((e) => notificar(e.message || 'Erro ao excluir.', 'erro'));
+      },
     });
   };
 
@@ -179,19 +325,61 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
   };
 
   const excluirConversa = () => {
-    if (!confirm('Tem certeza que deseja excluir permanentemente esta conversa? Esta ação não pode ser desfeita.')) return;
-    socket?.emit('conversa:excluir', conversa.id, (ack) => {
-      if (ack?.ok) {
-        onConversaUpdated?.();
-      }
+    pedirConfirmacao({
+      titulo: 'Excluir conversa',
+      texto: 'Tem certeza que deseja excluir permanentemente esta conversa? Esta ação não pode ser desfeita.',
+      confirmarLabel: 'Excluir',
+      perigoso: true,
+      onConfirm: () => socket?.emit('conversa:excluir', conversa.id, (ack) => {
+        if (ack?.ok) onConversaUpdated?.();
+        else notificar(ack?.erro || 'Não foi possível excluir a conversa.', 'erro');
+      }),
     });
   };
 
   const aplicarTemplate = (conteudo) => {
-    socket?.emit('mensagem:enviar', { convId: conversa.id, jid: conversa.wa_jid, texto: conteudo }, (ack) => {
-      if (!ack.ok) console.error(ack.erro);
-    });
+    // Preenche o composer com as variáveis substituídas, permitindo revisão antes do envio.
+    setTexto((t) => (t ? `${t} ${aplicarVariaveis(conteudo, conversa)}` : aplicarVariaveis(conteudo, conversa)));
     setShowTemplates(false);
+    inputRef.current?.focus();
+  };
+
+  const enviarMidia = async (file) => {
+    if (!file || !conversa) return;
+    if (!socket || !connected) {
+      setErroEnvio('Conexão em tempo real indisponível.');
+      return;
+    }
+    if (file.size > MAX_MIDIA_BYTES) {
+      notificar('Arquivo muito grande (máx. 16 MB).', 'erro');
+      return;
+    }
+    setAnexando(true);
+    setErroEnvio('');
+    try {
+      const dataUrl = await encodeFileBase64(file);
+      const mediaBase64 = String(dataUrl).split(',')[1];
+      socket.timeout(30000).emit('mensagem:enviar', {
+        convId: conversa.id,
+        jid: conversa.wa_jid,
+        texto: texto.trim() || undefined,
+        tipo: mimeParaTipo(file.type),
+        mediaBase64,
+        mediaMime: file.type || 'application/octet-stream',
+        mediaNome: file.name,
+      }, (err, ack) => {
+        setAnexando(false);
+        if (err) { setErroEnvio('Tempo esgotado ao enviar o arquivo.'); return; }
+        if (!ack?.ok) { setErroEnvio(ack?.erro || 'Não foi possível enviar o arquivo.'); return; }
+        if (ack.mensagem) setMensagens((prev) => (prev.some((m) => m.id === ack.mensagem.id) ? prev : [...prev, ack.mensagem]));
+        setTexto('');
+        irParaOFim();
+        onConversaUpdated?.();
+      });
+    } catch (e) {
+      setAnexando(false);
+      notificar('Falha ao ler o arquivo.', 'erro');
+    }
   };
 
   const toggleEtiqueta = (etiquetaId) => {
@@ -333,15 +521,25 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
             )),
         ),
       ),
-      React.createElement('button', { onClick: resolver, style: { ...acaoBtn, color: T.success, borderColor: '#CDEBD6' } },
+      React.createElement('button', { onClick: resolver, 'aria-label': 'Resolver conversa', style: { ...acaoBtn, color: T.success, borderColor: '#CDEBD6' } },
         React.createElement(CheckCircle2, { size: 16 }), 'Resolver'),
-      conversa.status === 'arquivada'
-        ? React.createElement('button', { onClick: desarquivar, style: { ...acaoBtn, color: T.primary } },
-            React.createElement(Archive, { size: 16 }), 'Desarquivar')
-        : React.createElement('button', { onClick: arquivar, style: { ...acaoBtn, color: T.textSecondary } },
-            React.createElement(Archive, { size: 16 }), 'Arquivar'),
-      React.createElement('button', { onClick: excluirConversa, style: { ...acaoBtn, color: T.danger } },
-        React.createElement(Trash2, { size: 16 }), 'Excluir'),
+      // Ações destrutivas/secundárias agrupadas num menu "⋯" para não lotar o header.
+      React.createElement('div', { style: { position: 'relative' } },
+        React.createElement('button', {
+          onClick: () => { setShowMenuMais(!showMenuMais); setShowEncaminhar(false); setShowTemplates(false); setShowEtiquetas(false); },
+          'aria-label': 'Mais ações', 'aria-haspopup': 'menu', 'aria-expanded': showMenuMais,
+          style: { ...acaoBtn, padding: '7px 9px' },
+        }, React.createElement(MoreVertical, { size: 16 })),
+        showMenuMais && React.createElement('div', { style: dropdown, role: 'menu' },
+          conversa.status === 'arquivada'
+            ? React.createElement('button', { role: 'menuitem', onClick: () => { setShowMenuMais(false); desarquivar(); }, style: { ...dropdownItem, color: T.primary } },
+                React.createElement(Archive, { size: 15 }), 'Desarquivar')
+            : React.createElement('button', { role: 'menuitem', onClick: () => { setShowMenuMais(false); arquivar(); }, style: { ...dropdownItem, color: T.textSecondary } },
+                React.createElement(Archive, { size: 15 }), 'Arquivar'),
+          React.createElement('button', { role: 'menuitem', onClick: () => { setShowMenuMais(false); excluirConversa(); }, style: { ...dropdownItem, color: T.danger } },
+            React.createElement(Trash2, { size: 15 }), 'Excluir conversa'),
+        ),
+      ),
     ),
 
     // Banner de transferência pendente para mim (aceitar/recusar)
@@ -398,14 +596,47 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
         }, et.nome),
       )),
 
-    // Mensagens
-    React.createElement('div', { ref: areaMensagensRef, style: {
-      flex: 1, overflowY: 'auto', padding: '20px 24px',
-      backgroundColor: '#f0f2f5',
-      backgroundImage: 'radial-gradient(#d1d7db 0.5px, transparent 0.5px)',
-      backgroundSize: '20px 20px',
-    } },
-      mensagens.map((msg) => React.createElement(BolhaConversa, { key: msg.id, msg })),
+    // Mensagens (área rolável + botão flutuante "novas mensagens")
+    React.createElement('div', { style: { flex: 1, position: 'relative', minHeight: 0, display: 'flex' } },
+      React.createElement('div', {
+        ref: areaMensagensRef,
+        onScroll: aoRolar,
+        role: 'log',
+        'aria-live': 'polite',
+        'aria-label': 'Mensagens da conversa',
+        style: {
+          flex: 1, overflowY: 'auto', padding: '20px 24px',
+          backgroundColor: '#f0f2f5',
+          backgroundImage: 'radial-gradient(#d1d7db 0.5px, transparent 0.5px)',
+          backgroundSize: '20px 20px',
+        },
+      },
+        carregandoMais && React.createElement('div', { style: { textAlign: 'center', padding: 8, color: T.textMuted } },
+          React.createElement(Loader2, { size: 18, className: 'spin' })),
+        temMais && !carregandoMais && React.createElement('div', { style: { textAlign: 'center', marginBottom: 8 } },
+          React.createElement('button', { onClick: carregarMais, style: { ...acaoBtn, margin: '0 auto' } }, 'Carregar mensagens anteriores')),
+        mensagens.map((msg) => React.createElement(BolhaConversa, {
+          key: msg.id,
+          msg,
+          podeExcluir: !msg.excluida && (msg.direcao === 'saida' ? (msg.operador_id === opId || ehGestor) : ehGestor),
+          onExcluir: () => excluirMsg(msg),
+        })),
+        clienteDigitando && React.createElement('div', {
+          style: { fontSize: 12, color: T.textMuted, fontStyle: 'italic', padding: '4px 2px' },
+        }, `${nome} está digitando…`),
+      ),
+      // Botão flutuante "↓ X novas mensagens".
+      novasAbaixo > 0 && React.createElement('button', {
+        onClick: irParaOFim,
+        'aria-label': `${novasAbaixo} novas mensagens, ir para o fim`,
+        style: {
+          position: 'absolute', right: 24, bottom: 16, zIndex: 5,
+          display: 'flex', alignItems: 'center', gap: 6,
+          background: T.primary, color: '#fff', border: 'none',
+          borderRadius: 20, padding: '8px 14px', cursor: 'pointer',
+          fontSize: 12, fontWeight: 700, boxShadow: T.shadowMd,
+        },
+      }, React.createElement(ArrowDown, { size: 14 }), `${novasAbaixo} nova${novasAbaixo > 1 ? 's' : ''}`),
     ),
 
     // Notas Internas
@@ -438,28 +669,111 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
 
     // Composer
     erroEnvio && React.createElement('div', {
+      role: 'alert',
       style: { padding: '8px 16px', background: T.dangerSoft, color: T.danger, fontSize: 12, fontWeight: 600, borderTop: `1px solid ${T.border}` },
     }, erroEnvio),
     React.createElement('form', {
       onSubmit: enviar,
-      style: { display: 'flex', alignItems: 'center', padding: '12px 16px', background: T.surface, gap: 10, flexShrink: 0, borderTop: `1px solid ${T.border}` },
+      onDragOver: (e) => { e.preventDefault(); },
+      onDrop: (e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) enviarMidia(f); },
+      style: { position: 'relative', display: 'flex', alignItems: 'flex-end', padding: '10px 16px', background: T.surface, gap: 10, flexShrink: 0, borderTop: `1px solid ${T.border}` },
     },
-      React.createElement('button', { type: 'button', style: iconBtn, tabIndex: -1 }, React.createElement(Smile, { size: 22, color: T.textMuted })),
-      React.createElement('button', { type: 'button', style: iconBtn, tabIndex: -1 }, React.createElement(Paperclip, { size: 22, color: T.textMuted })),
+      // Picker de emojis rápidos
+      showEmojis && React.createElement('div', {
+        style: { position: 'absolute', bottom: 58, left: 16, background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radius, boxShadow: T.shadowMd, padding: 8, display: 'flex', flexWrap: 'wrap', gap: 4, width: 220, zIndex: 20 },
+      },
+        EMOJIS_RAPIDOS.map((e) => React.createElement('button', {
+          key: e, type: 'button',
+          onClick: () => { setTexto((t) => t + e); setShowEmojis(false); inputRef.current?.focus(); },
+          style: { fontSize: 20, background: 'transparent', border: 'none', cursor: 'pointer', padding: 4, lineHeight: 1 },
+        }, e))),
+      React.createElement('button', {
+        type: 'button', onClick: () => setShowEmojis(!showEmojis), 'aria-label': 'Inserir emoji',
+        style: iconBtn,
+      }, React.createElement(Smile, { size: 22, color: showEmojis ? T.primary : T.textMuted })),
       React.createElement('input', {
-        ref: inputRef, value: texto, onChange: (e) => setTexto(e.target.value), placeholder: 'Digite uma mensagem',
-        style: { flex: 1, background: T.surfaceMuted, border: `1px solid ${T.border}`, borderRadius: 22, padding: '11px 16px', color: T.text, fontSize: 14, outline: 'none' },
+        ref: fileRef, type: 'file', style: { display: 'none' },
+        onChange: (e) => { const f = e.target.files?.[0]; if (f) enviarMidia(f); e.target.value = ''; },
       }),
       React.createElement('button', {
+        type: 'button', onClick: () => fileRef.current?.click(), 'aria-label': 'Anexar arquivo', disabled: anexando,
+        style: iconBtn,
+      }, anexando
+        ? React.createElement(Loader2, { size: 22, color: T.textMuted, className: 'spin' })
+        : React.createElement(Paperclip, { size: 22, color: T.textMuted })),
+      React.createElement('div', { style: { flex: 1, position: 'relative' } },
+        React.createElement('textarea', {
+          ref: inputRef, value: texto, onChange: (e) => setTexto(e.target.value),
+          placeholder: 'Digite uma mensagem (Enter envia, Shift+Enter quebra linha)',
+          rows: 1,
+          'aria-label': 'Mensagem',
+          maxLength: 4000,
+          onKeyDown: (e) => {
+            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(e); }
+          },
+          style: { width: '100%', resize: 'none', maxHeight: 120, minHeight: 22, boxSizing: 'border-box', background: T.surfaceMuted, border: `1px solid ${T.border}`, borderRadius: 22, padding: '11px 52px 11px 16px', color: T.text, fontSize: 14, outline: 'none', fontFamily: 'inherit', lineHeight: '20px' },
+        }),
+        texto.length > 0 && React.createElement('span', {
+          style: { position: 'absolute', right: 12, bottom: 6, fontSize: 10, color: texto.length > 3800 ? T.danger : T.textMuted },
+        }, `${texto.length}/4000`),
+      ),
+      React.createElement('button', {
         type: 'submit',
-        disabled: enviando || !texto.trim(),
+        disabled: enviando || anexando || !texto.trim(),
+        'aria-label': 'Enviar mensagem',
         title: connected ? 'Enviar' : 'Conectando...',
-        style: { width: 44, height: 44, borderRadius: '50%', border: 'none', cursor: enviando || !texto.trim() ? 'default' : 'pointer', background: texto.trim() && !enviando ? T.primary : T.surfaceMuted, display: 'flex', alignItems: 'center', justifyContent: 'center' },
-      }, React.createElement(Send, { size: 20, color: texto.trim() && !enviando ? '#fff' : T.textMuted })),
+        style: { width: 44, height: 44, flexShrink: 0, borderRadius: '50%', border: 'none', cursor: enviando || !texto.trim() ? 'default' : 'pointer', background: texto.trim() && !enviando ? T.primary : T.surfaceMuted, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+      }, enviando
+        ? React.createElement(Loader2, { size: 20, color: '#fff', className: 'spin' })
+        : React.createElement(Send, { size: 20, color: texto.trim() && !enviando ? '#fff' : T.textMuted })),
     ),
 
     showParticipantes && React.createElement(ModalParticipantes, { conversa, onClose: () => setShowParticipantes(false) }),
     showTransferir && React.createElement(ModalTransferir, { conversa, onClose: () => setShowTransferir(false), onTransferido: () => onConversaUpdated?.() }),
+    // Toast + modal de confirmação (substituem alert/confirm/prompt)
+    toast && React.createElement('div', {
+      role: 'status',
+      style: { position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', zIndex: 2000, background: toast.tipo === 'erro' ? T.danger : (toast.tipo === 'ok' ? T.success : T.text), color: '#fff', padding: '10px 18px', borderRadius: T.radius, boxShadow: T.shadowMd, fontSize: 13, fontWeight: 600, maxWidth: 420 },
+    }, toast.mensagem),
+    confirmacao && React.createElement(ConfirmModal, {
+      ...confirmacao,
+      onClose: () => setConfirmacao(null),
+    }),
+  );
+}
+
+// Modal de confirmação reutilizável (com input opcional). Substitui confirm()/prompt().
+function ConfirmModal({ titulo, texto, confirmarLabel = 'Confirmar', cancelarLabel = 'Cancelar', perigoso, comInput, inputPlaceholder, onConfirm, onClose }) {
+  const [valor, setValor] = useState('');
+  const [ocupado, setOcupado] = useState(false);
+  const confirmar = () => {
+    if (ocupado) return; // proteção contra duplo-clique
+    setOcupado(true);
+    try { onConfirm?.(comInput ? valor : undefined); } finally { onClose?.(); }
+  };
+  return React.createElement('div', {
+    onClick: onClose,
+    style: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2500 },
+  },
+    React.createElement('div', {
+      onClick: (e) => e.stopPropagation(), role: 'dialog', 'aria-modal': true, 'aria-label': titulo,
+      style: { background: T.surface, borderRadius: T.radius, boxShadow: T.shadowMd, padding: 22, width: 'min(420px, 92vw)' },
+    },
+      React.createElement('h3', { style: { margin: 0, fontSize: 16, fontWeight: 800, color: T.text } }, titulo),
+      texto && React.createElement('p', { style: { margin: '10px 0 0', fontSize: 13.5, color: T.textSecondary, lineHeight: '20px' } }, texto),
+      comInput && React.createElement('input', {
+        autoFocus: true, value: valor, onChange: (e) => setValor(e.target.value), placeholder: inputPlaceholder || '',
+        onKeyDown: (e) => { if (e.key === 'Enter') confirmar(); },
+        style: { width: '100%', boxSizing: 'border-box', marginTop: 12, padding: '9px 12px', borderRadius: T.radiusSm, border: `1px solid ${T.border}`, fontSize: 13, color: T.text, background: T.surfaceMuted, outline: 'none' },
+      }),
+      React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 18 } },
+        React.createElement('button', { onClick: onClose, style: { ...acaoBtn } }, cancelarLabel),
+        React.createElement('button', {
+          onClick: confirmar, disabled: ocupado, autoFocus: !comInput,
+          style: { display: 'flex', alignItems: 'center', gap: 6, border: 'none', borderRadius: T.radiusSm, padding: '8px 16px', cursor: ocupado ? 'default' : 'pointer', fontSize: 13, fontWeight: 700, color: '#fff', background: perigoso ? T.danger : T.primary },
+        }, confirmarLabel),
+      ),
+    ),
   );
 }
 

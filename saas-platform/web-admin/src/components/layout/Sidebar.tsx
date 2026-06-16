@@ -78,19 +78,6 @@ export default function Sidebar() {
           );
         })}
       </nav>
-
-      <div className="mt-auto pt-6 border-t border-white/10">
-        <div className="flex items-center gap-3 px-2">
-          <div className="w-10 h-10 rounded-lg bg-blue-500 flex items-center justify-center text-white font-bold text-sm shrink-0">
-            {user?.name?.charAt(0)?.toUpperCase() || "U"}
-          </div>
-          <div className="overflow-hidden">
-            <p className="text-sm font-semibold text-white truncate">{user?.name || "Admin"}</p>
-            <p className="text-xs text-white/50 truncate">{user?.email || ""}</p>
-            {user?.is_organization_admin && <p className="text-xs text-green-300">Admin do Orgão</p>}
-          </div>
-        </div>
-      </div>
     </aside>
   );
 }

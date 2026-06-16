@@ -14,9 +14,10 @@ import { atualizarPresenca } from '../services/presenca.js';
 import {
   editarMensagem, excluirMensagem, encaminharMensagem,
   fixarMensagem, desafixarMensagem, adicionarReacao, removerReacao,
-  marcarLido
+  marcarLido, assertMembroCanal
 } from '../services/mensagens.js';
 import { criarNotificacao } from '../services/notificacoes.js';
+import { createStorage } from '../storage/index.js';
 
 const salas = {
   tenant: (id) => `tenant:${id}`,
@@ -24,6 +25,13 @@ const salas = {
   operador: (id) => `operador:${id}`,
   canal: (id) => `canal:${id}`,
 };
+
+// Mapeia `${tenantId}:${jid}` -> convId para repassar presença ("digitando...")
+// do cidadão para a sala da conversa correta.
+const convPorJid = new Map();
+
+// Logs verbosos de persistência só quando WA_DEBUG=1.
+const WA_DEBUG_GATEWAY = process.env.WA_DEBUG === '1' || process.env.WA_DEBUG === 'true';
 
 // Prefixa o texto enviado ao WhatsApp com o nome do atendente, para que
 // o destinatário saiba qual operador respondeu (linha única compartilhada).
@@ -256,6 +264,14 @@ export function iniciarGateway(httpServer, wa, storage) {
           'UPDATE conversas SET nao_lidas = 0 WHERE id = $1 AND tenant_id = $2',
           [convId, op.tenantId]
         );
+        // Assina a presença do contato para receber "digitando..."/online dele.
+        try {
+          const jid = await obterJidDaConversa(op.tenantId, convId, null);
+          if (jid) {
+            await wa.subscribePresence(op.tenantId, jid);
+            convPorJid.set(`${op.tenantId}:${jid}`, convId);
+          }
+        } catch {}
       } catch (err) {
         console.error('[Socket] conversa:abrir error:', err.message);
       }
@@ -502,6 +518,11 @@ export function iniciarGateway(httpServer, wa, storage) {
         let msgTipo = tipo || 'texto';
 
         if (mediaBase64) {
+          // Limite de tamanho (anti-abuso/OOM): ~16 MB após decodificar base64.
+          if (mediaBase64.length * 0.75 > 16 * 1024 * 1024) {
+            if (ack) ack({ ok: false, erro: 'Arquivo muito grande (máx. 16 MB).' });
+            return;
+          }
           const buffer = Buffer.from(mediaBase64, 'base64');
           result = await wa.sendMedia(op.tenantId, destinoJid, {
             tipo: msgTipo,
@@ -563,28 +584,71 @@ export function iniciarGateway(httpServer, wa, storage) {
       socket.join(salas.canal(canalId));
     });
 
-    socket.on('interno:enviar', async ({ canalId, conteudo, tipo, mediaUrl }) => {
+    socket.on('interno:enviar', async ({ canalId, conteudo, tipo, mediaUrl, mediaMime, mediaBase64, mediaNome, respondendoA }, ack) => {
       try {
         await setTenantContext(op.tenantId);
+        await assertMembroCanal(op.tenantId, canalId, op.id);
+        const conteudoNorm = conteudo == null ? null : String(conteudo).trim();
+        if (conteudoNorm && conteudoNorm.length > 8000) {
+          if (ack) ack({ ok: false, erro: 'Mensagem muito longa' });
+          return;
+        }
+
+        // Se veio mídia em base64, decodifica e persiste via storage.
+        let mediaUrlFinal = mediaUrl || null;
+        let mediaMimeFinal = mediaMime || null;
+        if (mediaBase64) {
+          if (mediaBase64.length * 0.75 > 16 * 1024 * 1024) {
+            if (ack) ack({ ok: false, erro: 'Arquivo muito grande (m\u00e1x. 16 MB).' });
+            return;
+          }
+          const buffer = Buffer.from(mediaBase64, 'base64');
+          const storage = createStorage();
+          mediaUrlFinal = await storage.salvar(buffer, mediaMime || 'application/octet-stream', op.tenantId);
+          mediaMimeFinal = mediaMime || 'application/octet-stream';
+        }
+
+        if (!conteudoNorm && !mediaUrlFinal) {
+          if (ack) ack({ ok: false, erro: 'Mensagem vazia' });
+          return;
+        }
+
         const msgId = uuidv4();
         const msg = await db.one(
-          `INSERT INTO mensagens_internas (id, tenant_id, canal_id, remetente_id, tipo, conteudo, media_url, criado_em)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, now())
+          `INSERT INTO mensagens_internas (id, tenant_id, canal_id, remetente_id, tipo, conteudo, media_url, media_mime, respondendo_a, criado_em)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
            RETURNING *`,
-          [msgId, op.tenantId, canalId, op.id, tipo || 'texto', conteudo || null, mediaUrl || null]
+          [msgId, op.tenantId, canalId, op.id, tipo || 'texto', conteudoNorm || null, mediaUrlFinal, mediaMimeFinal, respondendoA || null]
         );
 
         io.to(salas.canal(canalId)).emit('interno:nova', {
           ...msg,
           remetente_nome: op.nome,
+          respondendo_a: respondendoA || null,
         });
+        if (ack) ack({ ok: true, mensagem: msg });
       } catch (err) {
         console.error('[Socket] interno:enviar error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
       }
     });
 
+    const lastTypingAt = new Map();
     socket.on('interno:digitando', ({ canalId }) => {
+      const key = `${op.id}:${canalId}`;
+      const now = Date.now();
+      const last = lastTypingAt.get(key) || 0;
+      if (now - last < 1500) return;
+      lastTypingAt.set(key, now);
       socket.to(salas.canal(canalId)).emit('interno:digitando', {
+        opId: op.id,
+        canalId,
+        nome: op.nome,
+      });
+    });
+
+    socket.on('interno:digitando:parou', ({ canalId }) => {
+      socket.to(salas.canal(canalId)).emit('interno:digitando:parou', {
         opId: op.id,
         canalId,
       });
@@ -736,22 +800,50 @@ export function iniciarGateway(httpServer, wa, storage) {
       }
     });
 
+    // Map para undo de exclusão: msgId -> setTimeout
+    const exclusaoTimers = new Map();
+
     socket.on('mensagem:excluir', async ({ canalId, msgId }, ack) => {
       try {
         await setTenantContext(op.tenantId);
-        const msg = await excluirMensagem(op.tenantId, msgId, op.id);
-        if (!msg) {
-          if (ack) ack({ ok: false, erro: 'Mensagem não encontrada' });
-          return;
-        }
         io.to(salas.canal(canalId)).emit('mensagem:excluida', {
           msgId,
           canalId,
           remetente_nome: op.nome,
         });
         if (ack) ack({ ok: true });
+
+        // Delay de 5s antes de persistir o soft-delete
+        const timer = setTimeout(async () => {
+          exclusaoTimers.delete(msgId);
+          try {
+            await setTenantContext(op.tenantId);
+            await excluirMensagem(op.tenantId, msgId, op.id);
+          } catch (e) {
+            console.error('[Socket] excluirMensagem delayed error:', e.message);
+          }
+        }, 5000);
+        exclusaoTimers.set(msgId, timer);
       } catch (err) {
         console.error('[Socket] mensagem:excluir error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    socket.on('mensagem:desfazerExclusao', async ({ canalId, msgId }, ack) => {
+      try {
+        const timer = exclusaoTimers.get(msgId);
+        if (timer) {
+          clearTimeout(timer);
+          exclusaoTimers.delete(msgId);
+          // Emite evento para restaurar a mensagem em todos os clientes
+          io.to(salas.canal(canalId)).emit('mensagem:exclusaoDesfeita', { msgId, canalId });
+          if (ack) ack({ ok: true });
+        } else {
+          if (ack) ack({ ok: false, erro: 'Prazo de desfazer expirado' });
+        }
+      } catch (err) {
+        console.error('[Socket] mensagem:desfazerExclusao error:', err.message);
         if (ack) ack({ ok: false, erro: err.message });
       }
     });
@@ -761,6 +853,7 @@ export function iniciarGateway(httpServer, wa, storage) {
     socket.on('mensagem:reagir', async ({ canalId, msgId, emoji }, ack) => {
       try {
         await setTenantContext(op.tenantId);
+        await assertMembroCanal(op.tenantId, canalId, op.id);
         await adicionarReacao(op.tenantId, msgId, op.id, emoji);
         io.to(salas.canal(canalId)).emit('mensagem:reacao', {
           msgId,
@@ -780,6 +873,7 @@ export function iniciarGateway(httpServer, wa, storage) {
     socket.on('mensagem:desreagir', async ({ canalId, msgId, emoji }, ack) => {
       try {
         await setTenantContext(op.tenantId);
+        await assertMembroCanal(op.tenantId, canalId, op.id);
         await removerReacao(op.tenantId, msgId, op.id, emoji);
         io.to(salas.canal(canalId)).emit('mensagem:reacao', {
           msgId,
@@ -803,7 +897,7 @@ export function iniciarGateway(httpServer, wa, storage) {
         await setTenantContext(op.tenantId);
         const r = await fixarMensagem(op.tenantId, canalId, msgId, op.id);
         io.to(salas.canal(canalId)).emit('canais:fixada', { canalId, msgId });
-        if (ack) ack({ ok: true });
+        if (ack) ack({ ok: !!r });
       } catch (err) {
         console.error('[Socket] mensagem:fixar error:', err.message);
         if (ack) ack({ ok: false, erro: err.message });
@@ -813,6 +907,7 @@ export function iniciarGateway(httpServer, wa, storage) {
     socket.on('mensagem:desafixar', async ({ canalId, msgId }, ack) => {
       try {
         await setTenantContext(op.tenantId);
+        await assertMembroCanal(op.tenantId, canalId, op.id);
         await desafixarMensagem(op.tenantId, canalId, msgId);
         io.to(salas.canal(canalId)).emit('canais:desafixada', { canalId, msgId });
         if (ack) ack({ ok: true });
@@ -862,15 +957,21 @@ export function iniciarGateway(httpServer, wa, storage) {
 
     // === EVOLUÇÕES: Thread / Responder mensagem ===
 
-    socket.on('interno:responder', async ({ canalId, conteudo, respondendoA, tipo, mediaUrl }, ack) => {
+    socket.on('interno:responder', async ({ canalId, conteudo, respondendoA, tipo, mediaUrl, mediaMime }, ack) => {
       try {
         await setTenantContext(op.tenantId);
+        await assertMembroCanal(op.tenantId, canalId, op.id);
+        const conteudoNorm = conteudo == null ? null : String(conteudo).trim();
+        if (conteudoNorm && conteudoNorm.length > 8000) {
+          if (ack) ack({ ok: false, erro: 'Mensagem muito longa' });
+          return;
+        }
         const msgId = uuidv4();
         const msg = await db.one(
-          `INSERT INTO mensagens_internas (id, tenant_id, canal_id, remetente_id, tipo, conteudo, media_url, respondendo_a, criado_em)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, now())
+          `INSERT INTO mensagens_internas (id, tenant_id, canal_id, remetente_id, tipo, conteudo, media_url, media_mime, respondendo_a, criado_em)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
            RETURNING *`,
-          [msgId, op.tenantId, canalId, op.id, tipo || 'texto', conteudo || null, mediaUrl || null, respondendoA || null]
+          [msgId, op.tenantId, canalId, op.id, tipo || 'texto', conteudoNorm || null, mediaUrl || null, mediaMime || null, respondendoA || null]
         );
         io.to(salas.canal(canalId)).emit('interno:nova', {
           ...msg,
@@ -959,6 +1060,11 @@ export function iniciarGateway(httpServer, wa, storage) {
           online: false,
         });
       } catch {}
+      // Limpa timers de exclusão pendentes deste socket
+      for (const [msgId, timer] of exclusaoTimers.entries()) {
+        clearTimeout(timer);
+      }
+      exclusaoTimers.clear();
     });
   });
 
@@ -972,6 +1078,28 @@ export function iniciarGateway(httpServer, wa, storage) {
 
   wa.on('logout', ({ tenantId }) => {
     io.to(salas.tenant(tenantId)).emit('whatsapp:desconectado');
+  });
+
+  // Reconexão esgotou as tentativas: avisa o tenant para reescanear o QR.
+  wa.on('falha-conexao', ({ tenantId, tentativas }) => {
+    io.to(salas.tenant(tenantId)).emit('whatsapp:falha', {
+      msg: `Não foi possível reconectar o WhatsApp após ${tentativas} tentativas. Reconecte escaneando o QR.`,
+    });
+  });
+
+  // Presença do cidadão (digitando/online) -> repassa para a sala da conversa.
+  wa.on('presence', ({ tenantId, id, presences }) => {
+    try {
+      const convId = convPorJid.get(`${tenantId}:${id}`);
+      if (!convId) return;
+      const estado = presences?.[id]?.lastKnownPresence;
+      const digitando = estado === 'composing' || estado === 'recording';
+      io.to(salas.conversa(convId)).emit('cliente:presenca', {
+        convId,
+        digitando,
+        estado: estado || null,
+      });
+    } catch {}
   });
 
   wa.on('message', async ({ tenantId, msg }) => {
@@ -1062,6 +1190,36 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
   let mediaMime = null;
 
   const messageContent = extrairConteudoMensagem(msg.message);
+
+  // Reação (👍 ❤️ ...) a uma mensagem existente: não é uma mensagem nova.
+  // Atualiza o alvo e avisa o painel; texto vazio = reação removida.
+  if (messageContent?.reactionMessage) {
+    const alvoWaId = messageContent.reactionMessage.key?.id;
+    const emoji = messageContent.reactionMessage.text || null;
+    if (alvoWaId) {
+      const alvo = await db.oneOrNone(
+        `UPDATE mensagens SET reacao = $1
+         WHERE wa_message_id = $2 AND tenant_id = $3
+         RETURNING id, conversa_id`,
+        [emoji, alvoWaId, tenantId]
+      );
+      if (alvo) {
+        io.to(salas.conversa(alvo.conversa_id)).emit('mensagem:reacao', {
+          mensagemId: alvo.id,
+          waMessageId: alvoWaId,
+          emoji,
+        });
+      }
+    }
+    return;
+  }
+
+  // Mensagens de sistema/protocolo (revogação, etc.) não têm conteúdo útil: ignora com segurança.
+  if (messageContent?.protocolMessage || messageContent?.senderKeyDistributionMessage) {
+    if (WA_DEBUG_GATEWAY) console.log(`[Persist] mensagem de sistema ignorada wa_message_id=${msgId}`);
+    return;
+  }
+
   if (messageContent?.conversation) {
     conteudo = messageContent.conversation;
   } else if (messageContent?.extendedTextMessage?.text) {
@@ -1321,11 +1479,6 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
 
   if (direcao === 'entrada' && tipo === 'texto' && conteudo) {
     try {
-      // Responde no MESMO endereço de onde a mensagem veio. O endereço da sessão Signal
-      // é o "user" do JID (ver jidToSignalProtocolAddress no Baileys): se o cidadão fala
-      // via @lid, é nessa sessão que temos as chaves. Converter para o PN (@s.whatsapp.net)
-      // cria uma sessão diferente que o aparelho dele não consegue descriptografar
-      // ("Aguardando mensagem" / Bad MAC). O senderPn serve só para exibir o telefone.
       const jidEnvio = jid;
 
       const irisCfg = await db.oneOrNone(
@@ -1333,19 +1486,26 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
         [tenantId]
       );
 
-      // Detecta primeiro contato. A mensagem de entrada atual já foi inserida acima,
-      // então o primeiro contato corresponde a exatamente 1 mensagem na conversa.
+      // Detecta primeiro contato.
       const msgCountResult = await db.one(
         'SELECT COUNT(*)::int as cnt FROM mensagens WHERE conversa_id = $1 AND tenant_id = $2',
         [conversaRow.id, tenantId]
       );
       const isFirstContact = msgCountResult.cnt === 1;
 
-      const enviarBotMsg = async (textoResposta) => {
+      const enviarBotMsg = async (textoResposta, origem = 'bot') => {
         if (!textoResposta || !textoResposta.trim()) {
           console.log('[Chatbot] Resposta vazia, ignorando envio');
           return;
         }
+        // Emite evento "bot digitando..." antes de enviar
+        io.to(salas.conversa(conversaRow.id)).emit('cliente:presenca', {
+          convId: conversaRow.id,
+          digitando: false,
+          estado: 'bot_digitando',
+          bot: origem,
+        });
+
         const botMsgId = uuidv4();
         const botMsg = await db.one(
           `INSERT INTO mensagens (id, tenant_id, conversa_id, direcao, tipo, conteudo, status, criado_em)
@@ -1367,13 +1527,18 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
         );
         io.to(salas.conversa(conversaRow.id)).emit('mensagem:nova', botMsg);
         io.to(salas.tenant(tenantId)).emit('conversa:atualizada', { convId: conversaRow.id });
+
+        // Limpa o "bot digitando" apos enviar
+        io.to(salas.conversa(conversaRow.id)).emit('cliente:presenca', {
+          convId: conversaRow.id,
+          digitando: false,
+          estado: null,
+        });
       };
 
       let departamentoAlvo = null;
 
-      // O bot (Iris/chatbot) só atua na triagem: enquanto nenhum operador humano assumiu
-      // E a conversa ainda não foi roteada para um setor específico. Assim que a Iris
-      // encaminha para um setor (departamento != Recepção), ela para e deixa o setor responder.
+      // O bot (Iris/chatbot) so atua na triagem: enquanto nenhum operador humano assumiu
       let botPodeResponder = !conversaRow.operador_id;
       if (botPodeResponder && conversaRow.departamento_id) {
         const dep = await db.oneOrNone(
@@ -1384,15 +1549,39 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
       }
 
       if (botPodeResponder && irisCfg) {
-        // Modo Iris — IA 24h com DeepSeek
+        // Emite "Iris esta digitando" para o painel
+        io.to(salas.conversa(conversaRow.id)).emit('cliente:presenca', {
+          convId: conversaRow.id,
+          digitando: false,
+          estado: 'bot_digitando',
+          bot: 'iris',
+        });
+
+        // Modo Iris — IA 24h com DeepSeek ou OpenAI
         const resultado = await processarComIris(tenantId, conversaRow.id, conteudo);
         if (resultado && resultado.respondido) {
-          await enviarBotMsg(resultado.resposta);
+          await enviarBotMsg(resultado.resposta, 'iris');
           if (resultado.departamento_id) {
             departamentoAlvo = resultado.departamento_id;
           }
+          if (resultado.confianca) {
+            console.log(`[Iris] Confianca: ${resultado.confianca} | Depto: ${departamentoAlvo || 'nenhum'}`);
+          }
+        } else {
+          io.to(salas.conversa(conversaRow.id)).emit('cliente:presenca', {
+            convId: conversaRow.id,
+            digitando: false,
+            estado: null,
+          });
         }
       } else if (botPodeResponder) {
+        io.to(salas.conversa(conversaRow.id)).emit('cliente:presenca', {
+          convId: conversaRow.id,
+          digitando: false,
+          estado: 'bot_digitando',
+          bot: 'chatbot',
+        });
+
         // Modo Chatbot tradicional
         const cfg = await db.oneOrNone(
           'SELECT * FROM config_chatbot WHERE tenant_id = $1',
@@ -1400,25 +1589,29 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
         );
 
         if (isFirstContact && cfg && cfg.ativo && cfg.mensagem_boas_vindas) {
-          await enviarBotMsg(cfg.mensagem_boas_vindas);
+          await enviarBotMsg(cfg.mensagem_boas_vindas, 'chatbot');
         }
 
         if (cfg && cfg.ativo) {
           const resultado = await processarMensagem(tenantId, conversaRow.id, contatoRow.id, conteudo);
           if (resultado && resultado.respondido) {
-            await enviarBotMsg(resultado.resposta);
+            await enviarBotMsg(resultado.resposta, 'chatbot');
             if (resultado.departamento_id) {
               departamentoAlvo = resultado.departamento_id;
             }
           } else if (cfg.mensagem_fallback) {
-            await enviarBotMsg(cfg.mensagem_fallback);
+            await enviarBotMsg(cfg.mensagem_fallback, 'chatbot');
           }
+        } else {
+          io.to(salas.conversa(conversaRow.id)).emit('cliente:presenca', {
+            convId: conversaRow.id,
+            digitando: false,
+            estado: null,
+          });
         }
       }
 
-      // Auto-encaminha para o departamento indicado pelo bot ou para a Recepção.
-      // Só move automaticamente enquanto nenhum operador humano tiver assumido a conversa,
-      // assim a Iris pode redirecionar para o setor correto em qualquer mensagem (não só na 1ª).
+      // Auto-encaminha para o departamento indicado pelo bot ou para a Recepcao.
       if (!conversaRow.operador_id) {
         let deptId = departamentoAlvo;
         if (!deptId && !conversaRow.departamento_id) {
@@ -1434,6 +1627,14 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
             [deptId, conversaRow.id, tenantId]
           );
           io.to(salas.tenant(tenantId)).emit('conversa:atualizada', { convId: conversaRow.id });
+        }
+
+        // Salva departamento_sugerido para contexto em mensagens futuras
+        if (departamentoAlvo) {
+          await db.none(
+            'UPDATE conversas SET departamento_sugerido = $1 WHERE id = $2 AND tenant_id = $3',
+            [departamentoAlvo, conversaRow.id, tenantId]
+          );
         }
       }
     } catch (e) {

@@ -2,28 +2,12 @@ import React from 'react';
 import { Avatar } from './Avatar';
 import { DeptBadge } from './DeptBadge';
 import { T } from '../theme';
+import { formatarHoraRelativa } from '../utils/arquivo';
 
-function formatarHora(ts) {
-  if (!ts) return '';
-  const d = new Date(ts);
-  const agora = new Date();
-  const diff = agora - d;
-  const dias = Math.floor(diff / 86400000);
-
-  if (dias === 0) {
-    return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-  } else if (dias === 1) {
-    return 'Ontem';
-  } else if (dias < 7) {
-    return d.toLocaleDateString('pt-BR', { weekday: 'short' });
-  } else {
-    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
-  }
-}
-
-export function ItemConversa({ conversa, ativa, onClick }) {
+export function ItemConversa({ conversa, ativa, opId, onClick }) {
   const nome = conversa.contato_nome || conversa.contato_telefone || 'Desconhecido';
   const isNumber = !conversa.contato_nome;
+  const minha = opId && conversa.operador_id === opId;
 
   return React.createElement('div', {
     onClick,
@@ -38,6 +22,8 @@ export function ItemConversa({ conversa, ativa, onClick }) {
       borderRadius: T.radiusSm,
       marginBottom: 1,
       borderBottom: ativa ? 'none' : `1px solid #f0f2f5`,
+      // Faixa à esquerda destacando conversas atribuídas a mim.
+      borderLeft: minha ? `3px solid ${T.primary}` : '3px solid transparent',
     },
   },
     React.createElement(Avatar, { nome, tamanho: 46, isNumber }),
@@ -53,10 +39,14 @@ export function ItemConversa({ conversa, ativa, onClick }) {
         React.createElement('div', {
           style: { display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 },
         },
+          minha && React.createElement('span', {
+            title: 'Atribuída a você',
+            style: { fontSize: 9, fontWeight: 800, padding: '1px 5px', borderRadius: 6, background: T.primarySoft, color: T.primary, textTransform: 'uppercase', letterSpacing: 0.3 },
+          }, 'Minha'),
           conversa.departamento_nome && React.createElement(DeptBadge, { nome: conversa.departamento_nome, cor: conversa.departamento_cor }),
           React.createElement('span', {
             style: { fontSize: 11, color: T.textMuted, whiteSpace: 'nowrap' },
-          }, formatarHora(conversa.ultima_mensagem_em)),
+          }, formatarHoraRelativa(conversa.ultima_mensagem_em)),
         ),
       ),
       React.createElement('div', {

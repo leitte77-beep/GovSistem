@@ -23,6 +23,27 @@ class MessageResponse(BaseModel):
     message: str
 
 
+class ProfileUpdate(BaseModel):
+    name: Optional[str] = None
+    cpf: Optional[str] = None
+    phone: Optional[str] = None
+    avatar_url: Optional[str] = None
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class AccessLogEntry(BaseModel):
+    action: str
+    ip_address: Optional[str] = None
+    user_agent: Optional[str] = None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 class TokenResponse(BaseModel):
     access_token: str
     refresh_token: str

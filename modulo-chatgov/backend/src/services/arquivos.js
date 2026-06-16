@@ -23,7 +23,9 @@ export async function uploadArquivo(tenantId, operadorId, buffer, nomeOriginal, 
      conversaId || null, tarefaId || null, pastaId || null, canalId || null, hash]
   );
 
-  return { arquivo, duplicado: duplicado || null };
+  // URL pública do arquivo (servida estaticamente em /media ou via S3).
+  const url = nomeStorage;
+  return { arquivo, duplicado: duplicado || null, url };
 }
 
 export async function getArquivo(tenantId, arquivoId) {

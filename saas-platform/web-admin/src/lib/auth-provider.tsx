@@ -13,6 +13,10 @@ interface User {
   is_active: boolean;
   mfa_enabled: boolean;
   module_permissions?: string[];
+  cpf?: string | null;
+  phone?: string | null;
+  avatar_url?: string | null;
+  created_at?: string;
 }
 
 interface AuthContextType {
@@ -20,6 +24,7 @@ interface AuthContextType {
   loading: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
+  refreshUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -27,6 +32,7 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   login: async () => {},
   logout: () => {},
+  refreshUser: async () => {},
 });
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
@@ -66,7 +72,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser: fetchUser }}>
       {children}
     </AuthContext.Provider>
   );

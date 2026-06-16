@@ -1,111 +1,118 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { Trash2 } from 'lucide-react';
 import { Tick } from './Tick';
 import { T } from '../theme';
+import { formatarHora } from '../utils/arquivo';
+import { MediaPreview, MediaLightbox } from './MediaPreview';
 
-function formatarHora(ts) {
-  if (!ts) return '';
-  return new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-}
-
-export function BolhaConversa({ msg }) {
+export function BolhaConversa({ msg, podeExcluir, onExcluir }) {
   const entrada = msg.direcao === 'entrada';
+  const [hover, setHover] = useState(false);
+  const [lightbox, setLightbox] = useState(null);
 
-  return React.createElement('div', {
-    style: {
-      display: 'flex',
-      justifyContent: entrada ? 'flex-start' : 'flex-end',
-      marginBottom: 4,
-      paddingLeft: entrada ? 0 : 60,
-      paddingRight: entrada ? 60 : 0,
-    },
-  },
-    React.createElement('div', {
-      style: {
-        background: entrada ? '#FFFFFF' : '#d9fdd3',
-        color: T.text,
-        padding: '6px 8px 4px 8px',
-        borderRadius: entrada ? '0px 8px 8px 8px' : '8px 0px 8px 8px',
-        maxWidth: '100%',
-        position: 'relative',
-        boxShadow: '0 1px 1px rgba(17,27,33,0.06)',
-      },
-    },
-      msg.operador_nome && !entrada && React.createElement('div', {
-        style: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 },
-      },
-        React.createElement('span', {
-          style: { fontSize: 12, fontWeight: 600, color: '#2563EB' },
-        }, msg.operador_nome),
-        (msg.operador_departamentos || []).slice(0, 2).map((d) =>
-          React.createElement('span', {
-            key: d.nome,
-            style: { fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 8, background: `${d.cor}22`, color: d.cor },
-          }, d.nome)),
-      ),
-      msg.tipo === 'imagem' && msg.media_url && React.createElement('img', {
-        src: msg.media_url,
-        alt: 'Imagem',
-        style: {
-          maxWidth: 300,
-          maxHeight: 300,
-          borderRadius: 4,
-          marginBottom: msg.conteudo ? 4 : 0,
-          display: 'block',
-        },
-      }),
-      msg.tipo === 'video' && msg.media_url && React.createElement('video', {
-        src: msg.media_url,
-        controls: true,
-        style: {
-          maxWidth: 300,
-          maxHeight: 300,
-          borderRadius: 4,
-          display: 'block',
-        },
-      }),
-      msg.tipo === 'audio' && msg.media_url && React.createElement('audio', {
-        src: msg.media_url,
-        controls: true,
-        style: { display: 'block' },
-      }),
-      msg.tipo === 'documento' && msg.media_url && React.createElement('a', {
-        href: msg.media_url,
-        target: '_blank',
-        rel: 'noopener noreferrer',
-        style: {
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '6px 10px',
-          background: '#fff',
-          borderRadius: 4,
-          color: '#111B21',
-          textDecoration: 'none',
-          fontSize: 13,
-          border: '1px solid #E9EDEF',
-        },
-      },
-        React.createElement('span', null, '\uD83D\uDCCE'),
-        React.createElement('span', null, 'Arquivo'),
-      ),
-      msg.conteudo && React.createElement('div', {
-        style: { fontSize: 14.2, lineHeight: '19px' },
-      }, msg.conteudo),
+  const abrirLightbox = (src, t, mime, nome) => setLightbox({ src, tipo: t, mime, nome });
+  const fecharLightbox = () => setLightbox(null);
+
+  // Mensagem excluída: bolha neutra com aviso, sem conteúdo.
+  if (msg.excluida) {
+    return React.createElement(React.Fragment, null,
       React.createElement('div', {
         style: {
           display: 'flex',
-          justifyContent: 'flex-end',
-          alignItems: 'center',
-          gap: 3,
-          marginTop: 2,
-          marginLeft: 20,
+          justifyContent: entrada ? 'flex-start' : 'flex-end',
+          marginBottom: 4,
+          paddingLeft: entrada ? 0 : 60,
+          paddingRight: entrada ? 60 : 0,
         },
       },
-        React.createElement('span', {
-          style: { fontSize: 10.5, color: '#667781', lineHeight: '15px' },
-        }, formatarHora(msg.criado_em)),
-        !entrada && React.createElement(Tick, { status: msg.status }),
+        React.createElement('div', {
+          style: {
+            background: T.surfaceMuted, color: T.textMuted,
+            padding: '6px 10px', borderRadius: 8, fontSize: 13, fontStyle: 'italic',
+            border: `1px dashed ${T.border}`,
+          },
+        }, '🚫 Mensagem excluída'),
+      ),
+    );
+  }
+
+  const hasMedia = !!(msg.media_url || msg.mediaUrl);
+
+  return React.createElement(React.Fragment, null,
+    React.createElement('div', {
+      onMouseEnter: () => setHover(true),
+      onMouseLeave: () => setHover(false),
+      style: {
+        display: 'flex',
+        justifyContent: entrada ? 'flex-start' : 'flex-end',
+        alignItems: 'center',
+        gap: 6,
+        marginBottom: msg.reacao ? 12 : 4,
+        paddingLeft: entrada ? 0 : 60,
+        paddingRight: entrada ? 60 : 0,
+      },
+    },
+      // Botão excluir (aparece no hover, para mensagens do operador / gestor)
+      !entrada && podeExcluir && hover && React.createElement('button', {
+        onClick: onExcluir,
+        'aria-label': 'Excluir mensagem',
+        title: 'Excluir mensagem',
+        style: { order: -1, background: 'transparent', border: 'none', cursor: 'pointer', padding: 4, display: 'flex', color: T.textMuted },
+      }, React.createElement(Trash2, { size: 15 })),
+      React.createElement('div', {
+        style: {
+          background: entrada ? T.surface : '#d9fdd3',
+          color: T.text,
+          padding: '6px 8px 4px 8px',
+          borderRadius: entrada ? '0px 8px 8px 8px' : '8px 0px 8px 8px',
+          maxWidth: '100%',
+          position: 'relative',
+          boxShadow: '0 1px 1px rgba(17,27,33,0.06)',
+        },
+      },
+        msg.operador_nome && !entrada && React.createElement('div', {
+          style: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 },
+        },
+          React.createElement('span', {
+            style: { fontSize: 12, fontWeight: 600, color: T.primary },
+          }, msg.operador_nome),
+          (msg.operador_departamentos || []).slice(0, 2).map((d) =>
+            React.createElement('span', {
+              key: d.nome,
+              style: { fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 8, background: `${d.cor}22`, color: d.cor },
+            }, d.nome)),
+        ),
+        hasMedia && React.createElement('div', { style: { marginBottom: msg.conteudo ? 4 : 0 } },
+          React.createElement(MediaPreview, { msg, isMe: !entrada, onOpenLightbox: abrirLightbox }),
+        ),
+        msg.conteudo && React.createElement('div', {
+          style: { fontSize: 14.2, lineHeight: '19px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
+        }, msg.conteudo),
+        React.createElement('div', {
+          style: {
+            display: 'flex',
+            justifyContent: 'flex-end',
+            alignItems: 'center',
+            gap: 3,
+            marginTop: 2,
+            marginLeft: 20,
+          },
+        },
+          React.createElement('span', {
+            style: { fontSize: 10.5, color: T.textMuted, lineHeight: '15px' },
+          }, formatarHora(msg.criado_em)),
+          !entrada && React.createElement(Tick, { status: msg.status }),
+        ),
+        // Reação (emoji) sobreposta no canto inferior da bolha.
+        msg.reacao && React.createElement('span', {
+          style: {
+            position: 'absolute', bottom: -10, [entrada ? 'left' : 'right']: 8,
+            background: T.surface, borderRadius: 12, padding: '1px 5px', fontSize: 13,
+            boxShadow: '0 1px 3px rgba(0,0,0,0.18)', border: `1px solid ${T.border}`,
+          },
+        }, msg.reacao),
       ),
     ),
+    lightbox && React.createElement(MediaLightbox, { src: lightbox.src, tipo: lightbox.tipo, mime: lightbox.mime, nome: lightbox.nome, onClose: fecharLightbox }),
   );
 }

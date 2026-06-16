@@ -1,6 +1,6 @@
 const BASE_URL = "/api/govouve";
-const ACCESS_TOKEN_KEY = "govouve_access_token";
-const REFRESH_TOKEN_KEY = "govouve_refresh_token";
+export const ACCESS_TOKEN_KEY = "govouve_access_token";
+export const REFRESH_TOKEN_KEY = "govouve_refresh_token";
 
 class AuthError extends Error {
   constructor() {

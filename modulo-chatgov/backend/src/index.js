@@ -3,6 +3,7 @@ import cors from 'cors';
 import { createServer } from 'http';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { v4 as uuidv4 } from 'uuid';
 import { config } from './config.js';
 import db from './db.js';
 import { runMigrations } from './migrations/run.js';
@@ -21,6 +22,7 @@ import {
 } from './services/protocolo.js';
 import { registrarRespostaNPS, calcularNPS, npsPorSetor, npsPorAtendente } from './services/nps.js';
 import rotasEvolucoes from './routes/evolucoes.js';
+import { iniciarLimpezaConversas } from './services/limpeza-conversas.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -73,6 +75,25 @@ function variantesTelefoneBrasil(telefone) {
     variantes.add(`${digits.slice(0, 4)}9${digits.slice(4)}`);
   }
   return [...variantes];
+}
+
+// Resolve o JID de envio de uma conversa (prioriza @lid, onde estão as chaves Signal).
+async function obterJidDaConversaIndex(tenantId, convId) {
+  const contato = await db.oneOrNone(
+    `SELECT co.telefone, co.wa_jid,
+            (SELECT alias_jid FROM contato_aliases
+             WHERE tenant_id = co.tenant_id AND contato_id = co.id AND alias_jid LIKE '%@lid'
+             ORDER BY criado_em DESC LIMIT 1) AS alias_lid
+     FROM conversas c JOIN contatos co ON co.id = c.contato_id
+     WHERE c.id = $1 AND c.tenant_id = $2`,
+    [convId, tenantId]
+  );
+  if (!contato) return null;
+  if (contato.wa_jid?.endsWith('@lid')) return contato.wa_jid;
+  if (contato.alias_lid) return contato.alias_lid;
+  const base = String(contato.wa_jid || '').split('@')[0];
+  const digits = normalizarTelefoneWhatsApp(contato.telefone || base);
+  return digits ? `${digits}@s.whatsapp.net` : null;
 }
 
 async function podeVerConversa(op, convId) {
@@ -233,8 +254,22 @@ app.use('/api', rateLimiter);
 
   app.use('/api/evolucoes', rotasEvolucoes);
 
-  app.get('/api/me', (req, res) => {
-    res.json(req.operador);
+  app.get('/api/me', async (req, res) => {
+    try {
+      const op = req.operador;
+      if (!op?.id) return res.json(op);
+      const row = await db.oneOrNone(
+        `SELECT o.id, o.nome, o.email, o.papel, o.tenant_id as "tenantId",
+                t.nome as "tenantNome", t.slug as "tenantSlug"
+         FROM operadores o
+         LEFT JOIN tenants t ON t.id = o.tenant_id
+         WHERE o.id = $1`,
+        [op.id]
+      );
+      res.json(row || op);
+    } catch (err) {
+      res.json(req.operador);
+    }
   });
 
   app.get('/api/conversas', async (req, res) => {
@@ -295,7 +330,18 @@ app.use('/api', rateLimiter);
       if (!(await podeVerConversa(op, id))) {
         return res.status(403).json({ erro: 'Sem acesso a esta conversa' });
       }
-      const mensagens = await db.manyOrNone(
+      // Paginação por cursor: ?antesDe=<ISO criado_em>&limite=N carrega o lote
+      // anterior (scroll infinito). Sem cursor, retorna as últimas `limite` mensagens.
+      const limite = Math.min(Math.max(parseInt(req.query.limite, 10) || 50, 1), 200);
+      const { antesDe } = req.query;
+      const params = [id, op.tenantId];
+      let filtroCursor = '';
+      if (antesDe) {
+        params.push(antesDe);
+        filtroCursor = ` AND m.criado_em < $${params.length}`;
+      }
+      params.push(limite);
+      const rows = await db.manyOrNone(
         `SELECT m.*, o.nome as operador_nome,
                 COALESCE(
                   (
@@ -309,14 +355,55 @@ app.use('/api', rateLimiter);
                 ) AS operador_departamentos
          FROM mensagens m
          LEFT JOIN operadores o ON o.id = m.operador_id
-         WHERE m.conversa_id = $1 AND m.tenant_id = $2
-         ORDER BY m.criado_em ASC
-         LIMIT 500`,
-        [id, op.tenantId]
+         WHERE m.conversa_id = $1 AND m.tenant_id = $2${filtroCursor}
+         ORDER BY m.criado_em DESC
+         LIMIT $${params.length}`,
+        params
       );
-      res.json(mensagens);
+      // Mais antigas há mais para carregar se vier o lote cheio.
+      const temMais = rows.length === limite;
+      res.json({ mensagens: rows.reverse(), temMais });
     } catch (err) {
       res.status(500).json({ erro: 'Erro ao buscar mensagens' });
+    }
+  });
+
+  // Exclui (soft-delete) uma mensagem. Operador apaga as próprias mensagens enviadas;
+  // admin pode apagar qualquer uma (LGPD). Tenta revogar no WhatsApp (best-effort).
+  app.delete('/api/conversas/:id/mensagens/:msgId', async (req, res) => {
+    try {
+      const { id, msgId } = req.params;
+      const op = req.operador;
+      if (!(await podeVerConversa(op, id))) {
+        return res.status(403).json({ erro: 'Sem acesso a esta conversa' });
+      }
+      const msg = await db.oneOrNone(
+        'SELECT * FROM mensagens WHERE id = $1 AND conversa_id = $2 AND tenant_id = $3',
+        [msgId, id, op.tenantId]
+      );
+      if (!msg) return res.status(404).json({ erro: 'Mensagem não encontrada' });
+
+      const ehAdmin = op.papel === 'admin';
+      if (!ehAdmin && (msg.direcao !== 'saida' || msg.operador_id !== op.id)) {
+        return res.status(403).json({ erro: 'Você só pode excluir mensagens que enviou' });
+      }
+
+      // Revoga no WhatsApp se foi enviada por nós e ainda temos o id da mensagem.
+      if (msg.direcao === 'saida' && msg.wa_message_id) {
+        const jid = await obterJidDaConversaIndex(op.tenantId, id);
+        if (jid) await wa.revokeMessage(op.tenantId, jid, msg.wa_message_id, true);
+      }
+
+      await db.none(
+        `UPDATE mensagens SET excluida = true, excluida_em = now(), conteudo = NULL, media_url = NULL
+         WHERE id = $1 AND tenant_id = $2`,
+        [msgId, op.tenantId]
+      );
+      io.to(`conversa:${id}`).emit('mensagem:excluida', { mensagemId: msgId, conversaId: id });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[API] excluir mensagem error:', err.message);
+      res.status(500).json({ erro: 'Erro ao excluir mensagem' });
     }
   });
 
@@ -334,6 +421,30 @@ app.use('/api', rateLimiter);
       res.json(departamentos);
     } catch (err) {
       res.status(500).json({ erro: 'Erro ao buscar departamentos' });
+    }
+  });
+
+  // Painel de atendentes online por departamento
+  app.get('/api/departamentos/painel', async (req, res) => {
+    try {
+      const op = req.operador;
+      const deptos = await db.manyOrNone(
+        `SELECT d.id, d.nome, s.nome AS secretaria_nome, s.cor AS secretaria_cor,
+                COUNT(o.id) FILTER (WHERE o.online = true)::int AS atendentes_online,
+                COUNT(c.id) FILTER (WHERE c.status = 'fila' AND c.operador_id IS NULL)::int AS conversas_na_fila
+         FROM departamentos d
+         LEFT JOIN secretarias s ON s.id = d.secretaria_id
+         LEFT JOIN operador_departamentos od ON od.departamento_id = d.id
+         LEFT JOIN operadores o ON o.id = od.operador_id
+         LEFT JOIN conversas c ON c.departamento_id = d.id AND c.tenant_id = $1 AND c.status = 'fila'
+         WHERE d.tenant_id = $1 AND d.ativo = true
+         GROUP BY d.id, d.nome, s.nome, s.cor
+         ORDER BY s.nome NULLS LAST, d.nome`,
+        [op.tenantId]
+      );
+      res.json(deptos);
+    } catch (err) {
+      res.status(500).json({ erro: 'Erro ao buscar painel' });
     }
   });
 
@@ -525,14 +636,39 @@ app.use('/api', rateLimiter);
       const op = req.operador;
       const canais = await db.manyOrNone(
         `SELECT ci.*,
-                array_agg(json_build_object('id', cm.operador_id, 'nome', o.nome, 'online', o.online)) as membros
+                array_agg(json_build_object('id', cm.operador_id, 'nome', o.nome, 'online', o.online)) as membros,
+                (
+                  SELECT json_build_object(
+                    'id', mi.id,
+                    'conteudo', mi.conteudo,
+                    'tipo', mi.tipo,
+                    'criado_em', mi.criado_em,
+                    'remetente_id', mi.remetente_id,
+                    'remetente_nome', aut.nome
+                  )
+                  FROM mensagens_internas mi
+                  LEFT JOIN operadores aut ON aut.id = mi.remetente_id
+                  WHERE mi.canal_id = ci.id AND mi.excluida = false
+                  ORDER BY mi.criado_em DESC LIMIT 1
+                ) as ultima_mensagem,
+                (
+                  SELECT COUNT(*)::int
+                  FROM mensagens_internas mi
+                  LEFT JOIN leituras_mensagens lm
+                    ON lm.operador_id = $2 AND lm.canal_id = mi.canal_id
+                  WHERE mi.canal_id = ci.id
+                    AND mi.tenant_id = $1
+                    AND mi.remetente_id <> $2
+                    AND mi.excluida = false
+                    AND mi.criado_em > COALESCE(lm.lido_ate, '1970-01-01'::timestamp)
+                )::int as nao_lidas
          FROM canais_internos ci
          JOIN canal_membros cm ON cm.canal_id = ci.id
          JOIN operadores o ON o.id = cm.operador_id
          WHERE ci.tenant_id = $1
          GROUP BY ci.id
          ORDER BY ci.criado_em DESC`,
-        [op.tenantId]
+        [op.tenantId, op.id]
       );
       res.json(canais);
     } catch (err) {
@@ -571,14 +707,204 @@ app.use('/api', rateLimiter);
     try {
       const { id } = req.params;
       const op = req.operador;
-      const mensagens = await db.manyOrNone(
-        `SELECT mi.*, o.nome as remetente_nome
-         FROM mensagens_internas mi
-         JOIN operadores o ON o.id = mi.remetente_id
-         WHERE mi.canal_id = $1 AND mi.tenant_id = $2
-         ORDER BY mi.criado_em ASC
-         LIMIT 500`,
+      const { listarMensagensCanal, assertMembroCanal, getReacoes } = await import('./services/mensagens.js');
+      const antesDe = req.query.antesDe || null;
+      const limite = req.query.limite || 50;
+      try {
+        await assertMembroCanal(op.tenantId, id, op.id);
+      } catch (e) {
+        return res.status(403).json({ erro: e.message });
+      }
+      const mensagens = await listarMensagensCanal(op.tenantId, id, op.id, { antesDe, limite });
+      // Inclui reações nas mensagens do histórico
+      if (mensagens.length > 0) {
+        const ids = mensagens.map((m) => m.id);
+        const reacoes = await getReacoes(op.tenantId, ids);
+        const reacoesMap = {};
+        for (const r of reacoes) {
+          reacoesMap[r.msg_id] = r;
+        }
+        for (const m of mensagens) {
+          if (reacoesMap[m.id]) {
+            m._reacao_raw = reacoesMap[m.id];
+          }
+        }
+      }
+      res.json(mensagens);
+    } catch (err) {
+      res.status(500).json({ erro: 'Erro ao buscar mensagens' });
+    }
+  });
+
+  app.delete('/api/canais-internos/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const op = req.operador;
+      const { ehMembroCanal } = await import('./services/mensagens.js');
+      const canal = await db.oneOrNone(
+        'SELECT * FROM canais_internos WHERE id = $1 AND tenant_id = $2',
         [id, op.tenantId]
+      );
+      if (!canal) return res.status(404).json({ erro: 'Canal nao encontrado' });
+      if (canal.criado_por !== op.id && op.papel !== 'admin') {
+        const ehMembro = await ehMembroCanal(op.tenantId, id, op.id);
+        if (!ehMembro) return res.status(403).json({ erro: 'Sem permissao' });
+      }
+
+      await db.none('DELETE FROM canais_internos WHERE id = $1 AND tenant_id = $2', [id, op.tenantId]);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ erro: 'Erro ao excluir canal' });
+    }
+  });
+
+  // Gerenciar membros do canal
+  app.post('/api/canais-internos/:id/membros', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const op = req.operador;
+      const { membros } = req.body; // array de operador IDs
+      const { assertMembroCanal } = await import('./services/mensagens.js');
+      await assertMembroCanal(op.tenantId, id, op.id);
+      if (!Array.isArray(membros) || membros.length === 0) {
+        return res.status(400).json({ erro: 'Lista de membros obrigatoria' });
+      }
+      for (const membroId of membros) {
+        await db.none(
+          'INSERT INTO canal_membros (canal_id, operador_id, tenant_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+          [id, membroId, op.tenantId]
+        );
+      }
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ erro: 'Erro ao adicionar membros' });
+    }
+  });
+
+  app.delete('/api/canais-internos/:id/membros/:operadorId', async (req, res) => {
+    try {
+      const { id, operadorId } = req.params;
+      const op = req.operador;
+      const { assertMembroCanal, ehMembroCanal } = await import('./services/mensagens.js');
+      await assertMembroCanal(op.tenantId, id, op.id);
+      // Só pode remover outros se for admin ou dono do canal
+      const canal = await db.oneOrNone('SELECT criado_por FROM canais_internos WHERE id = $1 AND tenant_id = $2', [id, op.tenantId]);
+      if (!canal) return res.status(404).json({ erro: 'Canal nao encontrado' });
+      if (canal.criado_por !== op.id && op.papel !== 'admin') {
+        return res.status(403).json({ erro: 'Apenas o criador do canal pode remover membros' });
+      }
+      await db.none(
+        'DELETE FROM canal_membros WHERE canal_id = $1 AND operador_id = $2 AND tenant_id = $3',
+        [id, operadorId, op.tenantId]
+      );
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ erro: 'Erro ao remover membro' });
+    }
+  });
+
+  app.post('/api/canais-internos/:id/sair', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const op = req.operador;
+      await db.none(
+        'DELETE FROM canal_membros WHERE canal_id = $1 AND operador_id = $2 AND tenant_id = $3',
+        [id, op.id, op.tenantId]
+      );
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ erro: 'Erro ao sair do canal' });
+    }
+  });
+
+  // Enquetes
+  app.post('/api/canais-internos/:id/enquetes', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const op = req.operador;
+      const { assertMembroCanal } = await import('./services/mensagens.js');
+      await assertMembroCanal(op.tenantId, id, op.id);
+      const { pergunta, opcoes } = req.body;
+      if (!pergunta || !Array.isArray(opcoes) || opcoes.length < 2) {
+        return res.status(400).json({ erro: 'Enquete invalida' });
+      }
+      const msgId = uuidv4();
+      const dados = JSON.stringify({ pergunta, opcoes, votos: {} }); // votos: { opcaoIdx: [operadorId, ...] }
+      const msg = await db.one(
+        `INSERT INTO mensagens_internas (id, tenant_id, canal_id, remetente_id, tipo, conteudo, criado_em)
+         VALUES ($1, $2, $3, $4, 'enquete', $5, now()) RETURNING *`,
+        [msgId, op.tenantId, id, op.id, dados]
+      );
+      msg.remetente_nome = op.nome;
+      io.to(salas.canal(id)).emit('interno:nova', msg);
+      res.json({ ok: true, mensagem: msg });
+    } catch (err) {
+      console.error('[Socket] enquete criar error:', err.message);
+      res.status(500).json({ erro: 'Erro ao criar enquete' });
+    }
+  });
+
+  app.post('/api/canais-internos/:canalId/enquetes/:msgId/votar', async (req, res) => {
+    try {
+      const { canalId, msgId } = req.params;
+      const op = req.operador;
+      const { assertMembroCanal } = await import('./services/mensagens.js');
+      await assertMembroCanal(op.tenantId, canalId, op.id);
+      const { opcao_idx } = req.body;
+      const msg = await db.oneOrNone(
+        "SELECT * FROM mensagens_internas WHERE id = $1 AND canal_id = $2 AND tenant_id = $3 AND tipo = 'enquete'",
+        [msgId, canalId, op.tenantId]
+      );
+      if (!msg) return res.status(404).json({ erro: 'Enquete nao encontrada' });
+      let dados = JSON.parse(msg.conteudo || '{}');
+      dados.votos = dados.votos || {};
+      // Remove voto anterior do operador
+      for (const k of Object.keys(dados.votos)) {
+        dados.votos[k] = (dados.votos[k] || []).filter((oid) => oid !== op.id);
+        if (dados.votos[k].length === 0) delete dados.votos[k];
+      }
+      // Adiciona novo voto
+      const key = String(opcao_idx);
+      dados.votos[key] = [...(dados.votos[key] || []), op.id];
+      await db.none(
+        'UPDATE mensagens_internas SET conteudo = $1 WHERE id = $2 AND tenant_id = $3',
+        [JSON.stringify(dados), msgId, op.tenantId]
+      );
+      io.to(salas.canal(canalId)).emit('enquete:atualizada', { msgId, dados });
+      res.json({ ok: true, dados });
+    } catch (err) {
+      console.error('[Socket] enquete votar error:', err.message);
+      res.status(500).json({ erro: 'Erro ao votar' });
+    }
+  });
+
+  // Busca de mensagens no canal
+  app.get('/api/canais-internos/:id/buscar', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const op = req.operador;
+      const { q } = req.query;
+      const { assertMembroCanal } = await import('./services/mensagens.js');
+      try {
+        await assertMembroCanal(op.tenantId, id, op.id);
+      } catch (e) {
+        return res.status(403).json({ erro: e.message });
+      }
+      if (!q || q.trim().length < 2) {
+        return res.json([]);
+      }
+      const mensagens = await db.manyOrNone(
+        `SELECT mi.*, aut.nome AS remetente_nome
+         FROM mensagens_internas mi
+         LEFT JOIN operadores aut ON aut.id = mi.remetente_id
+         WHERE mi.canal_id = $1
+           AND mi.tenant_id = $2
+           AND mi.excluida = false
+           AND mi.tipo = 'texto'
+           AND mi.conteudo ILIKE '%' || $3 || '%'
+         ORDER BY mi.criado_em DESC
+         LIMIT 30`,
+        [id, op.tenantId, q.trim()]
       );
       res.json(mensagens);
     } catch (err) {
@@ -1554,6 +1880,8 @@ app.use('/api', rateLimiter);
     } catch (err) {
       console.error('[ChatGov] Failed to restore WhatsApp sessions:', err.message);
     }
+
+    iniciarLimpezaConversas();
   });
 
   process.on('SIGTERM', async () => {

@@ -1,9 +1,11 @@
 "use client";
-import React from "react";
+import React, { useState } from "react";
 import { useAuth } from "@/lib/auth-provider";
+import ProfileModal from "./ProfileModal";
 
 export default function Header({ title }: { title: string }) {
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
+  const [profileOpen, setProfileOpen] = useState(false);
 
   return (
     <header
@@ -21,16 +23,35 @@ export default function Header({ title }: { title: string }) {
           />
         </div>
       </div>
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3">
         <button className="w-10 h-10 flex items-center justify-center text-on-surface-variant hover:bg-surface-container hover:text-[#001631] rounded-full transition-colors">
           <span className="material-symbols-outlined">notifications</span>
         </button>
-        <div className="h-8 w-px bg-outline-variant mx-2" />
+
+        {/* User menu trigger */}
+        <button
+          onClick={() => setProfileOpen(true)}
+          className="flex items-center gap-2.5 pl-2 pr-3 py-1.5 rounded-full hover:bg-surface-container transition-all"
+          title="Meu perfil"
+        >
+          <span className="w-8 h-8 rounded-lg bg-[#001631] flex items-center justify-center text-white font-bold text-sm shrink-0">
+            {user?.name?.charAt(0)?.toUpperCase() || "U"}
+          </span>
+          <span className="hidden md:flex flex-col items-start leading-tight">
+            <span className="text-body-sm font-bold text-[#001631] max-w-[140px] truncate">{user?.name || "Admin"}</span>
+            <span className="text-[11px] text-on-surface-variant max-w-[140px] truncate">{user?.email || ""}</span>
+          </span>
+          <span className="material-symbols-outlined text-on-surface-variant text-lg">expand_more</span>
+        </button>
+
+        <div className="h-8 w-px bg-outline-variant mx-1" />
         <button onClick={logout} className="flex items-center gap-2 px-3 py-1.5 rounded-full hover:bg-surface-container transition-all">
           <span className="text-body-sm font-bold text-[#001631]">Sair</span>
           <span className="material-symbols-outlined text-[#001631]">logout</span>
         </button>
       </div>
+
+      <ProfileModal open={profileOpen} onClose={() => setProfileOpen(false)} />
     </header>
   );
 }
