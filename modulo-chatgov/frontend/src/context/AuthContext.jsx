@@ -84,6 +84,7 @@ export function AuthProvider({ children }) {
   const logout = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
     setAuth(null);
+    window.location.href = 'https://admin.govsistem.com.br/';
   }, []);
 
   return React.createElement(AuthContext.Provider, { value: { auth, logout } }, children);
