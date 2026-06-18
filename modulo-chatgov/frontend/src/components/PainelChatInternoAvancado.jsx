@@ -34,6 +34,7 @@ function blobParaBase64(blob) {
 export function PainelChatInternoAvancado({ canal }) {
   const { socket } = useSocket();
   const { auth } = useAuth();
+  const opId = auth?.operador?.id;
   const [mensagens, setMensagens] = useState([]);
   const [texto, setTexto] = useState('');
   const [fixadas, setFixadas] = useState([]);
@@ -133,8 +134,6 @@ export function PainelChatInternoAvancado({ canal }) {
   const digitandoPorOperadorRef = useRef({});
   const ultimaScrollHeightRef = useRef(0);
   const canalRef = useRef(canal);
-
-  const opId = auth?.operador?.id;
 
   useEffect(() => { canalRef.current = canal; }, [canal]);
 
