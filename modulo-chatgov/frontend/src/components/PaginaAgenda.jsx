@@ -3,6 +3,7 @@ import { Search, Edit3, Check, X, Phone, User, MessageCircle, Trash2, Filter, Gr
 import { T } from '../theme';
 import { fetchContatos, editarContato, iniciarConversa, fetchDepartamentos } from '../api';
 import { ModalNovaConversa } from './ModalNovaConversa';
+import { Avatar } from './Avatar';
 
 function formatarTelefone(tel) {
   if (!tel) return '';
@@ -11,23 +12,6 @@ function formatarTelefone(tel) {
   if (d.length === 11) return `(${d.slice(0,2)}) ${d.slice(2,7)}-${d.slice(7,11)}`;
   if (d.length === 10) return `(${d.slice(0,2)}) ${d.slice(2,6)}-${d.slice(6,10)}`;
   return tel;
-}
-
-function obterIniciais(nome) {
-  if (!nome) return '';
-  const partes = nome.trim().split(/\s+/);
-  if (partes.length === 1) return partes[0].slice(0, 2).toUpperCase();
-  return (partes[0][0] + partes[partes.length - 1][0]).toUpperCase();
-}
-
-function corAvatar(indice) {
-  const cores = [T.primarySoft, '#dbe4ff', '#d3f9d8', '#fff3bf', '#ffe3e3', '#e5dbff', '#c5f6fa'];
-  return cores[indice % cores.length];
-}
-
-function corTextoAvatar(indice) {
-  const cores = [T.primary, '#364fc7', '#2b8a3e', '#e67700', '#c92a2a', '#6741d9', '#0b7285'];
-  return cores[indice % cores.length];
 }
 
 function tempoRelativo(dataStr) {
@@ -205,19 +189,13 @@ export function PaginaAgenda({ onSendMessage }) {
 
   /* ──────── CARD RENDER ──────── */
   function cardContato(c, i) {
-    const iniciais = obterIniciais(c.nome || c.telefone);
-    const avatarBg = corAvatar(i);
-    const avatarText = corTextoAvatar(i);
-
     return React.createElement('div', {
       key: c.id,
       style: sf.card,
     },
       /* avatar + info */
       React.createElement('div', { style: sf.cardTop },
-        React.createElement('div', { style: { width: 52, height: 52, borderRadius: '50%', background: c.nome ? avatarBg : T.surfaceMuted, color: c.nome ? avatarText : T.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 17, flexShrink: 0 } },
-          c.nome ? iniciais : React.createElement(Phone, { size: 22 }),
-        ),
+        React.createElement(Avatar, { nome: c.nome || c.telefone, url: c.avatar_url, tamanho: 52, isNumber: !c.nome }),
         React.createElement('div', { style: { flex: 1, minWidth: 0 } },
           editandoId === c.id
             ? React.createElement('div', { style: { display: 'flex', gap: 4, alignItems: 'center' } },
@@ -294,17 +272,11 @@ export function PaginaAgenda({ onSendMessage }) {
 
   /* ──────── LIST ROW ──────── */
   function linhaContato(c, i) {
-    const iniciais = obterIniciais(c.nome || c.telefone);
-    const avatarBg = corAvatar(i);
-    const avatarText = corTextoAvatar(i);
-
     return React.createElement('div', {
       key: c.id,
       style: sf.row,
     },
-      React.createElement('div', { style: { width: 40, height: 40, borderRadius: '50%', background: c.nome ? avatarBg : T.surfaceMuted, color: c.nome ? avatarText : T.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 14, flexShrink: 0 } },
-        c.nome ? iniciais : React.createElement(Phone, { size: 16 }),
-      ),
+      React.createElement(Avatar, { nome: c.nome || c.telefone, url: c.avatar_url, tamanho: 40, isNumber: !c.nome }),
       React.createElement('div', { style: { flex: 1, minWidth: 0 } },
         editandoId === c.id
           ? React.createElement('div', { style: { display: 'flex', gap: 4, alignItems: 'center' } },

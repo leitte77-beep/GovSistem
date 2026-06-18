@@ -436,6 +436,18 @@ export class WhatsAppManager extends EventEmitter {
     }
   }
 
+  // Busca a foto de perfil do WhatsApp de um contato.
+  // Retorna a URL da imagem ou null se não houver foto.
+  async fetchProfilePicture(tenantId, jid) {
+    try {
+      const { sock } = this._getSession(tenantId);
+      const ppUrl = await sock.profilePictureUrl(jid, 'image');
+      return ppUrl || null;
+    } catch {
+      return null;
+    }
+  }
+
   // Assina a presença de um contato para receber updates de "digitando"/online.
   async subscribePresence(tenantId, jid) {
     try {

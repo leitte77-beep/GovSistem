@@ -1147,6 +1147,32 @@ export function iniciarGateway(httpServer, wa, storage) {
   return io;
 }
 
+// Busca e salva a foto de perfil do WhatsApp de um contato, em background.
+// Só faz a requisição se o avatar_url ainda estiver nulo no banco.
+async function buscarAvatarContato(wa, tenantId, contatoId) {
+  try {
+    const row = await db.oneOrNone(
+      'SELECT avatar_url, wa_jid FROM contatos WHERE id = $1 AND tenant_id = $2',
+      [contatoId, tenantId]
+    );
+    if (!row || row.avatar_url || !row.wa_jid) return;
+
+    // Só busca foto para JID de telefone (@s.whatsapp.net), não para @lid.
+    const jidAlvo = row.wa_jid;
+    if (!jidAlvo.endsWith('@s.whatsapp.net')) return;
+
+    const ppUrl = await wa.fetchProfilePicture(tenantId, jidAlvo);
+    if (ppUrl) {
+      await db.none(
+        'UPDATE contatos SET avatar_url = $1 WHERE id = $2 AND tenant_id = $3',
+        [ppUrl, contatoId, tenantId]
+      );
+    }
+  } catch {
+    // Silencioso — avatar é opcional.
+  }
+}
+
 async function persistirEntrada(tenantId, msg, io, wa, storage) {
   const jid = msg.key.remoteJid;
   // Quando o WhatsApp entrega via @lid, o telefone real (formato 55...@s.whatsapp.net)
@@ -1405,6 +1431,10 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
       [tenantId, jid, pushName, jidEhLid(jid) ? null : telefone]
     );
   }
+
+  // Busca foto de perfil do WhatsApp se o contato ainda não tiver avatar.
+  // Executa em background (não bloqueia a entrega da mensagem).
+  buscarAvatarContato(wa, tenantId, contatoRow.id).catch(() => {});
 
   const conversaRow = await db.oneOrNone(
     `INSERT INTO conversas (tenant_id, contato_id, status, nao_lidas, ultima_mensagem, ultima_mensagem_em)

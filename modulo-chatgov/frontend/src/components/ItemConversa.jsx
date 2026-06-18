@@ -26,7 +26,7 @@ export function ItemConversa({ conversa, ativa, opId, onClick }) {
       borderLeft: minha ? `3px solid ${T.primary}` : '3px solid transparent',
     },
   },
-    React.createElement(Avatar, { nome, tamanho: 46, isNumber }),
+    React.createElement(Avatar, { nome, url: conversa.contato_avatar_url, tamanho: 46, isNumber }),
     React.createElement('div', {
       style: { flex: 1, minWidth: 0 },
     },

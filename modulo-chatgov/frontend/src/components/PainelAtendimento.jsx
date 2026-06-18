@@ -422,7 +422,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
     React.createElement('div', {
       style: { display: 'flex', alignItems: 'center', padding: '10px 20px', background: T.surface, gap: 12, flexShrink: 0, borderBottom: `1px solid #d1d7db`, minHeight: 56 },
     },
-      React.createElement(Avatar, { nome, tamanho: 42, isNumber }),
+      React.createElement(Avatar, { nome, url: conversa.contato_avatar_url, tamanho: 42, isNumber }),
       React.createElement('div', {
         style: { flex: 1, minWidth: 0, cursor: 'pointer' },
         onClick: () => {

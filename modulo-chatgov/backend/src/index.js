@@ -279,6 +279,7 @@ app.use('/api', rateLimiter);
 
       let query = `
         SELECT c.*, co.nome as contato_nome, co.telefone as contato_telefone, co.wa_jid,
+               co.avatar_url as contato_avatar_url,
                d.nome as departamento_nome, d.cor as departamento_cor,
                o.nome as operador_nome
         FROM conversas c
