@@ -56,12 +56,14 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
   const [showMenuMais, setShowMenuMais] = useState(false);
   const [showEmojis, setShowEmojis] = useState(false);
   const [anexando, setAnexando] = useState(false);
+  const [draggingFile, setDraggingFile] = useState(false);
   const [toast, setToast] = useState(null);
   const [confirmacao, setConfirmacao] = useState(null);
   const areaMensagensRef = useRef(null);
   const inputRef = useRef(null);
   const fileRef = useRef(null);
   const pertoDoFimRef = useRef(true);
+  const dragCounterRef = useRef(0);
 
   // Toast simples (substitui alerts). Auto-some em 3.5s.
   const notificar = useCallback((mensagem, tipo = 'info') => {
@@ -416,6 +418,36 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
     });
   };
 
+  // ── Drag & Drop handlers ──
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current++;
+    if (e.dataTransfer?.types?.includes('Files')) setDraggingFile(true);
+  };
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    dragCounterRef.current--;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setDraggingFile(false);
+    }
+  };
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+  };
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDraggingFile(false);
+    dragCounterRef.current = 0;
+    const f = e.dataTransfer?.files?.[0];
+    if (f) enviarMidia(f);
+  };
+
   if (!conversa) {
     return React.createElement(EstadoVazio, {
       title: 'Central de Atendimento',
@@ -427,8 +459,20 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
   const isNumber = !conversa.contato_nome;
 
   return React.createElement('div', {
-    style: { flex: 1, display: 'flex', flexDirection: 'column', height: '100%', background: T.bg },
+    style: { flex: 1, display: 'flex', flexDirection: 'column', height: '100%', background: T.bg, position: 'relative' },
+    onDragEnter: handleDragEnter,
+    onDragLeave: handleDragLeave,
+    onDragOver: handleDragOver,
+    onDrop: handleDrop,
   },
+    // Overlay de drag-and-drop
+    draggingFile && React.createElement('div', {
+      style: { position: 'absolute', inset: 0, background: 'rgba(37,99,235,0.1)', border: '3px dashed #2563EB', borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, pointerEvents: 'none' },
+    },
+      React.createElement('div', {
+        style: { background: '#2563EB', color: '#fff', padding: '12px 28px', borderRadius: 10, fontSize: 15, fontWeight: 700, boxShadow: '0 4px 16px rgba(37,99,235,0.35)' },
+      }, 'Solte o arquivo aqui para enviar'),
+    ),
     // Header - WhatsApp style header bar
     React.createElement('div', {
       style: { display: 'flex', alignItems: 'center', padding: '10px 20px', background: T.surface, gap: 12, flexShrink: 0, borderBottom: `1px solid #d1d7db`, minHeight: 56 },
@@ -685,8 +729,6 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
     }, erroEnvio),
     React.createElement('form', {
       onSubmit: enviar,
-      onDragOver: (e) => { e.preventDefault(); },
-      onDrop: (e) => { e.preventDefault(); const f = e.dataTransfer.files?.[0]; if (f) enviarMidia(f); },
       style: { position: 'relative', display: 'flex', alignItems: 'flex-end', padding: '10px 16px', background: T.surface, gap: 10, flexShrink: 0, borderTop: `1px solid ${T.border}` },
     },
       // Picker de emojis rápidos
