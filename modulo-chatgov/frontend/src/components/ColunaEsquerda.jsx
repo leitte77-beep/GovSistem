@@ -267,7 +267,13 @@ export function ColunaEsquerda({
             : conversas.length === 0
             ? React.createElement(VazioLista, { texto: 'Inicie uma conversa para ver suas mensagens aqui.' })
             : conversas.map((c) => React.createElement(ItemConversa, {
-                key: c.id, conversa: c, ativa: c.id === conversaAtivaId, opId: op?.id, onClick: () => onSelectConversa(c),
+                key: c.id, conversa: c, ativa: c.id === conversaAtivaId, opId: op?.id,
+                onClick: () => {
+                  if (c.nao_lidas > 0) {
+                    setConversas((prev) => prev.map((conv) => conv.id === c.id ? { ...conv, nao_lidas: 0 } : conv));
+                  }
+                  onSelectConversa(c);
+                },
               })))
         : (canais.length === 0
             ? React.createElement(VazioLista, { texto: 'Crie uma conversa ou grupo com sua equipe.' })

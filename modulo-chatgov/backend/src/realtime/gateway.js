@@ -264,6 +264,8 @@ export function iniciarGateway(httpServer, wa, storage) {
           'UPDATE conversas SET nao_lidas = 0 WHERE id = $1 AND tenant_id = $2',
           [convId, op.tenantId]
         );
+        // Notifica o sidebar para atualizar o contador de não lidas
+        io.to(salas.tenant(op.tenantId)).emit('conversa:atualizada', { convId });
         // Assina a presença do contato para receber "digitando..."/online dele.
         try {
           const jid = await obterJidDaConversa(op.tenantId, convId, null);
