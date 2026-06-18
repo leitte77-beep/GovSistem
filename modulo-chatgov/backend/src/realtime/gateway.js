@@ -1450,18 +1450,30 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
   const conversaRow = await db.oneOrNone(
     `INSERT INTO conversas (tenant_id, contato_id, status, nao_lidas, ultima_mensagem, ultima_mensagem_em)
      VALUES ($1, $2, $5, $6, $3, $4)
-     ON CONFLICT (tenant_id, contato_id) DO UPDATE
-       SET nao_lidas = CASE
-             WHEN $7 = 'saida' THEN conversas.nao_lidas
-             WHEN conversas.status = 'resolvida' THEN 1
-             ELSE conversas.nao_lidas + 1
-           END,
-           status = CASE
-             WHEN conversas.status IN ('resolvida', 'arquivada') AND $7 = 'entrada' THEN 'fila'
-             ELSE conversas.status
-           END,
-           ultima_mensagem = $3,
-           ultima_mensagem_em = $4
+      ON CONFLICT (tenant_id, contato_id) DO UPDATE
+        SET nao_lidas = CASE
+              WHEN $7 = 'saida' THEN conversas.nao_lidas
+              WHEN conversas.status = 'resolvida' THEN 1
+              ELSE conversas.nao_lidas + 1
+            END,
+            status = CASE
+              WHEN conversas.status IN ('resolvida', 'arquivada') AND $7 = 'entrada' THEN 'fila'
+              ELSE conversas.status
+            END,
+            operador_id = CASE
+              WHEN conversas.status IN ('resolvida', 'arquivada') AND $7 = 'entrada' THEN NULL
+              ELSE conversas.operador_id
+            END,
+            departamento_id = CASE
+              WHEN conversas.status IN ('resolvida', 'arquivada') AND $7 = 'entrada' THEN NULL
+              ELSE conversas.departamento_id
+            END,
+            protocolo_id = CASE
+              WHEN conversas.status IN ('resolvida', 'arquivada') AND $7 = 'entrada' THEN NULL
+              ELSE conversas.protocolo_id
+            END,
+            ultima_mensagem = $3,
+            ultima_mensagem_em = $4
      RETURNING id, status, protocolo_id, departamento_id, operador_id`,
     [
       tenantId,

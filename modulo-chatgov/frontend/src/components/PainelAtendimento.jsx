@@ -52,6 +52,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
   const [novasAbaixo, setNovasAbaixo] = useState(0);
   const [clienteDigitando, setClienteDigitando] = useState(false);
   const [botDigitando, setBotDigitando] = useState(null); // null | 'iris' | 'chatbot'
+  const [conversaStatus, setConversaStatus] = useState(conversa?.status);
   const [showMenuMais, setShowMenuMais] = useState(false);
   const [showEmojis, setShowEmojis] = useState(false);
   const [anexando, setAnexando] = useState(false);
@@ -75,6 +76,8 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
   const ehGestor = ['admin', 'supervisor'].includes(auth?.operador?.papel);
   const souDono = conversa?.operador_id && conversa.operador_id === opId;
   const semDono = conversa && !conversa.operador_id;
+
+  useEffect(() => { setConversaStatus(conversa?.status); }, [conversa?.id, conversa?.status]);
   const podeGerir = souDono || ehGestor;
   const transfParaMim = transferencia && transferencia.para_operador_id === opId;
 
@@ -149,6 +152,13 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
     socket.on('mensagem:reacao', onReacao);
     socket.on('mensagem:excluida', onExcluida);
     socket.on('cliente:presenca', onPresenca);
+    const onConvAtualizada = ({ convId }) => {
+      if (convId === conversa?.id) {
+        // Atualiza status da conversa ativa quando reaberta (ex: resolved → fila)
+        setConversaStatus('fila');
+      }
+    };
+    socket.on('conversa:atualizada', onConvAtualizada);
     const onNotaNova = (nota) => setNotas((prev) => [nota, ...prev]);
     socket.on('nota:nova', onNotaNova);
     const onTransferencia = ({ convId }) => {
@@ -163,6 +173,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
       socket.off('mensagem:reacao', onReacao);
       socket.off('mensagem:excluida', onExcluida);
       socket.off('cliente:presenca', onPresenca);
+      socket.off('conversa:atualizada', onConvAtualizada);
       socket.off('nota:nova', onNotaNova);
       socket.off('transferencia:nova', onTransferencia);
     };
@@ -572,12 +583,12 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
 
     // Faixa de status
     React.createElement('div', {
-      style: { padding: '7px 16px', background: conversa.status === 'fila' ? T.warningSoft : T.surfaceAlt, fontSize: 11, textAlign: 'center', flexShrink: 0, borderBottom: `1px solid ${T.border}` },
+      style: { padding: '7px 16px', background: conversaStatus === 'fila' ? T.warningSoft : T.surfaceAlt, fontSize: 11, textAlign: 'center', flexShrink: 0, borderBottom: `1px solid ${T.border}` },
     },
-      conversa.status === 'fila'
+      conversaStatus === 'fila'
         ? React.createElement('span', { style: { color: T.warning, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontWeight: 600 } },
             React.createElement(Clock, { size: 12 }), 'Aguardando triagem — encaminhe a uma secretaria para responder')
-        : conversa.status === 'arquivada'
+        : conversaStatus === 'arquivada'
         ? React.createElement('span', { style: { color: T.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 } },
             React.createElement(Archive, { size: 12 }), 'Conversa arquivada — não aparece nas listas principais')
         : React.createElement('span', { style: { color: T.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 } },
