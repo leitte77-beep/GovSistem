@@ -27,8 +27,9 @@ function iniciais(nome) {
 
 export function Avatar({ nome, url, tamanho = 40, online, tipo, isNumber }) {
   const bg = useMemo(() => corPorNome(nome), [nome]);
+  const [imgErro, setImgErro] = React.useState(false);
 
-  if (url) {
+  if (url && !imgErro) {
     return React.createElement('div', {
       style: {
         position: 'relative',
@@ -40,6 +41,7 @@ export function Avatar({ nome, url, tamanho = 40, online, tipo, isNumber }) {
       React.createElement('img', {
         src: url,
         alt: nome || '',
+        onError: () => setImgErro(true),
         style: {
           width: '100%',
           height: '100%',

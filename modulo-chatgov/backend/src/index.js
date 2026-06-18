@@ -8,7 +8,7 @@ import { config } from './config.js';
 import db from './db.js';
 import { runMigrations } from './migrations/run.js';
 import { WhatsAppManager } from './whatsapp/WhatsAppManager.js';
-import { iniciarGateway } from './realtime/gateway.js';
+import { iniciarGateway, buscarAvatarContato } from './realtime/gateway.js';
 import { createStorage } from './storage/index.js';
 import { authMiddleware, requirePapel } from './auth/middleware.js';
 import { rateLimiter } from './auth/ratelimit.js';
@@ -545,6 +545,9 @@ app.use('/api', rateLimiter);
           [nome, contato.id, op.tenantId]
         );
       }
+
+      // Busca foto de perfil do WhatsApp em background.
+      buscarAvatarContato(wa, op.tenantId, contato.id).catch(() => {});
 
       const conversa = await db.one(
         `INSERT INTO conversas (tenant_id, contato_id, departamento_id, operador_id, status, ultima_mensagem_em)

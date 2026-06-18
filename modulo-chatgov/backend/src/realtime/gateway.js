@@ -1149,27 +1149,38 @@ export function iniciarGateway(httpServer, wa, storage) {
 
 // Busca e salva a foto de perfil do WhatsApp de um contato, em background.
 // Só faz a requisição se o avatar_url ainda estiver nulo no banco.
-async function buscarAvatarContato(wa, tenantId, contatoId) {
+export async function buscarAvatarContato(wa, tenantId, contatoId) {
   try {
     const row = await db.oneOrNone(
       'SELECT avatar_url, wa_jid FROM contatos WHERE id = $1 AND tenant_id = $2',
       [contatoId, tenantId]
     );
-    if (!row || row.avatar_url || !row.wa_jid) return;
+    if (!row || !row.wa_jid) return;
+    if (row.avatar_url) {
+      console.log(`[Avatar] contato ${contatoId} já tem avatar, pulando`);
+      return;
+    }
 
     // Só busca foto para JID de telefone (@s.whatsapp.net), não para @lid.
     const jidAlvo = row.wa_jid;
-    if (!jidAlvo.endsWith('@s.whatsapp.net')) return;
+    if (!jidAlvo.endsWith('@s.whatsapp.net')) {
+      console.log(`[Avatar] contato ${contatoId} JID não é @s.whatsapp.net (${jidAlvo}), pulando`);
+      return;
+    }
 
+    console.log(`[Avatar] buscando foto para contato ${contatoId} JID=${jidAlvo}`);
     const ppUrl = await wa.fetchProfilePicture(tenantId, jidAlvo);
     if (ppUrl) {
       await db.none(
         'UPDATE contatos SET avatar_url = $1 WHERE id = $2 AND tenant_id = $3',
         [ppUrl, contatoId, tenantId]
       );
+      console.log(`[Avatar] foto salva para contato ${contatoId}`);
+    } else {
+      console.log(`[Avatar] contato ${contatoId} não tem foto de perfil`);
     }
-  } catch {
-    // Silencioso — avatar é opcional.
+  } catch (err) {
+    console.error(`[Avatar] erro ao buscar foto do contato ${contatoId}:`, err.message);
   }
 }
 
