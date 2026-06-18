@@ -211,6 +211,7 @@ async def seed_super_admin(db: AsyncSession) -> User | None:
         email="admin@doeapp.com.br",
         password_hash=hash_password("admin123"),
         is_active=True,
+        require_password_change=True,
     )
     db.add(user)
     await db.flush()

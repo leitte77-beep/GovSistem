@@ -27,3 +27,11 @@
 - [x] Colar imagem do clipboard (Ctrl+V)
 - [x] Preview de links + Avatar do grupo + Último visto + Status
 - [x] Enquetes simples no canal
+- [x] Corrigir erros críticos: race condition PDF, dupla geração, datetime.utcnow, código morto, leak de senha em logs
+- [x] Adicionar auth no signer, rate limiting, CSRF protection
+- [x] Migrar PDF/assinatura para fila Celery assíncrona
+- [x] Adicionar métricas, health checks avançados, backup automático
+- [ ] Melhorias frontend: paginação real, timeout, double-submit
+- [ ] Testar tudo: backend, frontend, PDF, assinatura, deploy
+- [ ] Corrigir MatterForm: remover redirect, renomear botão, salvar em todos os steps, validar PDF upload, step 3 interativo
+- [ ] Corrigir EditionForm: race condition editionId, auto-numeração com erro, workflow sign, unificar signPayload, auto-save no step 2

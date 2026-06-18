@@ -17,7 +17,9 @@ from app.models.enums import EditionStatus
 from app.services.pdf_utils import compute_hash, detect_landscape, format_date
 
 TEMPLATE_DIR = Path(__file__).parent.parent / "templates" / "pdf"
+LAYOUTS_DIR = TEMPLATE_DIR / "layouts"
 OUTPUT_DIR = Path(settings.UPLOAD_DIR)
+AVAILABLE_LAYOUTS = ["classico", "moderno", "minimalista"]
 WEEKDAYS_PT = [
     "SEGUNDA-FEIRA", "TERCA-FEIRA", "QUARTA-FEIRA", "QUINTA-FEIRA",
     "SEXTA-FEIRA", "SABADO", "DOMINGO",
@@ -61,8 +63,16 @@ def generate_edition_pdf_sync(
     edition_id: str,
     organ_name: str = "Prefeitura Municipal",
     verification_base_url: str = "http://localhost:7200/verificar",
+    layout: str = "classico",
 ) -> dict:
     db = get_sync_db()
+
+    if layout not in AVAILABLE_LAYOUTS:
+        layout = "classico"
+
+    template_dir = LAYOUTS_DIR / layout
+    if not template_dir.exists():
+        template_dir = LAYOUTS_DIR / "classico"
     try:
         from app.models.edition import Edition
         from app.models.edition_item import EditionItem
@@ -132,10 +142,10 @@ def generate_edition_pdf_sync(
 
         type_labels = {"normal": "Normal", "extra": "Extra", "suplementar": "Suplementar"}
 
-        env = Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
+        env = Environment(loader=FileSystemLoader(str(template_dir)))
         template = env.get_template("edition.html")
 
-        css_path = str(TEMPLATE_DIR / "edition.css")
+        css_path = str(template_dir / "edition.css")
 
         def _render_html(total_pages: str = "") -> str:
             return template.render(
@@ -150,7 +160,7 @@ def generate_edition_pdf_sync(
                     f"{edition.publication_date.year}"
                 ),
                 edition_year_label=f"ANO: {edition.year}",
-                logo_path=(TEMPLATE_DIR / "brasao.png").as_uri(),
+                logo_path=(template_dir / "brasao.png").as_uri(),
                 verification_code=verification_code,
                 is_preliminary=False,
                 verification_url=verification_base_url,
@@ -166,7 +176,7 @@ def generate_edition_pdf_sync(
         html_first = _render_html()
         pdf_bytes = HTML(
             string=html_first,
-            base_url=str(TEMPLATE_DIR),
+            base_url=str(template_dir),
         ).write_pdf(stylesheets=[CSS(filename=css_path)])
 
         # Count total pages from the rendered PDF
@@ -176,7 +186,7 @@ def generate_edition_pdf_sync(
         html_final = _render_html(total_pages=total_pages)
         pdf_bytes = HTML(
             string=html_final,
-            base_url=str(TEMPLATE_DIR),
+            base_url=str(template_dir),
         ).write_pdf(stylesheets=[CSS(filename=css_path)])
 
         pdf_hash = compute_hash(pdf_bytes)

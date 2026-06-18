@@ -6,16 +6,25 @@ import { OrgProvider } from "@/lib/org-context";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://diario.govsistem.com.br"),
   title: "Diário Oficial Eletrônico | Portal de Consulta Pública",
-  description: "Portal público do Sistema de Diário Oficial Eletrônico — consulte edições, busque matérias e verifique autenticidade.",
+  description:
+    "Portal público do Sistema de Diário Oficial Eletrônico — consulte edições, busque matérias e verifique autenticidade.",
+  openGraph: {
+    title: "Diário Oficial Eletrônico",
+    description:
+      "Consulte edições, busque matérias e verifique a autenticidade dos documentos oficiais.",
+    url: "https://diario.govsistem.com.br",
+    siteName: "Diário Oficial Eletrônico",
+    locale: "pt_BR",
+    type: "website",
+  },
+  robots: { index: true, follow: true },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR">
-      <head>
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
-      </head>
       <body className="bg-background text-on-surface antialiased min-h-screen flex flex-col">
         <AccessibilityProvider>
           <OrgProvider>

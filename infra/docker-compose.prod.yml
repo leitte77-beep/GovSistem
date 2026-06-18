@@ -240,6 +240,7 @@ services:
       SIGNER_A1_PFX_PATH: /certs/cert.pfx
       SIGNER_A1_PASSWORD: ${SIGNER_A1_PASSWORD}
       VERIFICATION_BASE_URL: https://govsistem.com.br/verificar
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
     volumes:
       - ${SIGNER_CERTS_DIR:-./certs}:/certs:ro
     networks:

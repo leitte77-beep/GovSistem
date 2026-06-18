@@ -38,8 +38,15 @@ async def internal_generate_edition_pdf(
         raise HTTPException(409, "PDF already generated for this edition")
 
     from app.services.edition_pdf import generate_edition_pdf_sync
+    from app.models.organization import Organization
 
-    result = generate_edition_pdf_sync(edition_id=str(edition_id))
+    org_result = await db.execute(
+        select(Organization).where(Organization.id == edition.organization_id)
+    )
+    organization = org_result.scalar_one_or_none()
+    pdf_layout = organization.pdf_layout if organization else "classico"
+
+    result = generate_edition_pdf_sync(edition_id=str(edition_id), layout=pdf_layout)
     edition.pdf_path = result["filename"]
     edition.pdf_hash = result["sha256"]
     edition.status = EditionStatus.PDF_GENERATED

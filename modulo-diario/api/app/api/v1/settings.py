@@ -4,15 +4,86 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import require_roles
+from app.core.auth import get_current_user, require_roles
 from app.core.database import get_db
+from app.models.organization import Organization
 from app.models.setting import SystemSetting
 from app.models.user import User
 from app.schemas.setting import SettingCreate, SettingOut, SettingUpdate
+from app.services.edition_pdf import AVAILABLE_LAYOUTS
 
-router = APIRouter(
-    tags=["settings"], dependencies=[Depends(require_roles("ADMIN"))]
-)
+router = APIRouter(tags=["settings"])
+
+
+# ── PDF Layout ─────────────────────────────────────────────────────────────
+# Must come BEFORE /settings/{setting_id} routes to avoid path conflicts
+
+
+@router.get("/settings/pdf-layouts")
+async def list_pdf_layouts():
+    """List available PDF layout templates."""
+    return {
+        "layouts": [
+            {
+                "id": "classico",
+                "name": "Clássico",
+                "description": "Estilo tradicional de diário oficial — brasão centralizado, faixas cinza, tipografia serifada. Ideal para órgãos que seguem o padrão governamental clássico.",
+            },
+            {
+                "id": "moderno",
+                "name": "Moderno",
+                "description": "Design limpo com linhas azuis, cantos arredondados, tipografia sans-serif. Ideal para órgãos que querem uma apresentação mais contemporânea.",
+            },
+            {
+                "id": "minimalista",
+                "name": "Minimalista",
+                "description": "Preto e branco com linhas finas e sem decorações. Máxima economia de tinta e espaço. Ideal para órgãos que priorizam simplicidade.",
+            },
+        ],
+        "current": None,
+    }
+
+
+@router.get("/settings/organization/pdf-layout")
+async def get_org_pdf_layout(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    org_result = await db.execute(
+        select(Organization).where(Organization.id == user.organization_id)
+    )
+    org = org_result.scalar_one_or_none()
+    if not org:
+        raise HTTPException(404, "Organization not found")
+    return {"layout": org.pdf_layout, "available": AVAILABLE_LAYOUTS}
+
+
+@router.patch("/settings/organization/pdf-layout")
+async def update_org_pdf_layout(
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles("ADMIN")),
+):
+    layout = body.get("layout", "")
+    if layout not in AVAILABLE_LAYOUTS:
+        raise HTTPException(
+            422,
+            f"Invalid layout. Available: {', '.join(AVAILABLE_LAYOUTS)}",
+        )
+
+    org_result = await db.execute(
+        select(Organization).where(Organization.id == user.organization_id)
+    )
+    org = org_result.scalar_one_or_none()
+    if not org:
+        raise HTTPException(404, "Organization not found")
+
+    org.pdf_layout = layout
+    await db.commit()
+    return {"layout": org.pdf_layout, "message": f"PDF layout updated to '{layout}'"}
+
+
+# ── System Settings CRUD ──────────────────────────────────────────────────
 
 
 @router.get("/settings", response_model=list[SettingOut])

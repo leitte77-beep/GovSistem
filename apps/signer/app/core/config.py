@@ -15,5 +15,7 @@ class Settings(BaseSettings):
 
     VERIFICATION_BASE_URL: str = "https://govsistem.com.br/verificar"
 
+    INTERNAL_API_KEY: SecretStr = SecretStr("dev-internal-key-123")
+
 
 settings = Settings()

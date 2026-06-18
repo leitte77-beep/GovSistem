@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.auth import get_current_user, require_roles
 from app.core.database import get_db
+from app.core.file_validator import validate_upload
 from app.core.html_sanitizer import extract_plain_text
 from app.middleware.audit import capture_request_info, log_audit_event
 from app.models.act_type import ActType
@@ -551,9 +552,8 @@ async def add_attachment(
             detail="Cannot add attachments to a non-editable matter",
         )
 
-    # For now, only create a placeholder attachment
-    # Full file storage will use MinIO
-    content = await file.read()
+    ext, content = await validate_upload(file)
+
     import hashlib
     file_hash = hashlib.sha256(content).hexdigest()
 

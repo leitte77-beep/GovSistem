@@ -35,6 +35,10 @@ class Organization(Base, TimestampMixin, SoftDeleteMixin):
         String(255), nullable=True,
         comment="Default public portal URL for this organization",
     )
+    pdf_layout: Mapped[str] = mapped_column(
+        String(20), default="classico", nullable=False,
+        comment="PDF layout template: classico, moderno, minimalista",
+    )
     plan_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("plans.id", ondelete="SET NULL"),

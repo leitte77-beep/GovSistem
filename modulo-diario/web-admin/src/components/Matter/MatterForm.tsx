@@ -65,9 +65,11 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const draftLoaded = useRef(false);
   const titleAutoFilled = useRef(false);
+  const [createdId, setCreatedId] = useState<string>("");
 
   const isEditable = status === "draft" || status === "review" || status === "rejected";
   const selectedActType = actTypes.find((a) => a.id === actTypeId);
+  const matterId = matter?.id || createdId;
 
   useEffect(() => {
     api.listActTypes().then(setActTypes).catch(() => {});
@@ -177,8 +179,10 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
         localStorage.removeItem(AUTOSAVE_KEY);
         toast.success(action === "review" ? "Matéria enviada para revisão!" : "Rascunho salvo com sucesso");
 
-        if (isNew) {
-          router.push(`/matters/${result.id}/edit`);
+        if (isNew && !matterId) {
+          setCreatedId(result.id);
+          // Replace URL without full page reload
+          window.history.replaceState({}, "", `/matters/${result.id}/edit`);
         }
       } catch (err: unknown) {
         toast.error(err instanceof Error ? err.message : "Erro ao salvar");
@@ -189,7 +193,6 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
     [title, summary, actTypeId, orgUnitId, contentHtml, isNew, matter, router, hasContent]
   );
 
-  const matterId = matter?.id;
 
   const handleActTypeSelect = async (actType: ActType) => {
     setActTypeId(actType.id);

@@ -14,6 +14,7 @@ const NAV_ITEMS = [
   { label: "Importar", href: "/importar", icon: "upload_file" },
   { label: "Operações", href: "/operacoes", icon: "settings_suggest" },
   { label: "Usuários", href: "/users", icon: "group" },
+  { label: "Configurações", href: "/settings", icon: "tune" },
   { label: "Certificados", href: "/settings/certificates", icon: "verified_user" },
   { label: "Verificar PDF", href: "/verify", icon: "picture_as_pdf" },
   { label: "Voltar ao SaaS", href: "https://admin.govsistem.com.br", icon: "arrow_back", external: true },
@@ -50,9 +51,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     if (!loading && !user) {
-      window.location.href = "https://admin.govsistem.com.br/login";
+      router.push("/login");
     }
-  }, [loading, user]);
+  }, [loading, user, router]);
 
   useEffect(() => {
     setSidebarOpen(false);

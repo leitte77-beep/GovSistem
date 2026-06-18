@@ -6,6 +6,8 @@ from datetime import date, datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -37,6 +39,7 @@ from .schemas import (
 router = APIRouter(tags=["Public API v1"])
 
 PUBLIC_URL = settings.PUBLIC_URL or "http://localhost:7200"
+limiter = Limiter(key_func=get_remote_address)
 
 
 def _public_pdf_path(edition: Edition) -> Optional[str]:
@@ -197,6 +200,7 @@ async def v1_get_organization(
     summary="List published editions",
     description="Returns paginated list of PUBLISHED editions. Ordered by year/number descending.",
 )
+@limiter.limit("60/minute")
 async def v1_list_editions(
     request: Request,
     year: Optional[int] = Query(None, description="Filter by year"),
@@ -278,7 +282,9 @@ async def v1_list_editions(
     summary="Get edition details by year and number",
     description="Returns full published edition details using the public year/number URL.",
 )
+@limiter.limit("60/minute")
 async def v1_get_edition_by_year_number(
+    request: Request,
     year: int,
     number: int,
     tenant: Organization | None = Depends(resolve_tenant_from_domain),
@@ -314,7 +320,9 @@ async def v1_get_edition_by_year_number(
     summary="Get edition by year and number",
     description="Returns full edition details including items and signatures, looked up by year and number.",
 )
-async def v1_get_edition_by_year_number(
+@limiter.limit("60/minute")
+async def v1_get_edition_by_year_number_alt(
+    request: Request,
     year: int,
     number: int,
     tenant: Organization | None = Depends(resolve_tenant_from_domain),
@@ -377,7 +385,9 @@ async def v1_get_edition_by_year_number(
     summary="Get edition details",
     description="Returns full edition details including items and signatures.",
 )
+@limiter.limit("60/minute")
 async def v1_get_edition(
+    request: Request,
     edition_id: uuid.UUID,
     tenant: Organization | None = Depends(resolve_tenant_from_domain),
     db: AsyncSession = Depends(get_db),
@@ -408,6 +418,7 @@ async def v1_get_edition(
     summary="List published matters",
     description="Returns paginated list of PUBLISHED matters with search and filters.",
 )
+@limiter.limit("60/minute")
 async def v1_list_matters(
     request: Request,
     q: Optional[str] = Query(None, description="Search in title and summary"),
@@ -512,7 +523,9 @@ async def v1_list_matters(
     summary="Get matter details",
     description="Returns full matter content with sanitized HTML and attachments.",
 )
+@limiter.limit("60/minute")
 async def v1_get_matter(
+    request: Request,
     matter_id: uuid.UUID,
     tenant: Organization | None = Depends(resolve_tenant_from_domain),
     db: AsyncSession = Depends(get_db),
@@ -567,7 +580,9 @@ async def v1_get_matter(
     description="Validates a verification code against a published edition. "
     "Returns document details and signature certificate info.",
 )
+@limiter.limit("30/minute")
 async def v1_verify(
+    request: Request,
     code: str,
     tenant: Organization | None = Depends(resolve_tenant_from_domain),
     db: AsyncSession = Depends(get_db),

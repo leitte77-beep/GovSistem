@@ -48,7 +48,7 @@ async def resolve_tenant_from_domain(
         result = await db.execute(
             select(Organization).where(
                 Organization.slug == tenant_slug,
-                Organization.is_active == True,
+                Organization.is_active.is_(True),
             )
         )
         return result.scalar_one_or_none()
@@ -62,7 +62,7 @@ async def resolve_tenant_from_domain(
             result = await db.execute(
                 select(Organization).where(
                     Organization.slug == candidate,
-                    Organization.is_active == True,
+                    Organization.is_active.is_(True),
                 )
             )
             org = result.scalar_one_or_none()
@@ -74,7 +74,7 @@ async def resolve_tenant_from_domain(
         result = await db.execute(
             select(Organization).where(
                 Organization.slug == candidate,
-                Organization.is_active == True,
+                Organization.is_active.is_(True),
             )
         )
         org = result.scalar_one_or_none()
@@ -95,7 +95,7 @@ async def resolve_tenant_from_domain(
     result = await db.execute(
         select(Organization).where(
             Organization.id == td.organization_id,
-            Organization.is_active == True,
+            Organization.is_active.is_(True),
         )
     )
     return result.scalar_one_or_none()

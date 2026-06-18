@@ -353,25 +353,23 @@ async def close_edition(
     edition = await _get_edition_or_404(edition_id, db)
     edition.change_status(EditionStatus.CLOSED)
     await db.commit()
-    await db.refresh(edition)
 
-    # Auto-generate PDF after closing (uses its own sync session)
-    from app.services.edition_pdf import generate_edition_pdf_sync
+    # Enfileira geracao de PDF no worker Celery (assincrono)
     try:
-        generate_edition_pdf_sync(edition_id=str(edition_id))
+        from app.tasks import enqueue_pdf_generation
+        enqueue_pdf_generation(str(edition_id))
     except Exception as e:
         import logging
-        logging.getLogger("doe").warning(f"Auto PDF generation failed for edition {edition_id}: {e}")
-
-    # Refresh from DB to pick up pdf_path/pdf_hash set by the sync session
-    await db.refresh(edition)
+        logging.getLogger("doe").warning(
+            f"Failed to enqueue PDF generation for edition {edition_id}: {e}"
+        )
 
     info = await capture_request_info(request)
     await log_audit_event(
         db=db, action=AuditAction.EDITION_STATUS_CHANGED,
         user_id=user.id, organization_id=user.organization_id,
         entity_type="edition", entity_id=edition.id,
-        description=f"Edition {edition.year}/{edition.number} closed and PDF generated",
+        description=f"Edition {edition.year}/{edition.number} closed — PDF generation queued",
         extra_metadata={"from": "draft/reviewing/scheduled", "to": _status_value(edition.status)},
         ip_address=info["ip_address"],
     )
@@ -460,8 +458,15 @@ async def generate_edition_pdf(
         raise HTTPException(409, "Cannot regenerate PDF for a signed edition")
 
     from app.services.edition_pdf import generate_edition_pdf_sync
+    from app.models.organization import Organization
 
-    result = generate_edition_pdf_sync(edition_id=str(edition_id))
+    org_result = await db.execute(
+        select(Organization).where(Organization.id == edition.organization_id)
+    )
+    organization = org_result.scalar_one_or_none()
+    pdf_layout = organization.pdf_layout if organization else "classico"
+
+    result = generate_edition_pdf_sync(edition_id=str(edition_id), layout=pdf_layout)
     edition.pdf_path = result["filename"]
     edition.pdf_hash = result["sha256"]
     edition.status = EditionStatus.PDF_GENERATED
@@ -496,7 +501,7 @@ async def sign_edition(
     pfx_b64 = body.pfx_base64 or ""
     pfx_pass = body.pfx_password or ""
     if body.signing_credential_id:
-        import base64
+        import base64 as b64_mod
         cred_result = await db.execute(
             select(SigningCredential).where(
                 SigningCredential.id == body.signing_credential_id,
@@ -507,10 +512,10 @@ async def sign_edition(
         if credential is None:
             raise HTTPException(404, "Signing credential not found")
 
-        from app.services.encryption import decrypt_bytes, decrypt
+        from app.services.encryption import decrypt_bytes
         try:
             pfx_encrypted = credential.config.get("pfx_encrypted", "")
-            pfx_b64 = base64.b64encode(decrypt_bytes(pfx_encrypted.encode("utf-8"))).decode("utf-8")
+            pfx_b64 = b64_mod.b64encode(decrypt_bytes(pfx_encrypted.encode("utf-8"))).decode("utf-8")
             if not body.pfx_password:
                 raise HTTPException(422, "Informe a senha do certificado")
             pfx_pass = body.pfx_password
@@ -519,37 +524,36 @@ async def sign_edition(
                 raise e
             raise HTTPException(500, f"Erro ao descriptografar certificado: {e}")
 
+    import base64 as b64_mod
+    import hashlib
     from app.core.config import settings as api_settings
-    from app.services.edition_pdf import generate_edition_pdf_sync
+    from app.models.organization import Organization
 
-    generated = generate_edition_pdf_sync(edition_id=str(edition_id))
-    edition.pdf_path = generated["filename"]
-    edition.pdf_hash = generated["sha256"]
+    org_result = await db.execute(
+        select(Organization).where(Organization.id == edition.organization_id)
+    )
+    organization = org_result.scalar_one_or_none()
+    pdf_layout = organization.pdf_layout if organization else "classico"
+
     pdf_full_path = os.path.join(api_settings.UPLOAD_DIR, edition.pdf_path)
 
-    from app.providers.antivirus import NoopVirusScanner
-    NoopVirusScanner()
-
-    import os as file_os
-    if not file_os.path.exists(pdf_full_path):
-        generated = generate_edition_pdf_sync(edition_id=str(edition_id))
-        edition.pdf_path = generated["filename"]
-        edition.pdf_hash = generated["sha256"]
-        pdf_full_path = os.path.join(api_settings.UPLOAD_DIR, edition.pdf_path)
-
-    if not file_os.path.exists(pdf_full_path):
-        raise HTTPException(404, "PDF file not found in storage")
+    if not os.path.exists(pdf_full_path):
+        raise HTTPException(404, "PDF file not found in storage — regenerate PDF first")
 
     with open(pdf_full_path, "rb") as f:
         pdf_bytes = f.read()
 
-    import base64
+    current_hash = hashlib.sha256(pdf_bytes).hexdigest()
+    if current_hash != edition.pdf_hash:
+        raise HTTPException(422, "PDF hash mismatch — regenerate PDF before signing")
+
     result = None
     try:
         import httpx
+        internal_api_key = api_settings.INTERNAL_API_KEY.get_secret_value()
         signer_payload = {
             "edition_id": str(edition_id),
-            "unsigned_pdf_base64": base64.b64encode(pdf_bytes).decode("utf-8"),
+            "unsigned_pdf_base64": b64_mod.b64encode(pdf_bytes).decode("utf-8"),
             "pfx_base64": pfx_b64,
             "pfx_password": pfx_pass,
             "reason": body.reason or "Assinatura de Edição",
@@ -561,6 +565,7 @@ async def sign_edition(
             signer_resp = await http_client.post(
                 f"{settings.SIGNER_URL}/internal/sign-pdf",
                 json=signer_payload,
+                headers={"X-Internal-API-Key": internal_api_key},
                 timeout=120,
             )
         if signer_resp.status_code != 200:
@@ -569,7 +574,7 @@ async def sign_edition(
     except Exception as e:
         raise HTTPException(502, f"Signing service failed: {e}")
 
-    signed_bytes = base64.b64decode(result["signed_pdf_base64"])
+    signed_bytes = b64_mod.b64decode(result["signed_pdf_base64"])
     sig_filename = f"signed_{edition.year}_{edition.number}_{uuid.uuid4().hex[:8]}.pdf"
     from app.core.storage import storage as store_backend
     await store_backend.store(sig_filename, signed_bytes)
@@ -580,7 +585,7 @@ async def sign_edition(
         user_id=user.id,
         signing_credential_id=credential.id if credential else None,
         signed_at=signed_at,
-        signature_data=result["signed_pdf_base64"][:1000],  # store truncated
+        signature_data=result["signed_pdf_base64"][:1000],
         certificate_info={
             "subject": result["certificate_subject"],
             "serial": result["certificate_serial"],
@@ -693,7 +698,7 @@ async def publish_edition(
         raise HTTPException(422, "Edition has no signatures")
 
     edition.change_status(EditionStatus.PUBLISHED)
-    edition.published_at = datetime.utcnow()
+    edition.published_at = datetime.now(timezone.utc)
     edition.published_by = user.id
     if not edition.verification_code:
         edition.generate_verification_code()
@@ -716,7 +721,7 @@ async def publish_edition(
     for item in edition.items or []:
         if item.matter:
             item.matter.change_status(MatterStatus.PUBLISHED)
-            item.matter.published_at = datetime.utcnow()
+            item.matter.published_at = datetime.now(timezone.utc)
             await indexer.index_matter(item.matter, edition, db)
 
     await db.commit()

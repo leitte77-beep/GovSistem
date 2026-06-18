@@ -14,7 +14,22 @@ from app.middleware.audit import audit_middleware
 from app.middleware.json_logging import JSONLogMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
 
-limiter = Limiter(key_func=get_remote_address)
+limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
+
+
+def create_app() -> FastAPI:
+    init_sentry()
+
+    app = FastAPI(
+        title=settings.APP_NAME,
+        description="Diário Oficial Eletrônico - API Backend",
+        version=settings.VERSION,
+        docs_url="/docs",
+        redoc_url="/redoc",
+    )
+
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 def create_app() -> FastAPI:

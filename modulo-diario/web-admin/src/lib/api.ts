@@ -120,7 +120,7 @@ async function request<T>(
     const err: ApiError = await res.json().catch(() => ({ detail: "Unknown error" }));
     throw new Error(err.detail || `HTTP ${res.status}`);
   }
-  if (res.status === 204) return undefined as T;
+  if (res.status === 204) return null as T;
   return res.json();
 }
 
@@ -409,6 +409,22 @@ export const api = {
     return request<SystemSetting>(`/settings/${id}`, {
       method: "PATCH",
       body: JSON.stringify(data),
+    });
+  },
+
+  // PDF Layout
+  listPdfLayouts() {
+    return request<{ layouts: { id: string; name: string; description: string }[] }>("/settings/pdf-layouts");
+  },
+
+  getOrgPdfLayout() {
+    return request<{ layout: string; available: string[] }>("/settings/organization/pdf-layout");
+  },
+
+  updateOrgPdfLayout(layout: string) {
+    return request<{ layout: string; message: string }>("/settings/organization/pdf-layout", {
+      method: "PATCH",
+      body: JSON.stringify({ layout }),
     });
   },
 

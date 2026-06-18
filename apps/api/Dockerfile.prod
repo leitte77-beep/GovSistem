@@ -45,6 +45,9 @@ RUN adduser --disabled-password --gecos '' appuser && \
     mkdir -p /app/uploads /app/uploads/backups && \
     chown -R appuser:appuser /app/uploads /app/uploads/backups
 
+COPY scripts/entrypoint.sh /usr/local/bin/entrypoint
+RUN chmod +x /usr/local/bin/entrypoint
+
 USER appuser
 
 EXPOSE 8000
@@ -52,6 +55,7 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD curl -f http://localhost:8000/api/v1/health || exit 1
 
+ENTRYPOINT ["/usr/local/bin/entrypoint"]
 CMD ["gunicorn", "app.main:app", "--worker-class", "uvicorn.workers.UvicornWorker", \
      "--bind", "0.0.0.0:8000", "--workers", "4", "--max-requests", "10000", \
      "--max-requests-jitter", "1000", "--timeout", "120", "--keep-alive", "5", \

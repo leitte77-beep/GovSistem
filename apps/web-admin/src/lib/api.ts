@@ -290,10 +290,12 @@ export const api = {
   },
 
   // Editions
-  listEditions(params?: { year?: number; status?: string }) {
+  listEditions(params?: { year?: number; status?: string; skip?: number; limit?: number }) {
     const q = new URLSearchParams();
     if (params?.year) q.set("year", String(params.year));
     if (params?.status) q.set("status", params.status);
+    if (params?.skip !== undefined) q.set("skip", String(params.skip));
+    if (params?.limit !== undefined) q.set("limit", String(params.limit));
     const qs = q.toString();
     return request<import("../types/edition").EditionListItem[]>(`/editions${qs ? `?${qs}` : ""}`);
   },

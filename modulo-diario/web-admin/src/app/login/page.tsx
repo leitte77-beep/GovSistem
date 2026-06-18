@@ -15,7 +15,9 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!authLoading && !user && !new URLSearchParams(window.location.search).has("token")) {
-      window.location.href = "https://admin.govsistem.com.br/login";
+      const params = new URLSearchParams(window.location.search);
+      if (!params.has("token")) {
+      }
     }
   }, [authLoading, user]);
 

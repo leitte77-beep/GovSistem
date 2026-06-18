@@ -4,6 +4,7 @@ import { AuthProvider } from "@/lib/auth-context";
 import "./globals.css";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://doe-admin.govsistem.com.br"),
   title: "DOE Admin - Diário Oficial Eletrônico",
   description: "Painel de administração do Sistema de Diário Oficial Eletrônico",
 };
@@ -15,10 +16,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR">
-      <head>
-        <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" />
-      </head>
-      <body className="bg-gray-50 text-gray-900 antialiased">
+      <body className="bg-background text-on-surface antialiased">
         <AuthProvider>
           <Toaster
             position="top-right"

@@ -63,7 +63,7 @@ export default function EditionsPage() {
 
   const fetch = useCallback(() => {
     setLoading(true);
-    api.listEditions({ status: statusFilter || undefined })
+    api.listEditions({ status: statusFilter || undefined, skip: page * PAGE_SIZE, limit: PAGE_SIZE })
       .then((data) => {
         let filtered = data;
         if (search) {
@@ -76,15 +76,8 @@ export default function EditionsPage() {
               String(e.number).includes(q)
           );
         }
-        const start = page * PAGE_SIZE;
-        const slice = filtered.slice(start, start + PAGE_SIZE + 1);
-        if (slice.length > PAGE_SIZE) {
-          setHasMore(true);
-          setEditions(slice.slice(0, PAGE_SIZE));
-        } else {
-          setHasMore(false);
-          setEditions(slice);
-        }
+        setHasMore(data.length === PAGE_SIZE);
+        setEditions(filtered);
       })
       .catch(() => {})
       .finally(() => setLoading(false));

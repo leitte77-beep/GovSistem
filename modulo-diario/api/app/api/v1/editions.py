@@ -357,8 +357,14 @@ async def close_edition(
 
     # Auto-generate PDF after closing (uses its own sync session)
     from app.services.edition_pdf import generate_edition_pdf_sync
+    from app.models.organization import Organization
+    org_result = await db.execute(
+        select(Organization).where(Organization.id == edition.organization_id)
+    )
+    organization = org_result.scalar_one_or_none()
+    pdf_layout = organization.pdf_layout if organization else "classico"
     try:
-        generate_edition_pdf_sync(edition_id=str(edition_id))
+        generate_edition_pdf_sync(edition_id=str(edition_id), layout=pdf_layout)
     except Exception as e:
         import logging
         logging.getLogger("doe").warning(f"Auto PDF generation failed for edition {edition_id}: {e}")
@@ -460,8 +466,15 @@ async def generate_edition_pdf(
         raise HTTPException(409, "Cannot regenerate PDF for a signed edition")
 
     from app.services.edition_pdf import generate_edition_pdf_sync
+    from app.models.organization import Organization
 
-    result = generate_edition_pdf_sync(edition_id=str(edition_id))
+    org_result = await db.execute(
+        select(Organization).where(Organization.id == edition.organization_id)
+    )
+    organization = org_result.scalar_one_or_none()
+    pdf_layout = organization.pdf_layout if organization else "classico"
+
+    result = generate_edition_pdf_sync(edition_id=str(edition_id), layout=pdf_layout)
     edition.pdf_path = result["filename"]
     edition.pdf_hash = result["sha256"]
     edition.status = EditionStatus.PDF_GENERATED
@@ -520,21 +533,20 @@ async def sign_edition(
             raise HTTPException(500, f"Erro ao descriptografar certificado: {e}")
 
     from app.core.config import settings as api_settings
-    from app.services.edition_pdf import generate_edition_pdf_sync
 
-    generated = generate_edition_pdf_sync(edition_id=str(edition_id))
-    edition.pdf_path = generated["filename"]
-    edition.pdf_hash = generated["sha256"]
+    org_result = await db.execute(
+        select(Organization).where(Organization.id == edition.organization_id)
+    )
+    organization = org_result.scalar_one_or_none()
+    pdf_layout = organization.pdf_layout if organization else "classico"
+
     pdf_full_path = os.path.join(api_settings.UPLOAD_DIR, edition.pdf_path)
 
-    from app.providers.antivirus import NoopVirusScanner
-    NoopVirusScanner()
-
     if not os.path.exists(pdf_full_path):
-        generated = generate_edition_pdf_sync(edition_id=str(edition_id))
+        from app.services.edition_pdf import generate_edition_pdf_sync
+        generated = generate_edition_pdf_sync(edition_id=str(edition_id), layout=pdf_layout)
         edition.pdf_path = generated["filename"]
         edition.pdf_hash = generated["sha256"]
-        pdf_full_path = os.path.join(api_settings.UPLOAD_DIR, edition.pdf_path)
 
     if not os.path.exists(pdf_full_path):
         raise HTTPException(404, "PDF file not found in storage")
@@ -692,7 +704,7 @@ async def publish_edition(
         raise HTTPException(422, "Edition has no signatures")
 
     edition.change_status(EditionStatus.PUBLISHED)
-    edition.published_at = datetime.utcnow()
+    edition.published_at = datetime.now(timezone.utc)
     edition.published_by = user.id
     if not edition.verification_code:
         edition.generate_verification_code()
@@ -710,12 +722,11 @@ async def publish_edition(
 
     # Index all matters in the edition for full-text search and mark as published
     from app.services.search_indexer import get_search_provider
-    from app.models.enums import MatterStatus
     indexer = get_search_provider()
     for item in edition.items or []:
         if item.matter:
             item.matter.change_status(MatterStatus.PUBLISHED)
-            item.matter.published_at = datetime.utcnow()
+            item.matter.published_at = datetime.now(timezone.utc)
             await indexer.index_matter(item.matter, edition, db)
 
     await db.commit()

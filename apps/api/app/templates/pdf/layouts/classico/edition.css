@@ -1,0 +1,435 @@
+@page {
+  size: A4;
+  margin: 1.4cm 1.7cm 1.3cm 1.7cm;
+  @bottom-center {
+    content: counter(page);
+    font-family: "Liberation Serif", "Times New Roman", serif;
+    font-size: 9pt;
+    color: #555;
+  }
+}
+}
+
+@page landscape {
+  size: A4 landscape;
+  margin: 1cm 1.3cm;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  font-family: "Liberation Sans", Arial, Helvetica, "DejaVu Sans", sans-serif;
+  font-size: 12pt;
+  line-height: 1.5;
+  color: #001b3f;
+}
+
+.document {
+  width: 100%;
+}
+
+.template-metadata {
+  display: none;
+}
+
+.cover {
+  text-align: center;
+  padding: 18pt 0 28pt;
+  border-bottom: 2pt solid #002b5c;
+  margin-bottom: 30pt;
+}
+
+.coat-of-arms {
+  display: block;
+  width: 78pt;
+  height: 78pt;
+  object-fit: contain;
+  margin: 6pt auto 26pt;
+}
+
+.cover h1 {
+  font-size: 29pt;
+  line-height: 1.05;
+  margin: 0 0 6pt;
+  color: #001b3f;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.cover h2 {
+  font-size: 14pt;
+  color: #333;
+  margin: 0 0 30pt;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.subtitle {
+  margin-top: 10pt;
+  color: #536170;
+  font-size: 10pt;
+}
+
+.signature-banner {
+  margin-top: 28pt;
+  padding: 10pt 13pt;
+  border: 1pt solid #9adcb4;
+  background: #d8f8e2;
+  color: #007543;
+  text-align: left;
+  font-size: 10pt;
+}
+
+.edition-strip {
+  display: table;
+  width: 100%;
+  border-top: 1pt solid #b6c0cc;
+  border-bottom: 1pt solid #b6c0cc;
+  color: #1f2f42;
+  font-size: 8pt;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.edition-strip > div {
+  display: table-cell;
+  padding: 8pt 0;
+  width: 33.33%;
+}
+
+.edition-strip > div:first-child {
+  text-align: left;
+  padding-left: 8pt;
+}
+
+.edition-strip > div:last-child {
+  border-right: 0;
+  text-align: right;
+  padding-right: 8pt;
+}
+
+.section {
+  margin: 16pt 0 20pt;
+  font-family: "Times New Roman", Times, serif;
+  color: #000;
+}
+
+.section h2 {
+  margin: 14pt 0 16pt;
+  padding: 3pt 8pt;
+  width: 100%;
+  border: 0;
+  background: #bfbfbf;
+  color: #000;
+  font-size: 15pt;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.matter {
+  margin-bottom: 22pt;
+  border-top: 0;
+  padding-top: 0;
+  page-break-inside: auto;
+}
+
+.matter-landscape {
+  page: landscape;
+}
+
+.matter-title {
+  margin: 12pt 0 18pt;
+  padding: 3pt 8pt;
+  width: 100%;
+  border: 0;
+  background: #d2d0d0;
+  color: #000;
+  font-size: 12.5pt;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+  page-break-after: avoid;
+}
+
+.matter-summary {
+  margin: 16pt 46pt 18pt;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 11.5pt;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+  line-height: 1.25;
+}
+
+.matter-image-content .matter-title {
+  margin-bottom: 10pt;
+}
+
+.matter-image-content .matter-summary {
+  margin: 8pt 28pt 10pt;
+  font-size: 10.5pt;
+  line-height: 1.18;
+}
+
+.matter-image-content .matter-content p {
+  margin: 0;
+  text-indent: 0;
+  text-align: center !important;
+  page-break-inside: avoid;
+}
+
+.matter-image-content .matter-content img {
+  display: block;
+  max-width: 100%;
+  max-height: 225mm;
+  width: auto;
+  height: auto;
+  margin: 0 auto;
+  object-fit: contain;
+}
+
+.matter-content {
+  text-align: justify;
+  color: #000;
+  font-family: "Liberation Sans", Arial, Helvetica, "DejaVu Sans", sans-serif;
+}
+
+.matter-content p {
+  margin: 7pt 0;
+  min-height: 1.2em;
+  text-indent: 36pt;
+  text-align: justify !important;
+  word-spacing: normal !important;
+}
+
+.matter-content p:empty::before {
+  content: "\00a0";
+}
+
+.matter-content p[style*="text-align: center"],
+.matter-content [style*="text-align:center"],
+.matter-content [style*="text-align: center"] {
+  text-indent: 0;
+  text-align: center !important;
+}
+
+.matter-content strong,
+.matter-content b {
+  font-weight: 700;
+}
+
+.summary {
+  margin: 18pt 0 22pt;
+  font-family: "Times New Roman", Times, serif;
+  color: #000;
+  page-break-inside: avoid;
+  page-break-after: always;
+}
+
+.section-title {
+  display: block;
+  width: 100%;
+  margin-bottom: 4pt;
+  padding: 3pt 0;
+  background: #bfbfbf;
+}
+
+.section-title span {
+  display: block;
+  width: 100%;
+  color: #000;
+  font-weight: 700;
+  font-size: 17pt;
+  text-align: center;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.summary-row {
+  display: table;
+  width: 100%;
+  margin: 4pt 0;
+  color: #000;
+  font-size: 11.5pt;
+  line-height: 1.25;
+  page-break-inside: avoid;
+}
+
+.summary-row > div,
+.summary-row > span,
+.summary-row > strong {
+  display: table-cell;
+  vertical-align: bottom;
+}
+
+.summary-row > div {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.summary-row > div > strong {
+  white-space: nowrap;
+  font-weight: 400;
+}
+
+.summary-row a {
+  color: #000;
+  text-decoration: none;
+}
+
+.summary-row > strong {
+  width: 22pt;
+  text-align: right;
+  font-weight: 400;
+}
+
+.summary-row small {
+  display: inline;
+  margin-top: 2pt;
+  color: #000;
+  font-size: 11.5pt;
+  white-space: nowrap;
+}
+
+.summary-row small:before {
+  content: " ";
+}
+
+.summary-dots {
+  width: 100%;
+  border-bottom: 1.2pt dotted #000;
+}
+
+.matter-content h1,
+.matter-content h2,
+.matter-content h3,
+.matter-content h4 {
+  margin: 12pt 0 8pt;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+  page-break-after: avoid;
+  font-family: "Times New Roman", Times, serif;
+}
+
+.matter-content h1 { font-size: 16pt; }
+.matter-content h2 { font-size: 15pt; }
+.matter-content h3,
+.matter-content h4 { font-size: 14pt; }
+
+.matter-content table {
+  width: 100%;
+  border-collapse: collapse;
+  border-spacing: 0;
+  margin: 8pt 0;
+  font-size: 8.5pt;
+  line-height: 1.15;
+  page-break-inside: auto;
+  table-layout: fixed;
+  border: 1px solid #333;
+}
+
+.matter-content tr { page-break-inside: auto; }
+.matter-content thead { display: table-header-group; }
+.matter-content tbody { display: table-row-group; }
+
+.matter-content th,
+.matter-content td {
+  border: 0.8pt solid #333 !important;
+  padding: 3pt 5pt;
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.matter-content table tr > th:first-child,
+.matter-content table tr > td:first-child {
+  width: 8%;
+}
+
+.matter-content table tr > th:nth-child(2),
+.matter-content table tr > td:nth-child(2) {
+  width: 42%;
+}
+
+.matter-content td p,
+.matter-content th p {
+  margin: 0;
+  text-indent: 0;
+  text-align: inherit !important;
+}
+
+.matter-content td p[style*="text-align: center"],
+.matter-content td p[style*="text-align:center"],
+.matter-content th p[style*="text-align: center"],
+.matter-content th p[style*="text-align:center"] {
+  text-indent: 0;
+  text-align: center !important;
+}
+
+.matter-content th {
+  background: #eee;
+  font-weight: 700;
+  text-align: center;
+}
+
+.matter-content ul,
+.matter-content ol {
+  margin: 6pt 0;
+  padding-left: 2em;
+}
+
+.matter-content li {
+  margin: 3pt 0;
+}
+
+.validation-box {
+  margin-top: 32pt;
+  padding: 14pt;
+  border: 1pt solid #b6c0cc;
+  color: #001b3f;
+  page-break-inside: avoid;
+}
+
+.validation-box h3 {
+  margin: 0 0 12pt;
+  font-size: 10pt;
+}
+
+.validation-grid {
+  display: table;
+  width: 100%;
+}
+
+.validation-grid > div {
+  display: table-cell;
+  width: 50%;
+  padding-right: 12pt;
+}
+
+.validation-grid span {
+  display: block;
+  color: #68778a;
+  font-size: 8pt;
+  font-weight: 700;
+}
+
+.validation-grid code {
+  display: block;
+  padding: 5pt;
+  margin-top: 4pt;
+  border: 1pt solid #c7d0dc;
+  background: #f8fafc;
+  color: #1f2f42;
+  font-size: 8pt;
+  word-break: break-all;
+}
+
+.validation-box p {
+  margin-top: 10pt;
+  color: #536170;
+  font-size: 8pt;
+}

@@ -33,6 +33,10 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
         String(255), nullable=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    require_password_change: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False,
+        comment="Forces password change on next login (e.g., for default seed users)",
+    )
     mfa_secret: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True, comment="Encrypted TOTP secret"
     )

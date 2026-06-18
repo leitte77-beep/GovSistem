@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+const currentYear = new Date().getFullYear();
+
 const FOOTER_LINKS = [
   { href: "/sobre", label: "Sobre o Portal" },
   { href: "/privacidade", label: "Privacidade" },
@@ -30,7 +32,7 @@ export default function Footer() {
         </div>
         <div className="text-center md:text-right">
           <p className="text-body-sm font-body-sm text-on-surface-variant">
-            © 2026 Diário Oficial do Município de Farol. Todos os direitos reservados.
+            © {currentYear} Diário Oficial do Município de Farol. Todos os direitos reservados.
           </p>
           <div className="flex gap-4 mt-2 justify-center md:justify-end">
             <a

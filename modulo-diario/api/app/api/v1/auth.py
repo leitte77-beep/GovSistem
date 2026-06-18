@@ -1,5 +1,6 @@
+import hashlib
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from slowapi import Limiter
@@ -19,6 +20,7 @@ from app.core.security import (
 )
 from app.models.organization import Organization
 from app.models.plan import Plan
+from app.models.refresh_token import RefreshToken
 from app.models.role import Role
 from app.models.user import User
 from app.models.user_role import UserRole
@@ -30,6 +32,37 @@ from app.schemas.auth import (
 login_limiter = Limiter(key_func=get_remote_address)
 
 router = APIRouter(tags=["auth"])
+
+
+def _hash_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _user_roles(user: User) -> list[str]:
+    return [user_role.role.name for user_role in user.user_roles if user_role.role]
+
+
+async def _store_refresh_token(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    token: str,
+    ip_address: str,
+    user_agent: str,
+) -> RefreshToken:
+    payload = decode_token(token)
+    jti = uuid.UUID(payload["jti"])
+    expires_at = datetime.fromtimestamp(payload["exp"], tz=timezone.utc)
+
+    rt = RefreshToken(
+        user_id=user_id,
+        token_hash=_hash_token(token),
+        expires_at=expires_at,
+        ip_address=ip_address,
+        user_agent=user_agent,
+    )
+    db.add(rt)
+    await db.commit()
+    return rt
 
 
 def _user_roles(user: User) -> list[str]:
@@ -139,15 +172,28 @@ async def login(
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive user")
 
+    if user.require_password_change:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Password change required. Use /auth/change-password.",
+        )
+
     roles = _user_roles(user)
     refresh_jti = uuid.uuid4()
-    _ = get_client_info(request)
+    client_info = get_client_info(request)
+    refresh_token_str = create_refresh_token(user.id, refresh_jti)
+
+    await _store_refresh_token(
+        db, user.id, refresh_token_str,
+        client_info["ip_address"], client_info["user_agent"],
+    )
+
     return TokenResponse(
         access_token=create_access_token(
             user.id, roles,
             organization_id=user.organization_id,
         ),
-        refresh_token=create_refresh_token(user.id, refresh_jti),
+        refresh_token=refresh_token_str,
     )
 
 
@@ -180,19 +226,57 @@ async def refresh_token(
     if user is None or not user.is_active:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
 
+    token_hash = _hash_token(payload.refresh_token)
+    rt_result = await db.execute(
+        select(RefreshToken).where(
+            RefreshToken.token_hash == token_hash,
+            RefreshToken.revoked_at.is_(None),
+        )
+    )
+    stored = rt_result.scalar_one_or_none()
+    if stored is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token revoked or not found",
+        )
+
+    stored.revoked_at = datetime.now(timezone.utc)
+    await db.commit()
+
     roles = _user_roles(user)
+    new_refresh = create_refresh_token(user.id, uuid.uuid4())
+    await _store_refresh_token(
+        db, user.id, new_refresh,
+        stored.ip_address or "", stored.user_agent or "",
+    )
+
     return TokenResponse(
         access_token=create_access_token(
             user.id, roles,
             organization_id=user.organization_id,
         ),
-        refresh_token=create_refresh_token(user.id, uuid.uuid4()),
+        refresh_token=new_refresh,
     )
 
 
 @router.get("/auth/me", response_model=UserMeResponse)
 async def me(current_user: User = Depends(get_current_user)) -> UserMeResponse:
     return _user_me(current_user)
+
+
+@router.post("/auth/logout", status_code=204)
+async def logout(
+    payload: RefreshRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    token_hash = _hash_token(payload.refresh_token)
+    result = await db.execute(
+        select(RefreshToken).where(RefreshToken.token_hash == token_hash)
+    )
+    stored = result.scalar_one_or_none()
+    if stored:
+        stored.revoked_at = datetime.now(timezone.utc)
+        await db.commit()
 
 
 @router.get("/auth/organizations")
@@ -205,7 +289,7 @@ async def list_user_organizations(
 
     if "ADMIN" in user_role_names or "SUPER_ADMIN" in user_role_names:
         result = await db.execute(
-            select(Organization).where(Organization.is_active == True)
+            select(Organization).where(Organization.is_active.is_(True))
         )
         orgs = result.scalars().all()
     else:
@@ -214,7 +298,7 @@ async def list_user_organizations(
         result = await db.execute(
             select(Organization).where(
                 Organization.id == current_user.organization_id,
-                Organization.is_active == True,
+                Organization.is_active.is_(True),
             )
         )
         org = result.scalar_one_or_none()
@@ -251,7 +335,7 @@ async def switch_organization(
     result = await db.execute(
         select(Organization).where(
             Organization.id == uuid.UUID(org_id),
-            Organization.is_active == True,
+            Organization.is_active.is_(True),
         )
     )
     org = result.scalar_one_or_none()

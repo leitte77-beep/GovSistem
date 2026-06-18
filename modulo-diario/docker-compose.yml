@@ -70,24 +70,24 @@ services:
     logging: *default-logging
     environment:
       APP_NAME: "Modulo Diario API"
-      DEBUG: ${DEBUG:-true}
-      POSTGRES_HOST: infra-postgres-1
+      DEBUG: ${DEBUG:-false}
+      POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
-      POSTGRES_DB: doe
-      POSTGRES_USER: doe_user
-      POSTGRES_PASSWORD: doe_password
+      POSTGRES_DB: ${POSTGRES_DB:-modulo_diario}
+      POSTGRES_USER: ${POSTGRES_USER:-diario_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-diario_password}
       REDIS_HOST: redis
       REDIS_PORT: 6379
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minio_admin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minio_password}
-      MINIO_BUCKET: ${MINIO_BUCKET:-diario-publicacoes}
+      MINIO_BUCKET: ${MINIO_BUCKET:-doe-publicacoes}
       MINIO_SECURE: "false"
       SIGNER_URL: http://signer:8100
       SECRET_KEY: ${SECRET_KEY:-dev-saas-secret-key-change-in-production}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-saas}
       CORS_ORIGINS: '["http://localhost:9202","http://localhost:9200","https://farol.govsistem.com.br"]'
-      ENVIRONMENT: development
+      ENVIRONMENT: ${ENVIRONMENT:-development}
     ports:
       - "9201:8000"
     depends_on:
@@ -117,12 +117,12 @@ services:
       MINIO_ENDPOINT: minio:9000
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minio_admin}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minio_password}
-      MINIO_BUCKET: ${MINIO_BUCKET:-diario-publicacoes}
+      MINIO_BUCKET: ${MINIO_BUCKET:-doe-publicacoes}
       SIGNER_URL: http://signer:8100
       API_URL: http://api:8000
-      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-saas}
-      SECRET_KEY: ${SECRET_KEY:-dev-saas-secret-key-change-in-production}
-    command: sleep infinity
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      SECRET_KEY: ${SECRET_KEY}
+    command: celery -A app.worker worker --loglevel=info --concurrency=4 --beat
     depends_on:
       redis:
         condition: service_healthy
@@ -192,8 +192,8 @@ services:
       PORT: 3000
       HOSTNAME: 0.0.0.0
       API_URL: http://api:8000/api/v1
-      NEXT_PUBLIC_API_URL: http://localhost:9201/api/v1
-      NEXT_PUBLIC_ADMIN_URL: http://localhost:9202
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:9201/api/v1}
+      NEXT_PUBLIC_ADMIN_URL: ${NEXT_PUBLIC_ADMIN_URL:-http://localhost:9202}
     ports:
       - "9200:3000"
     depends_on:
