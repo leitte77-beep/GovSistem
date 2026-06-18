@@ -1116,11 +1116,13 @@ export function iniciarGateway(httpServer, wa, storage) {
   wa.on('message-status', async ({ tenantId, updates }) => {
     try {
       await setTenantContext(tenantId);
+      console.log(`[Status] recebidos ${updates.length} updates de status para tenant ${tenantId}`);
       for (const update of updates) {
         const msgId = update?.key?.id;
         if (!msgId) continue;
         const status = update?.update?.status;
         if (!status) continue;
+        console.log(`[Status] wa_id=${msgId} status=${status}`);
         let mappedStatus = 'enviado';
         if (status === 'SERVER_ACK' || status === 'DELIVERY_ACK') mappedStatus = 'entregue';
         else if (status === 'READ') mappedStatus = 'lido';

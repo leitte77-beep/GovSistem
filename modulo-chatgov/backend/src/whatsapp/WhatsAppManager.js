@@ -141,6 +141,7 @@ export class WhatsAppManager extends EventEmitter {
       });
 
       sock.ev.on('messages.update', (updates) => {
+        if (WA_DEBUG) console.log(`[WA] messages.update tenant=${tenantId} count=${updates.length}`, JSON.stringify(updates).slice(0, 500));
         this.emit('message-status', { tenantId, updates });
       });
 
