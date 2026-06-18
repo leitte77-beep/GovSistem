@@ -185,14 +185,15 @@ async function podeVerConversa(op, convId) {
     `SELECT 1 FROM conversas c WHERE c.id = $1 AND c.tenant_id = $2 AND (
        EXISTS (SELECT 1 FROM conversa_participantes p WHERE p.conversa_id = c.id AND p.operador_id = $3 AND p.tenant_id = $2)
        OR (c.status = 'fila' AND (
-         EXISTS (
+         c.departamento_id IS NULL
+         OR EXISTS (
            SELECT 1 FROM operador_departamentos od
            WHERE od.operador_id = $3 AND od.departamento_id = c.departamento_id
          )
          OR (
-           (c.departamento_id IS NULL OR EXISTS (
+           EXISTS (
              SELECT 1 FROM departamentos dd WHERE dd.id = c.departamento_id AND LOWER(dd.nome) = 'recepção'
-           ))
+           )
            AND EXISTS (
              SELECT 1 FROM operador_departamentos od
              JOIN departamentos d ON d.id = od.departamento_id
@@ -1123,21 +1124,33 @@ export function iniciarGateway(httpServer, wa, storage) {
         const status = update?.update?.status;
         if (!status) continue;
         console.log(`[Status] wa_id=${msgId} status=${status}`);
+        // O Baileys envia o status como enum numérico (proto.WebMessageInfo.Status):
+        // 0=ERROR, 1=PENDING, 2=SERVER_ACK, 3=DELIVERY_ACK, 4=READ, 5=PLAYED.
+        // Versões antigas podiam mandar o nome em string — tratamos os dois casos.
         let mappedStatus = 'enviado';
-        if (status === 'SERVER_ACK' || status === 'DELIVERY_ACK') mappedStatus = 'entregue';
-        else if (status === 'READ') mappedStatus = 'lido';
-        else if (status === 'ERROR') mappedStatus = 'erro';
+        if (status === 0 || status === 'ERROR') mappedStatus = 'erro';
+        else if (status === 3 || status === 'DELIVERY_ACK') mappedStatus = 'entregue';
+        else if (status === 4 || status === 5 || status === 'READ' || status === 'PLAYED') mappedStatus = 'lido';
+        else mappedStatus = 'enviado'; // 1=PENDING, 2=SERVER_ACK → um tique
 
-        await db.none(
-          'UPDATE mensagens SET status = $1 WHERE wa_message_id = $2 AND tenant_id = $3',
-          [mappedStatus, msgId, tenantId]
+        // O WhatsApp/Baileys pode mandar updates fora de ordem (ex.: SERVER_ACK
+        // chegando depois de READ). Só promovemos o status — nunca rebaixamos —
+        // exceto 'erro', que sempre prevalece. O rank é calculado em SQL e a
+        // atualização só ocorre quando há promoção real (rowCount > 0).
+        const rank = "CASE %s WHEN 'lido' THEN 3 WHEN 'entregue' THEN 2 WHEN 'enviado' THEN 1 WHEN 'erro' THEN 4 ELSE 0 END";
+        const updated = await db.result(
+          `UPDATE mensagens m SET status = $1
+             FROM conversas c
+            WHERE m.conversa_id = c.id
+              AND m.wa_message_id = $2 AND m.tenant_id = $3
+              AND ($1 = 'erro' OR (${rank.replace('%s', "$1")}) > (${rank.replace('%s', 'm.status')}))
+           RETURNING c.id AS conv_id`,
+          [mappedStatus, msgId, tenantId],
+          (r) => r
         );
-        const conversa = await db.oneOrNone(
-          'SELECT c.id as conv_id FROM mensagens m JOIN conversas c ON c.id = m.conversa_id WHERE m.wa_message_id = $1 AND m.tenant_id = $2',
-          [msgId, tenantId]
-        );
-        if (conversa) {
-          io.to(salas.conversa(conversa.conv_id)).emit('mensagem:status', {
+        if (updated.rowCount > 0) {
+          const convId = updated.rows[0].conv_id;
+          io.to(salas.conversa(convId)).emit('mensagem:status', {
             waMessageId: msgId,
             status: mappedStatus,
           });
