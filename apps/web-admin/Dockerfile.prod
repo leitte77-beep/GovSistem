@@ -1,6 +1,6 @@
 # Production build for web-admin (Next.js standalone)
 
-FROM node:20-alpine AS base
+FROM node:26-alpine AS base
 WORKDIR /app
 
 FROM base AS deps
