@@ -38,14 +38,15 @@ function filtroVisibilidadeSql(alias, opIdParam) {
   return `(
     EXISTS (SELECT 1 FROM conversa_participantes p WHERE p.conversa_id = ${alias}.id AND p.operador_id = ${opIdParam} AND p.tenant_id = ${alias}.tenant_id)
     OR (${alias}.status = 'fila' AND (
-      EXISTS (
+      ${alias}.departamento_id IS NULL
+      OR EXISTS (
         SELECT 1 FROM operador_departamentos od
         WHERE od.operador_id = ${opIdParam} AND od.departamento_id = ${alias}.departamento_id
       )
       OR (
-        (${alias}.departamento_id IS NULL OR EXISTS (
+        EXISTS (
           SELECT 1 FROM departamentos dd WHERE dd.id = ${alias}.departamento_id AND LOWER(dd.nome) = 'recepção'
-        ))
+        )
         AND EXISTS (
           SELECT 1 FROM operador_departamentos od
           JOIN departamentos d ON d.id = od.departamento_id
@@ -216,8 +217,6 @@ app.post('/api/internal/sync-user', async (req, res) => {
     let papel = 'operador';
     if (roles.some(r => ['SUPER_ADMIN', 'PLATFORM_ADMIN', 'ADMIN'].includes(r))) {
       papel = 'admin';
-    } else if (roles.includes('SUPPORT') || roles.includes('ORG_MEMBER')) {
-      papel = 'supervisor';
     }
 
     const bcrypt = await import('bcrypt');
@@ -234,6 +233,20 @@ app.post('/api/internal/sync-user', async (req, res) => {
          VALUES ($1, $2, $3, $4, $5, $6)`,
         [user_id, organization_id, name, email.toLowerCase().trim(), defaultHash, papel]
       );
+
+      // Vincula ao departamento "Geral" APENAS na criação do operador.
+      // Em syncs subsequentes (a cada login) não mexemos nos departamentos,
+      // para não desfazer as atribuições feitas por um admin.
+      const deptGeral = await db.oneOrNone(
+        "SELECT id FROM departamentos WHERE tenant_id = $1 AND nome = 'Geral'",
+        [organization_id]
+      );
+      if (deptGeral) {
+        await db.none(
+          'INSERT INTO operador_departamentos (operador_id, departamento_id, tenant_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+          [user_id, deptGeral.id, organization_id]
+        );
+      }
     } else {
       await db.none(
         `UPDATE operadores SET tenant_id = $1, nome = $2, email = $3, papel = $4
