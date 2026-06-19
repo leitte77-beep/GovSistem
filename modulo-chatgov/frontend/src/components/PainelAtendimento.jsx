@@ -217,7 +217,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
 
     setEnviando(true);
     setErroEnvio('');
-    socket.timeout(12000).emit('mensagem:enviar', { convId: conversa.id, jid: conversa.wa_jid, texto: txt }, (err, ack) => {
+    socket.timeout(8000).emit('mensagem:enviar', { convId: conversa.id, jid: conversa.wa_jid, texto: txt }, (err, ack) => {
       setEnviando(false);
       if (err) {
         setErroEnvio('Tempo esgotado ao enviar. Verifique a conexão e tente novamente.');

@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Painel — govavalia</title>
+<style>
+  :root{ --fundo:#F1F4F1; --cartao:#fff; --tinta:#1B2A27; --suave:#5a6b66; --verde:#15524C;
+    --verde-claro:#E2EEEA; --borda:#D4DDD8; --ruim:#C0392B; --regular:#C98314; --bom:#1F8A60; --raio:14px; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; font-family:"Segoe UI",system-ui,Roboto,Arial,sans-serif; background:var(--fundo); color:var(--tinta); }
+  header{ background:var(--verde); color:#fff; padding:1rem 1.4rem; display:flex; align-items:center; gap:.8rem; }
+  header b{ font-size:1.15rem; } header span{ opacity:.8; font-size:.9rem; }
+  .abas{ display:flex; gap:.4rem; padding:1rem 1.4rem 0; flex-wrap:wrap; }
+  .aba{ border:none; background:transparent; padding:.7rem 1.1rem; border-radius:10px 10px 0 0; cursor:pointer; font-size:1rem; font-weight:600; color:var(--suave); }
+  .aba.ativa{ background:var(--cartao); color:var(--verde); }
+  main{ padding:1.4rem; max-width:1100px; margin:0 auto; }
+  .painel{ display:none; } .painel.ativo{ display:block; }
+  .cartoes{ display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:1rem; margin-bottom:1.4rem; }
+  .num{ background:var(--cartao); border:1px solid var(--borda); border-radius:var(--raio); padding:1.1rem; }
+  .num b{ font-size:2rem; color:var(--verde); display:block; } .num span{ color:var(--suave); }
+  .filtros{ display:flex; gap:.6rem; flex-wrap:wrap; align-items:end; margin-bottom:1.2rem; background:var(--cartao); padding:1rem; border:1px solid var(--borda); border-radius:var(--raio); }
+  .filtros label{ display:flex; flex-direction:column; font-size:.8rem; color:var(--suave); gap:.2rem; }
+  input,select,textarea{ font-family:inherit; font-size:.95rem; padding:.55rem; border:1px solid var(--borda); border-radius:8px; background:#fff; }
+  button.acao{ background:var(--verde); color:#fff; border:none; padding:.6rem 1rem; border-radius:8px; cursor:pointer; font-weight:600; }
+  button.sec{ background:#fff; color:var(--verde); border:1px solid var(--verde); padding:.6rem 1rem; border-radius:8px; cursor:pointer; font-weight:600; }
+  .linha-q{ margin-bottom:1rem; }
+  .barra{ display:flex; height:26px; border-radius:8px; overflow:hidden; border:1px solid var(--borda); background:#fff; }
+  .barra > i{ display:flex; align-items:center; justify-content:center; color:#fff; font-size:.78rem; font-weight:700; }
+  .lista{ display:flex; flex-direction:column; gap:.8rem; }
+  .item{ background:var(--cartao); border:1px solid var(--borda); border-radius:var(--raio); padding:1rem; }
+  .meta{ display:flex; gap:.6rem; flex-wrap:wrap; font-size:.8rem; color:var(--suave); margin-bottom:.4rem; align-items:center; }
+  .tag{ background:var(--verde-claro); color:var(--verde); padding:.1rem .55rem; border-radius:99px; font-weight:700; }
+  .msg{ white-space:pre-wrap; margin:.4rem 0; }
+  .aviso{ background:#FDECEA; border:1px solid #E8B4AD; color:#8a2b1e; padding:1rem; border-radius:var(--raio); }
+  h3{ margin:1.2rem 0 .6rem; }
+  .acoes{ display:flex; gap:.5rem; flex-wrap:wrap; margin-top:.6rem; }
+  table{ width:100%; border-collapse:collapse; } td,th{ border-bottom:1px solid var(--borda); padding:.5rem; text-align:left; font-size:.9rem; }
+</style>
+</head>
+<body>
+<header><b>govavalia</b> <span>Painel da equipe — Saúde de Farol</span></header>
+<nav class="abas">
+  <button class="aba ativa" data-p="resumo" onclick="trocar('resumo')">Pesquisa</button>
+  <button class="aba" data-p="ouvidoria" onclick="trocar('ouvidoria')">Ouvidoria</button>
+  <button class="aba" data-p="perguntas" onclick="trocar('perguntas')">Perguntas</button>
+</nav>
+<main>
+  <div id="aviso"></div>
+  <section id="resumo" class="painel ativo"></section>
+  <section id="ouvidoria" class="painel"></section>
+  <section id="perguntas" class="painel"></section>
+</main>
+
+<script>
+const api = (p) => `/api/v1/admin${p}`;
+async function get(p){ const r=await fetch(api(p),{credentials:'include'}); if(r.status===401||r.status===403) throw {auth:true}; if(!r.ok) throw new Error(); return r.json(); }
+async function patch(p,corpo){ const r=await fetch(api(p),{method:'PATCH',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify(corpo)}); return r.ok; }
+async function post(p,corpo){ const r=await fetch(api(p),{method:'POST',credentials:'include',headers:{'Content-Type':'application/json'},body:JSON.stringify(corpo)}); return r.ok; }
+function mostrarAviso(t){ document.getElementById('aviso').innerHTML=`<div class="aviso">${t}</div>`; }
+
+function trocar(p){
+  document.querySelectorAll('.aba').forEach(a=>a.classList.toggle('ativa', a.dataset.p===p));
+  document.querySelectorAll('.painel').forEach(s=>s.classList.toggle('ativo', s.id===p));
+  if(p==='resumo') carregarResumo();
+  if(p==='ouvidoria') carregarOuvidoria();
+  if(p==='perguntas') carregarPerguntas();
+}
+
+/* ---- Pesquisa ---- */
+async function carregarResumo(){
+  const el=document.getElementById('resumo');
+  try{
+    const d=await get('/resumo');
+    const cor={1:'var(--ruim)',2:'var(--regular)',3:'var(--bom)',4:'var(--bom)',5:'var(--bom)'};
+    const blocos=d.perguntas.map(q=>{
+      const tot=parseInt(q.total,10)||1;
+      const segs=[1,2,3,4,5].map(n=>{ const v=parseInt(q['n'+n],10)||0; const pct=Math.round(v/tot*100);
+        return v?`<i style="width:${pct}%;background:${cor[n]}">${pct}%</i>`:''; }).join('');
+      return `<div class="linha-q"><div><b>${q.texto}</b> <span style="color:var(--suave)">(média ${q.media} · ${q.total} respostas)</span></div><div class="barra">${segs||'<i style="width:100%;background:var(--borda);color:var(--suave)">sem respostas</i>'}</div></div>`;
+    }).join('');
+    el.innerHTML=`<div class="cartoes"><div class="num"><b>${d.totalAvaliacoes}</b><span>avaliações</span></div></div>
+      ${blocos||'<p>Nenhuma avaliação ainda.</p>'}
+      <div class="acoes"><a class="acao" href="${api('/export/avaliacoes.csv')}">⬇ Baixar planilha (CSV)</a></div>`;
+  }catch(e){ if(e.auth) return mostrarAviso('Faça login no sistema para acessar o painel.'); el.innerHTML='<p>Erro ao carregar.</p>'; }
+}
+
+/* ---- Ouvidoria ---- */
+async function carregarOuvidoria(){
+  const el=document.getElementById('ouvidoria');
+  el.innerHTML=`<div class="filtros">
+      <label>Tipo<select id="fTipo"><option value="">Todos</option>
+        <option value="elogio">Elogio</option><option value="reclamacao">Reclamação</option>
+        <option value="sugestao">Sugestão</option><option value="solicitacao">Pedido</option><option value="denuncia">Denúncia</option></select></label>
+      <label>Situação<select id="fStatus"><option value="">Todas</option>
+        <option value="recebida">Recebida</option><option value="em_analise">Em análise</option>
+        <option value="respondida">Respondida</option><option value="concluida">Concluída</option></select></label>
+      <button class="acao" onclick="listarOuv()">Filtrar</button>
+      <a class="sec" id="lnkCsv" href="${api('/export/manifestacoes.csv')}">⬇ CSV</a>
+    </div><div id="listaOuv" class="lista"></div>`;
+  listarOuv();
+}
+async function listarOuv(){
+  const tipo=document.getElementById('fTipo')?.value||'';
+  const status=document.getElementById('fStatus')?.value||'';
+  const q=new URLSearchParams(); if(tipo)q.set('tipo',tipo); if(status)q.set('status',status);
+  document.getElementById('lnkCsv').href=api('/export/manifestacoes.csv'+(q.toString()?`?${q}`:''));
+  const cont=document.getElementById('listaOuv');
+  try{
+    const d=await get('/manifestacoes'+(q.toString()?`?${q}`:''));
+    if(!d.itens.length){ cont.innerHTML='<p>Nenhuma manifestação.</p>'; return; }
+    const nomes={recebida:'Recebida',em_analise:'Em análise',respondida:'Respondida',concluida:'Concluída'};
+    cont.innerHTML=d.itens.map(m=>`<div class="item">
+      <div class="meta"><span class="tag">${m.tipo}</span><span>${m.protocolo}</span>
+        <span>${new Date(m.criado_em).toLocaleString('pt-BR')}</span>
+        <span>${m.anonimo?'Anônimo':'Identificado'}</span>
+        <span>Situação: <b>${nomes[m.status]||m.status}</b></span></div>
+      <div class="msg">${esc(m.mensagem)}</div>
+      ${m.contato?`<div class="meta">Contato: ${esc(m.contato)}</div>`:''}
+      <div class="acoes">
+        <select id="st_${m.id}">${Object.entries(nomes).map(([k,v])=>`<option value="${k}" ${k===m.status?'selected':''}>${v}</option>`).join('')}</select>
+        <input type="text" id="resp_${m.id}" placeholder="Resposta ao cidadão (opcional)" value="${esc(m.resposta||'')}" style="flex:1;min-width:200px">
+        <button class="acao" onclick="salvarOuv('${m.id}')">Salvar</button>
+      </div></div>`).join('');
+  }catch(e){ if(e.auth) return mostrarAviso('Faça login no sistema para acessar o painel.'); cont.innerHTML='<p>Erro ao carregar.</p>'; }
+}
+async function salvarOuv(id){
+  const status=document.getElementById('st_'+id).value;
+  const resposta=document.getElementById('resp_'+id).value;
+  const ok=await patch('/manifestacoes/'+id,{status,resposta});
+  if(ok) listarOuv(); else alert('Não foi possível salvar.');
+}
+
+/* ---- Perguntas ---- */
+async function carregarPerguntas(){
+  const el=document.getElementById('perguntas');
+  try{
+    const ps=await get('/perguntas');
+    el.innerHTML=`<table><thead><tr><th>Ordem</th><th>Pergunta</th><th>Ativa</th><th></th></tr></thead><tbody>
+      ${ps.map(p=>`<tr>
+        <td><input type="number" id="ord_${p.id}" value="${p.ordem}" style="width:60px"></td>
+        <td><input type="text" id="txt_${p.id}" value="${esc(p.texto)}" style="width:100%"></td>
+        <td><input type="checkbox" id="at_${p.id}" ${p.ativo?'checked':''}></td>
+        <td><button class="sec" onclick="salvarPergunta('${p.id}')">Salvar</button></td></tr>`).join('')}
+      </tbody></table>
+      <h3>Nova pergunta</h3>
+      <div class="filtros">
+        <label>Código<input type="text" id="nCod" placeholder="ex.: agendamento"></label>
+        <label style="flex:1">Texto<input type="text" id="nTxt" style="width:100%" placeholder="Como foi...?"></label>
+        <label>Ordem<input type="number" id="nOrd" value="0" style="width:70px"></label>
+        <button class="acao" onclick="novaPergunta()">Adicionar</button>
+      </div>`;
+  }catch(e){ if(e.auth) return mostrarAviso('Faça login no sistema para acessar o painel.'); el.innerHTML='<p>Erro ao carregar.</p>'; }
+}
+async function salvarPergunta(id){
+  const ok=await patch('/perguntas/'+id,{ texto:document.getElementById('txt_'+id).value,
+    ordem:parseInt(document.getElementById('ord_'+id).value,10), ativo:document.getElementById('at_'+id).checked });
+  if(ok) carregarPerguntas(); else alert('Erro ao salvar.');
+}
+async function novaPergunta(){
+  const ok=await post('/perguntas',{ codigo:document.getElementById('nCod').value.trim(),
+    texto:document.getElementById('nTxt').value.trim(), ordem:parseInt(document.getElementById('nOrd').value,10) });
+  if(ok) carregarPerguntas(); else alert('Verifique os campos (o código não pode repetir).');
+}
+
+function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+carregarResumo();
+</script>
+</body>
+</html>

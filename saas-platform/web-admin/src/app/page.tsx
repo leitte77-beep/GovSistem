@@ -29,7 +29,7 @@ const moduleConfig: Record<string, { icon: string; gradient: string }> = {
   financeiro: { icon: "account_balance_wallet", gradient: "from-[#006d3d] via-[#006d3d] to-[#73db9a]" },
   chatgov: { icon: "smart_toy", gradient: "from-[#075e54] via-[#075e54] to-[#25D366]" },
   govtask: { icon: "assignment_turned_in", gradient: "from-[#1e3a5f] via-[#1e3a5f] to-[#60a5fa]" },
-  govouve: { icon: "campaign", gradient: "from-[#1e3a8a] via-[#3b82f6] to-[#93c5fd]" },
+  govavalia: { icon: "mood", gradient: "from-[#15524c] via-[#15524c] to-[#4ecdc4]" },
 };
 
 export default function DashboardPage() {

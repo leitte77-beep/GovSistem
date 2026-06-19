@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GovAvalia — Painel Administrativo</title>
+<style>
+  :root {
+    --s0: #F0F4F3; --s1: #FFFFFF; --s2: #E8EDEB;
+    --tx: #1B2A27; --ts: #5A6B66; --tm: #8B9994;
+    --pr: #15524C; --pl: #E2EEEA; --pd: #0F3A36;
+    --ac: #BF4E2E; --ac-l: #FDECEA;
+    --bl: #2563eb; --bl-l: #DBEAFE;
+    --go: #16a34a; --go-l: #DCFCE7;
+    --or: #f59e0b; --or-l: #FEF3C7;
+    --rr: #1D4A5A; --r0:12px; --r1:18px;
+    --sh:0 1px 3px rgba(0,0,0,.06),0 1px 2px rgba(0,0,0,.04);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Inter","Segoe UI",system-ui,-apple-system,sans-serif;background:var(--s0);color:var(--tx);line-height:1.5}
+  .app{display:flex;min-height:100vh}
+  .sidebar{width:250px;background:linear-gradient(180deg,#0F3A36 0%,#15524C 100%);color:#fff;padding:1.5rem;display:flex;flex-direction:column;position:fixed;top:0;bottom:0;left:0;z-index:10}
+  .sidebar .logo{display:flex;align-items:center;gap:.6rem;margin-bottom:2rem}
+  .sidebar .logo .icon{font-size:1.8rem}
+  .sidebar .logo h1{font-size:1.15rem;font-weight:700}
+  .sidebar .logo span{font-size:.72rem;opacity:.65}
+  .sidebar .user{padding:.8rem;background:rgba(255,255,255,.08);border-radius:var(--r0);margin-bottom:1.5rem;font-size:.8rem}
+  .sidebar nav{flex:1;display:flex;flex-direction:column;gap:.2rem}
+  .sidebar nav a{color:rgba(255,255,255,.7);text-decoration:none;padding:.6rem .75rem;border-radius:8px;font-size:.85rem;display:flex;align-items:center;gap:.5rem;transition:all .15s}
+  .sidebar nav a:hover,.sidebar nav a.active{background:rgba(255,255,255,.12);color:#fff}
+  .sidebar .footer{font-size:.7rem;opacity:.5;margin-top:auto;padding-top:1rem}
+  .main{margin-left:250px;flex:1;padding:1.5rem 2rem}
+  header.top{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.8rem}
+  header.top h2{font-size:1.4rem;font-weight:700;color:var(--pd)}
+  .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:1rem;margin-bottom:1.5rem}
+  .stat-card{background:var(--s1);border-radius:var(--r1);padding:1.2rem;box-shadow:var(--sh);border:1px solid var(--s2)}
+  .stat-card .stat-icon{width:42px;height:42px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:1.2rem;margin-bottom:.7rem}
+  .stat-card .stat-val{font-size:1.8rem;font-weight:800;color:var(--tx)}
+  .stat-card .stat-label{font-size:.78rem;color:var(--ts);font-weight:500}
+  .panel{display:none}.panel.active{display:block}
+  .card{background:var(--s1);border-radius:var(--r1);padding:1.3rem;box-shadow:var(--sh);border:1px solid var(--s2);margin-bottom:1.2rem}
+  .card h3{font-size:1rem;font-weight:700;margin-bottom:1rem;color:var(--pd)}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:1.2rem;margin-bottom:1.2rem}
+  @media(max-width:900px){.row2{grid-template-columns:1fr}.sidebar{display:none}.main{margin-left:0}}
+  .chart-bar{display:flex;align-items:end;gap:.4rem;height:140px;padding-top:20px}
+  .chart-bar .col{flex:1;display:flex;flex-direction:column;align-items:center;gap:.25rem}
+  .chart-bar .col .bar{width:100%;border-radius:6px 6px 0 0;min-height:3px;position:relative;transition:height .3s}
+  .chart-bar .col .bar:hover{filter:brightness(1.1)}
+  .chart-bar .col span{font-size:.68rem;color:var(--ts);margin-top:.2rem}
+  .chart-line{position:relative;height:160px;width:100%}
+  .chart-dist{display:flex;align-items:center;gap:.6rem;margin:.4rem 0}
+  .chart-dist .bar-h{flex:1;height:28px;border-radius:6px;min-width:4px;display:flex;align-items:center;padding:0 .5rem;font-size:.75rem;color:#fff;font-weight:600}
+  .chart-dist .label2{width:70px;text-align:right;font-size:.8rem;color:var(--ts)}
+  .tabs{display:flex;gap:.25rem;margin-bottom:1.5rem;background:var(--s2);border-radius:10px;padding:.25rem;width:fit-content}
+  .tabs button{border:none;background:none;padding:.5rem 1.1rem;border-radius:8px;cursor:pointer;font-size:.82rem;font-weight:600;color:var(--ts);transition:all .15s}
+  .tabs button.active{background:var(--s1);color:var(--pr);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .filters{display:flex;gap:.6rem;flex-wrap:wrap;align-items:end;margin-bottom:1.2rem}
+  .filters .fld{display:flex;flex-direction:column;gap:.25rem}
+  .filters .fld label{font-size:.75rem;color:var(--ts);font-weight:600}
+  input,select,textarea{font-family:inherit;font-size:.88rem;padding:.5rem .65rem;border:1px solid var(--s2);border-radius:8px;background:var(--s1);color:var(--tx);outline:none;transition:border .15s}
+  input:focus,select:focus,textarea:focus{border-color:var(--pr);box-shadow:0 0 0 3px rgba(21,82,76,.1)}
+  .btn{display:inline-flex;align-items:center;gap:.35rem;padding:.55rem 1rem;border-radius:8px;font-size:.85rem;font-weight:600;cursor:pointer;border:none;transition:all .15s;text-decoration:none}
+  .btn-p{background:var(--pr);color:#fff}.btn-p:hover{background:var(--pd)}
+  .btn-s{background:var(--s1);color:var(--pr);border:1px solid var(--pr)}.btn-s:hover{background:var(--pl)}
+  .btn-d{border:1px solid var(--s2);background:var(--s1);color:var(--ts)}.btn-d:hover{background:var(--s2)}
+  .btn-a{background:var(--ac);color:#fff}.btn-a:hover{background:#a33f22}
+  table{width:100%;border-collapse:collapse;font-size:.84rem}
+  table th{text-align:left;padding:.6rem .7rem;border-bottom:2px solid var(--s2);color:var(--ts);font-weight:600;font-size:.75rem;text-transform:uppercase;letter-spacing:.03em}
+  table td{padding:.6rem .7rem;border-bottom:1px solid var(--s2)}
+  table tr:hover{background:var(--s0)}
+  .badge{display:inline-block;padding:.15rem .5rem;border-radius:99px;font-size:.7rem;font-weight:700;text-transform:uppercase}
+  .b-ok{background:var(--go-l);color:var(--go)}.b-warn{background:var(--or-l);color:var(--or)}.b-err{background:var(--ac-l);color:var(--ac)}.b-info{background:var(--bl-l);color:var(--bl)}
+  .msg-preview{max-width:300px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .empty{text-align:center;padding:3rem 1rem;color:var(--ts)}
+  .empty .icon{font-size:3rem;margin-bottom:.5rem;opacity:.3}
+  .pag{display:flex;gap:.3rem;margin-top:1rem;justify-content:center}
+  .pag button{padding:.35rem .7rem;border:1px solid var(--s2);background:var(--s1);border-radius:6px;cursor:pointer;font-size:.8rem}.pag button:hover{background:var(--s2)}
+  .pag button.active{background:var(--pr);color:#fff;border-color:var(--pr)}
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:100;align-items:center;justify-content:center}
+  .modal-overlay.show{display:flex}
+  .modal{background:var(--s1);border-radius:var(--r1);padding:1.5rem;max-width:600px;width:90%;max-height:80vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,.2)}
+  .modal h3{margin-bottom:1rem;color:var(--pd)}
+  .toast{position:fixed;top:1rem;right:1rem;padding:.7rem 1.1rem;border-radius:8px;font-weight:600;font-size:.85rem;z-index:200;animation:slideIn .3s ease}
+  @keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+  .toast-ok{background:var(--go-l);color:var(--go)}.toast-err{background:var(--ac-l);color:var(--ac)}
+</style>
+</head>
+<body>
+<div class="app">
+<aside class="sidebar">
+  <div class="logo">
+    <span class="icon">🏛️</span>
+    <div><h1>GovAvalia</h1><span>Painel Administrativo</span></div>
+  </div>
+  <div class="user" id="userInfo">Carregando...</div>
+  <nav>
+    <a href="#" class="active" data-tab="dashboard">📊 Dashboard</a>
+    <a href="#" data-tab="pesquisa">📋 Pesquisas de Satisfação</a>
+    <a href="#" data-tab="ouvidoria">🛡️ Ouvidoria</a>
+    <a href="#" data-tab="perguntas">❓ Perguntas</a>
+    <a href="#" data-tab="relatorios">📁 Relatórios</a>
+  </nav>
+  <div class="footer">v1.0 · Lei 13.460/2017 · LGPD</div>
+</aside>
+<main class="main" id="mainContent">
+  <header class="top"><h2 id="pageTitle">Dashboard</h2><div id="headerMeta"></div></header>
+  <div id="toastContainer"></div>
+  <div id="contentArea"></div>
+</main>
+</div>
+<script>
+/* ======== GLOBAL ======== */
+const API = (p) => '/api/v1/admin' + p;
+
+let storedToken = null;
+
+function getToken() { return storedToken || new URLSearchParams(window.location.search).get('token'); }
+
+async function get(path) {
+  const headers = {};
+  const t = getToken();
+  if (t) headers['Authorization'] = 'Bearer ' + t;
+  const r = await fetch(API(path), { credentials: 'include', headers });
+  if (r.status === 401 || r.status === 403) throw { auth: true, status: r.status };
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function patch(path, body) {
+  const headers = { 'Content-Type': 'application/json' };
+  const t = getToken();
+  if (t) headers['Authorization'] = 'Bearer ' + t;
+  const r = await fetch(API(path), { method: 'PATCH', credentials: 'include', headers, body: JSON.stringify(body) });
+  if (r.status === 401 || r.status === 403) throw { auth: true, status: r.status };
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+async function post(path, body) {
+  const headers = { 'Content-Type': 'application/json' };
+  const t = getToken();
+  if (t) headers['Authorization'] = 'Bearer ' + t;
+  const r = await fetch(API(path), { method: 'POST', credentials: 'include', headers, body: JSON.stringify(body) });
+  if (r.status === 401 || r.status === 403) throw { auth: true, status: r.status };
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+function toast(msg, type) {
+  const el = document.createElement('div');
+  el.className = 'toast toast-' + (type || 'ok');
+  el.textContent = msg;
+  document.getElementById('toastContainer').appendChild(el);
+  setTimeout(() => el.remove(), 3500);
+}
+function es(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c])); }
+
+/* ======== NAVIGATION ======== */
+document.querySelectorAll('.sidebar nav a').forEach(a => {
+  a.addEventListener('click', (e) => {
+    e.preventDefault();
+    document.querySelectorAll('.sidebar nav a').forEach(x => x.classList.remove('active'));
+    a.classList.add('active');
+    const tab = a.dataset.tab;
+    document.getElementById('pageTitle').textContent = { dashboard: 'Dashboard', pesquisa: 'Pesquisas de Satisfação', ouvidoria: 'Ouvidoria', perguntas: 'Perguntas', relatorios: 'Relatórios' }[tab];
+    renderTab(tab);
+  });
+});
+
+async function renderTab(tab) {
+  const ct = document.getElementById('contentArea');
+  try {
+    switch (tab) {
+      case 'dashboard': await renderDashboard(ct); break;
+      case 'pesquisa': await renderPesquisa(ct); break;
+      case 'ouvidoria': await renderOuvidoria(ct); break;
+      case 'perguntas': await renderPerguntas(ct); break;
+      case 'relatorios': await renderRelatorios(ct); break;
+    }
+  } catch (e) {
+    if (e && e.auth) { ct.innerHTML = '<div class="empty"><div class="icon">🔒</div><p>Faça login no GovSistem para acessar o painel.</p></div>'; return; }
+    ct.innerHTML = '<div class="empty"><div class="icon">⚠️</div><p>Erro ao carregar dados. Verifique sua conexão.</p></div>';
+  }
+}
+
+const cores = ['#15524C','#2563eb','#16a34a','#f59e0b','#BF4E2E','#8b5cf6','#ec4899','#6366f1'];
+const statusCores = { recebida: '#2563eb', em_analise: '#f59e0b', respondida: '#16a34a', concluida: '#6b7280' };
+const statusNomes = { recebida: 'Recebida', em_analise: 'Em Análise', respondida: 'Respondida', concluída: 'Concluída' };
+const tipoNomes = { elogio: 'Elogio', reclamacao: 'Reclamação', sugestao: 'Sugestão', solicitacao: 'Pedido', denuncia: 'Denúncia' };
+
+/* ======== DASHBOARD ======== */
+async function renderDashboard(ct) {
+  const d = await get('/dashboard');
+  const metas = [
+    { icon:'📝', label:'Total de Avaliações', val:(d.total_avaliacoes||0), bg:'#DBEAFE' },
+    { icon:'⭐', label:'Nota Média Geral', val:(d.nota_media_geral||'—'), bg:'#DCFCE7' },
+    { icon:'📬', label:'Manifestações', val:(d.total_manifestacoes||0), bg:'#FEF3C7' },
+    { icon:'⏳', label:'Pendentes', val:(d.manifestacoes_pendentes||0), bg: d.manifestacoes_pendentes > 0 ? '#FDECEA' : '#E2EEEA' },
+    { icon:'👍', label:'Elogios', val:(d.total_elogios||0), bg:'#DCFCE7' },
+    { icon:'⚠️', label:'Reclamações', val:(d.total_reclamacoes||0), bg:'#FEF3C7' },
+    { icon:'🏥', label:'Unidades', val:(d.total_unidades||0), bg:'#DBEAFE' },
+  ];
+  let html = '<div class="stats-grid">' + metas.map(m =>
+    `<div class="stat-card"><div class="stat-icon" style="background:${m.bg}">${m.icon}</div><div class="stat-val">${m.val}</div><div class="stat-label">${m.label}</div></div>`
+  ).join('') + '</div>';
+
+  // Trend chart (last 30 days)
+  if (d.trend && d.trend.length) {
+    const maxVal = Math.max(...d.trend.map(t => parseInt(t.total) || 0), 1);
+    html += `<div class="row2"><div class="card"><h3>Avaliações nos Últimos 30 Dias</h3><div class="chart-bar">${d.trend.map((t,i) => {
+      const h = Math.max(3, (parseInt(t.total) || 0) / maxVal * 120);
+      const day = new Date(t.dia).getDate();
+      return `<div class="col"><div class="bar" style="height:${h}px;background:${cores[Math.floor(i/4)%cores.length]}" title="${t.dia}: ${t.total}"></div><span>${day}</span></div>`;
+    }).join('')}</div></div>`;
+
+    // Distribution chart
+    if (d.distribuicao && d.distribuicao.length) {
+      const totalDist = d.distribuicao.reduce((s, r) => s + parseInt(r.total), 0);
+      html += `<div class="card"><h3>Distribuição de Notas</h3>${d.distribuicao.map((r,i) => {
+        const pct = totalDist > 0 ? Math.round(parseInt(r.total) / totalDist * 100) : 0;
+        return `<div class="chart-dist"><span class="label2">Nota ${r.nota}</span><div class="bar-h" style="width:${Math.max(pct, 2)}%;background:${cores[i % cores.length]}">${pct}%</div><span style="font-size:.8rem;color:var(--ts)">${r.total}</span></div>`;
+      }).join('')}</div>`;
+    }
+    html += '</div>';
+  }
+
+  // Top unidades
+  if (d.topUnidades && d.topUnidades.length) {
+    html += `<div class="card"><h3>Unidades com Mais Avaliações</h3><table><thead><tr><th>Unidade</th><th>Total</th><th>Média</th></tr></thead><tbody>
+      ${d.topUnidades.map(u => `<tr><td>${es(u.nome||'Sem unidade')}</td><td>${u.total}</td><td>${u.media||'—'}</td></tr>`).join('')}</tbody></table></div>`;
+  }
+
+  ct.innerHTML = html || '<div class="empty"><div class="icon">📊</div><p>Nenhum dado disponível ainda. Comece a coletar avaliações!</p></div>';
+}
+
+/* ======== PESQUISA ======== */
+async function renderPesquisa(ct) {
+  const d = await get('/resumo');
+  let html = `<div class="card"><div class="filters">
+    <div class="fld"><label>De</label><input type="date" id="fpDe" onchange="filtrarPesquisa()"></div>
+    <div class="fld"><label>Até</label><input type="date" id="fpAte" onchange="filtrarPesquisa()"></div>
+    <a class="btn btn-s" id="lnkCsvPesq" href="${API('/export/avaliacoes.csv')}">⬇ Exportar CSV</a>
+  </div></div>`;
+
+  if (d.perguntas && d.perguntas.length) {
+    html += `<div class="card"><h3>Resumo por Pergunta</h3><div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr))">
+      <div class="stat-card"><div class="stat-val">${d.totalAvaliacoes}</div><div class="stat-label">Total de avaliações</div></div>
+    </div>`;
+    const cor = { 1: '#BF4E2E', 2: '#f59e0b', 3: '#16a34a', 4: '#2563eb', 5: '#15524C' };
+    const rotulos = { 1: 'Ruim', 2: 'Regular', 3: 'Bom', 4: 'Muito Bom', 5: 'Excelente' };
+    d.perguntas.forEach((q,i) => {
+      const tot = parseInt(q.total) || 1;
+      html += `<div style="margin:1.2rem 0"><b style="color:var(--pd)">${q.texto}</b> <span style="color:var(--ts);font-size:.8rem">(média ${q.media} · ${q.total} respostas)</span>`;
+      html += '<div class="chart-bar" style="height:60px;padding-top:0;gap:2px">';
+      [1,2,3,4,5].forEach(n => {
+        const v = parseInt(q['n'+n]) || 0;
+        const pct = Math.round(v / tot * 100);
+        html += `<div class="col" style="flex:1"><div class="bar" style="height:44px;background:${cor[n]};border-radius:4px;width:${Math.max(pct, 3)}%" title="${rotulos[n]}: ${v} (${pct}%)"></div></div>`;
+      });
+      html += '</div><div style="font-size:.72rem;color:var(--ts);margin-top:.3rem;display:flex;gap:.8rem">';
+      [1,2,3,4,5].forEach(n => { html += `<span>🔴${rotulos[n].charAt(0)}</span>`; });
+      html += '</div></div>';
+    });
+    html += '</div>';
+  } else {
+    html += '<div class="empty"><div class="icon">📋</div><p>Nenhuma avaliação registrada ainda.</p></div>';
+  }
+  ct.innerHTML = html;
+}
+
+async function filtrarPesquisa() { renderTab('pesquisa'); }
+
+/* ======== OUVIDORIA ======== */
+async function renderOuvidoria(ct) {
+  ct.innerHTML = `<div class="card"><div class="filters">
+    <div class="fld"><label>Tipo</label><select id="fTipo"><option value="">Todos</option>${Object.entries(tipoNomes).map(([k,v]) => `<option value="${k}">${v}</option>`).join('')}</select></div>
+    <div class="fld"><label>Situação</label><select id="fStatus"><option value="">Todas</option>${Object.entries(statusNomes).map(([k,v]) => `<option value="${k}">${v}</option>`).join('')}</select></div>
+    <div class="fld"><label>Buscar</label><input type="text" id="fBusca" placeholder="Protocolo ou texto..." onkeyup="if(event.key==='Enter')listarOuv('')"></div>
+    <button class="btn btn-p" onclick="listarOuv('')">Filtrar</button>
+    <a class="btn btn-s" id="lnkCsvOuv" href="${API('/export/manifestacoes.csv')}">⬇ Exportar CSV</a>
+  </div></div>
+  <div class="card"><div id="listaOuv"><p style="color:var(--ts);text-align:center;padding:2rem">Carregando...</p></div><div id="pagOuv" class="pag"></div></div>`;
+  listarOuv('');
+}
+async function listarOuv(go) {
+  const tipo = document.getElementById('fTipo')?.value || '';
+  const status = document.getElementById('fStatus')?.value || '';
+  const busca = document.getElementById('fBusca')?.value || '';
+  const pg = go ? parseInt(go) : 1;
+  const q = new URLSearchParams({ limite: '20', pagina: String(pg) });
+  if (tipo) q.set('tipo', tipo);
+  if (status) q.set('status', status);
+  const csvLnk = API('/export/manifestacoes.csv?' + q.toString());
+  const lnk = document.getElementById('lnkCsvOuv');
+  if (lnk) lnk.href = csvLnk;
+
+  try {
+    const d = await get('/manifestacoes?' + q.toString());
+    const lista = document.getElementById('listaOuv');
+    if (!d.itens || !d.itens.length) { lista.innerHTML = '<div class="empty"><div class="icon">📬</div><p>Nenhuma manifestação encontrada.</p></div>'; return; }
+    const totalPag = Math.ceil(d.total / d.limite);
+    lista.innerHTML = `<table><thead><tr><th>Protocolo</th><th>Tipo</th><th>Data</th><th>Anônimo</th><th>Situação</th><th>Mensagem</th><th>Ações</th></tr></thead><tbody>${d.itens.map(m => `<tr>
+      <td><b>${m.protocolo}</b></td>
+      <td><span class="badge b-${m.tipo==='elogio'?'ok':m.tipo==='reclamacao'?'err':m.tipo==='denuncia'?'err':'info'}">${tipoNomes[m.tipo]||m.tipo}</span></td>
+      <td>${new Date(m.criado_em).toLocaleString('pt-BR')}</td>
+      <td>${m.anonimo?'Sim':'Não'}</td>
+      <td><span class="badge b-${m.status==='respondida'||m.status==='concluida'?'ok':m.status==='em_analise'?'warn':'info'}">${statusNomes[m.status]||m.status}</span></td>
+      <td><div class="msg-preview" title="${es(m.mensagem)}">${es(m.mensagem||'').substring(0,80)}</div></td>
+      <td><button class="btn btn-d" style="padding:.25rem .5rem;font-size:.7rem" onclick="abrirModal('${m.id}')">Detalhes</button></td>
+    </tr>`).join('')}</tbody></table>`;
+    if (totalPag > 1) {
+      let pagHtml = '';
+      for (let i = 1; i <= totalPag; i++) {
+        pagHtml += `<button class="${i === pg ? 'active' : ''}" onclick="listarOuv('${i}')">${i}</button>`;
+      }
+      document.getElementById('pagOuv').innerHTML = pagHtml;
+    }
+  } catch(e) {
+    if (e && e.auth) { document.getElementById('listaOuv').innerHTML = '<div class="empty"><div class="icon">🔒</div><p>Faça login com perfil de Ouvidoria.</p></div>'; return; }
+    toast('Erro ao carregar manifestações', 'err');
+  }
+}
+
+async function abrirModal(id) {
+  try {
+    const m = await get('/manifestacoes/' + id);
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay show';
+    overlay.innerHTML = `<div class="modal">
+      <h3>Manifestação ${m.protocolo}</h3>
+      <div style="display:grid;gap:.6rem;margin-bottom:1rem">
+        <div><b>Tipo:</b> <span class="badge b-${m.tipo==='elogio'?'ok':m.tipo==='reclamacao'?'err':'info'}">${tipoNomes[m.tipo]||m.tipo}</span></div>
+        <div><b>Data:</b> ${new Date(m.criado_em).toLocaleString('pt-BR')}</div>
+        <div><b>Anônimo:</b> ${m.anonimo?'Sim':'Não'}</div>
+        ${m.contato?`<div><b>Contato:</b> ${es(m.contato)}</div>`:''}
+        <div><b>Situação:</b> ${statusNomes[m.status]||m.status}</div>
+        <div style="background:var(--s0);padding:.8rem;border-radius:8px;white-space:pre-wrap">${es(m.mensagem)}</div>
+        ${m.resposta?`<div style="background:var(--pl);padding:.8rem;border-radius:8px"><b>Resposta:</b><br>${es(m.resposta)}</div>`:''}
+      </div>
+      <div class="filters">
+        <div class="fld"><label>Alterar situação</label><select id="mdSt_${m.id}">${Object.entries(statusNomes).map(([k,v]) => `<option value="${k}" ${k===m.status?'selected':''}>${v}</option>`).join('')}</select></div>
+        <div class="fld" style="flex:1"><label>Resposta ao cidadão</label><input type="text" id="mdResp_${m.id}" value="${es(m.resposta||'')}" style="width:100%"></div>
+      </div>
+      <div style="display:flex;gap:.5rem;margin-top:1rem">
+        <button class="btn btn-p" onclick="salvarOuvModal('${m.id}')">Salvar</button>
+        <button class="btn btn-d" onclick="this.closest('.modal-overlay').remove()">Fechar</button>
+      </div>
+    </div>`;
+    overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+    document.body.appendChild(overlay);
+  } catch(e) { toast('Erro ao carregar detalhes', 'err'); }
+}
+
+async function salvarOuvModal(id) {
+  const status = document.getElementById('mdSt_' + id).value;
+  const resposta = document.getElementById('mdResp_' + id).value;
+  try {
+    await patch('/manifestacoes/' + id, { status, resposta });
+    toast('Manifestação atualizada com sucesso!', 'ok');
+    document.querySelector('.modal-overlay').remove();
+    renderTab('ouvidoria');
+  } catch(e) { toast('Erro ao salvar', 'err'); }
+}
+
+/* ======== PERGUNTAS ======== */
+async function renderPerguntas(ct) {
+  const ps = await get('/perguntas');
+  ct.innerHTML = `<div class="card">
+    <h3>Gerenciar Perguntas da Pesquisa</h3>
+    <table><thead><tr><th>Ordem</th><th>Código</th><th>Pergunta</th><th>Ativa</th><th></th></tr></thead><tbody>
+    ${ps.map(p => `<tr>
+      <td><input type="number" id="ord_${p.id}" value="${p.ordem}" style="width:65px"></td>
+      <td><code style="background:var(--s0);padding:.15rem .4rem;border-radius:4px;font-size:.8rem">${es(p.codigo)}</code></td>
+      <td><input type="text" id="txt_${p.id}" value="${es(p.texto)}" style="width:100%"></td>
+      <td><input type="checkbox" id="at_${p.id}" ${p.ativo?'checked':''}></td>
+      <td><button class="btn btn-s" style="padding:.25rem .6rem;font-size:.75rem" onclick="salvarPergunta('${p.id}')">Salvar</button></td>
+    </tr>`).join('')}
+    </tbody></table>
+    ${ps.length === 0 ? '<p style="color:var(--ts);padding:2rem;text-align:center">Nenhuma pergunta cadastrada.</p>' : ''}
+  </div>
+  <div class="card"><h3>Nova Pergunta</h3>
+    <div class="filters">
+      <div class="fld"><label>Código</label><input type="text" id="nCod" placeholder="ex.: atendimento"></div>
+      <div class="fld" style="flex:1"><label>Texto</label><input type="text" id="nTxt" style="width:100%" placeholder="Como você avalia o atendimento?"></div>
+      <div class="fld"><label>Ordem</label><input type="number" id="nOrd" value="0" style="width:70px"></div>
+      <button class="btn btn-p" onclick="novaPergunta()">Adicionar</button>
+    </div>
+  </div>`;
+}
+async function salvarPergunta(id) {
+  try {
+    await patch('/perguntas/' + id, {
+      texto: document.getElementById('txt_' + id).value,
+      ordem: parseInt(document.getElementById('ord_' + id).value, 10),
+      ativo: document.getElementById('at_' + id).checked
+    });
+    toast('Pergunta atualizada!', 'ok');
+  } catch(e) { toast('Erro ao salvar', 'err'); }
+}
+async function novaPergunta() {
+  try {
+    await post('/perguntas', {
+      codigo: document.getElementById('nCod').value.trim(),
+      texto: document.getElementById('nTxt').value.trim(),
+      ordem: parseInt(document.getElementById('nOrd').value, 10)
+    });
+    toast('Pergunta adicionada!', 'ok');
+    renderTab('perguntas');
+  } catch(e) { toast('Erro: verifique os campos (código não pode repetir)', 'err'); }
+}
+
+/* ======== RELATÓRIOS ======== */
+async function renderRelatorios(ct) {
+  ct.innerHTML = `<div class="row2">
+    <div class="card"><h3>Exportar Pesquisas (CSV)</h3>
+      <div class="filters" style="flex-direction:column;align-items:stretch">
+        <div class="fld"><label>De</label><input type="date" id="rDe"></div>
+        <div class="fld"><label>Até</label><input type="date" id="rAte"></div>
+      </div>
+      <div style="margin-top:.8rem">
+        <a class="btn btn-p" id="lnkR1" href="${API('/export/avaliacoes.csv')}">⬇ Baixar CSV de Avaliações</a>
+      </div>
+    </div>
+    <div class="card"><h3>Exportar Ouvidoria (CSV)</h3>
+      <div class="filters" style="flex-direction:column;align-items:stretch">
+        <div class="fld"><label>De</label><input type="date" id="rDe2"></div>
+        <div class="fld"><label>Até</label><input type="date" id="rAte2"></div>
+      </div>
+      <div style="margin-top:.8rem">
+        <a class="btn btn-p" id="lnkR2" href="${API('/export/manifestacoes.csv')}">⬇ Baixar CSV de Manifestações</a>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <h3>Usar Filtros de Data</h3>
+    <p style="color:var(--ts);font-size:.85rem">Preencha as datas acima e clique nos botões de download. O CSV será filtrado pelo período informado.</p>
+  </div>`;
+
+  // Atualiza os links de CSV com filtros de data
+  const updateLinks = () => {
+    const de = document.getElementById('rDe')?.value || '';
+    const ate = document.getElementById('rAte')?.value || '';
+    const de2 = document.getElementById('rDe2')?.value || '';
+    const ate2 = document.getElementById('rAte2')?.value || '';
+    const q1 = new URLSearchParams(); if (de) q1.set('de', de); if (ate) q1.set('ate', ate);
+    const q2 = new URLSearchParams(); if (de2) q2.set('de', de2); if (ate2) q2.set('ate', ate2);
+    const s1 = q1.toString(), s2 = q2.toString();
+    document.getElementById('lnkR1').href = API('/export/avaliacoes.csv' + (s1 ? '?' + s1 : ''));
+    document.getElementById('lnkR2').href = API('/export/manifestacoes.csv' + (s2 ? '?' + s2 : ''));
+  };
+  document.getElementById('rDe')?.addEventListener('change', updateLinks);
+  document.getElementById('rAte')?.addEventListener('change', updateLinks);
+  document.getElementById('rDe2')?.addEventListener('change', updateLinks);
+  document.getElementById('rAte2')?.addEventListener('change', updateLinks);
+}
+
+/* ======== INIT ======== */
+const token = new URLSearchParams(window.location.search).get('token');
+if (token) {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    document.getElementById('userInfo').innerHTML = `<div style="font-weight:600">${es(payload.name||'Usuário')}</div><div style="font-size:.7rem;opacity:.7">GovSistem SSO</div>`;
+    storedToken = token; // persist token for API calls
+    // Clean URL without losing token reference
+    window.history.replaceState({}, '', window.location.pathname);
+  } catch(e) {
+    document.getElementById('userInfo').innerHTML = '<div style="font-weight:600">Conectado via SSO</div>';
+  }
+}
+
+renderTab('dashboard');
+</script>
+</body>
+</html>

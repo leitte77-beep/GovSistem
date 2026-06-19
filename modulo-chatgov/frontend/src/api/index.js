@@ -5,12 +5,17 @@ export async function fetchConversas({ status, departamento, busca, arquivadas, 
   if (busca) params.set('busca', busca);
   if (arquivadas) params.set('arquivadas', 'true');
 
-  const res = await fetch(`/api/conversas?${params.toString()}`, {
-    headers: { Authorization: `Bearer ${getToken()}` },
-    signal,
-  });
-  if (!res.ok) throw new Error('Erro ao buscar conversas');
-  return res.json();
+  try {
+    const res = await fetch(`/api/conversas?${params.toString()}`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+      signal,
+    });
+    if (!res.ok) return [];
+    return res.json();
+  } catch (err) {
+    if (err.name === 'AbortError') throw err;
+    return [];
+  }
 }
 
 // Retorna { mensagens, temMais }. `antesDe` (ISO criado_em) carrega o lote anterior
@@ -43,19 +48,27 @@ export async function excluirMensagemConversa(convId, msgId) {
 }
 
 export async function fetchMe() {
-  const res = await fetch('/api/me', {
-    headers: { Authorization: `Bearer ${getToken()}` },
-  });
-  if (!res.ok) throw new Error('Erro ao buscar perfil');
-  return res.json();
+  try {
+    const res = await fetch('/api/me', {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!res.ok) return null;
+    return res.json();
+  } catch {
+    return null;
+  }
 }
 
 export async function fetchDepartamentos() {
-  const res = await fetch('/api/departamentos', {
-    headers: { Authorization: `Bearer ${getToken()}` },
-  });
-  if (!res.ok) throw new Error('Erro ao buscar departamentos');
-  return res.json();
+  try {
+    const res = await fetch('/api/departamentos', {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
 }
 
 export async function fetchPainelDepartamentos() {
@@ -67,11 +80,15 @@ export async function fetchPainelDepartamentos() {
 }
 
 export async function fetchOperadores() {
-  const res = await fetch('/api/operadores', {
-    headers: { Authorization: `Bearer ${getToken()}` },
-  });
-  if (!res.ok) throw new Error('Erro ao buscar operadores');
-  return res.json();
+  try {
+    const res = await fetch('/api/operadores', {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
 }
 
 export async function fetchWhatsAppStatus() {
@@ -148,11 +165,15 @@ export async function votarEnquete(canalId, msgId, opcaoIdx) {
 }
 
 export async function fetchSecretarias() {
-  const res = await fetch('/api/secretarias', {
-    headers: { Authorization: `Bearer ${getToken()}` },
-  });
-  if (!res.ok) throw new Error('Erro ao buscar secretarias');
-  return res.json();
+  try {
+    const res = await fetch('/api/secretarias', {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
 }
 
 export async function criarSecretaria(body) {
@@ -454,6 +475,10 @@ export async function fetchContatos(busca) {
 
 export async function editarContato(id, body) {
   return jsonReq(`/api/contatos/${id}`, 'PUT', body);
+}
+
+export async function excluirContato(id) {
+  return jsonReq(`/api/contatos/${id}`, 'DELETE');
 }
 
 function getToken() {

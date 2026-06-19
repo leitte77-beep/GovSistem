@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Search, Edit3, Check, X, Phone, User, MessageCircle, Trash2, Filter, Grid3X3, List, Plus, Building2 } from 'lucide-react';
 import { T } from '../theme';
-import { fetchContatos, editarContato, iniciarConversa, fetchDepartamentos } from '../api';
+import { fetchContatos, editarContato, excluirContato, iniciarConversa, fetchDepartamentos } from '../api';
 import { ModalNovaConversa } from './ModalNovaConversa';
 import { Avatar } from './Avatar';
 
@@ -83,10 +83,13 @@ export function PaginaAgenda({ onSendMessage }) {
   const executarExclusao = async (e, id) => {
     e.stopPropagation();
     try {
-      await editarContato(id, {}); // TODO: endpoint DELETE
+      await excluirContato(id);
       setExcluindoId(null);
       carregar(busca);
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      console.error(err);
+      setExcluindoId(null);
+    }
   };
 
   const abas = [

@@ -409,142 +409,31 @@ services:
       - internal
     restart: unless-stopped
 
-  # =============================================
-  # GovOuve — Avaliacao & Ouvidoria
-  # =============================================
-  govouve-db-init:
-    image: postgres:16-alpine
-    environment:
-      PGHOST: postgres
-      PGUSER: ${POSTGRES_USER:-doe_user}
-      PGPASSWORD: ${POSTGRES_PASSWORD:-doe_password}
-      PGDATABASE: postgres
-    command: >
-      bash -c "
-        echo 'Creating govouve database if not exists...'
-        until pg_isready -h postgres -U ${POSTGRES_USER:-doe_user} -d postgres; do sleep 2; done
-        psql -h postgres -U ${POSTGRES_USER:-doe_user} -d postgres -tc \"SELECT 1 FROM pg_database WHERE datname = '${GOVOUVE_POSTGRES_DB:-govouve}'\" | grep -q 1 ||
-          psql -h postgres -U ${POSTGRES_USER:-doe_user} -d postgres -c \"CREATE DATABASE ${GOVOUVE_POSTGRES_DB:-govouve}\"
-        echo 'Done.'
-      "
-    depends_on:
-      postgres:
-        condition: service_healthy
-    networks:
-      - doe-network
-    restart: "no"
-
-  govouve-api:
+  govavalia:
     build:
-      context: ../modulo-govouve/api
+      context: ../modulo-govavalia
       dockerfile: Dockerfile
+    logging: *default-logging
     environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_DB: ${GOVOUVE_POSTGRES_DB:-govouve}
-      POSTGRES_USER: ${POSTGRES_USER:-doe_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-doe_password}
-      REDIS_HOST: redis
-      REDIS_DB: "3"
-      MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minio_admin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minio_password}
-      MINIO_BUCKET: ${GOVOUVE_MINIO_BUCKET:-govouve}
-      SECRET_KEY: ${GOVOUVE_SECRET_KEY:-govouve-dev-secret-key-change-in-production}
-      SAAS_JWT_SECRET: ${SAAS_JWT_SECRET:-dev-saas-secret-key-change-in-production}
+      DATABASE_URL: postgres://${POSTGRES_USER:-doe_user}:${POSTGRES_PASSWORD:-doe_password}@postgres:5432/${POSTGRES_DB:-doe}
+      GOVAVALIA_PORT: 4000
+      GOVAVALIA_BASE_PATH: /avalia
+      GOVAVALIA_ADMIN_DOMAIN: govavalia.govsistem.com.br
+      GOVAVALIA_ALLOWED_ORIGINS: ${GOVAVALIA_ALLOWED_ORIGINS:-https://govsistem.com.br,https://govavalia.govsistem.com.br}
+      GOVAVALIA_ROLE_GESTOR: ${GOVAVALIA_ROLE_GESTOR:-gestor}
+      GOVAVALIA_ROLE_OUVIDORIA: ${GOVAVALIA_ROLE_OUVIDORIA:-ouvidoria}
+      GOVAVALIA_RETENCAO_CONTATO_DIAS: ${GOVAVALIA_RETENCAO_CONTATO_DIAS:-365}
+      GOVAVALIA_DEV_FAKE_USER: ${GOVAVALIA_DEV_FAKE_USER:-true}
+      GOVAVALIA_SAAS_JWT_SECRET: ${SAAS_JWT_SECRET:-dev-saas-secret-key-change-in-production}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-123}
-      CORS_ORIGINS: '["http://localhost:7401","http://localhost:7400"]'
-      DEBUG: "true"
+      PGSSL: "false"
     ports:
-      - "8201:8000"
-    volumes:
-      - govouve_uploads:/app/uploads
+      - "4100:4000"
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
-      govouve-db-init:
-        condition: service_completed_successfully
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "curl",
-          "-f",
-          "http://localhost:8000/api/govouve/health",
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
     networks:
       - doe-network
-      - internal
-    restart: unless-stopped
-
-  govouve-web:
-    build:
-      context: ../modulo-govouve/web-admin
-      dockerfile: Dockerfile
-    environment:
-      NODE_ENV: production
-      PORT: "3000"
-      API_INTERNAL_URL: http://govouve-api:8000
-      NEXT_PUBLIC_API_URL: http://localhost:8201
-    ports:
-      - "7401:3000"
-    depends_on:
-      govouve-api:
-        condition: service_healthy
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--no-verbose",
-          "--tries=1",
-          "--spider",
-          "http://127.0.0.1:3000",
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
-    networks:
-      - doe-network
-      - internal
-    restart: unless-stopped
-
-  govouve-web-public:
-    build:
-      context: ../modulo-govouve/web-public
-      dockerfile: Dockerfile
-    environment:
-      NODE_ENV: production
-      PORT: "3000"
-      NEXT_PUBLIC_API_URL: http://govouve-api:8000
-    ports:
-      - "7400:3000"
-    depends_on:
-      govouve-api:
-        condition: service_healthy
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--no-verbose",
-          "--tries=1",
-          "--spider",
-          "http://127.0.0.1:3000",
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 15s
-    networks:
-      - doe-network
-      - internal
     restart: unless-stopped
 
 networks:
@@ -566,6 +455,4 @@ volumes:
   chatgov_uploads:
     driver: local
   govtask_uploads:
-    driver: local
-  govouve_uploads:
     driver: local

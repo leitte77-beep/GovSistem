@@ -1,14 +1,16 @@
-import uuid
-import re
+import csv
+import io
 import logging
+import re
+import uuid
 from datetime import datetime, timezone
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import select, func
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, status
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel, EmailStr
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from pydantic import BaseModel
 
 from app.core.auth import get_client_info, get_current_platform_admin, get_current_user
 from app.core.config import settings
@@ -20,9 +22,68 @@ from app.models.module import Module
 from app.models.organization import Organization
 from app.models.user import User
 from app.models.user_module_grant import UserModuleGrant
-from app.schemas.schemas import PaginatedResponse, UserCreate, UserResponse, UserUpdate
+from app.schemas.schemas import (
+    PaginatedResponse,
+    UserCreate,
+    UserResponse,
+    UserUpdate,
+)
 
 logger = logging.getLogger("saas.users")
+
+
+def _send_welcome_email(user: User) -> None:
+    try:
+        import smtplib
+        from email.mime.multipart import MIMEMultipart
+        from email.mime.text import MIMEText
+
+        smtp_user = settings.SMTP_USER
+        smtp_password = settings.SMTP_PASSWORD.get_secret_value()
+        if not smtp_user or not smtp_password:
+            return
+
+        login_url = "https://admin.govsistem.com.br/login"
+
+        msg = MIMEMultipart("alternative")
+        msg["From"] = settings.SMTP_FROM or smtp_user
+        msg["To"] = user.email
+        msg["Subject"] = "GovSistem — Bem-vindo(a)!"
+
+        text = (
+            f"Ola {user.name},\n\n"
+            f"Sua conta no GovSistem foi criada com sucesso.\n\n"
+            f"Voce pode acessar o sistema em: {login_url}\n"
+            f"Email: {user.email}\n"
+            f"Solicite a redefinicao de senha no primeiro acesso.\n\n"
+            f"Atenciosamente,\nEquipe GovSistem"
+        )
+        html = (
+            f'<div style="font-family:Inter,sans-serif;max-width:480px;margin:0 auto;padding:24px">'
+            f'<h2 style="color:#004ac6">GovSistem</h2>'
+            f'<p>Ola, <strong>{user.name}</strong>!</p>'
+            f'<p>Sua conta foi criada com sucesso na plataforma GovSistem.</p>'
+            f'<p style="margin:24px 0">'
+            f'<a href="{login_url}" style="background:#004ac6;color:#fff;padding:12px 24px;'
+            f'border-radius:8px;text-decoration:none;font-weight:600">Acessar GovSistem</a>'
+            f'</p>'
+            f'<p style="color:#737686;font-size:12px">No primeiro acesso, use a opcao "Esqueci minha senha" '
+            f'para definir sua senha.</p>'
+            f'</div>'
+        )
+        msg.attach(MIMEText(text, "plain", "utf-8"))
+        msg.attach(MIMEText(html, "html", "utf-8"))
+
+        if settings.SMTP_USE_SSL:
+            server = smtplib.SMTP_SSL(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15)
+        else:
+            server = smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15)
+        server.login(smtp_user, smtp_password)
+        server.sendmail(smtp_user, [user.email], msg.as_string())
+        server.quit()
+        logger.info("Welcome email sent to %s", user.email)
+    except Exception as e:
+        logger.warning("Failed to send welcome email to %s: %s", user.email, e)
 
 
 def _clean_cpf(cpf: str) -> str:
@@ -108,6 +169,7 @@ async def _sync_user_to_modules(user: User, db: AsyncSession) -> None:
     module_configs = {
         "chatgov": settings.CHATGOV_MODULE_INTERNAL_API_URL,
         "diario": settings.DIARIO_MODULE_INTERNAL_API_URL,
+        "govavalia": settings.GOVAVALIA_MODULE_INTERNAL_API_URL,
     }
 
     for module_slug in module_slugs:
@@ -195,18 +257,16 @@ async def create_user(
     admin: User = Depends(get_current_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    existing = await db.execute(select(User).where(User.email == body.email))
+    existing = await db.execute(select(User).where(User.email == body.email, User.deleted_at.is_(None)))
     if existing.scalar_one_or_none():
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already in use")
 
     if body.cpf:
-        cleaned_cpf = _clean_cpf(body.cpf)
-        if await _check_cpf_exists(db, cleaned_cpf):
+        if await _check_cpf_exists(db, body.cpf):
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="CPF already registered")
-    else:
-        cleaned_cpf = None
 
     data = body.model_dump(exclude={"password"})
+    force_reset = data.pop("force_password_reset", True)
     module_perms = data.pop("module_permissions", None)
     if module_perms:
         data["module_permissions"] = {"modules": module_perms}
@@ -215,6 +275,7 @@ async def create_user(
         **data,
         password_hash=hash_password(body.password),
         password_changed_at=datetime.now(timezone.utc).replace(tzinfo=None),
+        force_password_reset=force_reset,
     )
     db.add(user)
 
@@ -234,6 +295,7 @@ async def create_user(
     await db.commit()
     await db.refresh(user)
     await _sync_user_to_modules(user, db)
+    _send_welcome_email(user)
     return user
 
 
@@ -253,6 +315,18 @@ async def update_user(
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     update_data = body.model_dump(exclude_unset=True)
+
+    if "email" in update_data and update_data["email"]:
+        existing = await db.execute(
+            select(User).where(
+                User.email == update_data["email"],
+                User.deleted_at.is_(None),
+                User.id != user_id,
+            )
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already in use")
+
     if "email" in update_data and not update_data["email"]:
         del update_data["email"]
     if "organization_id" in update_data:
@@ -265,15 +339,14 @@ async def update_user(
         update_data["module_permissions"] = {"modules": perms} if perms else None
     if "cpf" in update_data:
         if update_data["cpf"]:
-            cleaned_cpf = _clean_cpf(update_data["cpf"])
-            if await _check_cpf_exists(db, cleaned_cpf, exclude_id=user.id):
+            if await _check_cpf_exists(db, update_data["cpf"], exclude_id=user.id):
                 raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="CPF already registered")
-            update_data["cpf"] = cleaned_cpf
         else:
             update_data["cpf"] = None
     if "password" in update_data:
         update_data["password_hash"] = hash_password(update_data.pop("password"))
         update_data["password_changed_at"] = datetime.now(timezone.utc).replace(tzinfo=None)
+        update_data["force_password_reset"] = False
     for key, value in update_data.items():
         setattr(user, key, value)
 
@@ -337,6 +410,182 @@ async def delete_user(
     )
     db.add(audit)
     await db.commit()
+
+
+@router.patch("/{user_id}/restore", response_model=UserResponse)
+async def restore_user(
+    user_id: uuid.UUID,
+    request: Request,
+    admin: User = Depends(get_current_platform_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(User).where(User.id == user_id, User.deleted_at.isnot(None))
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Deleted user not found")
+
+    user.deleted_at = None
+    user.is_active = True
+
+    client_info = get_client_info(request)
+    audit = AuditEvent(
+        actor_id=admin.id,
+        actor_email=admin.email,
+        organization_id=user.organization_id,
+        action="restore",
+        resource_type="user",
+        resource_id=str(user.id),
+        details={"name": user.name, "email": user.email},
+        ip_address=client_info["ip_address"],
+        user_agent=client_info["user_agent"],
+    )
+    db.add(audit)
+    await db.commit()
+    await db.refresh(user)
+    return user
+
+
+@router.get("/export/csv")
+async def export_users_csv(
+    _: User = Depends(get_current_platform_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(User).where(User.deleted_at.is_(None)).order_by(User.name)
+    )
+    users = result.scalars().all()
+
+    output = io.StringIO(newline="")
+    writer = csv.writer(output, quoting=csv.QUOTE_ALL)
+    writer.writerow(["Nome", "Email", "CPF", "Telefone", "Orgao", "Ativo", "Funcao", "Admin Plataforma", "Admin Orgao", "Criado em"])
+    for u in users:
+        writer.writerow([
+            u.name, u.email, u.cpf or "", u.phone or "",
+            u.organization.name if u.organization else "",
+            "Sim" if u.is_active else "Nao",
+            u.platform_role or "",
+            "Sim" if u.is_platform_admin else "Nao",
+            "Sim" if u.is_organization_admin else "Nao",
+            u.created_at.strftime("%d/%m/%Y %H:%M") if u.created_at else "",
+        ])
+    output.seek(0)
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=usuarios.csv"},
+    )
+
+
+class UserImportRow(BaseModel):
+    name: str
+    email: EmailStr
+    password: str
+    cpf: str | None = None
+    phone: str | None = None
+    organization_id: str | None = None
+    platform_role: str | None = None
+
+
+class ImportResult(BaseModel):
+    created: int = 0
+    skipped: int = 0
+    errors: list[str] = []
+
+
+@router.post("/import/csv", response_model=ImportResult)
+async def import_users_csv(
+    file: UploadFile,
+    request: Request,
+    admin: User = Depends(get_current_platform_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    if not file.filename or not file.filename.lower().endswith(".csv"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File must be a CSV")
+
+    content = await file.read()
+    try:
+        text = content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="File must be UTF-8 encoded")
+
+    reader = csv.DictReader(io.StringIO(text))
+    result = ImportResult()
+    client_info = get_client_info(request)
+
+    for row_num, row in enumerate(reader, start=2):
+        try:
+            email = (row.get("email") or row.get("Email") or "").strip()
+            name = (row.get("name") or row.get("Nome") or "").strip()
+            password = (row.get("password") or row.get("Senha") or "").strip()
+            if not email or not name or not password:
+                result.skipped += 1
+                result.errors.append(f"Linha {row_num}: campos obrigatorios ausentes (nome, email, senha)")
+                continue
+
+            existing = await db.execute(
+                select(User).where(User.email == email, User.deleted_at.is_(None))
+            )
+            if existing.scalar_one_or_none():
+                result.skipped += 1
+                result.errors.append(f"Linha {row_num}: email '{email}' ja esta em uso")
+                continue
+
+            user = User(
+                name=name,
+                email=email,
+                password_hash=hash_password(password),
+                cpf=row.get("cpf") or row.get("CPF") or None,
+                phone=row.get("phone") or row.get("Telefone") or None,
+                platform_role=row.get("platform_role") or row.get("Funcao") or None,
+                password_changed_at=datetime.now(timezone.utc).replace(tzinfo=None),
+                force_password_reset=True,
+            )
+            db.add(user)
+            db.add(AuditEvent(
+                actor_id=admin.id,
+                actor_email=admin.email,
+                action="create",
+                resource_type="user",
+                resource_id=str(user.id),
+                details={"name": name, "email": email, "source": "csv_import"},
+                ip_address=client_info["ip_address"],
+                user_agent=client_info["user_agent"],
+            ))
+            result.created += 1
+        except Exception as e:
+            result.skipped += 1
+            result.errors.append(f"Linha {row_num}: {e}")
+
+    await db.commit()
+    return result
+
+
+@router.get("/{user_id}/history")
+async def get_user_history(
+    user_id: uuid.UUID,
+    _: User = Depends(get_current_platform_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(AuditEvent)
+        .where(AuditEvent.resource_id == str(user_id), AuditEvent.resource_type == "user")
+        .order_by(desc(AuditEvent.created_at))
+        .limit(100)
+    )
+    events = result.scalars().all()
+    return [
+        {
+            "id": str(e.id),
+            "action": e.action,
+            "actor_email": e.actor_email,
+            "details": e.details,
+            "ip_address": e.ip_address,
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+        }
+        for e in events
+    ]
 
 
 # ---------------------------------------------------------------------------

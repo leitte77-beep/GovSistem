@@ -1,0 +1,159 @@
+openapi: 3.0.3
+info:
+  title: govavalia — Pesquisa de satisfação e Ouvidoria
+  version: "1.0.0"
+  description: >
+    Módulo de avaliação de serviços de saúde e ouvidoria municipal.
+    Pesquisa é anônima. Ouvidoria segue a Lei 13.460/2017. Erros no padrão
+    RFC 9457 (application/problem+json).
+servers:
+  - url: https://www.govsistem.com.br/avalia
+    description: Tela pública (tablets)
+  - url: https://avalia.govsistem.com.br
+    description: Painel da equipe (admin)
+tags:
+  - name: publico
+  - name: admin
+paths:
+  /api/v1/config:
+    get:
+      tags: [publico]
+      summary: Configuração para a tela pública (unidades, perguntas, escala, tipos)
+      responses:
+        "200": { description: OK }
+  /api/v1/avaliacoes:
+    post:
+      tags: [publico]
+      summary: Registrar avaliação (anônima)
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          schema: { type: string }
+          required: false
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                unidadeId: { type: string, format: uuid, nullable: true }
+                respostas:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      codigo: { type: string }
+                      nota: { type: integer, minimum: 1, maximum: 5 }
+      responses:
+        "201": { description: Criada }
+        "422": { description: Dados inválidos (Problem Details) }
+        "429": { description: Excesso de requisições }
+  /api/v1/manifestacoes:
+    post:
+      tags: [publico]
+      summary: Registrar manifestação da ouvidoria
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tipo, mensagem]
+              properties:
+                tipo: { type: string, enum: [elogio, reclamacao, sugestao, solicitacao, denuncia] }
+                mensagem: { type: string, maxLength: 5000 }
+                anonimo: { type: boolean, default: true }
+                contato: { type: string, nullable: true }
+                unidadeId: { type: string, format: uuid, nullable: true }
+      responses:
+        "201": { description: Criada, retorna protocolo }
+        "422": { description: Dados inválidos }
+  /api/v1/manifestacoes/{protocolo}/status:
+    get:
+      tags: [publico]
+      summary: Consulta pública de andamento (sem dado pessoal)
+      parameters:
+        - in: path
+          name: protocolo
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: OK }
+        "404": { description: Não encontrado }
+  /api/v1/admin/resumo:
+    get:
+      tags: [admin]
+      summary: Resumo agregado da pesquisa (perfil gestor ou ouvidoria)
+      security: [{ sessao: [] }]
+      parameters:
+        - { in: query, name: de, schema: { type: string, format: date-time } }
+        - { in: query, name: ate, schema: { type: string, format: date-time } }
+        - { in: query, name: unidadeId, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: OK }
+        "401": { description: Não autenticado }
+        "403": { description: Sem permissão }
+  /api/v1/admin/manifestacoes:
+    get:
+      tags: [admin]
+      summary: Lista de manifestações (perfil ouvidoria; cada leitura é auditada)
+      security: [{ sessao: [] }]
+      parameters:
+        - { in: query, name: tipo, schema: { type: string } }
+        - { in: query, name: status, schema: { type: string } }
+        - { in: query, name: pagina, schema: { type: integer } }
+        - { in: query, name: limite, schema: { type: integer } }
+      responses:
+        "200": { description: OK }
+  /api/v1/admin/manifestacoes/{id}:
+    get:
+      tags: [admin]
+      security: [{ sessao: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      responses: { "200": { description: OK }, "404": { description: Não encontrada } }
+    patch:
+      tags: [admin]
+      summary: Atualiza situação/resposta
+      security: [{ sessao: [] }]
+      parameters: [{ in: path, name: id, required: true, schema: { type: string, format: uuid } }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { type: string, enum: [recebida, em_analise, respondida, concluida] }
+                resposta: { type: string }
+      responses: { "200": { description: OK } }
+  /api/v1/admin/export/avaliacoes.csv:
+    get:
+      tags: [admin]
+      security: [{ sessao: [] }]
+      responses: { "200": { description: CSV } }
+  /api/v1/admin/export/manifestacoes.csv:
+    get:
+      tags: [admin]
+      summary: Exporta manifestações (contém dado pessoal; sempre auditado)
+      security: [{ sessao: [] }]
+      responses: { "200": { description: CSV } }
+  /api/v1/admin/perguntas:
+    get:
+      tags: [admin]
+      security: [{ sessao: [] }]
+      responses: { "200": { description: OK } }
+    post:
+      tags: [admin]
+      security: [{ sessao: [] }]
+      responses: { "201": { description: Criada }, "409": { description: Código já existe } }
+components:
+  securitySchemes:
+    sessao:
+      type: apiKey
+      in: cookie
+      name: connect.sid
+      description: Sessão de login do sistema principal (reaproveitada).

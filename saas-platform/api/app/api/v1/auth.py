@@ -57,11 +57,11 @@ async def login(
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
-        select(User).where(User.email == body.email)
+        select(User).where(User.email == body.email, User.deleted_at.is_(None))
     )
     user = result.scalar_one_or_none()
 
-    if not user or user.deleted_at is not None:
+    if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="E-mail ou senha inválidos",
@@ -131,6 +131,7 @@ async def login(
         access_token=access_token,
         refresh_token=refresh_token,
         expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        force_password_reset=user.force_password_reset if hasattr(user, 'force_password_reset') else False,
     )
 
 
@@ -283,6 +284,7 @@ async def change_password(
     user.password_changed_at = datetime.now(timezone.utc).replace(tzinfo=None)
     user.password_failures = 0
     user.locked_until = None
+    user.force_password_reset = False
 
     client_info = get_client_info(request)
     audit = AuditEvent(
@@ -575,7 +577,7 @@ async def get_module_access(
         except Exception as e:
             logger.warning("Failed to sync with govtask module: %s", e)
 
-    if module.slug == "govouve" and settings.GOUVOVE_MODULE_INTERNAL_API_URL:
+    if module.slug == "govavalia" and settings.GOVAVALIA_MODULE_INTERNAL_API_URL:
         user_payload = {
             "user_id": str(user.id),
             "organization_id": str(org_id),
@@ -608,7 +610,7 @@ async def get_module_access(
                 headers = {"X-Internal-Key": settings.INTERNAL_API_KEY.get_secret_value()}
                 if sync_org_payload:
                     org_res = await client.post(
-                        f"{settings.GOUVOVE_MODULE_INTERNAL_API_URL}/internal/sync-organization",
+                        f"{settings.GOVAVALIA_MODULE_INTERNAL_API_URL}/internal/sync-organization",
                         json=sync_org_payload,
                         headers=headers,
                     )
@@ -616,20 +618,22 @@ async def get_module_access(
                     module_org_id = uuid.UUID(org_res.json()["organization_id"])
                     user_payload["organization_id"] = str(module_org_id)
                 user_res = await client.post(
-                    f"{settings.GOUVOVE_MODULE_INTERNAL_API_URL}/internal/sync-user",
+                    f"{settings.GOVAVALIA_MODULE_INTERNAL_API_URL}/internal/sync-user",
                     json=user_payload,
                     headers=headers,
                 )
                 user_res.raise_for_status()
                 module_user_id = uuid.UUID(user_res.json()["user_id"])
         except Exception as e:
-            logger.warning("Failed to sync with govouve module: %s", e)
+            logger.warning("Failed to sync with govavalia module: %s", e)
 
     module_token = create_module_token(
         user_id=module_user_id,
         organization_id=module_org_id,
         roles=roles,
         module_slug=module.slug,
+        name=user.name,
+        email=user.email,
     )
 
     module_url = module.admin_url or module.base_url
@@ -639,9 +643,8 @@ async def get_module_access(
         module_url = settings.CHATGOV_MODULE_ADMIN_URL
     elif module.slug == "govtask" and settings.GOVTASK_MODULE_ADMIN_URL:
         module_url = settings.GOVTASK_MODULE_ADMIN_URL
-    elif module.slug == "govouve" and settings.GOUVOVE_MODULE_ADMIN_URL:
-        module_url = settings.GOUVOVE_MODULE_ADMIN_URL
-
+    elif module.slug == "govavalia" and settings.GOVAVALIA_MODULE_ADMIN_URL:
+        module_url = settings.GOVAVALIA_MODULE_ADMIN_URL
     return ModuleTokenResponse(
         module_token=module_token,
         module_url=module_url,
@@ -766,6 +769,7 @@ async def reset_password(
     matched_user.password_failures = 0
     matched_user.locked_until = None
     matched_user.password_changed_at = datetime.now(timezone.utc)
+    matched_user.force_password_reset = False
     await db.commit()
 
     return MessageResponse(message="Senha redefinida com sucesso.")

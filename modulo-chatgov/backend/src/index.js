@@ -610,7 +610,17 @@ app.use('/api', rateLimiter);
             `UPDATE conversas SET ultima_mensagem = $1, ultima_mensagem_em = now() WHERE id = $2`,
             [mensagem.trim(), conversa.id]
           );
+          // Salva o JID resolvido como alias (não bloqueia o fluxo se falhar)
+          if (result?.key?.remoteJid && result.key.remoteJid !== jid) {
+            db.none(
+              `INSERT INTO contato_aliases (tenant_id, contato_id, alias_jid)
+               VALUES ($1, $2, $3)
+               ON CONFLICT (tenant_id, alias_jid) DO NOTHING`,
+              [op.tenantId, contato.id, result.key.remoteJid]
+            ).catch(() => {});
+          }
         } catch (waErr) {
+          console.error('[API] wa.sendText falhou:', waErr.message);
           return res.status(502).json({ erro: 'Conversa criada, mas o WhatsApp não está conectado para enviar a mensagem', conversa });
         }
       }
@@ -973,6 +983,21 @@ app.use('/api', rateLimiter);
       res.json(row);
     } catch (err) {
       res.status(500).json({ erro: 'Erro ao atualizar contato' });
+    }
+  });
+
+  app.delete('/api/contatos/:id', async (req, res) => {
+    try {
+      const op = req.operador;
+      const row = await db.oneOrNone(
+        `DELETE FROM contatos WHERE id = $1 AND tenant_id = $2 RETURNING id, nome, telefone`,
+        [req.params.id, op.tenantId]
+      );
+      if (!row) return res.status(404).json({ erro: 'Contato não encontrado' });
+      res.json({ ok: true, id: row.id });
+    } catch (err) {
+      console.error('[chatgov] Erro ao excluir contato:', err.message);
+      res.status(500).json({ erro: 'Erro ao excluir contato' });
     }
   });
 

@@ -44,6 +44,7 @@ export function PainelChatInternoAvancado({ canal }) {
   const [showEmoji, setShowEmoji] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [enviando, setEnviando] = useState(false);
   const [anexoPreview, setAnexoPreview] = useState(null);
   const [anexosMultiplos, setAnexosMultiplos] = useState([]); // upload múltiplo
   const [digitando, setDigitando] = useState([]);
@@ -460,6 +461,7 @@ export function PainelChatInternoAvancado({ canal }) {
 
   const enviar = async (e) => {
     e?.preventDefault();
+    if (enviando) return;
     const txt = texto.trim();
     const temAnexos = anexosMultiplos.length > 0 || anexoPreview;
     if ((!txt && !temAnexos && !audioBlob) || !canal) return;
@@ -470,6 +472,7 @@ export function PainelChatInternoAvancado({ canal }) {
       });
       return;
     }
+    setEnviando(true);
 
     // Coleta todos os anexos
     const todosAnexos = anexoPreview ? [anexoPreview, ...anexosMultiplos] : anexosMultiplos;
@@ -531,6 +534,7 @@ export function PainelChatInternoAvancado({ canal }) {
     setRespondendoA(null);
     setAnexoPreview(null);
     setAnexosMultiplos([]);
+    setEnviando(false);
   };
 
   const handleTeclaInput = (e) => {

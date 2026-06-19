@@ -110,3 +110,23 @@ chatgov-build:
 
 chatgov-dev:
 	cd modulo-chatgov/backend && npm install && node src/migrations/run.js && node src/index.js
+
+# ── GovAvalia ───────────────────────────────────────────────────────────────────
+
+govavalia-up:
+	docker compose -f infra/docker-compose.yml up -d --build govavalia
+
+govavalia-down:
+	docker compose -f infra/docker-compose.yml rm -sf govavalia
+
+govavalia-build:
+	docker compose -f infra/docker-compose.yml build govavalia
+
+govavalia-logs:
+	docker compose -f infra/docker-compose.yml logs -f govavalia
+
+govavalia-dev:
+	cd modulo-govavalia && npm install && npm run migrate && npm start
+
+govavalia-migrate:
+	docker compose -f infra/docker-compose.yml exec govavalia node scripts/migrate.js

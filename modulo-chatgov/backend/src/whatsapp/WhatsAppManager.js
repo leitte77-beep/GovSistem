@@ -195,11 +195,10 @@ export class WhatsAppManager extends EventEmitter {
 
       if (statusCode === DisconnectReason.loggedOut) {
         console.log(`[WA] Logged out for tenant ${tenantId}`);
-        await db.none(
-          `UPDATE whatsapp_sessoes SET status = 'desconectado', creds = NULL, keys = NULL, numero = NULL, atualizado_em = now()
-           WHERE tenant_id = $1`,
-          [tenantId]
-        );
+        // Fecha o socket de fato para evitar sockets zumbis
+        try { sock.ws?.close(); } catch {}
+        try { sock.end(); } catch {}
+        await this._limparCredenciais(tenantId);
         this._cancelReconnect(tenantId);
         this._reconnectAttempts.delete(tenantId);
         this.sessions.delete(tenantId);
@@ -309,8 +308,10 @@ export class WhatsAppManager extends EventEmitter {
         this._lastSendTs.set(tenantId, Date.now());
       }
     });
-    // A cadeia continua mesmo se este envio falhar (catch só para manter o encadeamento).
-    this._sendQueues.set(tenantId, run.catch(() => {}));
+    // A cadeia continua mesmo se este envio falhar.
+    this._sendQueues.set(tenantId, run.catch((err) => {
+      console.error(`[WA] _enqueueSend falhou (tenant=${tenantId}):`, err.message);
+    }));
     return run;
   }
 
@@ -362,27 +363,34 @@ export class WhatsAppManager extends EventEmitter {
   async _resolveRecipientJid(tenantId, sock, jid) {
     const raw = String(jid || '').trim();
 
-    if (raw.endsWith('@s.whatsapp.net') || raw.endsWith('@lid') || raw.endsWith('@g.us') || raw.endsWith('@broadcast')) {
-      return raw;
-    }
+    if (!raw) throw new Error('Destinatário WhatsApp inválido');
 
-    const number = raw.split('@')[0]?.replace(/\D/g, '');
-    if (!number) {
+    // Groups and broadcasts — no onWhatsApp needed
+    if (raw.endsWith('@g.us') || raw.endsWith('@broadcast')) return raw;
+
+    // @lid — already resolved by a previous onWhatsApp call
+    if (raw.endsWith('@lid')) return raw;
+
+    // Extract number portion for cache key
+    const number = raw.endsWith('@s.whatsapp.net')
+      ? raw.split('@')[0]
+      : raw.replace(/\D/g, '');
+    if (!number || number.length < 7) {
       throw new Error('Destinatário WhatsApp inválido');
     }
 
-    // Cache por tenant+número (TTL).
+    // Cache check — avoids repeated onWhatsApp calls
     const cacheKey = `${tenantId}:${number}`;
     const cached = this._jidCache.get(cacheKey);
     if (cached && cached.expira > Date.now()) {
       return cached.jid;
     }
 
-    const lookupTarget = `${number}@s.whatsapp.net`;
     if (typeof sock.onWhatsApp !== 'function') {
-      return lookupTarget;
+      return raw.endsWith('@s.whatsapp.net') ? raw : `${number}@s.whatsapp.net`;
     }
 
+    const lookupTarget = `${number}@s.whatsapp.net`;
     const [match] = await sock.onWhatsApp(lookupTarget);
     if (WA_DEBUG) {
       console.log(`[WA] onWhatsApp target=${lookupTarget} exists=${match?.exists === true} jid=${match?.jid || '-'}`);
@@ -390,6 +398,7 @@ export class WhatsAppManager extends EventEmitter {
     if (!match?.exists) {
       throw new Error(`Número ${number} não encontrado no WhatsApp`);
     }
+    // Canonical JID from WhatsApp — corrects 9th digit, device suffix, etc.
     const resolvido = match.jid || lookupTarget;
     this._jidCache.set(cacheKey, { jid: resolvido, expira: Date.now() + JID_CACHE_TTL_MS });
     return resolvido;
@@ -469,13 +478,23 @@ export class WhatsAppManager extends EventEmitter {
     } catch (err) {
       console.error(`[WA] Logout error for tenant ${tenantId}:`, err.message);
     }
+    await this._limparCredenciais(tenantId);
+    this.sessions.delete(tenantId);
+    this.emit('logout', { tenantId });
+  }
+
+  // Zera as credenciais E apaga as sessões Signal por contato (whatsapp_keys).
+  // Sem limpar whatsapp_keys, um re-pareamento (QR novo = identidade nova) reaproveita
+  // sessões antigas e o destinatário fica preso em "Aguardando mensagem".
+  async _limparCredenciais(tenantId) {
     await db.none(
       `UPDATE whatsapp_sessoes SET status = 'desconectado', creds = NULL, keys = NULL, numero = NULL, atualizado_em = now()
        WHERE tenant_id = $1`,
       [tenantId]
     );
-    this.sessions.delete(tenantId);
-    this.emit('logout', { tenantId });
+    await db.none('DELETE FROM whatsapp_keys WHERE tenant_id = $1', [tenantId]).catch((err) =>
+      console.error(`[WA] Falha ao limpar whatsapp_keys (tenant=${tenantId}):`, err.message)
+    );
   }
 
   async _cleanupSession(tenantId) {

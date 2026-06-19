@@ -151,9 +151,13 @@ async function obterJidDaConversa(tenantId, convId, jidInformado) {
 }
 
 async function atualizarContatoDaConversaComJidResolvido(tenantId, convId, resolvedJid) {
-  if (!resolvedJid || !resolvedJid.includes('@s.whatsapp.net')) return;
-  const digits = resolvedJid.split('@')[0]?.replace(/\D/g, '');
-  if (!digits) return;
+  if (!resolvedJid) return;
+  const isLid = resolvedJid.endsWith('@lid');
+  const isSnet = resolvedJid.includes('@s.whatsapp.net');
+  if (!isLid && !isSnet) return;
+
+  const digits = isSnet ? resolvedJid.split('@')[0]?.replace(/\D/g, '') : null;
+
   const contato = await db.oneOrNone(
     `SELECT co.id, co.wa_jid
      FROM conversas c
@@ -161,7 +165,21 @@ async function atualizarContatoDaConversaComJidResolvido(tenantId, convId, resol
      WHERE c.id = $1 AND c.tenant_id = $2`,
     [convId, tenantId]
   );
-  if (!contato || contato.wa_jid === resolvedJid) return;
+  if (!contato) return;
+
+  if (isLid) {
+    // Salva @lid como alias para envios futuros (obterJidDaConversa prefere @lid)
+    await db.none(
+      `INSERT INTO contato_aliases (tenant_id, contato_id, alias_jid)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (tenant_id, alias_jid) DO NOTHING`,
+      [tenantId, contato.id, resolvedJid]
+    );
+    return;
+  }
+
+  // @s.whatsapp.net — atualiza wa_jid e telefone
+  if (contato.wa_jid === resolvedJid) return;
 
   const outro = await db.oneOrNone(
     'SELECT id FROM contatos WHERE tenant_id = $1 AND wa_jid = $2 AND id <> $3',
@@ -169,10 +187,12 @@ async function atualizarContatoDaConversaComJidResolvido(tenantId, convId, resol
   );
   if (outro) return;
 
-  await db.none(
-    'UPDATE contatos SET wa_jid = $1, telefone = $2 WHERE id = $3 AND tenant_id = $4',
-    [resolvedJid, digits, contato.id, tenantId]
-  );
+  if (digits) {
+    await db.none(
+      'UPDATE contatos SET wa_jid = $1, telefone = $2 WHERE id = $3 AND tenant_id = $4',
+      [resolvedJid, digits, contato.id, tenantId]
+    );
+  }
 }
 
 // Mesmo critério de visibilidade do index.js (privacidade de conversas).
