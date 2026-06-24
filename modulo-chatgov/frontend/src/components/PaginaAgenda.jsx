@@ -99,7 +99,15 @@ export function PaginaAgenda({ onSendMessage }) {
     { key: 'grupos', label: 'Grupos' },
   ];
 
-  const contatosExibidos = contatos;
+  // Ordem alfabética pt-BR (ignora acento/maiúscula); contatos sem nome ao fim.
+  const contatosExibidos = [...contatos].sort((a, b) => {
+    const na = (a.nome || '').trim();
+    const nb = (b.nome || '').trim();
+    if (!na && !nb) return (a.telefone || '').localeCompare(b.telefone || '');
+    if (!na) return 1;
+    if (!nb) return -1;
+    return na.localeCompare(nb, 'pt-BR', { sensitivity: 'base' });
+  });
 
   return React.createElement('div', { style: sf.container },
     /* ── HEADER ── */

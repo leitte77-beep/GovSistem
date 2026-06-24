@@ -963,7 +963,9 @@ app.use('/api', rateLimiter);
         query += ` AND (nome ILIKE $2 OR telefone ILIKE $2)`;
         params.push(`%${busca}%`);
       }
-      query += ` ORDER BY COALESCE(nome, telefone) ASC LIMIT 200`;
+      // Ordem alfabética: contatos com nome primeiro (case-insensitive),
+      // os sem nome (só número) vão para o fim, ordenados pelo telefone.
+      query += ` ORDER BY (nome IS NULL OR btrim(nome) = '') ASC, lower(nome) ASC, telefone ASC LIMIT 200`;
       const lista = await db.manyOrNone(query, params);
       res.json(lista);
     } catch (err) {

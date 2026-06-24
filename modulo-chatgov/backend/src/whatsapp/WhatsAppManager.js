@@ -13,6 +13,9 @@ const RECONNECT_MAX_ATTEMPTS = 12;
 const JID_CACHE_TTL_MS = 5 * 60 * 1000;
 // Anti-ban: intervalo mínimo entre envios da mesma sessão.
 const SEND_MIN_INTERVAL_MS = Number(process.env.WA_SEND_MIN_INTERVAL_MS || 350);
+// Cache em memória do conteúdo das mensagens enviadas (id -> proto.IMessage),
+// usado pelo getMessage do Baileys para reenviar quando o destinatário pede retry.
+const SENT_MSG_CACHE_MAX = Number(process.env.WA_SENT_CACHE_MAX || 2000);
 // Healthcheck: verifica periodicamente se sockets "conectados" continuam vivos.
 const HEALTHCHECK_INTERVAL_MS = 60 * 1000;
 // Logs verbosos por mensagem só quando WA_DEBUG=1.
@@ -34,6 +37,9 @@ export class WhatsAppManager extends EventEmitter {
     // Fila/throttle de envio, por tenant.
     this._sendQueues = new Map();
     this._lastSendTs = new Map();
+    // Conteúdo das mensagens enviadas recentemente (id -> proto.IMessage), para
+    // o getMessage do Baileys reenviar em caso de retry do destinatário.
+    this._sentMessages = new Map();
     this._cachedVersion = null;
     this._startHealthcheck();
   }
@@ -110,6 +116,12 @@ export class WhatsAppManager extends EventEmitter {
           creds: state.creds,
           keys: makeCacheableSignalKeyStore(state.keys, this.logger),
         },
+        // Sem getMessage, quando o aparelho do destinatário não decodifica a 1ª
+        // mensagem (sessão Signal nova) e pede reenvio (retry receipt), o Baileys
+        // não consegue recriar o conteúdo para recriptografar — e o cidadão fica
+        // preso em "Aguardando mensagem". Devolve o conteúdo original (cache em
+        // memória, com fallback de texto no banco) para o reenvio funcionar.
+        getMessage: async (key) => this._recuperarMensagemParaReenvio(tenantId, key),
       });
 
       sock.ev.on('creds.update', saveCreds);
@@ -315,12 +327,48 @@ export class WhatsAppManager extends EventEmitter {
     return run;
   }
 
+  // Guarda o conteúdo (proto.IMessage) de uma mensagem enviada para que o
+  // getMessage consiga reenviá-la se o destinatário pedir retry. FIFO limitado
+  // para não vazar memória.
+  _guardarMensagemEnviada(result) {
+    const id = result?.key?.id;
+    if (!id || !result.message) return;
+    this._sentMessages.set(id, result.message);
+    if (this._sentMessages.size > SENT_MSG_CACHE_MAX) {
+      const maisAntigo = this._sentMessages.keys().next().value;
+      this._sentMessages.delete(maisAntigo);
+    }
+  }
+
+  // Callback exigido pelo Baileys para reenvio (retry receipt). Devolve o
+  // conteúdo original da mensagem: cache em memória primeiro; se não houver
+  // (ex.: após restart), reconstrói o texto a partir do banco.
+  async _recuperarMensagemParaReenvio(tenantId, key) {
+    const id = key?.id;
+    if (!id) return undefined;
+    const cached = this._sentMessages.get(id);
+    if (cached) return cached;
+    try {
+      const row = await db.oneOrNone(
+        `SELECT conteudo FROM mensagens
+         WHERE wa_message_id = $1 AND tenant_id = $2 AND direcao = 'saida'
+         LIMIT 1`,
+        [id, tenantId]
+      );
+      if (row?.conteudo) return { conversation: row.conteudo };
+    } catch (err) {
+      console.error(`[WA] getMessage fallback falhou (tenant=${tenantId}):`, err.message);
+    }
+    return undefined;
+  }
+
   async sendText(tenantId, jid, texto) {
     const { sock } = this._getSession(tenantId);
     return this._enqueueSend(tenantId, async () => {
       try {
         const destino = await this._resolveRecipientJid(tenantId, sock, jid);
         const result = await this._comRetry(() => sock.sendMessage(destino, { text: texto }));
+        this._guardarMensagemEnviada(result);
         return result;
       } catch (err) {
         if (err.message?.includes('not connected')) {
@@ -336,7 +384,9 @@ export class WhatsAppManager extends EventEmitter {
     return this._enqueueSend(tenantId, async () => {
       const destino = await this._resolveRecipientJid(tenantId, sock, jid);
       const payload = this._buildMediaPayload(tipo, buffer, mimetype, fileName, caption);
-      return this._comRetry(() => sock.sendMessage(destino, payload));
+      const result = await this._comRetry(() => sock.sendMessage(destino, payload));
+      this._guardarMensagemEnviada(result);
+      return result;
     });
   }
 
@@ -393,13 +443,18 @@ export class WhatsAppManager extends EventEmitter {
     const lookupTarget = `${number}@s.whatsapp.net`;
     const [match] = await sock.onWhatsApp(lookupTarget);
     if (WA_DEBUG) {
-      console.log(`[WA] onWhatsApp target=${lookupTarget} exists=${match?.exists === true} jid=${match?.jid || '-'}`);
+      console.log(`[WA] onWhatsApp target=${lookupTarget} exists=${match?.exists === true} jid=${match?.jid || '-'} lid=${match?.lid || '-'}`);
     }
     if (!match?.exists) {
       throw new Error(`Número ${number} não encontrado no WhatsApp`);
     }
+    // WhatsApp migrou contas para endereçamento LID. Quando o contato tem @lid, é
+    // nesse endereço que a sessão Signal dele opera — enviar a 1ª mensagem ao PN
+    // (@s.whatsapp.net) gera mensagem que o aparelho não decifra e o cidadão fica
+    // preso em "Aguardando mensagem". Prefere o @lid sempre que o servidor o informar.
+    const lid = typeof match.lid === 'string' && match.lid.endsWith('@lid') ? match.lid : null;
     // Canonical JID from WhatsApp — corrects 9th digit, device suffix, etc.
-    const resolvido = match.jid || lookupTarget;
+    const resolvido = lid || match.jid || lookupTarget;
     this._jidCache.set(cacheKey, { jid: resolvido, expira: Date.now() + JID_CACHE_TTL_MS });
     return resolvido;
   }

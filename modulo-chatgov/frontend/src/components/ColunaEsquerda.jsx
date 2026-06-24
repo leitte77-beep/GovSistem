@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Plus, Users, MessageSquarePlus } from 'lucide-react';
 import { Chip } from './Chip';
 import { ItemConversa } from './ItemConversa';
@@ -66,6 +66,19 @@ export function ColunaEsquerda({
     finally { setCarregando(false); }
   }, [filtro, busca, op?.id]);
 
+  // Debounce do recarregamento: o backend dispara 'conversa:atualizada' a cada
+  // mudança de status (tique entregue/lido) de qualquer mensagem do tenant. Sem
+  // coalescer, isso gera uma enxurrada de GET /api/conversas e estoura o rate
+  // limit do nginx (503). Juntamos eventos rápidos numa única busca.
+  const carregarConversasRef = useRef(carregarConversas);
+  useEffect(() => { carregarConversasRef.current = carregarConversas; }, [carregarConversas]);
+  const debounceRef = useRef(null);
+  const carregarConversasDebounced = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => { carregarConversasRef.current?.(); }, 1500);
+  }, []);
+  useEffect(() => () => { if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
+
   const carregarCanais = useCallback(async () => {
     try { setCanais(await fetchCanaisInternos()); } catch (err) { console.error(err); }
   }, []);
@@ -91,7 +104,7 @@ export function ColunaEsquerda({
 
   useEffect(() => {
     if (!socket) return;
-    const onAtualizada = () => { if (ehAtend) carregarConversas(); };
+    const onAtualizada = () => { if (ehAtend) carregarConversasDebounced(); };
     const onRemovida = ({ convId }) => {
       if (ehAtend) {
         setConversas((prev) => prev.filter((c) => c.id !== convId));
@@ -116,7 +129,7 @@ export function ColunaEsquerda({
       socket.off('whatsapp:falha', onFalha);
       socket.off('interno:nova', onInterno);
     };
-  }, [socket, carregarConversas, carregarCanais, ehAtend, conversaAtivaId, onSelectConversa]);
+  }, [socket, carregarConversasDebounced, carregarCanais, ehAtend, conversaAtivaId, onSelectConversa]);
 
   const criarDM = async (opId) => {
     try {
@@ -170,9 +183,9 @@ export function ColunaEsquerda({
         ),
         React.createElement('div', { style: { lineHeight: 1.2, minWidth: 0, flex: 1 } },
           React.createElement('p', {
-            title: perfil?.nome || op?.nome || '',
+            title: perfil?.nome || '',
             style: { fontSize: 14, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-          }, perfil?.nome || op?.nome || 'Carregando...'),
+          }, perfil?.nome || 'Carregando...'),
           React.createElement('p', { style: { fontSize: 11, color: T.textMuted, textTransform: 'capitalize' } }, perfil?.papel || op?.papel || 'operador'),
         ),
       ),
