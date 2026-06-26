@@ -1,7 +1,7 @@
 import { mkdirSync } from 'fs';
 import { join } from 'path';
 import { randomBytes } from 'crypto';
-import { writeFile, readFile } from 'fs/promises';
+import { writeFile, readFile, unlink } from 'fs/promises';
 import { existsSync } from 'fs';
 import { config } from '../config.js';
 
@@ -28,6 +28,21 @@ export class LocalStorage {
     const filepath = join(UPLOADS_DIR, relative);
     if (!existsSync(filepath)) return null;
     return readFile(filepath);
+  }
+
+  // Remove permanentemente o arquivo físico. Best-effort: não lança, só registra.
+  async excluir(url, tenantId) {
+    try {
+      if (!url || !url.startsWith('/media/')) return false;
+      const relative = url.replace('/media/', '');
+      const filepath = join(UPLOADS_DIR, relative);
+      if (!existsSync(filepath)) return false;
+      await unlink(filepath);
+      return true;
+    } catch (err) {
+      console.error('[LocalStorage] Falha ao excluir arquivo:', err.message);
+      return false;
+    }
   }
 }
 
@@ -92,6 +107,24 @@ class S3Storage {
     }
     return Buffer.concat(chunks);
   }
+
+  // Remove permanentemente o objeto do bucket. Best-effort: não lança, só registra.
+  async excluir(url, tenantId) {
+    try {
+      const { DeleteObjectCommand } = await import('@aws-sdk/client-s3');
+      const key = url.split('/').slice(-3).join('/');
+      if (!key.startsWith('tenants/')) return false;
+      const client = await this._ensureClient();
+      await client.send(new DeleteObjectCommand({
+        Bucket: config.s3Bucket,
+        Key: key,
+      }));
+      return true;
+    } catch (err) {
+      console.error('[S3Storage] Falha ao excluir arquivo:', err.message);
+      return false;
+    }
+  }
 }
 
 function mimeToExt(mime) {
@@ -102,6 +135,7 @@ function mimeToExt(mime) {
     'image/webp': 'webp',
     'video/mp4': 'mp4',
     'audio/ogg': 'ogg',
+    'audio/webm': 'webm',
     'audio/mp4': 'm4a',
     'audio/mpeg': 'mp3',
     'application/pdf': 'pdf',

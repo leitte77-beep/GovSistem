@@ -23,6 +23,7 @@ import {
 import { registrarRespostaNPS, calcularNPS, npsPorSetor, npsPorAtendente } from './services/nps.js';
 import rotasEvolucoes from './routes/evolucoes.js';
 import { iniciarLimpezaConversas } from './services/limpeza-conversas.js';
+import { excluirMidiaDaConversa } from './services/midia-conversas.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -41,16 +42,17 @@ function filtroVisibilidadeSql(alias, opIdParam) {
       ${alias}.departamento_id IS NULL
       OR EXISTS (
         SELECT 1 FROM operador_departamentos od
+        JOIN departamentos d ON d.id = od.departamento_id AND d.ativo = true
         WHERE od.operador_id = ${opIdParam} AND od.departamento_id = ${alias}.departamento_id
       )
       OR (
         EXISTS (
-          SELECT 1 FROM departamentos dd WHERE dd.id = ${alias}.departamento_id AND LOWER(dd.nome) = 'recepção'
+          SELECT 1 FROM departamentos dd WHERE dd.id = ${alias}.departamento_id AND LOWER(dd.nome) = 'recepcao' AND dd.ativo = true
         )
         AND EXISTS (
           SELECT 1 FROM operador_departamentos od
-          JOIN departamentos d ON d.id = od.departamento_id
-          WHERE od.operador_id = ${opIdParam} AND LOWER(d.nome) = 'recepção'
+          JOIN departamentos d ON d.id = od.departamento_id AND d.ativo = true
+          WHERE od.operador_id = ${opIdParam} AND LOWER(d.nome) = 'recepcao'
         )
       )
     ))
@@ -171,21 +173,26 @@ app.post('/api/internal/sync-organization', async (req, res) => {
       );
     }
 
-    const depExists = await db.oneOrNone(
-      'SELECT id, secretaria_id FROM departamentos WHERE tenant_id = $1 AND nome = $2',
-      [organization_id, 'Geral']
+    const depGeral = await db.oneOrNone(
+      "SELECT id, secretaria_id, ativo FROM departamentos WHERE tenant_id = $1 AND nome = 'Geral' ORDER BY ativo DESC, criado_em DESC LIMIT 1",
+      [organization_id]
     );
-    if (!depExists) {
+    if (!depGeral) {
       await db.none(
         "INSERT INTO departamentos (tenant_id, nome, cor, secretaria_id) VALUES ($1, 'Geral', '#2563EB', $2)",
         [organization_id, secGeral.id]
       );
-    } else if (!depExists.secretaria_id) {
-      await db.none('UPDATE departamentos SET secretaria_id = $1 WHERE id = $2', [secGeral.id, depExists.id]);
+    } else {
+      const updates = [];
+      if (!depGeral.ativo) updates.push('ativo = true');
+      if (!depGeral.secretaria_id) updates.push(`secretaria_id = '${secGeral.id}'`);
+      if (updates.length > 0) {
+        await db.none(`UPDATE departamentos SET ${updates.join(', ')} WHERE id = $1`, [depGeral.id]);
+      }
     }
 
     const depRecepcao = await db.oneOrNone(
-      "SELECT id FROM departamentos WHERE tenant_id = $1 AND LOWER(nome) = 'recepção'",
+      "SELECT id FROM departamentos WHERE tenant_id = $1 AND LOWER(nome) = 'recepção' AND ativo = true",
       [organization_id]
     );
     if (!depRecepcao) {
@@ -238,7 +245,7 @@ app.post('/api/internal/sync-user', async (req, res) => {
       // Em syncs subsequentes (a cada login) não mexemos nos departamentos,
       // para não desfazer as atribuições feitas por um admin.
       const deptGeral = await db.oneOrNone(
-        "SELECT id FROM departamentos WHERE tenant_id = $1 AND nome = 'Geral'",
+        "SELECT id FROM departamentos WHERE tenant_id = $1 AND nome = 'Geral' AND ativo = true",
         [organization_id]
       );
       if (deptGeral) {
@@ -361,7 +368,7 @@ app.use('/api', rateLimiter);
                   (
                     SELECT json_agg(json_build_object('nome', d.nome, 'cor', d.cor) ORDER BY d.nome)
                     FROM operador_departamentos od
-                    JOIN departamentos d ON d.id = od.departamento_id
+                    JOIN departamentos d ON d.id = od.departamento_id AND d.ativo = true
                     WHERE od.operador_id = m.operador_id
                       AND od.tenant_id = m.tenant_id
                   ),
@@ -591,7 +598,7 @@ app.use('/api', rateLimiter);
             const depsAss = await db.manyOrNone(
               `SELECT d.nome
                FROM operador_departamentos od
-               JOIN departamentos d ON d.id = od.departamento_id
+               JOIN departamentos d ON d.id = od.departamento_id AND d.ativo = true
                WHERE od.operador_id = $1 AND od.tenant_id = $2
                ORDER BY d.nome`,
               [op.id, op.tenantId]
@@ -637,9 +644,10 @@ app.use('/api', rateLimiter);
       const op = req.operador;
       const operadores = await db.manyOrNone(
         `SELECT o.id, o.nome, o.email, o.papel, o.avatar_url, o.online, o.ultimo_visto,
-                COALESCE(array_remove(array_agg(od.departamento_id), NULL), '{}') AS departamento_ids
+                COALESCE(array_agg(od.departamento_id) FILTER (WHERE d.ativo = true), '{}') AS departamento_ids
          FROM operadores o
          LEFT JOIN operador_departamentos od ON od.operador_id = o.id
+         LEFT JOIN departamentos d ON d.id = od.departamento_id
          WHERE o.tenant_id = $1
          GROUP BY o.id
          ORDER BY o.online DESC, o.nome`,
@@ -991,6 +999,19 @@ app.use('/api', rateLimiter);
   app.delete('/api/contatos/:id', async (req, res) => {
     try {
       const op = req.operador;
+      // Excluir o contato cascateia em suas conversas e mensagens. Remove os
+      // arquivos físicos (foto/vídeo/áudio/documentos) dessas conversas antes.
+      const convs = await db.manyOrNone(
+        `SELECT id FROM conversas WHERE contato_id = $1 AND tenant_id = $2`,
+        [req.params.id, op.tenantId]
+      );
+      for (const conv of convs) {
+        try {
+          await excluirMidiaDaConversa(storage, op.tenantId, conv.id);
+        } catch (e) {
+          console.error(`[chatgov] Falha ao excluir mídia da conversa ${conv.id}:`, e.message);
+        }
+      }
       const row = await db.oneOrNone(
         `DELETE FROM contatos WHERE id = $1 AND tenant_id = $2 RETURNING id, nome, telefone`,
         [req.params.id, op.tenantId]
@@ -1925,7 +1946,7 @@ app.use('/api', rateLimiter);
       console.error('[ChatGov] Failed to restore WhatsApp sessions:', err.message);
     }
 
-    iniciarLimpezaConversas();
+    iniciarLimpezaConversas(storage);
   });
 
   process.on('SIGTERM', async () => {

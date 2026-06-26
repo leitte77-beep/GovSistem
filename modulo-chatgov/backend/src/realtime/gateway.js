@@ -18,6 +18,7 @@ import {
 } from '../services/mensagens.js';
 import { criarNotificacao } from '../services/notificacoes.js';
 import { createStorage } from '../storage/index.js';
+import { excluirMidiaDaConversa } from '../services/midia-conversas.js';
 
 const salas = {
   tenant: (id) => `tenant:${id}`,
@@ -86,6 +87,102 @@ async function obterOperadorPayload(tenantId, operadorId, fallbackNome = null) {
     nome: operador.nome || fallbackNome || null,
     departamentos,
   };
+}
+
+// Normaliza nome de departamento (minúsculo, sem acentos) para comparar "recepção".
+function _normalizarNome(s) {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+}
+
+// Rótulo amigável para mensagens de mídia (usado no corpo da notificação desktop).
+function _rotuloMensagem(mensagem) {
+  const tipo = mensagem?.tipo;
+  if (tipo === 'texto') return (mensagem?.conteudo || '').slice(0, 120);
+  const caption = (mensagem?.conteudo || '').trim();
+  const rotulos = {
+    imagem: '📷 Imagem',
+    figurinha: '🖼️ Figurinha',
+    sticker: '🖼️ Figurinha',
+    audio: '🎤 Áudio',
+    ptt: '🎤 Mensagem de voz',
+    video: '🎥 Vídeo',
+    documento: '📄 Documento',
+    arquivo: '📄 Documento',
+    local: '📍 Localização',
+    localizacao: '📍 Localização',
+    contato: '👤 Contato',
+  };
+  const base = rotulos[tipo] || '📎 Anexo';
+  // Se houver legenda/nome, mostra junto.
+  if (caption && !caption.startsWith('[')) return `${base} — ${caption.slice(0, 90)}`;
+  if (mensagem?.media_nome) return `${base} — ${mensagem.media_nome}`;
+  return base;
+}
+
+/**
+ * Emite a notificação de "nova mensagem recebida" (som + desktop) para os
+ * operadores responsáveis — somente DEPOIS que a Iris já encaminhou a conversa
+ * para um setor real (ou um operador assumiu). Enquanto a conversa está em
+ * triagem na Recepção (onde a Iris responde), não notifica.
+ * Entrega via salas de operador (que o socket sempre ingressa ao conectar),
+ * então funciona mesmo que o operador não esteja com a conversa aberta.
+ */
+async function emitirNotificacaoMensagem(tenantId, conversaId, mensagem, io) {
+  try {
+    const info = await db.oneOrNone(
+      `SELECT c.departamento_id, c.operador_id, c.departamento_sugerido,
+              co.nome AS contato_nome, co.telefone AS contato_telefone,
+              d.nome AS departamento_nome
+         FROM conversas c
+         JOIN contatos co ON co.id = c.contato_id
+         LEFT JOIN departamentos d ON d.id = c.departamento_id
+        WHERE c.id = $1 AND c.tenant_id = $2`,
+      [conversaId, tenantId]
+    );
+    if (!info) return;
+
+    const ehRecepcao = _normalizarNome(info.departamento_nome) === 'recepcao';
+    // "Já encaminhou para o setor" (inclui a Recepção, que é humana). Sinais:
+    //  - operador assumiu a conversa; OU
+    //  - a Iris tomou uma decisão de encaminhamento (departamento_sugerido só é
+    //    gravado quando ela encaminha — fica null enquanto ela ainda pergunta); OU
+    //  - a conversa está num setor real (não Recepção/triagem).
+    // Enquanto a Iris está fazendo perguntas na triagem (Recepção, sem sugerido),
+    // não notifica.
+    const posTriagem =
+      !!info.operador_id ||
+      !!info.departamento_sugerido ||
+      (!!info.departamento_id && !ehRecepcao);
+    if (!posTriagem) return;
+
+    // Descobre quais operadores devem ser avisados.
+    let alvos = [];
+    if (info.operador_id) {
+      alvos = [info.operador_id];
+    } else if (info.departamento_id) {
+      const ops = await db.manyOrNone(
+        'SELECT operador_id FROM operador_departamentos WHERE departamento_id = $1 AND tenant_id = $2',
+        [info.departamento_id, tenantId]
+      );
+      alvos = ops.map((o) => o.operador_id).filter(Boolean);
+    }
+    if (alvos.length === 0) return;
+
+    const payload = {
+      conversa_id: conversaId,
+      contato_nome: info.contato_nome || null,
+      contato_telefone: info.contato_telefone || null,
+      tipo: mensagem?.tipo || 'texto',
+      trecho: _rotuloMensagem(mensagem),
+      departamento_id: info.departamento_id || null,
+    };
+
+    for (const oid of alvos) {
+      io.to(salas.operador(oid)).emit('mensagem:recebida', payload);
+    }
+  } catch (e) {
+    console.error('[Notif] Erro ao emitir notificação de mensagem:', e.message);
+  }
 }
 
 function ehGestor(op) {
@@ -208,16 +305,17 @@ async function podeVerConversa(op, convId) {
          c.departamento_id IS NULL
          OR EXISTS (
            SELECT 1 FROM operador_departamentos od
+           JOIN departamentos d ON d.id = od.departamento_id AND d.ativo = true
            WHERE od.operador_id = $3 AND od.departamento_id = c.departamento_id
          )
          OR (
            EXISTS (
-             SELECT 1 FROM departamentos dd WHERE dd.id = c.departamento_id AND LOWER(dd.nome) = 'recepção'
+             SELECT 1 FROM departamentos dd WHERE dd.id = c.departamento_id AND LOWER(dd.nome) = 'recepcao' AND dd.ativo = true
            )
            AND EXISTS (
              SELECT 1 FROM operador_departamentos od
-             JOIN departamentos d ON d.id = od.departamento_id
-             WHERE od.operador_id = $3 AND LOWER(d.nome) = 'recepção'
+             JOIN departamentos d ON d.id = od.departamento_id AND d.ativo = true
+             WHERE od.operador_id = $3 AND LOWER(d.nome) = 'recepcao'
            )
          )
        ))
@@ -298,6 +396,10 @@ export function iniciarGateway(httpServer, wa, storage) {
       } catch (err) {
         console.error('[Socket] conversa:abrir error:', err.message);
       }
+    });
+
+    socket.on('conversa:fechar', (convId) => {
+      socket.leave(salas.conversa(convId));
     });
 
     socket.on('conversa:atribuir', async ({ convId, departamentoId, operadorId }) => {
@@ -539,6 +641,7 @@ export function iniciarGateway(httpServer, wa, storage) {
         let result;
         let mediaUrl = null;
         let msgTipo = tipo || 'texto';
+        let mimeFinal = null;
 
         if (mediaBase64) {
           // Limite de tamanho (anti-abuso/OOM): ~16 MB após decodificar base64.
@@ -554,7 +657,17 @@ export function iniciarGateway(httpServer, wa, storage) {
             fileName: mediaNome,
             caption: texto ? assinarTexto({ nome: operadorPayload.nome }, texto, cfgAssinatura, operadorPayload.departamentos) : undefined,
           });
-          mediaUrl = await storage.salvar(buffer, mediaMime || 'application/octet-stream', op.tenantId);
+          // sendMedia pode transcodificar áudio (webm→ogg) — usa o resultado final
+          // para persistir o arquivo correto no storage.
+          const bufFinal = result?.__mediaBufferFinal || buffer;
+          // Atribui à mimeFinal do escopo externo (não redeclarar) para que o INSERT
+          // persista a mime real pós-transcodificação (ex.: audio/ogg) — antes, o
+          // shadowing deixava a externa em null e o banco gravava o webm original.
+          mimeFinal = result?.__mediaMimeFinal || mediaMime || 'application/octet-stream';
+          if (msgTipo === 'audio' && mimeFinal !== (mediaMime || '')) {
+            console.log(`[mensagem:enviar] áudio transcoded ${mediaMime || '?'} → ${mimeFinal} (convId=${convId})`);
+          }
+          mediaUrl = await storage.salvar(bufFinal, mimeFinal, op.tenantId);
         } else if (texto) {
           result = await wa.sendText(op.tenantId, destinoJid, assinarTexto({ nome: operadorPayload.nome }, texto, cfgAssinatura, operadorPayload.departamentos));
         } else {
@@ -569,10 +682,10 @@ export function iniciarGateway(httpServer, wa, storage) {
         const msgId = uuidv4();
 
         const msg = await db.one(
-          `INSERT INTO mensagens (id, tenant_id, conversa_id, wa_message_id, direcao, operador_id, tipo, conteudo, media_url, media_mime, status, criado_em)
-           VALUES ($1, $2, $3, $4, 'saida', $5, $6, $7, $8, $9, 'enviado', now())
+          `INSERT INTO mensagens (id, tenant_id, conversa_id, wa_message_id, direcao, operador_id, tipo, conteudo, media_url, media_mime, media_nome, status, criado_em)
+           VALUES ($1, $2, $3, $4, 'saida', $5, $6, $7, $8, $9, $10, 'enviado', now())
            RETURNING *`,
-          [msgId, op.tenantId, convId, waMessageId, op.id, msgTipo, texto || null, mediaUrl, mediaMime || null]
+          [msgId, op.tenantId, convId, waMessageId, op.id, msgTipo, texto || null, mediaUrl, mimeFinal || mediaMime || null, mediaNome || null]
         );
         const msgComOperador = {
           ...msg,
@@ -638,10 +751,10 @@ export function iniciarGateway(httpServer, wa, storage) {
 
         const msgId = uuidv4();
         const msg = await db.one(
-          `INSERT INTO mensagens_internas (id, tenant_id, canal_id, remetente_id, tipo, conteudo, media_url, media_mime, respondendo_a, criado_em)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+          `INSERT INTO mensagens_internas (id, tenant_id, canal_id, remetente_id, tipo, conteudo, media_url, media_mime, media_nome, respondendo_a, criado_em)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
            RETURNING *`,
-          [msgId, op.tenantId, canalId, op.id, tipo || 'texto', conteudoNorm || null, mediaUrlFinal, mediaMimeFinal, respondendoA || null]
+          [msgId, op.tenantId, canalId, op.id, tipo || 'texto', conteudoNorm || null, mediaUrlFinal, mediaMimeFinal, mediaNome || null, respondendoA || null]
         );
 
         io.to(salas.canal(canalId)).emit('interno:nova', {
@@ -980,7 +1093,7 @@ export function iniciarGateway(httpServer, wa, storage) {
 
     // === EVOLUÇÕES: Thread / Responder mensagem ===
 
-    socket.on('interno:responder', async ({ canalId, conteudo, respondendoA, tipo, mediaUrl, mediaMime }, ack) => {
+    socket.on('interno:responder', async ({ canalId, conteudo, respondendoA, tipo, mediaUrl, mediaMime, mediaNome }, ack) => {
       try {
         await setTenantContext(op.tenantId);
         await assertMembroCanal(op.tenantId, canalId, op.id);
@@ -991,10 +1104,10 @@ export function iniciarGateway(httpServer, wa, storage) {
         }
         const msgId = uuidv4();
         const msg = await db.one(
-          `INSERT INTO mensagens_internas (id, tenant_id, canal_id, remetente_id, tipo, conteudo, media_url, media_mime, respondendo_a, criado_em)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+          `INSERT INTO mensagens_internas (id, tenant_id, canal_id, remetente_id, tipo, conteudo, media_url, media_mime, media_nome, respondendo_a, criado_em)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
            RETURNING *`,
-          [msgId, op.tenantId, canalId, op.id, tipo || 'texto', conteudoNorm || null, mediaUrl || null, mediaMime || null, respondendoA || null]
+          [msgId, op.tenantId, canalId, op.id, tipo || 'texto', conteudoNorm || null, mediaUrl || null, mediaMime || null, mediaNome || null, respondendoA || null]
         );
         io.to(salas.canal(canalId)).emit('interno:nova', {
           ...msg,
@@ -1061,11 +1174,19 @@ export function iniciarGateway(httpServer, wa, storage) {
     socket.on('conversa:excluir', async (convId, ack) => {
       try {
         await setTenantContext(op.tenantId);
+        // Remove permanentemente os arquivos (foto/vídeo/áudio/documentos) ANTES
+        // de apagar a conversa — a cascata em `mensagens` levaria os media_url junto.
+        let midiasRemovidas = 0;
+        try {
+          midiasRemovidas = await excluirMidiaDaConversa(storage, op.tenantId, convId);
+        } catch (e) {
+          console.error('[Socket] conversa:excluir mídia error:', e.message);
+        }
         await db.none(
           `DELETE FROM conversas WHERE id = $1 AND tenant_id = $2`,
           [convId, op.tenantId]
         );
-        await _auditar(op.tenantId, op.id, 'conversa.excluida', { conversaId: convId });
+        await _auditar(op.tenantId, op.id, 'conversa.excluida', { conversaId: convId, midiasRemovidas });
         io.to(salas.tenant(op.tenantId)).emit('conversa:removida', { convId });
         if (ack) ack({ ok: true });
       } catch (err) {
@@ -1262,6 +1383,7 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
   let conteudo = null;
   let mediaUrl = null;
   let mediaMime = null;
+  let mediaNome = null;
 
   const messageContent = extrairConteudoMensagem(msg.message);
 
@@ -1326,6 +1448,7 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
   } else if (messageContent?.documentMessage) {
     tipo = 'documento';
     mediaMime = messageContent.documentMessage.mimetype || 'application/octet-stream';
+    mediaNome = messageContent.documentMessage.fileName || null;
     conteudo = messageContent.documentMessage.caption || null;
     try {
       const buffer = await downloadMediaMessage(msg, 'buffer', {});
@@ -1532,8 +1655,8 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
   }
 
   let novaMensagem = await db.oneOrNone(
-    `INSERT INTO mensagens (tenant_id, conversa_id, wa_message_id, direcao, operador_id, tipo, conteudo, media_url, media_mime, status, criado_em)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+    `INSERT INTO mensagens (tenant_id, conversa_id, wa_message_id, direcao, operador_id, tipo, conteudo, media_url, media_mime, media_nome, status, criado_em)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
      ON CONFLICT (tenant_id, wa_message_id) WHERE wa_message_id IS NOT NULL DO NOTHING
      RETURNING *`,
     [
@@ -1546,6 +1669,7 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
       conteudo,
       mediaUrl,
       mediaMime,
+      mediaNome,
       direcao === 'saida' ? 'enviado' : 'entregue',
       msgTimestamp,
     ]
@@ -1636,6 +1760,33 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
           [conversaRow.departamento_id, tenantId]
         );
         botPodeResponder = dep?.eh_recepcao === true;
+      }
+
+      // Se tem operador mas ele pode ter abandonado a conversa (offline + sem resposta ha 10+ min)
+      if (!botPodeResponder && conversaRow.operador_id) {
+        try {
+          const operador = await db.oneOrNone(
+            'SELECT online FROM operadores WHERE id = $1 AND tenant_id = $2',
+            [conversaRow.operador_id, tenantId]
+          );
+          if (!operador?.online) {
+            const ultimaMsgOperador = await db.oneOrNone(
+              `SELECT criado_em FROM mensagens
+               WHERE conversa_id = $1 AND tenant_id = $2 AND direcao = 'saida' AND operador_id = $3
+               ORDER BY criado_em DESC LIMIT 1`,
+              [conversaRow.id, tenantId, conversaRow.operador_id]
+            );
+            const agora = new Date();
+            const tempoSemResposta = ultimaMsgOperador
+              ? (agora - new Date(ultimaMsgOperador.criado_em)) / 1000 / 60
+              : Infinity;
+            if (tempoSemResposta > 10) {
+              botPodeResponder = true;
+            }
+          }
+        } catch (e) {
+          console.error('[Gateway] Erro ao verificar abandono de conversa:', e.message);
+        }
       }
 
       if (botPodeResponder && irisCfg) {
@@ -1730,6 +1881,12 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
     } catch (e) {
       console.error('[Chatbot] Erro ao processar:', e.message);
     }
+  }
+
+  // Notifica os operadores responsáveis (som/desktop) — para texto e mídia.
+  // Roda após a triagem da Iris, então a conversa já reflete o setor de destino.
+  if (direcao === 'entrada') {
+    await emitirNotificacaoMensagem(tenantId, conversaRow.id, novaMensagem, io);
   }
 }
 

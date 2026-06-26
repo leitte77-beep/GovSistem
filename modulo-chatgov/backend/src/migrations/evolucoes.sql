@@ -430,3 +430,9 @@ ALTER TABLE config_iris ADD COLUMN IF NOT EXISTS openai_model TEXT DEFAULT 'gpt-
 
 -- Departamento sugerido pela Iris (para contexto entre mensagens)
 ALTER TABLE conversas ADD COLUMN IF NOT EXISTS departamento_sugerido UUID REFERENCES departamentos(id) ON DELETE SET NULL;
+
+-- ============================================================
+-- Nome original do arquivo nas mensagens do chat (para exibição)
+-- ============================================================
+ALTER TABLE mensagens ADD COLUMN IF NOT EXISTS media_nome TEXT;
+ALTER TABLE mensagens_internas ADD COLUMN IF NOT EXISTS media_nome TEXT;

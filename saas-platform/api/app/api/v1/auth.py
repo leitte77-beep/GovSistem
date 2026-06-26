@@ -720,7 +720,7 @@ async def forgot_password(
 
     token = secrets.token_urlsafe(32)
     user.reset_token = hash_password(token)  # store hashed
-    user.reset_token_expires_at = datetime.now(timezone.utc) + timedelta(minutes=30)
+    user.reset_token_expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=30)
     await db.commit()
 
     base_url = settings.APP_NAME  # placeholder — frontend handles the URL

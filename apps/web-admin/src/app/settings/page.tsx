@@ -381,6 +381,7 @@ export default function SettingsPage() {
   const [values, setValues] = useState<Record<string, string>>({});
   const [saving, setSaving] = useState<Record<string, boolean>>({});
   const [showSecrets, setShowSecrets] = useState<Record<string, boolean>>({});
+  const [disk, setDisk] = useState<{ total_gb: number; used_gb: number; free_gb: number; percent_used: number } | null>(null);
 
   useEffect(() => {
     api.listSettings()
@@ -392,6 +393,10 @@ export default function SettingsPage() {
       })
       .catch(() => toast.error("Erro ao carregar configurações"))
       .finally(() => setLoading(false));
+
+    api.getRaw("/operations/health")
+      .then((h) => { if (h?.disk) setDisk(h.disk); })
+      .catch(() => {});
   }, []);
 
   const filteredSettings = settings.filter((s) => s.category === activeCategory);
@@ -493,6 +498,21 @@ export default function SettingsPage() {
               <span className="text-body-sm">API de Assinatura</span>
               <span className="material-symbols-outlined text-secondary" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
             </div>
+            {disk && (
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-body-sm">Disco</span>
+                  <span className="text-body-sm font-bold">{disk.percent_used}% usado</span>
+                </div>
+                <div className="w-full h-2 bg-on-primary/20 rounded-full overflow-hidden mb-2">
+                  <div className="h-full bg-secondary rounded-full transition-all" style={{ width: `${disk.percent_used}%` }} />
+                </div>
+                <div className="flex justify-between text-[11px] opacity-80">
+                  <span>{disk.free_gb} GB livre</span>
+                  <span>{disk.total_gb} GB total</span>
+                </div>
+              </div>
+            )}
             <div className="h-[2px] w-full bg-on-primary/10 mb-4" />
             <button className="w-full py-2 rounded bg-on-primary text-primary text-label-md font-label-md font-bold hover:bg-on-primary-container transition-colors">
               Ver Relatório Completo

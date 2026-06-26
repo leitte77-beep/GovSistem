@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, FolderTree, Users, Smartphone, Plus, Trash2, Wifi, WifiOff, LogOut, QrCode, KeyRound, Ban, SlidersHorizontal, Save, Loader2, Check, Bot, FileText, BarChart3, Brain, MessageSquare } from 'lucide-react';
+import { Building2, FolderTree, Users, Smartphone, Plus, Trash2, Wifi, WifiOff, LogOut, QrCode, KeyRound, Ban, SlidersHorizontal, Save, Loader2, Check, Bot, FileText, BarChart3, Brain, MessageSquare, Bell, BellOff, Volume2 } from 'lucide-react';
 import { T, CORES_DEPT } from '../theme';
 import {
   fetchSecretarias, criarSecretaria, editarSecretaria, excluirSecretaria,
@@ -13,6 +13,7 @@ import {
   fetchDashboard,
   fetchIrisConfig, salvarIrisConfig,
 } from '../api';
+import { fetchConfigNotificacoes, salvarConfigNotificacoes } from '../api/evolucoes';
 import { useSocket } from '../context/SocketContext';
 
 const ABAS = [
@@ -25,6 +26,7 @@ const ABAS = [
   { id: 'bloqueios', label: 'Bloqueios', icon: Ban },
   { id: 'secretarias', label: 'Secretarias', icon: Building2 },
   { id: 'departamentos', label: 'Departamentos', icon: FolderTree },
+  { id: 'notificacoes', label: 'Notificações', icon: Bell },
   { id: 'equipe', label: 'Equipe', icon: Users },
 ];
 
@@ -59,6 +61,7 @@ export function PaginaConfiguracoes({ onOpenQR }) {
       aba === 'secretarias' && React.createElement(AbaSecretarias),
       aba === 'departamentos' && React.createElement(AbaDepartamentos),
       aba === 'equipe' && React.createElement(AbaEquipe),
+      aba === 'notificacoes' && React.createElement(AbaNotificacoes),
     ),
   );
 }
@@ -833,6 +836,127 @@ function AbaIris() {
                 React.createElement('span', { key: d.id, style: { fontSize: 12, padding: '5px 11px', borderRadius: 20, background: T.surfaceMuted, color: T.text, border: `1px solid ${T.border}`, fontWeight: 500 } },
                   d.secretaria_nome ? `${d.secretaria_nome} › ${d.nome}` : d.nome),
               )),
+      ),
+    ),
+  );
+}
+
+// ---------- Notificações ----------
+function AbaNotificacoes() {
+  const [cfg, setCfg] = useState(null);
+  const [salvando, setSalvando] = useState(false);
+  const [salvo, setSalvo] = useState(false);
+
+  useEffect(() => {
+    fetchConfigNotificacoes().then((c) => setCfg(c || {})).catch(console.error);
+  }, []);
+
+  const setField = (k, v) => setCfg((p) => ({ ...p, [k]: v }));
+
+  const salvar = async () => {
+    setSalvando(true);
+    try {
+      await salvarConfigNotificacoes(cfg);
+      setSalvo(true);
+      setTimeout(() => setSalvo(false), 2000);
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 500 } },
+    React.createElement('div', { style: painel },
+      React.createElement('div', { style: painelHead },
+        React.createElement('div', { style: tituloPainel }, 'Preferências de notificação'),
+      ),
+      React.createElement('div', { style: { padding: 22, display: 'flex', flexDirection: 'column', gap: 20 } },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+            cfg?.push_ativo ? React.createElement(Bell, { size: 20, color: T.primary })
+                            : React.createElement(BellOff, { size: 20, color: T.textMuted }),
+            React.createElement('div', null,
+              React.createElement('div', { style: { fontSize: 14, fontWeight: 600, color: T.text } }, 'Notificações desktop'),
+              React.createElement('div', { style: { fontSize: 12, color: T.textMuted } }, 'Exibe alertas quando chegam novas mensagens e você está em outra aba'),
+            ),
+          ),
+          React.createElement('label', { style: { position: 'relative', display: 'inline-block', width: 44, height: 24, cursor: 'pointer' } },
+            React.createElement('input', {
+              type: 'checkbox', checked: cfg?.push_ativo !== false,
+              onChange: (e) => setField('push_ativo', e.target.checked),
+              style: { opacity: 0, width: 0, height: 0 },
+            }),
+            React.createElement('span', {
+              style: {
+                position: 'absolute', inset: 0, borderRadius: 24,
+                background: cfg?.push_ativo !== false ? T.primary : '#d1d5db',
+                transition: 'background 0.2s',
+              },
+            }),
+            React.createElement('span', {
+              style: {
+                position: 'absolute', left: cfg?.push_ativo !== false ? 22 : 3, bottom: 3,
+                width: 18, height: 18, borderRadius: '50%', background: '#fff',
+                transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+              },
+            }),
+          ),
+        ),
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+            React.createElement(Volume2, { size: 20, color: cfg?.som_ativado !== false ? T.primary : T.textMuted }),
+            React.createElement('div', null,
+              React.createElement('div', { style: { fontSize: 14, fontWeight: 600, color: T.text } }, 'Som de notificação'),
+              React.createElement('div', { style: { fontSize: 12, color: T.textMuted } }, 'Toca um som curto ao receber nova mensagem'),
+            ),
+          ),
+          React.createElement('label', { style: { position: 'relative', display: 'inline-block', width: 44, height: 24, cursor: 'pointer' } },
+            React.createElement('input', {
+              type: 'checkbox', checked: cfg?.som_ativado !== false,
+              onChange: (e) => setField('som_ativado', e.target.checked),
+              style: { opacity: 0, width: 0, height: 0 },
+            }),
+            React.createElement('span', {
+              style: {
+                position: 'absolute', inset: 0, borderRadius: 24,
+                background: cfg?.som_ativado !== false ? T.primary : '#d1d5db',
+                transition: 'background 0.2s',
+              },
+            }),
+            React.createElement('span', {
+              style: {
+                position: 'absolute', left: cfg?.som_ativado !== false ? 22 : 3, bottom: 3,
+                width: 18, height: 18, borderRadius: '50%', background: '#fff',
+                transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)',
+              },
+            }),
+          ),
+        ),
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+          React.createElement('div', { style: { flex: 1 } },
+            React.createElement('label', { style: label }, 'Não perturbe — início'),
+            React.createElement('input', {
+              type: 'time', value: cfg?.nao_perturbe_inicio || '',
+              onChange: (e) => setField('nao_perturbe_inicio', e.target.value || null),
+              style: campo,
+            }),
+          ),
+          React.createElement('span', { style: { color: T.textMuted, fontSize: 13, marginTop: 20 } }, 'até'),
+          React.createElement('div', { style: { flex: 1 } },
+            React.createElement('label', { style: label }, 'Não perturbe — fim'),
+            React.createElement('input', {
+              type: 'time', value: cfg?.nao_perturbe_fim || '',
+              onChange: (e) => setField('nao_perturbe_fim', e.target.value || null),
+              style: campo,
+            }),
+          ),
+        ),
+        React.createElement('div', { style: { fontSize: 11, color: T.textMuted, marginTop: -8 } },
+          'Durante este período, notificações desktop e sons são suprimidos.'),
+        React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end' } },
+          React.createElement(BotaoSalvar, { salvando, salvo, onClick: salvar, texto: 'Salvar preferências' }),
+        ),
       ),
     ),
   );

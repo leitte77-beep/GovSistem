@@ -1,11 +1,11 @@
 "use client";
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import AppLayout from "@/components/layout/AppLayout";
 import Card from "@/components/ui/Card";
 import Modal from "@/components/ui/Modal";
 import Spinner from "@/components/ui/Spinner";
-import { Plus, Search, Pencil, Trash2, Users, UserCheck, ShieldCheck, Filter, Download, ChevronLeft, ChevronRight, ChevronsUpDown } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, Users, UserCheck, ShieldCheck, Filter, Download, Upload, ChevronLeft, ChevronRight, ChevronsUpDown } from "lucide-react";
 import api from "@/lib/api";
 import toast from "react-hot-toast";
 
@@ -47,6 +47,42 @@ export default function UsuariosPage() {
   const [deleting, setDeleting] = useState(false);
   const [stats, setStats] = useState({ active: 0, admins: 0 });
   const perPage = 10;
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const handleExport = () => {
+    window.open(`/api/v1/users/export/csv`, "_blank");
+  };
+
+  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const formData = new FormData();
+    formData.append("file", file);
+    try {
+      const result = await api<{ created: number; skipped: number; errors: string[] }>("/users/import/csv", {
+        method: "POST",
+        body: formData,
+        headers: {},
+      });
+      let msg = `${result.created} usuarios criados.`;
+      if (result.skipped > 0) msg += ` ${result.skipped} ignorados.`;
+      toast.success(msg);
+      if (result.errors.length > 0) {
+        console.warn("Import errors:", result.errors);
+        if (result.errors.length <= 3) {
+          result.errors.forEach((err: string) => toast.error(err));
+        } else {
+          toast.error(`${result.errors.length} erros. Consulte o console.`);
+        }
+      }
+      fetchUsers();
+      fetchStats();
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao importar");
+    } finally {
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
@@ -143,11 +179,11 @@ export default function UsuariosPage() {
             />
           </div>
           <div className="flex items-center gap-2">
-            <button className="flex items-center gap-2 px-4 py-2 border border-outline-variant rounded-lg text-sm font-medium text-on-surface-variant hover:bg-surface-container-low transition-colors">
-              <Filter size={16} />
-              Filtros
+            <button onClick={() => fileRef.current?.click()} className="flex items-center gap-2 px-4 py-2 border border-outline-variant rounded-lg text-sm font-medium text-on-surface-variant hover:bg-surface-container-low transition-colors">
+              <Upload size={16} />
+              Importar
             </button>
-            <button className="flex items-center gap-2 px-4 py-2 border border-outline-variant rounded-lg text-sm font-medium text-on-surface-variant hover:bg-surface-container-low transition-colors">
+            <button onClick={handleExport} className="flex items-center gap-2 px-4 py-2 border border-outline-variant rounded-lg text-sm font-medium text-on-surface-variant hover:bg-surface-container-low transition-colors">
               <Download size={16} />
               Exportar
             </button>
@@ -353,6 +389,8 @@ export default function UsuariosPage() {
           </button>
         </div>
       </Modal>
+
+      <input ref={fileRef} type="file" accept=".csv" onChange={handleImport} className="hidden" />
     </AppLayout>
   );
 }

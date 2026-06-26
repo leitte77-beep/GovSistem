@@ -3,6 +3,104 @@ import db from '../db.js';
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 
+// ─── Horário de atendimento ───────────────────────────────────────────────
+
+const NOMES_DIAS = ['domingo', 'segunda-feira', 'terça-feira', 'quarta-feira', 'quinta-feira', 'sexta-feira', 'sábado'];
+
+function nomeDia(num) {
+  return NOMES_DIAS[num] || 'dia';
+}
+
+function nomeDiaCurto(num) {
+  const curtos = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sab'];
+  return curtos[num] || 'dia';
+}
+
+function diasDesc(dias) {
+  if (!dias || dias.length === 0) return 'dias úteis';
+  const nomes = dias.map((d) => nomeDiaCurto(d));
+  if (nomes.length === 1) return nomes[0] + '-feira';
+  const ultimo = nomes.pop();
+  return nomes.join(', ') + ' e ' + ultimo + '-feira';
+}
+
+function calcularProximoDiaUtil(diaAtual, diasAtendimento) {
+  let proximo = diaAtual;
+  for (let i = 1; i <= 7; i++) {
+    proximo = (diaAtual + i) % 7;
+    if (diasAtendimento.includes(proximo)) break;
+  }
+  return { numero: proximo, nome: nomeDia(proximo) };
+}
+
+async function obterContextoHorario(tenantId) {
+  try {
+    const cfg = await db.oneOrNone(
+      'SELECT horario_inicio, horario_fim, dias_atendimento, fora_horario_ativo FROM tenant_config WHERE tenant_id = $1',
+      [tenantId]
+    );
+    console.log('[Iris] obterContextoHorario cfg:', JSON.stringify(cfg));
+    if (!cfg || !cfg.fora_horario_ativo) {
+      console.log('[Iris] obterContextoHorario: fora_horario_ativo desligado ou sem config → retornando null');
+      return null;
+    }
+
+    const now = new Date();
+    const brNow = new Date(now.toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));
+    const diaSemana = brNow.getDay();
+    const hora = String(brNow.getHours()).padStart(2, '0') + ':' + String(brNow.getMinutes()).padStart(2, '0');
+    console.log('[Iris] obterContextoHorario UTC:', now.toISOString(), 'BR:', `${nomeDia(diaSemana)} ${hora}`);
+
+    const dias = (cfg.dias_atendimento || '1,2,3,4,5').split(',').map(Number).filter((n) => !isNaN(n));
+
+    if (!dias.includes(diaSemana)) {
+      const proximo = calcularProximoDiaUtil(diaSemana, dias);
+      return {
+        dentroDoHorario: false,
+        motivo: 'dia_nao_util',
+        descricao: `Hoje (${nomeDia(diaSemana)}) não é dia útil. O atendimento funciona de ${diasDesc(dias)}, das ${cfg.horario_inicio} às ${cfg.horario_fim}.`,
+        proximoDiaUtil: proximo.nome,
+        horario_inicio: cfg.horario_inicio,
+        horario_fim: cfg.horario_fim,
+      };
+    }
+
+    if (hora < (cfg.horario_inicio || '00:00')) {
+      return {
+        dentroDoHorario: false,
+        motivo: 'antes_do_horario',
+        descricao: `O expediente ainda não começou. O atendimento inicia às ${cfg.horario_inicio} e vai até às ${cfg.horario_fim}.`,
+        horario_inicio: cfg.horario_inicio,
+        horario_fim: cfg.horario_fim,
+      };
+    }
+
+    if (hora >= (cfg.horario_fim || '23:59')) {
+      const proximo = calcularProximoDiaUtil(diaSemana, dias);
+      return {
+        dentroDoHorario: false,
+        motivo: 'apos_horario',
+        descricao: `O expediente encerrou às ${cfg.horario_fim}.`,
+        proximoDiaUtil: proximo.nome,
+        horario_inicio: cfg.horario_inicio,
+        horario_fim: cfg.horario_fim,
+      };
+    }
+
+    return {
+      dentroDoHorario: true,
+      descricao: `Atendimento em horário normal: ${cfg.horario_inicio} às ${cfg.horario_fim}.`,
+      horario_inicio: cfg.horario_inicio,
+      horario_fim: cfg.horario_fim,
+    };
+  } catch (err) {
+    console.error('[Iris] Erro ao obter contexto de horário:', err.message);
+    return null;
+  }
+}
+
+// ─── Fim horário ──────────────────────────────────────────────────────────
+
 async function obterInfoFila(tenantId, departamentoSugerido) {
   try {
     // Atendentes online por departamento
@@ -75,7 +173,7 @@ async function obterInfoFila(tenantId, departamentoSugerido) {
   }
 }
 
-function buildSystemPrompt(tenantNome, secretarias, departamentos, infoFila) {
+function buildSystemPrompt(tenantNome, secretarias, departamentos, infoFila, contextoHorario = null, insistencia = 0) {
   const deptos = departamentos.map((d) => {
     const sec = secretarias.find((s) => s.id === d.secretaria_id);
     const prefix = sec ? `${sec.nome} › ` : '';
@@ -112,8 +210,8 @@ function buildSystemPrompt(tenantNome, secretarias, departamentos, infoFila) {
     ? `\nHa ${infoFila.totalFila} conversas aguardando na fila geral. O tempo medio de espera e de ${tempoEstimado}.`
     : '';
 
-  return `Voce e a Iris, assistente virtual da Prefeitura ${tenantNome || 'Municipal'}.
-Seu objetivo e atender cidadaos com educacao, clareza e empatia, 24 horas por dia.
+  const basePrompt = `Voce e a Iris, assistente virtual da Prefeitura ${tenantNome || 'Municipal'}.
+Seu objetivo e atender cidadaos com educacao, clareza e empatia.
 
 REGRAS:
 1. Sempre se apresente no primeiro contato: "Ola! Sou a Iris, assistente virtual da Prefeitura. Em que posso ajudar?"
@@ -124,7 +222,31 @@ REGRAS:
 6. NUNCA invente informacoes. Nao de diagnosticos medicos.
 7. Seja educada, empatica e direta ao ponto.
 8. Priorize departamentos COM ATENDENTES ONLINE. Se dois departamentos servem, escolha o que tem atendente disponivel.
-9. Se o cidadao perguntar sobre tempo de espera, informe com base nos dados disponiveis.${infoPosicao}${infoFilaTexto}
+9. Se o cidadao perguntar sobre tempo de espera, informe com base nos dados disponiveis.${infoPosicao}${infoFilaTexto}`;
+
+  let regraHorario = '';
+
+  if (contextoHorario && !contextoHorario.dentroDoHorario) {
+    if (insistencia >= 2) {
+      const proximo = contextoHorario.proximoDiaUtil || 'no próximo dia útil';
+      const extraSexta = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })).getDay() === 5 ? ' (retorno na segunda-feira)' : '';
+      regraHorario = `\n
+10. CONTEXTO — FORA DO HORARIO: ${contextoHorario.descricao}
+    O cidadao ja enviou mensagens anteriores sem resposta de atendente${extraSexta}.
+    Seja acolhedora: tranquilize o cidadao, informe que nao ha atendentes online agora e que o retorno ocorrera ${proximo} a partir das ${contextoHorario.horario_inicio || '08:00'}.
+    Reforce que a conversa esta registrada e que voce pode ajudar com informacoes basicas.
+    NAO use "departamento_id" — mantenha null. Mantenha "finalizado": false.`;
+    } else {
+      regraHorario = `\n
+10. CONTEXTO — FORA DO HORARIO: ${contextoHorario.descricao}
+    Este e o primeiro contato do cidadao fora do expediente.
+    Comece com uma saudacao calorosa e tom leve. Mencione que o expediente encerrou, mas que ainda pode ter atendente por perto.
+    Nao seja robotica — evite a saudacao padrao, seja natural e acolhedora.
+    NAO use "departamento_id" — mantenha null. Mantenha "finalizado": false.`;
+    }
+  }
+
+  return basePrompt + regraHorario + `
 
 DEPARTAMENTOS DISPONIVEIS:
 ${deptos}
@@ -240,6 +362,28 @@ export async function processarComIris(tenantId, conversaId, texto) {
   // Obter informações da fila
   const infoFila = await obterInfoFila(tenantId, conv?.departamento_sugerido);
 
+  // Obter contexto de horário de atendimento
+  const contextoHorario = await obterContextoHorario(tenantId);
+
+  // Contar quantas mensagens do cidadão após o fim do expediente
+  let insistencia = 0;
+  if (contextoHorario && !contextoHorario.dentroDoHorario) {
+    try {
+      const hoje = new Date();
+      const inicioForaHorario = new Date(hoje.getFullYear(), hoje.getMonth(), hoje.getDate(), 0, 0, 0).toISOString();
+      const contagem = await db.one(
+        `SELECT COUNT(*)::int as cnt FROM mensagens
+         WHERE conversa_id = $1 AND tenant_id = $2 AND direcao = 'entrada'
+           AND criado_em > $3`,
+        [conversaId, tenantId, inicioForaHorario]
+      );
+      insistencia = contagem.cnt;
+    } catch (e) {
+      console.error('[Iris] Erro ao contar mensagens fora do horário:', e.message);
+    }
+  }
+  console.log('[Iris] contextoHorario:', JSON.stringify(contextoHorario), 'insistencia:', insistencia);
+
   const historico = await db.manyOrNone(
     `SELECT direcao, CASE WHEN direcao = 'entrada' THEN conteudo ELSE conteudo END as conteudo
      FROM mensagens
@@ -248,7 +392,7 @@ export async function processarComIris(tenantId, conversaId, texto) {
     [conversaId, tenantId]
   );
 
-  let systemPrompt = cfg.system_prompt || buildSystemPrompt(tenant?.nome, secretarias, departamentos, infoFila);
+  let systemPrompt = cfg.system_prompt || buildSystemPrompt(tenant?.nome, secretarias, departamentos, infoFila, contextoHorario, insistencia);
 
   if (cfg.system_prompt) {
     const deptosCompact = departamentos.map((d) => {
@@ -261,12 +405,27 @@ export async function processarComIris(tenantId, conversaId, texto) {
         conversas_na_fila: filaInfo?.na_fila || 0,
       };
     });
+
+    // Prefixa aviso de fora do horário ANTES do prompt customizado (prioridade máxima)
+    if (contextoHorario && !contextoHorario.dentroDoHorario) {
+      if (insistencia >= 2) {
+        const proximo = contextoHorario.proximoDiaUtil || 'no proximo dia util';
+        const sexta = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' })).getDay() === 5;
+        const retorno = sexta ? `na segunda-feira a partir das ${contextoHorario.horario_inicio || '08:00'}` : `${proximo} a partir das ${contextoHorario.horario_inicio || '08:00'}`;
+        systemPrompt = `CONTEXTO IMPORTANTE: ${contextoHorario.descricao} Nao houve resposta de atendente. Adapte sua resposta: reconheca que nao ha atendentes online no momento e que o retorno ocorrera ${retorno}. Tranquilize o cidadao dizendo que a conversa ficara registrada. Ofereca ajuda com informacoes. NAO use a saudacao "Ola! Sou a Iris..." — use um tom acolhedor e tranquilo.\n\nExemplo: "Entendo sua necessidade! No momento nossos atendentes nao estao disponiveis, mas sua mensagem esta registrada e retornaremos ${retorno}. Enquanto isso, pode me perguntar que tento ajudar com as informacoes que tenho. 😊"\n\nDemais instrucoes (validas em horario normal):\n\n${systemPrompt}`;
+      } else {
+        systemPrompt = `CONTEXTO IMPORTANTE: ${contextoHorario.descricao} Adapte sua apresentacao: comece com uma saudacao calorosa e um tom leve, mencionando que o expediente encerrou mas que ainda pode ter alguem por perto. NAO use a saudacao robotica "Ola! Sou a Iris..." — seja natural e acolhedora.\n\nExemplo: "Ola! Tudo bem? 😊 So pra avisar que nosso expediente foi ate as ${contextoHorario.horario_fim || '17:00'}, mas as vezes algum atendente ainda esta por aqui. Enquanto isso, fique a vontade para me perguntar — posso ajudar com informacoes! Em que posso ajudar?"\n\nDemais instrucoes (validas em horario normal):\n\n${systemPrompt}`;
+      }
+    }
+
     systemPrompt += `\n\nDEPARTAMENTOS DISPONIVEIS (use o UUID exato em "departamento_id"):\n${JSON.stringify(deptosCompact)}`;
   }
 
   const messages = [
     { role: 'system', content: systemPrompt },
   ];
+
+  console.log('[Iris] systemPrompt (primeiros 400 chars):', systemPrompt.slice(0, 400));
 
   for (let i = historico.length - 1; i >= 0; i--) {
     const h = historico[i];

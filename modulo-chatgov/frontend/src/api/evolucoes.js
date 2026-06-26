@@ -154,12 +154,28 @@ export async function fetchContagemNotificacoes() {
   return res.json();
 }
 
+export async function fetchNotificacoesStatus() {
+  const res = await fetch('/api/evolucoes/notificacoes/status', { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!res.ok) return { notificacoes: 0, conversas: 0, total: 0, config: { push_ativo: true, som_ativado: true } };
+  return res.json();
+}
+
 export async function marcarNotificacaoLidaApi(id) {
   return jsonReq(`/api/evolucoes/notificacoes/${id}/ler`, 'POST');
 }
 
 export async function marcarTodasNotificacoesLidas() {
   return jsonReq('/api/evolucoes/notificacoes/ler-todas', 'POST');
+}
+
+export async function fetchConfigNotificacoes() {
+  const res = await fetch('/api/evolucoes/config/notificacoes', { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!res.ok) return { push_ativo: true, som_ativado: true };
+  return res.json();
+}
+
+export async function salvarConfigNotificacoes(body) {
+  return jsonReq('/api/evolucoes/config/notificacoes', 'PUT', body);
 }
 
 // Wiki

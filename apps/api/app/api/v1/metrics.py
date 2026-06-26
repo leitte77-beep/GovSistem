@@ -2,6 +2,7 @@
 
 import logging
 import platform
+import shutil
 import time
 from datetime import datetime
 
@@ -117,11 +118,21 @@ async def operations_health(
     except Exception:
         checks["editions_published"] = -1
 
+    # Disk usage
+    disk = shutil.disk_usage("/")
+    disk_info = {
+        "total_gb": round(disk.total / (1024 ** 3), 2),
+        "used_gb": round(disk.used / (1024 ** 3), 2),
+        "free_gb": round(disk.free / (1024 ** 3), 2),
+        "percent_used": round((disk.used / disk.total) * 100, 1),
+    }
+
     return {
         "service": "doe-api",
         "version": "0.1.0",
         "uptime_seconds": int(time.time() - START_TIME),
         "checks": checks,
+        "disk": disk_info,
     }
 
 

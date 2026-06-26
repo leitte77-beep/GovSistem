@@ -59,6 +59,8 @@ def create_module_token(
     organization_id: uuid.UUID,
     roles: list[str],
     module_slug: str,
+    name: str | None = None,
+    email: str | None = None,
 ) -> str:
     now = datetime.now(timezone.utc)
     payload = {
@@ -71,6 +73,10 @@ def create_module_token(
         "iat": now,
         "exp": now + timedelta(minutes=settings.MODULE_TOKEN_EXPIRE_MINUTES),
     }
+    if name:
+        payload["name"] = name
+    if email:
+        payload["email"] = email
     return jwt.encode(
         payload,
         settings.SECRET_KEY.get_secret_value(),

@@ -57,6 +57,8 @@ services:
       REDIS_HOST: redis
       REDIS_PORT: 6379
       SECRET_KEY: ${SECRET_KEY:-dev-saas-secret-key-change-in-production}
+      # Token SSO dos módulos (ex.: ChatGov): 8h, cobre um turno de atendimento.
+      MODULE_TOKEN_EXPIRE_MINUTES: ${MODULE_TOKEN_EXPIRE_MINUTES:-480}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-123}
       DIARIO_MODULE_INTERNAL_API_URL: http://host.docker.internal:9201/api/v1
       DIARIO_MODULE_ADMIN_URL: https://doe-admin.govsistem.com.br
@@ -76,8 +78,6 @@ services:
       CHATGOV_MODULE_ADMIN_URL: https://chatgov.govsistem.com.br
       GOVTASK_MODULE_INTERNAL_API_URL: http://host.docker.internal:8101/api/govtask
       GOVTASK_MODULE_ADMIN_URL: https://govtask.govsistem.com.br
-      GOUVOVE_MODULE_INTERNAL_API_URL: http://host.docker.internal:8201/api/govouve
-      GOUVOVE_MODULE_ADMIN_URL: https://govouve.govsistem.com.br
       SMTP_HOST: ${SMTP_HOST:-smtp.hostinger.com}
       SMTP_PORT: ${SMTP_PORT:-465}
       SMTP_USER: ${SMTP_USER:-contato@govsistem.com.br}

@@ -49,6 +49,7 @@ class TokenResponse(BaseModel):
     refresh_token: str
     token_type: str = "bearer"
     expires_in: int
+    force_password_reset: bool = False
 
 
 class RefreshRequest(BaseModel):
@@ -66,6 +67,25 @@ class ModuleTokenResponse(BaseModel):
     expires_in: int
 
 
+import re
+
+CPF_RE = re.compile(r"^\d{11}$")
+
+
+def _validate_cpf_digits(cpf: str) -> bool:
+    """Validate CPF check digits."""
+    if len(set(cpf)) == 1:
+        return False
+    for i in range(9, 11):
+        s = sum(int(cpf[j]) * ((i + 1) - j) for j in range(i))
+        d = (s * 10) % 11
+        if d == 10:
+            d = 0
+        if int(cpf[i]) != d:
+            return False
+    return True
+
+
 class UserCreate(BaseModel):
     organization_id: Optional[uuid.UUID] = None
     name: str
@@ -77,6 +97,7 @@ class UserCreate(BaseModel):
     platform_role: Optional[str] = None
     module_permissions: Optional[list[str]] = None
     is_organization_admin: bool = False
+    force_password_reset: bool = True
 
     @field_validator("organization_id", mode="before")
     @classmethod
@@ -90,7 +111,41 @@ class UserCreate(BaseModel):
     def password_strength(cls, v: str) -> str:
         if len(v) < 8:
             raise ValueError("Password must be at least 8 characters")
+        if len(v) > 72:
+            raise ValueError("Password must be at most 72 characters")
+        if not re.search(r"[A-Z]", v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not re.search(r"[a-z]", v):
+            raise ValueError("Password must contain at least one lowercase letter")
+        if not re.search(r"[0-9]", v):
+            raise ValueError("Password must contain at least one digit")
+        if not re.search(r"[^A-Za-z0-9]", v):
+            raise ValueError("Password must contain at least one special character")
         return v
+
+    @field_validator("cpf")
+    @classmethod
+    def validate_cpf(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        cleaned = re.sub(r"\D", "", v)
+        if not cleaned:
+            return None
+        if not CPF_RE.match(cleaned):
+            raise ValueError("CPF must be exactly 11 digits")
+        if not _validate_cpf_digits(cleaned):
+            raise ValueError("Invalid CPF check digits")
+        return cleaned
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or not v.strip():
+            return None
+        cleaned = re.sub(r"\D", "", v)
+        if len(cleaned) < 10 or len(cleaned) > 11:
+            raise ValueError("Phone must be 10 or 11 digits (DDD + number)")
+        return cleaned
 
 
 class UserUpdate(BaseModel):
@@ -105,6 +160,7 @@ class UserUpdate(BaseModel):
     organization_id: Optional[uuid.UUID] = None
     module_permissions: Optional[list[str]] = None
     is_organization_admin: Optional[bool] = None
+    force_password_reset: Optional[bool] = None
 
     @field_validator("organization_id", mode="before")
     @classmethod
@@ -112,6 +168,49 @@ class UserUpdate(BaseModel):
         if v == "" or v is None:
             return None
         return uuid.UUID(v) if isinstance(v, str) else v
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        if len(v) < 8:
+            raise ValueError("Password must be at least 8 characters")
+        if len(v) > 72:
+            raise ValueError("Password must be at most 72 characters")
+        if not re.search(r"[A-Z]", v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not re.search(r"[a-z]", v):
+            raise ValueError("Password must contain at least one lowercase letter")
+        if not re.search(r"[0-9]", v):
+            raise ValueError("Password must contain at least one digit")
+        if not re.search(r"[^A-Za-z0-9]", v):
+            raise ValueError("Password must contain at least one special character")
+        return v
+
+    @field_validator("cpf")
+    @classmethod
+    def validate_cpf(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        cleaned = re.sub(r"\D", "", v)
+        if not cleaned:
+            return None
+        if not CPF_RE.match(cleaned):
+            raise ValueError("CPF must be exactly 11 digits")
+        if not _validate_cpf_digits(cleaned):
+            raise ValueError("Invalid CPF check digits")
+        return cleaned
+
+    @field_validator("phone")
+    @classmethod
+    def validate_phone(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or not v.strip():
+            return None
+        cleaned = re.sub(r"\D", "", v)
+        if len(cleaned) < 10 or len(cleaned) > 11:
+            raise ValueError("Phone must be 10 or 11 digits (DDD + number)")
+        return cleaned
 
 
 class OrganizationCreate(BaseModel):
@@ -309,6 +408,7 @@ class UserResponse(BaseModel):
     phone: Optional[str] = None
     avatar_url: Optional[str] = None
     module_permissions: Optional[list[str]] = None
+    force_password_reset: bool = False
     created_at: datetime
     updated_at: datetime
 
@@ -518,6 +618,13 @@ class ModuleInfo(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class DiskInfo(BaseModel):
+    total_gb: float
+    used_gb: float
+    free_gb: float
+    percent_used: float
+
+
 class DashboardStats(BaseModel):
     total_organizations: int
     active_organizations: int
@@ -531,3 +638,4 @@ class DashboardStats(BaseModel):
     last_publication_ago: str = "—"
     online_users_count: int = 0
     system_status: str = "Operacional"
+    disk: Optional[DiskInfo] = None

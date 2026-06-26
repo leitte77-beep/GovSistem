@@ -1,9 +1,10 @@
 import EventEmitter from 'events';
-import { makeWASocket, DisconnectReason, fetchLatestBaileysVersion, makeCacheableSignalKeyStore } from '@whiskeysockets/baileys';
+import { makeWASocket, DisconnectReason, fetchLatestBaileysVersion, makeCacheableSignalKeyStore, downloadMediaMessage } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import QRCode from 'qrcode';
 import { createPostgresAuthState } from './postgresAuthState.js';
 import db from '../db.js';
+import { transcodeToMp3, precisaTranscodificar, isAudioTranscoderAvailable } from '../services/audio.js';
 
 // Reconexão com backoff exponencial: 3s, 6s, 12s, ... até o teto.
 const RECONNECT_BASE_MS = 3000;
@@ -383,9 +384,47 @@ export class WhatsAppManager extends EventEmitter {
     const { sock } = this._getSession(tenantId);
     return this._enqueueSend(tenantId, async () => {
       const destino = await this._resolveRecipientJid(tenantId, sock, jid);
-      const payload = this._buildMediaPayload(tipo, buffer, mimetype, fileName, caption);
+
+      let bufFinal = buffer;
+      let mimeFinal = mimetype;
+      let tipoFinal = tipo;
+
+      if (precisaTranscodificar(mimetype) && (tipo === 'audio' || String(mimetype || '').toLowerCase().startsWith('audio/'))) {
+        try {
+          if (!(await isAudioTranscoderAvailable())) {
+            console.warn('[WA] ffmpeg indisponível — enviando áudio como documento (fallback).');
+            tipoFinal = 'document';
+          } else {
+            const transcoded = await transcodeToMp3(buffer, mimetype);
+            bufFinal = transcoded.buffer;
+            mimeFinal = transcoded.mime;
+          }
+        } catch (err) {
+          console.warn('[WA] transcodificação de áudio falhou (%s) — enviando como documento.', err.message);
+          tipoFinal = 'document';
+        }
+      }
+
+      const payload = this._buildMediaPayload(tipoFinal, bufFinal, mimeFinal, fileName, caption);
       const result = await this._comRetry(() => sock.sendMessage(destino, payload));
       this._guardarMensagemEnviada(result);
+      // DIAGNÓSTICO (flag WA_MEDIA_SELFCHECK=1): baixa de volta a própria mídia do
+      // CDN para provar se os bytes estão lá e descriptografáveis. Não afeta o envio.
+      if (process.env.WA_MEDIA_SELFCHECK === '1') {
+        try {
+          const buf = await downloadMediaMessage(
+            result, 'buffer', {},
+            { logger: this.logger, reuploadRequest: sock.updateMediaMessage }
+          );
+          console.log(`[WA][selfcheck] media baixada do CDN OK: ${buf?.length} bytes tipo=${tipoFinal} mime=${mimeFinal} (msgId=${result?.key?.id})`);
+        } catch (e) {
+          console.log(`[WA][selfcheck] FALHA ao baixar media do CDN: ${e?.message} tipo=${tipoFinal} (msgId=${result?.key?.id})`);
+        }
+      }
+      // Anexa metadados pós-transcodificação para o caller persistir/storage corretamente.
+      result.__mediaBufferFinal = bufFinal;
+      result.__mediaMimeFinal = mimeFinal;
+      result.__mediaTipoFinal = tipoFinal;
       return result;
     });
   }
@@ -470,7 +509,10 @@ export class WhatsAppManager extends EventEmitter {
       case 'video':
         return { video: buffer, mimetype, ...base };
       case 'audio':
-        return { audio: buffer, mimetype, ptt: true };
+        // Enviado como ÁUDIO COMUM (ptt:false), não nota de voz. O iOS reproduz
+        // mp3/m4a nativamente como anexo; já o OGG/Opus em nota de voz (ptt) o iOS
+        // recusava ("áudio não está mais disponível"). A transcodificação garante mp3.
+        return { audio: buffer, mimetype: mimetype || 'audio/mpeg', ptt: false };
       case 'document':
         return { document: buffer, mimetype, fileName, ...base };
       default:

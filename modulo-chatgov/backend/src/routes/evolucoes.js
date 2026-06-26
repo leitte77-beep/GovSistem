@@ -749,6 +749,49 @@ router.get('/notificacoes/contagem', async (req, res) => {
   }
 });
 
+router.get('/notificacoes/status', async (req, res) => {
+  try {
+    const op = req.operador;
+
+    const { total: notifTotal } = await db.one(
+      `SELECT COUNT(*)::int AS total FROM notificacoes
+       WHERE tenant_id = $1 AND operador_id = $2 AND lida = false`,
+      [op.tenantId, op.id]
+    );
+
+    const { naoLidasConv } = await db.one(
+      `SELECT COALESCE(SUM(c.nao_lidas), 0)::int AS "naoLidasConv"
+       FROM conversas c
+       WHERE c.tenant_id = $1
+         AND c.nao_lidas > 0
+         AND c.status NOT IN ('resolvida', 'arquivada')
+         AND (
+           c.operador_id = $2
+           OR c.operador_id IS NULL
+           OR            c.departamento_id IN (
+             SELECT departamento_id FROM operador_departamentos od JOIN departamentos d ON d.id = od.departamento_id AND d.ativo = true WHERE od.operador_id = $2
+           )
+         )`,
+      [op.tenantId, op.id]
+    );
+
+    const config = await db.oneOrNone(
+      `SELECT * FROM config_notificacoes WHERE operador_id = $1`,
+      [op.id]
+    );
+
+    res.json({
+      notificacoes: notifTotal || 0,
+      conversas: naoLidasConv || 0,
+      total: (notifTotal || 0) + (naoLidasConv || 0),
+      config: config || { push_ativo: true, som_ativado: true },
+    });
+  } catch (err) {
+    console.error('[Notif Status] Erro:', err.message);
+    res.status(500).json({ erro: 'Erro ao buscar status de notificações' });
+  }
+});
+
 router.post('/notificacoes/:id/ler', async (req, res) => {
   try {
     const op = req.operador;

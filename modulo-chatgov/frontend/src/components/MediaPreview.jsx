@@ -88,7 +88,7 @@ export function MediaPreview({ msg, isMe, onOpenLightbox }) {
   const mediaMime = msg.media_mime || msg.mediaMime || '';
   const tipo = msg.tipo || 'texto';
   if (!mediaUrl) return null;
-  const nomeArq = nomeArquivoDaUrl(mediaUrl);
+  const nomeArq = msg.media_nome || msg.mediaNome || nomeArquivoDaUrl(mediaUrl);
 
   // Vídeo: player inline + clique amplia
   if (tipo === 'video' || mediaMime.startsWith('video/')) {
@@ -157,6 +157,7 @@ export function MediaPreview({ msg, isMe, onOpenLightbox }) {
   // Documento genérico
   return React.createElement('a', {
     href: mediaUrl, target: '_blank', rel: 'noopener noreferrer',
+    download: nomeArq,
     onClick: (e) => e.stopPropagation(),
     'aria-label': `Abrir documento: ${nomeArq}`,
     style: {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, Paperclip, Smile, ShieldCheck, Clock, UserPlus, CheckCircle2, Building2, MessageSquare, Tag, StickyNote, ChevronDown, Archive, Trash2, ArrowRightLeft, Undo2, UserCheck, X, MoreVertical, ArrowDown, Loader2 } from 'lucide-react';
+import { Send, Paperclip, Smile, ShieldCheck, Clock, UserPlus, CheckCircle2, Building2, MessageSquare, Tag, StickyNote, ChevronDown, Archive, Trash2, ArrowRightLeft, Undo2, UserCheck, X, MoreVertical, ArrowDown, Loader2, Mic, Square, Play, Pause, RotateCcw } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { BolhaConversa } from './BolhaConversa';
 import { DeptBadge } from './DeptBadge';
@@ -14,6 +14,15 @@ import { T } from '../theme';
 const EMOJIS_RAPIDOS = ['😀', '😅', '👍', '🙏', '❤️', '😊', '👏', '✅', '⚠️', '📎'];
 const PERTO_DO_FIM_PX = 120;
 const MAX_MIDIA_BYTES = 16 * 1024 * 1024; // 16 MB (limite prático do WhatsApp)
+const AUDIO_MAX_MS = 2 * 60 * 1000; // 2 minutos
+
+function formatarDuracao(ms) {
+  if (!ms || ms <= 0) return '0:00';
+  const totalSeg = Math.floor(ms / 1000);
+  const min = Math.floor(totalSeg / 60);
+  const seg = totalSeg % 60;
+  return `${min}:${String(seg).padStart(2, '0')}`;
+}
 
 // Preenche variáveis de template com dados da conversa.
 function aplicarVariaveis(texto, conversa) {
@@ -59,6 +68,21 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
   const [draggingFile, setDraggingFile] = useState(false);
   const [toast, setToast] = useState(null);
   const [confirmacao, setConfirmacao] = useState(null);
+  // Gravação de áudio
+  const [gravando, setGravando] = useState(false);
+  const [audioBlob, setAudioBlob] = useState(null);
+  const [audioUrl, setAudioUrl] = useState(null);
+  const [audioDuracao, setAudioDuracao] = useState(0);
+  const [audioErro, setAudioErro] = useState(null);
+  const [tocando, setTocando] = useState(false);
+  const [tempoGravadoMs, setTempoGravadoMs] = useState(0);
+  const mediaRecorderRef = useRef(null);
+  const audioStreamRef = useRef(null);
+  const gravacaoInicioRef = useRef(0);
+  const gravacaoTimerRef = useRef(null);
+  const gravacaoLimiteRef = useRef(null);
+  const audioPreviewRef = useRef(null);
+  const audioChunksRef = useRef([]);
   const areaMensagensRef = useRef(null);
   const inputRef = useRef(null);
   const fileRef = useRef(null);
@@ -85,6 +109,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
 
   useEffect(() => {
     if (!conversa) return;
+    const convId = conversa.id;
     const ac = new AbortController();
     setMensagens([]);
     setTemMais(false);
@@ -92,17 +117,20 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
     setClienteDigitando(false);
     setBotDigitando(null);
     pertoDoFimRef.current = true;
-    fetchMensagens(conversa.id, { signal: ac.signal })
+    fetchMensagens(convId, { signal: ac.signal })
       .then(({ mensagens, temMais }) => { setMensagens(mensagens); setTemMais(temMais); })
       .catch((e) => { if (e.name !== 'AbortError') console.error(e); });
     fetchDepartamentos().then(setDepartamentos).catch(console.error);
     fetchTemplates().then(setTemplates).catch(console.error);
     fetchEtiquetas().then(setEtiquetas).catch(console.error);
-    fetchEtiquetasConversa(conversa.id).then(setEtiquetasConv).catch(console.error);
-    fetchNotasInternas(conversa.id).then(setNotas).catch(console.error);
-    fetchTransferenciaPendente(conversa.id).then(setTransferencia).catch(() => setTransferencia(null));
-    socket?.emit('conversa:abrir', conversa.id);
-    return () => ac.abort();
+    fetchEtiquetasConversa(convId).then(setEtiquetasConv).catch(console.error);
+    fetchNotasInternas(convId).then(setNotas).catch(console.error);
+    fetchTransferenciaPendente(convId).then(setTransferencia).catch(() => setTransferencia(null));
+    socket?.emit('conversa:abrir', convId);
+    return () => {
+      ac.abort();
+      socket?.emit('conversa:fechar', convId);
+    };
   }, [conversa?.id, socket]);
 
   // Carrega o lote anterior (scroll infinito) preservando a posição visual.
@@ -126,6 +154,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
   useEffect(() => {
     if (!socket) return;
     const onNova = (msg) => {
+      if (msg.conversa_id !== conversa?.id) return;
       setMensagens((prev) => (prev.some((m) => m.id === msg.id) ? prev : [...prev, msg]));
       // Se o usuário não está no fim, conta como "nova mensagem abaixo".
       if (!pertoDoFimRef.current && msg.direcao === 'entrada') {
@@ -206,10 +235,167 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
     setNovasAbaixo(0);
   }, []);
 
+  // ── Gravação de áudio ───────────────────────────────────────────
+
+  const pararStream = useCallback(() => {
+    if (audioStreamRef.current) {
+      audioStreamRef.current.getTracks().forEach((t) => { try { t.stop(); } catch {} });
+      audioStreamRef.current = null;
+    }
+  }, []);
+
+  const limparGravacao = useCallback(() => {
+    pararStream();
+    if (gravacaoTimerRef.current) { clearInterval(gravacaoTimerRef.current); gravacaoTimerRef.current = null; }
+    if (gravacaoLimiteRef.current) { clearTimeout(gravacaoLimiteRef.current); gravacaoLimiteRef.current = null; }
+    if (audioUrl) { try { URL.revokeObjectURL(audioUrl); } catch {} }
+    if (audioPreviewRef.current) { try { audioPreviewRef.current.pause(); } catch {} }
+    setAudioBlob(null);
+    setAudioUrl(null);
+    setAudioDuracao(0);
+    setAudioErro(null);
+    setTocando(false);
+    setTempoGravadoMs(0);
+    audioChunksRef.current = [];
+  }, [pararStream, audioUrl]);
+
+  const iniciarGravacao = useCallback(async () => {
+    if (gravando) return;
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia || typeof window === 'undefined' || typeof window.MediaRecorder === 'undefined') {
+      setAudioErro('Seu navegador não suporta gravação de áudio.');
+      return;
+    }
+    setAudioErro(null);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      audioStreamRef.current = stream;
+      audioChunksRef.current = [];
+      const mime = window.MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : (window.MediaRecorder.isTypeSupported('audio/webm') ? 'audio/webm' : '');
+      const rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+      mediaRecorderRef.current = rec;
+      rec.ondataavailable = (e) => { if (e.data && e.data.size > 0) audioChunksRef.current.push(e.data); };
+      rec.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: rec.mimeType || 'audio/webm' });
+        const url = URL.createObjectURL(blob);
+        setAudioBlob(blob);
+        setAudioUrl(url);
+        const dur = Date.now() - gravacaoInicioRef.current;
+        setAudioDuracao(dur);
+        setTempoGravadoMs(dur);
+        audioChunksRef.current = [];
+        pararStream();
+      };
+      gravacaoInicioRef.current = Date.now();
+      rec.start();
+      setGravando(true);
+      setTocando(false);
+      setTempoGravadoMs(0);
+      setAudioBlob(null);
+      setAudioUrl(null);
+      setAudioDuracao(0);
+      gravacaoTimerRef.current = setInterval(() => {
+        setTempoGravadoMs(Date.now() - gravacaoInicioRef.current);
+      }, 200);
+      gravacaoLimiteRef.current = setTimeout(() => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+          try { mediaRecorderRef.current.stop(); } catch {}
+        }
+      }, AUDIO_MAX_MS);
+    } catch (err) {
+      pararStream();
+      setGravando(false);
+      if (err?.name === 'NotAllowedError' || err?.name === 'PermissionDeniedError') {
+        setAudioErro('Permissão de microfone negada.');
+      } else if (err?.name === 'NotFoundError') {
+        setAudioErro('Nenhum microfone encontrado.');
+      } else {
+        setAudioErro('Não foi possível iniciar a gravação.');
+      }
+    }
+  }, [gravando, pararStream]);
+
+  const pararGravacao = useCallback(() => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      try { mediaRecorderRef.current.stop(); } catch {}
+    }
+    if (gravacaoTimerRef.current) { clearInterval(gravacaoTimerRef.current); gravacaoTimerRef.current = null; }
+    if (gravacaoLimiteRef.current) { clearTimeout(gravacaoLimiteRef.current); gravacaoLimiteRef.current = null; }
+    setGravando(false);
+  }, []);
+
+  const descartarAudio = useCallback(() => {
+    limparGravacao();
+  }, [limparGravacao]);
+
+  const tocarPausarPreview = useCallback(() => {
+    const el = audioPreviewRef.current;
+    if (!el) return;
+    if (el.paused) { el.play().catch(() => setTocando(false)); setTocando(true); }
+    else { el.pause(); setTocando(false); }
+  }, []);
+
+  const enviarAudio = useCallback(async (caption) => {
+    if (!audioBlob || !conversa || !socket || !connected) return;
+    setEnviando(true);
+    setErroEnvio('');
+    try {
+      const mediaBase64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(audioBlob);
+      });
+      const mime = audioBlob.type || 'audio/webm';
+      socket.timeout(30000).emit('mensagem:enviar', {
+        convId: conversa.id,
+        jid: conversa.wa_jid,
+        texto: caption?.trim() || undefined,
+        tipo: 'audio',
+        mediaBase64,
+        mediaMime: mime,
+        mediaNome: `audio-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.webm`,
+      }, (err, ack) => {
+        setEnviando(false);
+        if (err) { setErroEnvio('Tempo esgotado ao enviar o áudio.'); return; }
+        if (!ack?.ok) { setErroEnvio(ack?.erro || 'Não foi possível enviar o áudio.'); return; }
+        if (ack.mensagem) setMensagens((prev) => (prev.some((m) => m.id === ack.mensagem.id) ? prev : [...prev, ack.mensagem]));
+        setTexto('');
+        irParaOFim();
+        onConversaUpdated?.();
+      });
+    } catch (e) {
+      setEnviando(false);
+      setErroEnvio('Erro ao processar o áudio.');
+    }
+    limparGravacao();
+  }, [audioBlob, conversa, socket, connected, irParaOFim, onConversaUpdated, limparGravacao]);
+
+  // Cleanup gravação ao desmontar
+  useEffect(() => () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === 'recording') {
+      try { mediaRecorderRef.current.stop(); } catch {}
+    }
+    pararStream();
+    if (gravacaoTimerRef.current) clearInterval(gravacaoTimerRef.current);
+    if (gravacaoLimiteRef.current) clearTimeout(gravacaoLimiteRef.current);
+  }, [pararStream]);
+
+  useEffect(() => () => { if (audioUrl) URL.revokeObjectURL(audioUrl); }, [audioUrl]);
+
   const enviar = (e) => {
     e?.preventDefault();
+    if (!conversa || enviando) return;
+
+    // Se tem áudio gravado, envia o áudio (com legenda opcional)
+    if (audioBlob) {
+      enviarAudio(texto.trim() || undefined);
+      return;
+    }
+
     const txt = texto.trim();
-    if (!txt || !conversa || enviando) return;
+    if (!txt) return;
     if (!socket || !connected) {
       setErroEnvio('Conexão em tempo real indisponível. Recarregue a página e tente novamente.');
       return;
@@ -722,6 +908,46 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
       ),
     ),
 
+    // Banner durante gravação
+    gravando && React.createElement('div', {
+      role: 'status', 'aria-live': 'polite',
+      style: { padding: '10px 16px', background: T.dangerSoft, display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, borderTop: `1px solid ${T.border}` },
+    },
+      React.createElement('span', { className: 'pulse-dot', style: { width: 10, height: 10, borderRadius: '50%', background: T.danger, display: 'inline-block' } }),
+      React.createElement('span', { style: { fontSize: 13, color: T.danger, fontWeight: 600, fontVariantNumeric: 'tabular-nums' } },
+        `Gravando... ${formatarDuracao(tempoGravadoMs)} / 2:00`,
+      ),
+      React.createElement('div', { style: { flex: 1, height: 4, background: T.border, borderRadius: 2, overflow: 'hidden' } },
+        React.createElement('div', { style: { width: `${Math.min(100, (tempoGravadoMs / AUDIO_MAX_MS) * 100)}%`, height: '100%', background: T.danger, transition: 'width 0.2s' } })),
+      React.createElement('button', { type: 'button', onClick: pararGravacao, 'aria-label': 'Parar gravação', style: { width: 36, height: 36, borderRadius: '50%', border: 'none', background: T.danger, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
+        React.createElement(Square, { size: 14, fill: '#fff' })),
+    ),
+
+    // Preview do áudio gravado (antes de enviar)
+    audioBlob && !gravando && React.createElement('div', {
+      style: { padding: '8px 16px', background: T.surfaceMuted, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, borderTop: `1px solid ${T.border}` },
+    },
+      React.createElement('button', { type: 'button', onClick: tocarPausarPreview, 'aria-label': tocando ? 'Pausar pré-visualização' : 'Ouvir pré-visualização', style: { width: 36, height: 36, borderRadius: '50%', border: 'none', background: T.primary, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
+        tocando ? React.createElement(Pause, { size: 16 }) : React.createElement(Play, { size: 16, fill: '#fff' })),
+      React.createElement('audio', { ref: audioPreviewRef, src: audioUrl, onPlay: () => setTocando(true), onPause: () => setTocando(false), onEnded: () => setTocando(false), preload: 'metadata' }),
+      React.createElement('div', { style: { flex: 1, display: 'flex', flexDirection: 'column' } },
+        React.createElement('span', { style: { fontSize: 12, color: T.text, fontWeight: 600 } }, 'Mensagem de voz'),
+        React.createElement('span', { style: { fontSize: 11, color: T.textMuted, fontVariantNumeric: 'tabular-nums' } }, formatarDuracao(audioDuracao)),
+      ),
+      React.createElement('button', { type: 'button', onClick: descartarAudio, 'aria-label': 'Regravar áudio', title: 'Regravar', style: { background: 'none', border: 'none', cursor: 'pointer', color: T.textMuted, padding: 4, display: 'flex' } },
+        React.createElement(RotateCcw, { size: 16 })),
+      React.createElement('button', { type: 'button', onClick: descartarAudio, 'aria-label': 'Cancelar áudio', style: { background: 'none', border: 'none', cursor: 'pointer', color: T.textMuted, padding: 2, display: 'flex' } },
+        React.createElement(X, { size: 16 })),
+    ),
+
+    audioErro && React.createElement('div', {
+      role: 'alert',
+      style: { padding: '6px 16px', background: '#FEE2E2', color: '#991B1B', fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 },
+    },
+      React.createElement('span', { style: { flex: 1 } }, audioErro),
+      React.createElement('button', { onClick: () => setAudioErro(null), 'aria-label': 'Fechar', style: { background: 'none', border: 'none', cursor: 'pointer', color: '#991B1B' } }, React.createElement(X, { size: 14 })),
+    ),
+
     // Composer
     erroEnvio && React.createElement('div', {
       role: 'alert',
@@ -757,28 +983,49 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
       React.createElement('div', { style: { flex: 1, position: 'relative' } },
         React.createElement('textarea', {
           ref: inputRef, value: texto, onChange: (e) => setTexto(e.target.value),
-          placeholder: 'Digite uma mensagem (Enter envia, Shift+Enter quebra linha)',
+          placeholder: gravando ? 'Gravando áudio...' : audioBlob ? 'Adicione uma legenda (opcional)...' : 'Digite uma mensagem (Enter envia, Shift+Enter quebra linha)',
           rows: 1,
           'aria-label': 'Mensagem',
           maxLength: 4000,
+          disabled: gravando,
           onKeyDown: (e) => {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(e); }
           },
-          style: { width: '100%', resize: 'none', maxHeight: 120, minHeight: 22, boxSizing: 'border-box', background: T.surfaceMuted, border: `1px solid ${T.border}`, borderRadius: 22, padding: '11px 52px 11px 16px', color: T.text, fontSize: 14, outline: 'none', fontFamily: 'inherit', lineHeight: '20px' },
+          style: { width: '100%', resize: 'none', maxHeight: 120, minHeight: 22, boxSizing: 'border-box', background: T.surfaceMuted, border: `1px solid ${T.border}`, borderRadius: 22, padding: '11px 52px 11px 16px', color: T.text, fontSize: 14, outline: 'none', fontFamily: 'inherit', lineHeight: '20px', opacity: gravando ? 0.5 : 1 },
         }),
         texto.length > 0 && React.createElement('span', {
           style: { position: 'absolute', right: 12, bottom: 6, fontSize: 10, color: texto.length > 3800 ? T.danger : T.textMuted },
         }, `${texto.length}/4000`),
       ),
+      // Botão de microfone (vira stop durante gravação)
+      !audioBlob && React.createElement('button', {
+        type: 'button',
+        onClick: gravando ? pararGravacao : iniciarGravacao,
+        'aria-label': gravando ? 'Parar gravação' : 'Gravar áudio',
+        title: gravando ? 'Parar' : 'Gravar áudio (máx. 2 min)',
+        disabled: anexando,
+        style: {
+          width: 44, height: 44, flexShrink: 0, borderRadius: '50%', border: 'none',
+          cursor: anexando ? 'not-allowed' : 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: gravando ? T.danger : (anexando ? T.surfaceMuted : T.primarySoft),
+          transition: 'all 0.2s',
+          boxShadow: gravando ? `0 0 0 4px ${T.danger}40` : 'none',
+          animation: gravando ? 'pulse 1s ease-in-out infinite' : 'none',
+        },
+      },
+        gravando
+          ? React.createElement(Square, { size: 18, color: '#fff', fill: '#fff' })
+          : React.createElement(Mic, { size: 20, color: anexando ? T.textMuted : T.primary })),
       React.createElement('button', {
         type: 'submit',
-        disabled: enviando || anexando || !texto.trim(),
+        disabled: enviando || anexando || gravando || (!texto.trim() && !audioBlob),
         'aria-label': 'Enviar mensagem',
         title: connected ? 'Enviar' : 'Conectando...',
-        style: { width: 44, height: 44, flexShrink: 0, borderRadius: '50%', border: 'none', cursor: enviando || !texto.trim() ? 'default' : 'pointer', background: texto.trim() && !enviando ? T.primary : T.surfaceMuted, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+        style: { width: 44, height: 44, flexShrink: 0, borderRadius: '50%', border: 'none', cursor: enviando || (!texto.trim() && !audioBlob) ? 'default' : 'pointer', background: (texto.trim() || audioBlob) && !enviando && !gravando ? T.primary : T.surfaceMuted, display: 'flex', alignItems: 'center', justifyContent: 'center' },
       }, enviando
         ? React.createElement(Loader2, { size: 20, color: '#fff', className: 'spin' })
-        : React.createElement(Send, { size: 20, color: texto.trim() && !enviando ? '#fff' : T.textMuted })),
+        : React.createElement(Send, { size: 20, color: (texto.trim() || audioBlob) && !enviando && !gravando ? '#fff' : T.textMuted })),
     ),
 
     showParticipantes && React.createElement(ModalParticipantes, { conversa, onClose: () => setShowParticipantes(false) }),
@@ -826,6 +1073,31 @@ function ConfirmModal({ titulo, texto, confirmarLabel = 'Confirmar', cancelarLab
           style: { display: 'flex', alignItems: 'center', gap: 6, border: 'none', borderRadius: T.radiusSm, padding: '8px 16px', cursor: ocupado ? 'default' : 'pointer', fontSize: 13, fontWeight: 700, color: '#fff', background: perigoso ? T.danger : T.primary },
         }, confirmarLabel),
       ),
+    ),
+  );
+}
+
+function RelogioCalendario() {
+  const [hora, setHora] = React.useState(new Date());
+  React.useEffect(() => {
+    const timer = setInterval(() => setHora(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+  const saudacao = hora.getHours() < 12 ? 'Bom dia' : hora.getHours() < 18 ? 'Boa tarde' : 'Boa noite';
+  const diaSemana = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'][hora.getDay()];
+  const meses = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
+  const dataStr = `${diaSemana}, ${hora.getDate()} de ${meses[hora.getMonth()]} de ${hora.getFullYear()}`;
+  const horaStr = hora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  return React.createElement('div', { style: { textAlign: 'center', marginBottom: 24 } },
+    React.createElement('p', { style: { fontSize: 18, fontWeight: 700, color: T.primary, marginBottom: 8 } }, saudacao + '!'),
+    React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 6 } },
+      React.createElement('span', { className: 'material-symbols-outlined', style: { fontSize: 20, color: T.textSecondary } }, 'schedule'),
+      React.createElement('span', { style: { fontSize: 26, fontWeight: 700, color: T.text, fontVariantNumeric: 'tabular-nums', letterSpacing: 1 } }, horaStr),
+    ),
+    React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 } },
+      React.createElement('span', { className: 'material-symbols-outlined', style: { fontSize: 18, color: T.textSecondary } }, 'calendar_today'),
+      React.createElement('span', { style: { fontSize: 13, color: T.textSecondary } }, dataStr),
     ),
   );
 }
@@ -912,9 +1184,13 @@ function EstadoVazio({ title, subtitle }) {
         React.createElement('h2', {
           style: { fontSize: 28, fontWeight: 800, color: T.text, marginBottom: 16, letterSpacing: -0.5 },
         }, 'GovSistem Web'),
+        React.createElement(RelogioCalendario),
         React.createElement('p', {
-          style: { fontSize: 15, color: T.textSecondary, lineHeight: '24px', marginBottom: 40, maxWidth: 380, margin: '0 auto 40px' },
-        }, 'Envie e receba mensagens sem precisar manter seu celular conectado. Use o GovSistem em até 4 dispositivos ao mesmo tempo.'),
+          style: { fontSize: 14, color: T.textSecondary, lineHeight: '22px', marginBottom: 40, maxWidth: 380, margin: '0 auto 40px' },
+        }, 'Selecione um atendimento na lista ao lado para iniciar uma conversa. Você pode alternar entre departamentos clicando no nome do setor no topo da barra lateral.'),
+        React.createElement('p', {
+          style: { fontSize: 13, color: T.textMuted, lineHeight: '20px', maxWidth: 340, margin: '0 auto 24px' },
+        }, 'Atalho: use Ctrl + K para buscar conversas rapidamente pelo nome ou número do cidadão.'),
         React.createElement('div', {
           style: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: T.textMuted, opacity: 0.6 },
         },

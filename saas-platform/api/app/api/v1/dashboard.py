@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import shutil
 
 import httpx
 from fastapi import APIRouter, Depends
@@ -15,7 +16,7 @@ from app.models.organization import Organization
 from app.models.sso_session import SsoSession
 from app.models.subscription import Subscription
 from app.models.user import User
-from app.schemas.schemas import DashboardStats, ModuleInfo
+from app.schemas.schemas import DashboardStats, DiskInfo, ModuleInfo
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -140,6 +141,18 @@ async def get_dashboard_stats(
     except Exception:
         pass
 
+    # Disk usage
+    try:
+        disk_usage = shutil.disk_usage("/")
+        disk_info = DiskInfo(
+            total_gb=round(disk_usage.total / (1024 ** 3), 2),
+            used_gb=round(disk_usage.used / (1024 ** 3), 2),
+            free_gb=round(disk_usage.free / (1024 ** 3), 2),
+            percent_used=round((disk_usage.used / disk_usage.total) * 100, 1),
+        )
+    except Exception:
+        disk_info = None
+
     return DashboardStats(
         total_organizations=total_orgs or 0,
         active_organizations=active_orgs or 0,
@@ -153,4 +166,5 @@ async def get_dashboard_stats(
         last_publication_ago=last_publication_ago,
         online_users_count=online_count or 0,
         system_status=system_status,
+        disk=disk_info,
     )

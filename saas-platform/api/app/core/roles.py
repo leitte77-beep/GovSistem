@@ -35,12 +35,6 @@ MODULE_ROLE_CATALOG: dict[str, list[dict]] = {
         {"name": "COMPRAS_LICITACAO", "label": "Compras e Licitação"},
         {"name": "GESTOR", "label": "Gestor / Prefeito — somente leitura"},
     ],
-    "govouve": [
-        {"name": "ADMIN", "label": "Administrador do GovOuve"},
-        {"name": "ATENDENTE", "label": "Atendente — tria e responde manifestações"},
-        {"name": "GESTOR_SECRETARIA", "label": "Gestor de Secretaria — gerencia avaliações e indicadores"},
-        {"name": "OUVIDOR_GERAL", "label": "Ouvidor-Geral — visão consolidada e relatórios"},
-    ],
 }
 
 

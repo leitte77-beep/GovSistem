@@ -138,7 +138,7 @@ export async function getCalendario(tenantId, operadorId, inicio, fim) {
   const eventos = await db.manyOrNone(
     `SELECT * FROM eventos_calendario
      WHERE tenant_id = $1 AND inicio >= $3 AND fim <= $4
-       AND (setor_id IS NULL OR setor_id IN (SELECT departamento_id FROM operador_departamentos WHERE operador_id = $2))`,
+       AND (setor_id IS NULL OR setor_id IN (SELECT od.departamento_id FROM operador_departamentos od JOIN departamentos d ON d.id = od.departamento_id AND d.ativo = true WHERE od.operador_id = $2))`,
     [tenantId, operadorId, inicio, fim]
   );
   return [...reunioes, ...tarefas, ...eventos];

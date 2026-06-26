@@ -22,6 +22,12 @@ interface DashboardData {
   last_publication_ago: string;
   online_users_count: number;
   system_status: string;
+  disk: {
+    total_gb: number;
+    used_gb: number;
+    free_gb: number;
+    percent_used: number;
+  } | null;
 }
 
 const moduleConfig: Record<string, { icon: string; gradient: string }> = {
@@ -40,6 +46,7 @@ export default function DashboardPage() {
   const [lastPublication, setLastPublication] = useState("—");
   const [onlineUsers, setOnlineUsers] = useState(0);
   const [systemStatus, setSystemStatus] = useState("100% Operacional");
+  const [disk, setDisk] = useState<DashboardData["disk"]>(null);
 
   useEffect(() => {
     if (!user) {
@@ -53,6 +60,7 @@ export default function DashboardPage() {
         setLastPublication(data.last_publication_ago || "—");
         setOnlineUsers(data.online_users_count ?? 0);
         setSystemStatus(data.system_status || "100% Operacional");
+        if (data.disk) setDisk(data.disk);
       })
       .catch(() => toast.error("Erro ao carregar módulos"))
       .finally(() => setLoading(false));
@@ -160,7 +168,7 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <section className="mt-stack-lg grid grid-cols-1 md:grid-cols-3 gap-6">
+          <section className="mt-stack-lg grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <div className="bg-surface rounded-lg p-6 flex items-center gap-4">
               <div className="w-12 h-12 rounded-full bg-[#001631]/5 flex items-center justify-center text-[#001631]">
                 <span className="material-symbols-outlined">published_with_changes</span>
@@ -188,6 +196,21 @@ export default function DashboardPage() {
                 <p className="text-body-md font-bold text-[#006d3d]">{systemStatus}</p>
               </div>
             </div>
+            {disk && (
+              <div className="bg-surface rounded-lg p-6 flex items-center gap-4">
+                <div className="w-12 h-12 rounded-full bg-[#001631]/5 flex items-center justify-center text-[#001631]">
+                  <span className="material-symbols-outlined">storage</span>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-label-md text-on-surface-variant uppercase">Uso de Disco</p>
+                  <p className="text-body-md font-bold text-[#001631]">{disk.percent_used}% usado</p>
+                  <div className="w-full h-1.5 bg-surface-container-high rounded-full overflow-hidden mt-1">
+                    <div className="h-full bg-[#001631] rounded-full transition-all" style={{ width: `${disk.percent_used}%` }} />
+                  </div>
+                  <p className="text-[11px] text-on-surface-variant mt-1">{disk.free_gb} GB livre de {disk.total_gb} GB</p>
+                </div>
+              </div>
+            )}
           </section>
         </>
       ) : (

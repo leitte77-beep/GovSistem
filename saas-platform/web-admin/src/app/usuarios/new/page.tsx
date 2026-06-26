@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import AppLayout from "@/components/layout/AppLayout";
 import api from "@/lib/api";
 import toast from "react-hot-toast";
-import { Save, ArrowLeft, Loader2, User, Shield, Puzzle } from "lucide-react";
+import { Save, ArrowLeft, Loader2, User, Shield, Puzzle, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 
 interface Organization {
@@ -40,8 +40,21 @@ const MODULE_ICONS: Record<string, string> = {
   financeiro: "💰",
   chatgov: "💬",
   govtask: "📋",
-  govouve: "📢",
 };
+
+function getPasswordStrength(pw: string): { score: number; label: string; color: string } {
+  if (!pw) return { score: 0, label: "—", color: "bg-gray-200" };
+  let score = 0;
+  if (pw.length >= 8) score++;
+  if (pw.length >= 12) score++;
+  if (/[A-Z]/.test(pw)) score++;
+  if (/[a-z]/.test(pw)) score++;
+  if (/[0-9]/.test(pw)) score++;
+  if (/[^A-Za-z0-9]/.test(pw)) score++;
+  if (score <= 2) return { score, label: "Fraca", color: "bg-red-500" };
+  if (score <= 4) return { score, label: "Media", color: "bg-yellow-500" };
+  return { score, label: "Forte", color: "bg-green-500" };
+}
 
 export default function NewUsuarioPage() {
   const router = useRouter();
@@ -50,11 +63,17 @@ export default function NewUsuarioPage() {
     is_platform_admin: false, is_organization_admin: false, platform_role: "", organization_id: "",
     is_active: true, module_permissions: [] as string[],
   });
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [modules, setModules] = useState<Module[]>([]);
   const [catalog, setCatalog] = useState<RoleCatalog>({});
   const [grants, setGrants] = useState<Grants>({});
   const [saving, setSaving] = useState(false);
+
+  const passwordStrength = getPasswordStrength(form.password);
+  const passwordMismatch = confirmPassword !== "" && form.password !== confirmPassword;
 
   useEffect(() => {
     api<{ data: Organization[] }>("/organizations?limit=200").then((r) => setOrgs(r.data)).catch(() => {});
@@ -84,16 +103,35 @@ export default function NewUsuarioPage() {
     }
   };
 
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const digits = e.target.value.replace(/\D/g, "");
+    let masked = digits;
+    if (digits.length > 0) masked = `(${digits.slice(0, 2)}`;
+    if (digits.length > 2) masked += `) ${digits.slice(2, 7)}`;
+    if (digits.length > 7) masked += `-${digits.slice(7, 11)}`;
+    setForm((prev) => ({ ...prev, phone: masked.slice(0, 15) }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (form.password !== confirmPassword) {
+      toast.error("As senhas nao conferem");
+      return;
+    }
+    if (passwordStrength.score < 2) {
+      toast.error("A senha e muito fraca. Use maiusculas, minusculas, numeros e simbolos.");
+      return;
+    }
     setSaving(true);
     try {
       const moduleSlugs = Object.keys(grants).filter((s) => (grants[s] || []).length > 0);
       const body = {
         ...form,
         cpf: form.cpf.replace(/\D/g, "") || undefined,
+        phone: form.phone.replace(/\D/g, "") || undefined,
         organization_id: form.organization_id || null,
         module_permissions: moduleSlugs.length > 0 ? moduleSlugs : undefined,
+        force_password_reset: true,
       };
       const created = await api<{ id: string }>("/users", { method: "POST", body });
       if (created?.id && moduleSlugs.length > 0) {
@@ -109,6 +147,7 @@ export default function NewUsuarioPage() {
   };
 
   const inputClass = "w-full px-4 py-3 border border-outline-variant bg-white rounded-lg focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20 outline-none text-sm text-on-surface placeholder:text-on-surface-variant/60 transition-colors";
+  const inputErrorClass = "w-full px-4 py-3 border border-red-400 bg-red-50/30 rounded-lg focus:border-red-500 focus:ring-2 focus:ring-red-500/20 outline-none text-sm text-on-surface placeholder:text-on-surface-variant/60 transition-colors";
   const labelClass = "block text-xs font-semibold text-on-surface-variant uppercase tracking-wider mb-1.5";
 
   const activeModules = modules.filter((mod) => (catalog[mod.slug] || []).length > 0);
@@ -116,7 +155,6 @@ export default function NewUsuarioPage() {
   return (
     <AppLayout title="Novo Usuario">
       <form onSubmit={handleSubmit} className="max-w-4xl">
-        {/* Page Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-2xl font-extrabold text-on-surface tracking-tight">Novo Usuario</h1>
@@ -143,7 +181,7 @@ export default function NewUsuarioPage() {
         </div>
 
         <div className="space-y-6">
-          {/* Section 1: Informações Pessoais */}
+          {/* Section 1 */}
           <div className="bg-white/80 backdrop-blur-sm border border-outline-variant rounded-xl p-6 sm:p-8 shadow-sm">
             <div className="flex items-center gap-2 mb-5 pb-4 border-b border-outline-variant">
               <User size={20} className="text-primary-600" />
@@ -159,7 +197,7 @@ export default function NewUsuarioPage() {
                 <input name="email" type="email" value={form.email} onChange={handleChange} required className={inputClass} placeholder="email@gov.br" />
               </div>
               <div>
-                <label className={labelClass}>CPF *</label>
+                <label className={labelClass}>CPF</label>
                 <input name="cpf" value={form.cpf} onChange={(e) => {
                   const digits = e.target.value.replace(/\D/g, "");
                   const masked = digits.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4").slice(0, 14);
@@ -168,7 +206,7 @@ export default function NewUsuarioPage() {
               </div>
               <div>
                 <label className={labelClass}>Telefone</label>
-                <input name="phone" value={form.phone} onChange={handleChange} className={inputClass} placeholder="(00) 00000-0000" />
+                <input name="phone" value={form.phone} onChange={handlePhoneChange} className={inputClass} placeholder="(00) 00000-0000" maxLength={15} />
               </div>
               <div>
                 <label className={labelClass}>Orgao</label>
@@ -180,7 +218,7 @@ export default function NewUsuarioPage() {
             </div>
           </div>
 
-          {/* Section 2: Seguranca e Acessos */}
+          {/* Section 2: Security */}
           <div className="bg-white/80 backdrop-blur-sm border border-outline-variant rounded-xl p-6 sm:p-8 shadow-sm">
             <div className="flex items-center gap-2 mb-5 pb-4 border-b border-outline-variant">
               <Shield size={20} className="text-primary-600" />
@@ -188,12 +226,58 @@ export default function NewUsuarioPage() {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mb-6">
               <div>
-                <label className={labelClass}>Senha Temporaria *</label>
-                <input name="password" type="password" value={form.password} onChange={handleChange} required className={inputClass} placeholder="••••••••" />
+                <label className={labelClass}>Senha *</label>
+                <div className="relative">
+                  <input
+                    name="password"
+                    type={showPassword ? "text" : "password"}
+                    value={form.password}
+                    onChange={handleChange}
+                    required
+                    className={`${inputClass} pr-12`}
+                    placeholder="••••••••"
+                  />
+                  <button type="button" onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface p-1">
+                    {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+                {form.password && (
+                  <div className="mt-2">
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full transition-all duration-300 ${passwordStrength.color}`}
+                          style={{ width: `${(passwordStrength.score / 6) * 100}%` }} />
+                      </div>
+                      <span className="text-xs font-semibold" style={{ color: passwordStrength.score <= 2 ? "#ef4444" : passwordStrength.score <= 4 ? "#eab308" : "#22c55e" }}>
+                        {passwordStrength.label}
+                      </span>
+                    </div>
+                    <p className="text-xs text-on-surface-variant">
+                      Minimo 8 caracteres, com maiuscula, minuscula, numero e simbolo.
+                    </p>
+                  </div>
+                )}
               </div>
               <div>
                 <label className={labelClass}>Confirmar Senha *</label>
-                <input type="password" value={form.password} readOnly className={inputClass} placeholder="••••••••" />
+                <div className="relative">
+                  <input
+                    type={showConfirm ? "text" : "password"}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    required
+                    className={passwordMismatch ? inputErrorClass : `${inputClass} pr-12`}
+                    placeholder="••••••••"
+                  />
+                  <button type="button" onClick={() => setShowConfirm(!showConfirm)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant hover:text-on-surface p-1">
+                    {showConfirm ? <EyeOff size={18} /> : <Eye size={18} />}
+                  </button>
+                </div>
+                {passwordMismatch && (
+                  <p className="text-xs text-red-500 mt-1 font-medium">As senhas nao conferem</p>
+                )}
               </div>
               <div className="sm:col-span-2">
                 <label className={labelClass}>Funcao no Sistema</label>
@@ -230,7 +314,7 @@ export default function NewUsuarioPage() {
             </div>
           </div>
 
-          {/* Section 3: Acessos por modulo */}
+          {/* Section 3: Module access */}
           <div className="bg-white/80 backdrop-blur-sm border border-outline-variant rounded-xl p-6 sm:p-8 shadow-sm">
             <div className="flex items-center gap-2 mb-5 pb-4 border-b border-outline-variant">
               <Puzzle size={20} className="text-primary-600" />
@@ -284,7 +368,6 @@ export default function NewUsuarioPage() {
           </div>
         </div>
 
-        {/* Footer Info */}
         <div className="flex justify-center py-6 text-on-surface-variant/60">
           <div className="flex items-center gap-2">
             <span className="text-sm">🔒</span>

@@ -25,7 +25,7 @@ function buildAuthFromToken(token) {
       token,
       operador: {
         id: payload.sub,
-        nome: payload.name || payload.nome || 'Operador',
+        nome: payload.name || payload.nome || '',
         email: payload.email || '',
         papel,
         tenantId: payload.organization_id || payload.tenantId || payload.tenant_id,

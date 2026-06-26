@@ -1,4 +1,5 @@
 import { verifyToken } from './jwt.js';
+import db from '../db.js';
 
 export function operadorFromToken(decoded) {
   if (decoded.type === 'module_access') {
@@ -24,7 +25,7 @@ export function operadorFromToken(decoded) {
   };
 }
 
-export function authMiddleware(req, res, next) {
+export async function authMiddleware(req, res, next) {
   const header = req.headers.authorization;
   if (!header || !header.startsWith('Bearer ')) {
     return res.status(401).json({ erro: 'Token não fornecido' });
@@ -38,6 +39,18 @@ export function authMiddleware(req, res, next) {
     if (!req.operador.tenantId) {
       return res.status(401).json({ erro: 'Token sem organização/tenant' });
     }
+
+    if ((!req.operador.nome || req.operador.nome === 'Operador') && req.operador.id) {
+      try {
+        const row = await db.oneOrNone(
+          'SELECT nome, papel FROM operadores WHERE id = $1',
+          [req.operador.id]
+        );
+        if (row?.nome) req.operador.nome = row.nome;
+        if (row?.papel) req.operador.papel = row.papel;
+      } catch { /* silencioso */ }
+    }
+
     next();
   } catch (err) {
     return res.status(401).json({ erro: 'Token inválido ou expirado' });
@@ -47,9 +60,6 @@ export function authMiddleware(req, res, next) {
 function mapRolesToPapel(roles) {
   if (roles.some(r => ['SUPER_ADMIN', 'PLATFORM_ADMIN', 'ADMIN'].includes(r))) {
     return 'admin';
-  }
-  if (roles.includes('SUPPORT')) {
-    return 'supervisor';
   }
   return 'operador';
 }
