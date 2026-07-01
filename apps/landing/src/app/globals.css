@@ -1,0 +1,149 @@
+@import url('https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html {
+  /* Offset anchor jumps so section headings aren't hidden under the fixed navbar */
+  scroll-padding-top: 6rem;
+}
+
+body {
+  font-family: 'Public Sans', system-ui, sans-serif;
+  background-color: #FAFBFC;
+}
+
+/* Respect users who prefer reduced motion: disable decorative animations and
+   reveal-on-scroll transitions so content is always visible and still. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* Force scroll-reveal sections to their final, visible state */
+  [data-section] [class*="opacity-0"] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}
+
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  vertical-align: middle;
+}
+
+
+.glass {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.glass-dark {
+  background: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Grid pattern background */
+.grid-pattern {
+  background-image: 
+    linear-gradient(rgba(30, 64, 239, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(30, 64, 239, 0.05) 1px, transparent 1px);
+  background-size: 60px 60px;
+}
+
+/* Hero glow */
+.hero-glow {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(120px);
+  opacity: 0.3;
+  pointer-events: none;
+}
+
+/* Shimmer effect for cards */
+.shimmer-border {
+  position: relative;
+  overflow: hidden;
+}
+
+.shimmer-border::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    rgba(30, 64, 239, 0.4),
+    rgba(124, 58, 237, 0.4),
+    rgba(5, 150, 105, 0.4),
+    rgba(30, 64, 239, 0.4)
+  );
+  background-size: 300% 300%;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: shimmer 3s linear infinite;
+}
+
+/* Section divider */
+.section-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(30, 64, 239, 0.15), transparent);
+}
+
+/* Legal / institutional article typography */
+.prose-legal h2 {
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+  color: #0F172A;
+  margin-top: 2.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.prose-legal h2:first-child {
+  margin-top: 0;
+}
+
+.prose-legal p {
+  color: #475569;
+  line-height: 1.7;
+  margin-bottom: 1rem;
+}
+
+.prose-legal ul {
+  list-style: disc;
+  padding-left: 1.5rem;
+  margin-bottom: 1rem;
+  color: #475569;
+}
+
+.prose-legal li {
+  margin-bottom: 0.5rem;
+  line-height: 1.6;
+}
+
+.prose-legal a {
+  color: #1E40EF;
+  text-decoration: underline;
+}
+
+.prose-legal strong {
+  color: #0F172A;
+  font-weight: 600;
+}

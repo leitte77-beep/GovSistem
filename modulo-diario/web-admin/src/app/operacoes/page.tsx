@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Image from "next/image";
 import { api } from "@/lib/api";
+import { notifyError } from "@/lib/error-handler";
 
 export default function OperacoesPage() {
   const [health, setHealth] = useState<any>(null);
@@ -16,7 +18,7 @@ export default function OperacoesPage() {
       api.getRaw("/operations/dashboard"),
     ])
       .then(([h, q, d]) => { setHealth(h); setQueue(q); setDashboard(d); })
-      .catch(() => {})
+      .catch((err) => notifyError("Operacoes", err))
       .finally(() => setLoading(false));
   }, []);
 
@@ -242,10 +244,12 @@ export default function OperacoesPage() {
 
           {/* Banner */}
           <div className="rounded-xl overflow-hidden relative h-48 border border-outline-variant shadow-sm">
-            <img
+            <Image
               alt="Data Center"
               className="w-full h-full object-cover"
               src="https://lh3.googleusercontent.com/aida-public/AB6AXuCjeSNPDlpImEttrHhXlPcs3hgNHIuegvpW2SzUrd4D2NPj0svELd4qxMNRdwsT-jcH3UpH4UAWz_6o4D9grSWSB_SaTCFvNR5LLFNOHffK39fvmTNjLK0CiSe3HGPzH6RFFhUj24SatYI5MW0Sa22Xr3BKkX2dI59uP-CC8lNTvUgS9kuhLokD1mF5sjItcwJlYmR_bFw7ZWL4XKzmWyrhRDCGayltZO0-5t7FGsEAqxZn-kpdyVh5EecuRk0QlExHG7hu5y3whJzL"
+              fill
+              unoptimized
             />
             <div className="absolute inset-0 bg-gradient-to-t from-primary/80 to-transparent flex flex-col justify-end p-4">
               <span className="text-[10px] font-bold text-secondary-fixed uppercase tracking-[0.2em]">Local Data Center</span>

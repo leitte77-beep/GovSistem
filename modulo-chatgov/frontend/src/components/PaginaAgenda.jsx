@@ -29,7 +29,7 @@ function tempoRelativo(dataStr) {
   return new Date(dataStr).toLocaleDateString('pt-BR');
 }
 
-export function PaginaAgenda({ onSendMessage }) {
+export function PaginaAgenda({ onSendMessage, breakpoint }) {
   const [contatos, setContatos] = useState([]);
   const [departamentos, setDepartamentos] = useState([]);
   const [busca, setBusca] = useState('');
@@ -98,6 +98,8 @@ export function PaginaAgenda({ onSendMessage }) {
     { key: 'recentes', label: 'Recentes' },
     { key: 'grupos', label: 'Grupos' },
   ];
+  const ehMobile = breakpoint === 'mobile';
+  const ehTablet = breakpoint === 'tablet';
 
   // Ordem alfabética pt-BR (ignora acento/maiúscula); contatos sem nome ao fim.
   const contatosExibidos = [...contatos].sort((a, b) => {
@@ -111,11 +113,11 @@ export function PaginaAgenda({ onSendMessage }) {
 
   return React.createElement('div', { style: sf.container },
     /* ── HEADER ── */
-    React.createElement('div', { style: sf.header },
-      React.createElement('div', { style: sf.headerLeft },
+    React.createElement('div', { style: { ...sf.header, ...(ehMobile ? sf.headerMobile : null) } },
+      React.createElement('div', { style: { ...sf.headerLeft, ...(ehMobile ? sf.headerLeftMobile : null) } },
         React.createElement('h1', { style: sf.title }, 'Agenda'),
-        React.createElement('div', { style: sf.divider }),
-        React.createElement('nav', { style: sf.tabs },
+        !ehMobile && React.createElement('div', { style: sf.divider }),
+        React.createElement('nav', { style: { ...sf.tabs, ...(ehMobile ? sf.tabsMobile : null) } },
           ...abas.map((aba) =>
             React.createElement('button', {
               key: aba.key,
@@ -130,10 +132,10 @@ export function PaginaAgenda({ onSendMessage }) {
           ),
         ),
       ),
-      React.createElement('div', { style: sf.headerRight },
+      React.createElement('div', { style: { ...sf.headerRight, ...(ehMobile ? sf.headerRightMobile : null) } },
         React.createElement('button', {
           onClick: () => setShowNovaConversa(true),
-          style: sf.btnPrimary,
+          style: { ...sf.btnPrimary, ...(ehMobile ? sf.btnPrimaryMobile : null) },
         },
           React.createElement(Plus, { size: 17 }),
           ' Novo contato',
@@ -141,8 +143,8 @@ export function PaginaAgenda({ onSendMessage }) {
       ),
     ),
     /* ── SEARCH BAR ── */
-    React.createElement('div', { style: sf.toolbar },
-      React.createElement('div', { style: sf.searchWrap },
+    React.createElement('div', { style: { ...sf.toolbar, ...(ehMobile ? sf.toolbarMobile : null) } },
+      React.createElement('div', { style: { ...sf.searchWrap, ...(ehMobile ? sf.searchWrapMobile : null) } },
         React.createElement(Search, { size: 18, color: T.textMuted, style: { position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)' } }),
         React.createElement('input', {
           value: busca,
@@ -151,7 +153,7 @@ export function PaginaAgenda({ onSendMessage }) {
           style: sf.searchInput,
         }),
       ),
-      React.createElement('button', { style: sf.btnOutlined },
+      React.createElement('button', { style: { ...sf.btnOutlined, ...(ehMobile ? sf.btnToolbarMobile : null) } },
         React.createElement(Filter, { size: 17 }),
         ' Filtros',
       ),
@@ -164,7 +166,7 @@ export function PaginaAgenda({ onSendMessage }) {
       ),
     ),
     /* ── CONTENT ── */
-    React.createElement('div', { style: sf.content },
+    React.createElement('div', { style: { ...sf.content, ...(ehMobile ? sf.contentMobile : null) } },
       contatosExibidos.length === 0
         ? React.createElement('div', { style: sf.empty },
             React.createElement(User, { size: 52, color: T.textMuted, style: { opacity: 0.25 } }),
@@ -176,7 +178,11 @@ export function PaginaAgenda({ onSendMessage }) {
         : React.createElement('div', {
             style: {
               ...sf.grid,
-              gridTemplateColumns: modoGrade ? 'repeat(auto-fill, minmax(320px, 1fr))' : '1fr',
+              gridTemplateColumns: ehMobile
+                ? '1fr'
+                : modoGrade
+                ? `repeat(auto-fill, minmax(${ehTablet ? 260 : 320}px, 1fr))`
+                : '1fr',
             },
           },
             ...contatosExibidos.map((c, i) => modoGrade ? cardContato(c, i) : linhaContato(c, i)),
@@ -332,21 +338,28 @@ export function PaginaAgenda({ onSendMessage }) {
 
 /* ──────── STYLES ──────── */
 const sf = {
-  container: { flex: 1, display: 'flex', flexDirection: 'column', height: '100%', background: '#f0f2f5' },
+  container: { flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', height: '100%', background: '#f0f2f5', overflow: 'hidden' },
 
   header: { padding: '14px 28px', background: T.surface, borderBottom: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  headerMobile: { padding: '16px 16px 12px', flexDirection: 'column', alignItems: 'stretch', gap: 12 },
   headerLeft: { display: 'flex', alignItems: 'center', gap: 16 },
+  headerLeftMobile: { alignItems: 'flex-start', gap: 10, minWidth: 0 },
   title: { fontSize: 20, fontWeight: 800, letterSpacing: -0.5, color: T.text, whiteSpace: 'nowrap' },
   divider: { width: 1, height: 24, background: T.border },
   tabs: { display: 'flex', gap: 24 },
-  tab: { fontSize: 13, fontWeight: 500, background: 'none', border: 'none', cursor: 'pointer', padding: '6px 0', transition: 'all 0.15s' },
+  tabsMobile: { width: '100%', gap: 18, overflowX: 'auto', paddingBottom: 2, WebkitOverflowScrolling: 'touch' },
+  tab: { fontSize: 13, fontWeight: 500, background: 'none', border: 'none', cursor: 'pointer', padding: '6px 0', transition: 'all 0.15s', flexShrink: 0 },
   headerRight: { display: 'flex', alignItems: 'center', gap: 12 },
+  headerRightMobile: { width: '100%' },
 
   toolbar: { padding: '16px 28px', display: 'flex', gap: 12, alignItems: 'center' },
+  toolbarMobile: { padding: '12px 16px', flexWrap: 'wrap', alignItems: 'stretch' },
   searchWrap: { flex: 1, position: 'relative' },
+  searchWrapMobile: { flex: '1 0 100%' },
   searchInput: { width: '100%', height: 42, padding: '0 16px 0 40px', border: `1px solid ${T.border}`, borderRadius: T.radius, fontSize: 13, color: T.text, background: T.surface, outline: 'none', boxSizing: 'border-box' },
 
   content: { flex: 1, overflowY: 'auto', padding: '0 28px 16px' },
+  contentMobile: { padding: '0 16px 16px' },
   grid: { display: 'grid', gap: 16, paddingBottom: 8 },
 
   card: {
@@ -393,12 +406,21 @@ const sf = {
     padding: '9px 18px', fontSize: 13, fontWeight: 600,
     cursor: 'pointer', whiteSpace: 'nowrap',
   },
+  btnPrimaryMobile: {
+    width: '100%',
+    justifyContent: 'center',
+    minHeight: 40,
+  },
   btnOutlined: {
     display: 'flex', alignItems: 'center', gap: 6,
     background: T.surface, color: T.textMuted,
     border: `1px solid ${T.border}`, borderRadius: T.radius,
     padding: '9px 14px', fontSize: 13, fontWeight: 500,
     cursor: 'pointer', whiteSpace: 'nowrap',
+  },
+  btnToolbarMobile: {
+    flex: '1 1 0',
+    justifyContent: 'center',
   },
   btnIcon: {
     width: 42, height: 42,

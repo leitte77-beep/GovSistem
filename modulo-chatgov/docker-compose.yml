@@ -47,6 +47,15 @@ services:
       JWT_SECRETS: ${JWT_SECRETS:-dev-saas-secret-key-change-in-production}
       # Provisionamento interno chamado pelo saas (deve casar com INTERNAL_API_KEY do saas)
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-123}
+      # Limpeza de conversas abertas sem resposta do cidadão.
+      #   LIMPEZA_CONVERSAS_ATIVO=false  -> desliga a rotina
+      #   LIMPEZA_CONVERSAS_ACAO=arquivar (default, preserva tudo) | excluir (apaga de vez)
+      #   LIMPEZA_CONVERSAS_HORAS=24     -> janela de inatividade
+      #   LIMPEZA_CONVERSAS_INTERVALO_MIN=30 -> frequência da verificação
+      LIMPEZA_CONVERSAS_ATIVO: ${LIMPEZA_CONVERSAS_ATIVO:-false}
+      LIMPEZA_CONVERSAS_ACAO: ${LIMPEZA_CONVERSAS_ACAO:-arquivar}
+      LIMPEZA_CONVERSAS_HORAS: ${LIMPEZA_CONVERSAS_HORAS:-72}
+      LIMPEZA_CONVERSAS_INTERVALO_MIN: ${LIMPEZA_CONVERSAS_INTERVALO_MIN:-30}
     ports:
       - "3050:3050"
     volumes:

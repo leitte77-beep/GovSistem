@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
+import { useOrg } from "@/lib/org-context";
 import { formatBrasiliaDateTime } from "@/lib/dates";
 import ShareDialog from "@/components/ShareDialog";
 
@@ -22,8 +24,8 @@ function formatHeaderDate(value: string) {
   return `${WEEKDAYS[date.getDay()]}, ${String(date.getDate()).padStart(2, "0")} DE ${MONTHS[date.getMonth()]} DE ${date.getFullYear()}`;
 }
 
-function certificateName(subject?: string) {
-  const cn = subject?.match(/CN=([^,]+)/)?.[1] || subject || "MUNICÍPIO DE FAROL";
+function certificateName(subject?: string, fallback = "MUNICÍPIO") {
+  const cn = subject?.match(/CN=([^,]+)/)?.[1] || subject || fallback;
   return cn.split(":")[0].trim().replace(/^MUNICIPIO\b/i, "MUNICÍPIO").toUpperCase();
 }
 
@@ -37,6 +39,7 @@ function toDirectPdfUrl(pdfUrl: string) {
 
 export default function EditionDetailPage() {
   const params = useParams();
+  const { org } = useOrg();
   const year = Number(params.ano);
   const number = Number(params.numero);
   const [data, setData] = useState<any>(null);
@@ -223,13 +226,13 @@ export default function EditionDetailPage() {
         {/* Document Header */}
         <header className="text-center mb-10 pb-8 border-b-2 border-primary-container">
           <div className="flex justify-center mb-6">
-            <img alt="Brasão do Município de Farol" className="h-32 w-auto mx-auto" src="/brasao.png" />
+            <Image alt={org?.name ? `Brasão de ${org.name}` : "Brasão do Município"} className="h-32 w-auto mx-auto" src={org?.logo_url || "/brasao.png"} width={128} height={128} />
           </div>
           <h2 className="text-display-lg font-display-lg text-primary tracking-tighter uppercase mb-1">
             Diário Oficial Eletrônico
           </h2>
           <h3 className="text-headline-sm font-headline-sm text-on-surface-variant font-bold mb-8">
-            MUNICÍPIO DE FAROL
+            {org?.name?.toUpperCase() || "MUNICÍPIO"}
           </h3>
           <div className="grid grid-cols-3 gap-0 border-y border-outline-variant py-3 mt-4 text-label-md font-label-md uppercase tracking-wider text-on-surface-variant">
             <div className="text-left">{formatHeaderDate(data.publication_date)}</div>
@@ -247,7 +250,7 @@ export default function EditionDetailPage() {
           <p className="text-body-sm font-body-sm text-on-secondary-container">
             Assinado digitalmente por{" "}
             <span className="font-bold">
-              {certificateName(signature?.certificate_subject || signature?.certificate_info?.subject)} | {verificationCode}
+              {certificateName(signature?.certificate_subject || signature?.certificate_info?.subject, org?.name || "MUNICÍPIO")} | {verificationCode}
             </span>
           </p>
         </div>

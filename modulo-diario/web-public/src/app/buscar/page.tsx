@@ -4,6 +4,8 @@ import { Suspense, useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { api, MatterSummary } from "@/lib/api";
+import { useOrg } from "@/lib/org-context";
+import { notifyError } from "@/lib/error-handler";
 
 export default function SearchPage() {
   return (
@@ -25,6 +27,7 @@ function formatDate(dateStr: string | null): string {
 function SearchPageContent() {
   const router = useRouter();
   const sp = useSearchParams();
+  const { org } = useOrg();
 
   const [query, setQuery] = useState(sp.get("q") || "");
   const [dateFrom, setDateFrom] = useState(sp.get("date_from") || "");
@@ -54,7 +57,7 @@ function SearchPageContent() {
       api.search(params).then((res) => {
         setResults(res.data);
         setTotal(res.pagination.total);
-      }).catch(() => {}).finally(() => setLoading(false));
+      }).catch((err) => notifyError("Buscar", err)).finally(() => setLoading(false));
     },
     [query, actType, orgUnit, dateFrom, dateTo, editionNo],
   );
@@ -103,8 +106,8 @@ function SearchPageContent() {
         </h1>
         <p className="text-body-lg font-body-lg text-on-surface-variant max-w-3xl">
           Encontre atos oficiais, decretos, portarias e publicações
-          legislativas com precisão técnica em todo o acervo histórico do
-          Diário Oficial do Município de Farol.
+          legislativas com precisão técnica em todo o acervo histórico
+          {org?.name ? ` da(o) ${org.name}` : " do Diário Oficial"}.
         </p>
       </header>
 
@@ -114,7 +117,7 @@ function SearchPageContent() {
           <form className="space-y-stack-md" onSubmit={handleSubmit}>
             {/* Keyword Search */}
             <div className="flex flex-col gap-2">
-              <label className="text-label-md font-label-md text-primary">
+              <label className="text-label-md font-label-md text-primary" id="search-label">
                 Termos de Pesquisa
               </label>
               <div className="relative">
@@ -124,6 +127,8 @@ function SearchPageContent() {
                   type="text"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
+                  aria-labelledby="search-label"
+                  aria-describedby="search-tips"
                 />
                 <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline">
                   search
@@ -134,11 +139,12 @@ function SearchPageContent() {
             {/* Date Range & Type */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-stack-md">
               <div className="flex flex-col gap-2">
-                <label className="text-label-md font-label-md text-primary">
+                <label htmlFor="date-from" className="text-label-md font-label-md text-primary">
                   Período de Publicação
                 </label>
                 <div className="flex items-center gap-2">
                   <input
+                    id="date-from"
                     className="w-full h-12 border border-outline rounded-lg px-3 text-body-sm font-body-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 transition-all"
                     type="date"
                     value={dateFrom}
@@ -146,6 +152,7 @@ function SearchPageContent() {
                   />
                   <span className="text-outline shrink-0">até</span>
                   <input
+                    id="date-to"
                     className="w-full h-12 border border-outline rounded-lg px-3 text-body-sm font-body-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 transition-all"
                     type="date"
                     value={dateTo}
@@ -154,10 +161,11 @@ function SearchPageContent() {
                 </div>
               </div>
               <div className="flex flex-col gap-2">
-                <label className="text-label-md font-label-md text-primary">
+                <label htmlFor="act-type" className="text-label-md font-label-md text-primary">
                   Tipo de Ato
                 </label>
                 <select
+                  id="act-type"
                   className="w-full h-12 border border-outline rounded-lg px-3 text-body-sm font-body-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 transition-all appearance-none bg-surface-container-lowest"
                   value={actType}
                   onChange={(e) => setActType(e.target.value)}
@@ -176,10 +184,11 @@ function SearchPageContent() {
             {/* Specific Fields */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-stack-md">
               <div className="flex flex-col gap-2">
-                <label className="text-label-md font-label-md text-primary">
+                <label htmlFor="edition-no" className="text-label-md font-label-md text-primary">
                   Edição Nº
                 </label>
                 <input
+                  id="edition-no"
                   className="w-full h-12 border border-outline rounded-lg px-3 text-body-sm font-body-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 transition-all"
                   placeholder="Ex: 245"
                   type="text"
@@ -188,10 +197,11 @@ function SearchPageContent() {
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <label className="text-label-md font-label-md text-primary">
+                <label htmlFor="page-no" className="text-label-md font-label-md text-primary">
                   Página
                 </label>
                 <input
+                  id="page-no"
                   className="w-full h-12 border border-outline rounded-lg px-3 text-body-sm font-body-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 transition-all"
                   placeholder="Ex: 12"
                   type="text"
@@ -200,10 +210,11 @@ function SearchPageContent() {
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <label className="text-label-md font-label-md text-primary">
+                <label htmlFor="org-unit" className="text-label-md font-label-md text-primary">
                   Órgão / Entidade
                 </label>
                 <input
+                  id="org-unit"
                   className="w-full h-12 border border-outline rounded-lg px-3 text-body-sm font-body-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 transition-all"
                   placeholder="Ex: Secretaria de Saúde"
                   type="text"
@@ -240,7 +251,7 @@ function SearchPageContent() {
 
         {/* Tips Sidebar */}
         <aside className="lg:col-span-4 space-y-stack-md">
-          <div className="bg-surface-container-high p-stack-md rounded-xl border border-outline-variant">
+          <div className="bg-surface-container-high p-stack-md rounded-xl border border-outline-variant" id="search-tips">
             <div className="flex items-center gap-2 mb-4 text-primary">
               <span className="material-symbols-outlined">lightbulb</span>
               <h3 className="text-headline-sm font-headline-sm">

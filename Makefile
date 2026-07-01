@@ -89,6 +89,12 @@ prod-down:
 	fi
 	docker compose -f infra/docker-compose.prod.yml down
 
+landing-up:
+	docker compose -f infra/docker-compose.prod.yml up -d --build landing
+
+landing-logs:
+	docker compose -f infra/docker-compose.prod.yml logs -f landing
+
 # ── Deploy manual ──────────────────────────────────────────────────────────────
 
 deploy-staging:

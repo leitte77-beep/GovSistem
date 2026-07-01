@@ -11,19 +11,20 @@ export function ItemConversa({ conversa, ativa, opId, onClick }) {
 
   return React.createElement('div', {
     onClick,
+    // Fundo (incl. estado ativo) controlado por CSS p/ o :hover ter efeito — ver index.html
+    className: 'cg-conv-item' + (ativa ? ' ativa' : ''),
     style: {
       display: 'flex',
       padding: '12px 12px',
       cursor: 'pointer',
       alignItems: 'center',
       gap: 12,
-      transition: 'background 0.12s',
-      background: ativa ? T.primarySoft : 'transparent',
       borderRadius: T.radiusSm,
       marginBottom: 1,
       borderBottom: ativa ? 'none' : `1px solid #f0f2f5`,
       // Faixa à esquerda destacando conversas atribuídas a mim.
       borderLeft: minha ? `3px solid ${T.primary}` : '3px solid transparent',
+      opacity: conversa.status === 'arquivada' ? 0.6 : 1,
     },
   },
     React.createElement(Avatar, { nome, url: conversa.contato_avatar_url, tamanho: 46, isNumber }),
@@ -43,6 +44,10 @@ export function ItemConversa({ conversa, ativa, opId, onClick }) {
             title: 'Atribuída a você',
             style: { fontSize: 9, fontWeight: 800, padding: '1px 5px', borderRadius: 6, background: T.primarySoft, color: T.primary, textTransform: 'uppercase', letterSpacing: 0.3 },
           }, 'Minha'),
+          conversa.status === 'arquivada' && React.createElement('span', {
+            title: 'Conversa arquivada automaticamente após inatividade',
+            style: { fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 6, background: T.surfaceMuted, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.3 },
+          }, 'Arquivada'),
           conversa.departamento_nome && React.createElement(DeptBadge, { nome: conversa.departamento_nome, cor: conversa.departamento_cor }),
           React.createElement('span', {
             style: { fontSize: 11, color: T.textMuted, whiteSpace: 'nowrap' },

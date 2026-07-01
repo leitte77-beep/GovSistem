@@ -21,6 +21,12 @@ class OrgUnitOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+DEFAULT_ORG_UNITS = [
+    {"name": "Prefeitura Municipal", "abbreviation": "PM"},
+    {"name": "Câmara Municipal", "abbreviation": "CM"},
+]
+
+
 @router.get("/org-units", response_model=list[OrgUnitOut])
 async def list_org_units(
     db: AsyncSession = Depends(get_db),
@@ -31,4 +37,16 @@ async def list_org_units(
         .where(OrgUnit.organization_id == user.organization_id)
         .order_by(OrgUnit.name)
     )
-    return result.scalars().all()
+    units = result.scalars().all()
+    if not units:
+        for data in DEFAULT_ORG_UNITS:
+            unit = OrgUnit(organization_id=user.organization_id, **data)
+            db.add(unit)
+        await db.commit()
+        result = await db.execute(
+            select(OrgUnit)
+            .where(OrgUnit.organization_id == user.organization_id)
+            .order_by(OrgUnit.name)
+        )
+        units = result.scalars().all()
+    return units

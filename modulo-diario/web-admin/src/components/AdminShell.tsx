@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
 import { api } from "@/lib/api";
+import { notifyError } from "@/lib/error-handler";
 import NotificationsPanel from "./NotificationsPanel";
 
 const NAV_ITEMS = [
@@ -39,7 +40,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const isSuperAdmin = user?.roles.some((r) => r.name === "SUPER_ADMIN") ?? false;
 
   useEffect(() => {
-    api.listOrganizations().then(setOrgs).catch(() => {});
+    api.listOrganizations().then(setOrgs).catch((err) => notifyError("AdminShell.listOrganizations", err));
   }, []);
 
   useEffect(() => {

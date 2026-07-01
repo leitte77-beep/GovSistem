@@ -1,7 +1,7 @@
 """add require_password_change to users
 
 Revision ID: c1d2e3f4a5b6
-Revises: 7959f842d2c5
+Revises: b8f07e6285f7
 Create Date: 2026-06-17
 """
 from typing import Sequence, Union
@@ -11,7 +11,7 @@ import sqlalchemy as sa
 
 
 revision: str = "c1d2e3f4a5b6"
-down_revision: Union[str, None] = "7959f842d2c5"
+down_revision: Union[str, None] = "b8f07e6285f7"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

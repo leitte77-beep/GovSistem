@@ -7,6 +7,7 @@ import type { MatterListItem, MatterStatus } from "@/types/matter";
 import { api } from "@/lib/api";
 import { getStatusLabel } from "@/components/Matter/StatusBadge";
 import toast from "react-hot-toast";
+import { notifyError } from "@/lib/error-handler";
 
 const PAGE_SIZE = 15;
 
@@ -50,7 +51,7 @@ export default function MattersPage() {
   useEffect(() => {
     api.getRaw<DashboardData>("/operations/dashboard")
       .then((d) => setDashboard(d))
-      .catch(() => {});
+      .catch((err) => notifyError("Matters.dashboard", err));
   }, []);
 
   const fetch = useCallback(() => {
@@ -71,7 +72,7 @@ export default function MattersPage() {
           setMatters(data);
         }
       })
-      .catch(() => {})
+      .catch((err) => notifyError("Matters.listMatters", err))
       .finally(() => setLoading(false));
   }, [search, statusFilter, page]);
 

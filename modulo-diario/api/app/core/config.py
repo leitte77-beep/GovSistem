@@ -76,6 +76,9 @@ class Settings(BaseSettings):
     SIGNER_URL: str = "http://signer:8100"
     INTERNAL_API_KEY: SecretStr = SecretStr("")
 
+    CLAMAV_HOST: str = ""
+    CLAMAV_PORT: int = 3310
+
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_SIZE_MB: int = 50
     MAX_UPLOAD_SIZE_BYTES: int = 50 * 1024 * 1024
@@ -92,6 +95,7 @@ class Settings(BaseSettings):
 
     STORAGE_BACKEND: str = "local"
     STORAGE_LOCAL_PATH: str = "uploads"
+    STORAGE_TENANT_ISOLATION: bool = True
 
     PASSWORD_MIN_LENGTH: int = 8
     PASSWORD_MIN_UPPERCASE: int = 1

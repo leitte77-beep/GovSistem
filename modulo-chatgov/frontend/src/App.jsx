@@ -16,6 +16,7 @@ function LoginScreen() {
       background: '#f0f2f5',
       fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
       gap: 24,
+      overflowX: 'hidden',
     },
   },
     React.createElement('div', {
@@ -36,7 +37,7 @@ function LoginScreen() {
         background: '#FFFFFF',
         padding: 32,
         borderRadius: 16,
-        width: 360,
+        width: 'min(360px, calc(100vw - 32px))',
         textAlign: 'center',
         boxShadow: '0 12px 40px rgba(16,26,42,0.10)',
         border: '1px solid #d1d7db',

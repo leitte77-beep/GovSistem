@@ -362,9 +362,14 @@ async def close_edition(
         select(Organization).where(Organization.id == edition.organization_id)
     )
     organization = org_result.scalar_one_or_none()
+    organ_name = organization.name if organization else None
     pdf_layout = organization.pdf_layout if organization else "classico"
     try:
-        generate_edition_pdf_sync(edition_id=str(edition_id), layout=pdf_layout)
+        generate_edition_pdf_sync(
+            edition_id=str(edition_id),
+            organ_name=organ_name,
+            layout=pdf_layout,
+        )
     except Exception as e:
         import logging
         logging.getLogger("doe").warning(f"Auto PDF generation failed for edition {edition_id}: {e}")
@@ -472,9 +477,14 @@ async def generate_edition_pdf(
         select(Organization).where(Organization.id == edition.organization_id)
     )
     organization = org_result.scalar_one_or_none()
+    organ_name = organization.name if organization else None
     pdf_layout = organization.pdf_layout if organization else "classico"
 
-    result = generate_edition_pdf_sync(edition_id=str(edition_id), layout=pdf_layout)
+    result = generate_edition_pdf_sync(
+        edition_id=str(edition_id),
+        organ_name=organ_name,
+        layout=pdf_layout,
+    )
     edition.pdf_path = result["filename"]
     edition.pdf_hash = result["sha256"]
     edition.status = EditionStatus.PDF_GENERATED
@@ -538,13 +548,18 @@ async def sign_edition(
         select(Organization).where(Organization.id == edition.organization_id)
     )
     organization = org_result.scalar_one_or_none()
+    organ_name = organization.name if organization else None
     pdf_layout = organization.pdf_layout if organization else "classico"
 
     pdf_full_path = os.path.join(api_settings.UPLOAD_DIR, edition.pdf_path)
 
     if not os.path.exists(pdf_full_path):
         from app.services.edition_pdf import generate_edition_pdf_sync
-        generated = generate_edition_pdf_sync(edition_id=str(edition_id), layout=pdf_layout)
+        generated = generate_edition_pdf_sync(
+            edition_id=str(edition_id),
+            organ_name=organ_name,
+            layout=pdf_layout,
+        )
         edition.pdf_path = generated["filename"]
         edition.pdf_hash = generated["sha256"]
 
@@ -583,6 +598,9 @@ async def sign_edition(
     signed_bytes = base64.b64decode(result["signed_pdf_base64"])
     sig_filename = f"signed_{edition.year}_{edition.number}_{uuid.uuid4().hex[:8]}.pdf"
     from app.core.storage import storage as store_backend
+    if organization:
+        from app.core.storage import set_storage_tenant as _set_tenant
+        _set_tenant(organization.slug)
     await store_backend.store(sig_filename, signed_bytes)
 
     signed_at = datetime.now(timezone.utc)

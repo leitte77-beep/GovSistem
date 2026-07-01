@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
+import { notifyError } from "@/lib/error-handler";
 import AdminShell from "@/components/AdminShell";
 
 interface DashboardData {
@@ -41,7 +42,7 @@ function DashboardContent() {
   useEffect(() => {
     api.getRaw<DashboardData>("/operations/dashboard")
       .then((d) => setData(d))
-      .catch(() => {})
+      .catch((err) => notifyError("Dashboard", err))
       .finally(() => setLoading(false));
   }, []);
 

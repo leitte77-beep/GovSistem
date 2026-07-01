@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { formatBrasiliaDateTime } from "@/lib/dates";
@@ -165,9 +166,11 @@ export default function VerifyCodePage() {
                   QR Code de Verificação
                 </p>
                 <div className="inline-block bg-white border border-outline-variant p-2 rounded-xl">
-                  <img
+                  <Image
                     src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`${window.location.origin}/verificar/${code}`)}`}
                     alt="QR Code"
+                    width={144}
+                    height={144}
                     className="w-36 h-36"
                   />
                 </div>

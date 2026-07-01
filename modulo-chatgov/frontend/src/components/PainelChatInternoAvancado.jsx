@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Send, Smile, Reply, MoreHorizontal, Pin, Trash2, Edit3, Forward, Paperclip, X, CheckCheck, ArrowDown, Undo2, Image as ImageIcon, Mic, Square, Play, Pause, RotateCcw, Search, UserPlus, UserMinus, LogOut, BarChart2 } from 'lucide-react';
+import { Send, Smile, Reply, MoreHorizontal, Pin, Trash2, Edit3, Forward, Paperclip, X, CheckCheck, ArrowDown, Undo2, Image as ImageIcon, Mic, Square, Play, Pause, RotateCcw, Search, UserPlus, UserMinus, LogOut, BarChart2, ArrowLeft } from 'lucide-react';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
 import { fetchMensagensInternas, fetchCanaisInternos, fetchOperadores, buscarMensagensCanal, adicionarMembrosCanal, removerMembroCanal, sairCanal, criarEnquete } from '../api';
@@ -31,10 +31,11 @@ function blobParaBase64(blob) {
   });
 }
 
-export function PainelChatInternoAvancado({ canal }) {
+export function PainelChatInternoAvancado({ canal, breakpoint, onVoltar }) {
   const { socket } = useSocket();
   const { auth } = useAuth();
   const opId = auth?.operador?.id;
+  const ehMobile = breakpoint === 'mobile';
   const [mensagens, setMensagens] = useState([]);
   const [texto, setTexto] = useState('');
   const [fixadas, setFixadas] = useState([]);
@@ -116,17 +117,44 @@ export function PainelChatInternoAvancado({ canal }) {
     } catch {}
   }, []);
 
-  // Colar imagem do clipboard (Ctrl+V)
+  // Colar arquivo do clipboard (Ctrl+V) — suporta imagens, PDFs, docs, áudio, zip
   const handlePaste = useCallback((e) => {
+    const EXTENSOES_CHAT_INTERNO = ['exe','bat','cmd','msi','vbs','ps1','scr','com','sh','dll','pif','cpl','wsf','wsh','hta','jar','reg','scf','lnk'];
+    const MAX_CHAT_INTERNO_BYTES = 50 * 1024 * 1024; // 50 MB
     const items = e.clipboardData?.items || [];
     for (const item of items) {
       if (item.type.startsWith('image/')) {
         e.preventDefault();
         const blob = item.getAsFile();
         if (!blob) continue;
-        const file = new File([blob], `colado-${Date.now()}.png`, { type: blob.type || 'image/png' });
+        const file = new File([blob], `imagem-colada-${Date.now()}.png`, { type: blob.type || 'image/png' });
         const previewUrl = URL.createObjectURL(file);
-        setAnexoPreview({ file, tipo: 'imagem', nome: file.name, mime: file.type, previewUrl });
+        setAnexoPreview({ file, tipo: mimeParaTipo(file.type), nome: file.name, mime: file.type, previewUrl });
+        break;
+      }
+      if (item.kind === 'file') {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file) continue;
+        const ext = (file.name || '').split('.').pop()?.toLowerCase();
+        if (ext && EXTENSOES_CHAT_INTERNO.includes(ext)) {
+          alert(`Arquivo .${ext} não é permitido por segurança.`);
+          continue;
+        }
+        if (file.type === 'application/x-msdownload' || file.type === 'application/x-msdos-program' || file.type === 'application/x-bat') {
+          alert('Tipo de arquivo não permitido por segurança.');
+          continue;
+        }
+        if (file.size > MAX_CHAT_INTERNO_BYTES) {
+          alert('Arquivo muito grande (máx. 50 MB).');
+          continue;
+        }
+        if (file.type.startsWith('audio/') || file.type.startsWith('video/')) {
+          const previewUrl = URL.createObjectURL(file);
+          setAnexoPreview({ file, tipo: mimeParaTipo(file.type), nome: file.name, mime: file.type, previewUrl });
+        } else {
+          setAnexoPreview({ file, tipo: 'documento', nome: file.name, mime: file.type, previewUrl: null });
+        }
         break;
       }
     }
@@ -732,7 +760,11 @@ export function PainelChatInternoAvancado({ canal }) {
       React.createElement('div', { style: { background: '#2563EB', color: '#fff', padding: '10px 20px', borderRadius: 8, fontSize: 14, fontWeight: 600 } }, 'Solte o arquivo aqui'),
     ),
 
-    React.createElement('div', { style: { display: 'flex', alignItems: 'center', padding: '10px 16px', background: T.surface, gap: 10, flexShrink: 0, borderBottom: '1px solid #d1d7db', minHeight: 56 } },
+    React.createElement('div', { style: { display: 'flex', alignItems: 'center', padding: ehMobile ? '8px 10px' : '10px 16px', background: T.surface, gap: ehMobile ? 8 : 10, flexShrink: 0, borderBottom: '1px solid #d1d7db', minHeight: 56 } },
+      onVoltar && ehMobile && React.createElement('button', {
+        onClick: onVoltar, 'aria-label': 'Voltar', title: 'Voltar',
+        style: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, flexShrink: 0, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'transparent', color: T.text },
+      }, React.createElement(ArrowLeft, { size: 22 })),
       React.createElement('div', { style: { position: 'relative' } },
         React.createElement('div', { style: { width: 36, height: 36, borderRadius: '50%', background: T.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 14 } }, (nome[0] || '?').toUpperCase()),
         canal.tipo === 'dm' && React.createElement('div', {
@@ -827,7 +859,7 @@ export function PainelChatInternoAvancado({ canal }) {
 
     React.createElement('div', {
       ref: areaMensagensRef, onScroll: onScrollArea, role: 'log', 'aria-live': 'polite', 'aria-label': 'Mensagens do canal',
-      style: { flex: 1, overflowY: 'auto', padding: '12px 16px', position: 'relative', backgroundColor: '#f0f2f5', backgroundImage: 'radial-gradient(#d1d7db 0.5px, transparent 0.5px)', backgroundSize: '20px 20px' },
+      style: { flex: 1, overflowY: 'auto', padding: ehMobile ? '12px 10px' : '12px 16px', position: 'relative', backgroundColor: '#f0f2f5', backgroundImage: 'radial-gradient(#d1d7db 0.5px, transparent 0.5px)', backgroundSize: '20px 20px' },
     },
       carregandoMais && React.createElement('div', { style: { textAlign: 'center', padding: 8, color: T.textMuted, fontSize: 12 } }, 'Carregando...'),
       !carregandoMais && temMaisAntigas && React.createElement('button', { onClick: carregarMaisAntigas, style: { display: 'block', margin: '0 auto 8px', background: 'transparent', border: 'none', color: T.primary, fontSize: 12, cursor: 'pointer' } }, 'Carregar mensagens anteriores'),
@@ -922,7 +954,7 @@ export function PainelChatInternoAvancado({ canal }) {
 
     React.createElement('form', {
       onSubmit: enviar,
-      style: { display: 'flex', alignItems: 'flex-end', padding: '10px 14px', background: T.surface, gap: 8, flexShrink: 0, borderTop: `1px solid ${T.border}` },
+      style: { display: 'flex', alignItems: 'flex-end', padding: ehMobile ? '8px 8px' : '10px 14px', background: T.surface, gap: ehMobile ? 6 : 8, flexShrink: 0, borderTop: `1px solid ${T.border}` },
     },
       React.createElement('button', { type: 'button', onClick: handleFilePick, disabled: uploading || gravando, 'aria-label': 'Anexar arquivo', style: { background: 'none', border: 'none', cursor: uploading || gravando ? 'not-allowed' : 'pointer', padding: 4, display: 'flex' } },
         React.createElement(Paperclip, { size: 20, color: uploading || gravando ? T.textMuted : T.primary })),

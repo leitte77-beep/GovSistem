@@ -3,16 +3,15 @@ import { RailNavegacao } from './components/RailNavegacao';
 import { ColunaEsquerda } from './components/ColunaEsquerda';
 import { PainelAtendimento } from './components/PainelAtendimento';
 import { PainelChatInternoAvancado } from './components/PainelChatInternoAvancado';
-import { PainelKanban } from './components/PainelKanban';
-import { PainelArquivos } from './components/PainelArquivos';
-import { PainelReunioes } from './components/PainelReunioes';
-import { PainelWiki } from './components/PainelWiki';
 import { CentroNotificacoes } from './components/CentroNotificacoes';
 import { PaginaConfiguracoes } from './components/PaginaConfiguracoes';
+import { PaginaRelatorios } from './components/PaginaRelatorios';
+import { PaginaProtocolos } from './components/PaginaProtocolos';
 import { PaginaAgenda } from './components/PaginaAgenda';
 import { TelaQR } from './components/TelaQR';
 import { useAuth } from './context/AuthContext';
 import { useSocket } from './context/SocketContext';
+import { useBreakpoint } from './hooks/useBreakpoint';
 import { T } from './theme';
 import { fetchNotificacoesStatus } from './api/evolucoes';
 import { useNotificacoesDesktop } from './hooks/useNotificacoesDesktop';
@@ -20,11 +19,17 @@ import { useNotificacoesDesktop } from './hooks/useNotificacoesDesktop';
 export function ChatGov() {
   const { auth } = useAuth();
   const { socket, connected } = useSocket();
+  const breakpoint = useBreakpoint();
   const isAdmin = auth?.operador?.papel === 'admin';
+  const verRelatorios = isAdmin || auth?.operador?.papel === 'supervisor';
+  const ehMobile = breakpoint === 'mobile';
 
   const [view, setView] = useState(() => {
-    try { return localStorage.getItem('chatgov_view') || 'atendimento'; }
-    catch { return 'atendimento'; }
+    const VIEWS_VALIDAS = ['atendimento', 'agenda', 'interno', 'protocolos', 'relatorios', 'notificacoes', 'configuracoes'];
+    try {
+      const salva = localStorage.getItem('chatgov_view');
+      return VIEWS_VALIDAS.includes(salva) ? salva : 'atendimento';
+    } catch { return 'atendimento'; }
   });
   const [conversaAtiva, setConversaAtiva] = useState(null);
   const [canalAtivo, setCanalAtivo] = useState(null);
@@ -32,10 +37,8 @@ export function ChatGov() {
   const [recarregar, setRecarregar] = useState(0);
   const [notifCount, setNotifCount] = useState(0);
 
-  // ── Desktop push notifications ──
   useNotificacoesDesktop({ conversaAtivaId: conversaAtiva?.id });
 
-  // ── Polling do badge a cada 10s ──
   useEffect(() => {
     if (!connected) return;
 
@@ -75,7 +78,13 @@ export function ChatGov() {
     try { localStorage.setItem('chatgov_view', v); } catch {}
   }, []);
 
-  // ── Handler: clique em notificação desktop abre a conversa ──
+  const handleVoltar = useCallback(() => {
+    setConversaAtiva(null);
+    setCanalAtivo(null);
+    try { localStorage.removeItem('chatgov_conversa'); } catch {}
+    try { localStorage.removeItem('chatgov_canal'); } catch {}
+  }, []);
+
   useEffect(() => {
     if (!socket) return;
 
@@ -93,54 +102,127 @@ export function ChatGov() {
 
   const handleConversaUpdated = useCallback(() => setRecarregar((n) => n + 1), []);
 
-  const isFullScreen = ['kanban', 'arquivos', 'reunioes', 'wiki', 'configuracoes', 'notificacoes'].includes(view);
+  const mostrarListaMobile = ehMobile && !conversaAtiva && !canalAtivo;
+  const mostrarPainelMobile = ehMobile && (conversaAtiva || canalAtivo);
 
-  return React.createElement('div', {
-    style: {
-      display: 'flex', height: '100%', width: '100%', overflow: 'hidden',
-      background: T.bg, fontFamily: T.font, color: T.text,
-    },
-  },
-    React.createElement(RailNavegacao, {
-      view, onChange: handleChangeView, isAdmin, notifCount,
+  // No celular, quando um chat está aberto (atendimento/equipe), ocupamos a tela
+  // inteira e escondemos a barra inferior — exatamente como o WhatsApp faz.
+  const ehViewChat = view === 'atendimento' || view === 'interno';
+  const chatMobileAberto = mostrarPainelMobile && ehViewChat;
+
+  const containerStyle = {
+    display: 'flex',
+    flexDirection: ehMobile ? 'column' : 'row',
+    height: '100%', width: '100%',
+    minWidth: 0,
+    minHeight: 0,
+    overflow: 'hidden',
+    background: T.bg, fontFamily: T.font, color: T.text,
+    paddingBottom: ehMobile && !chatMobileAberto ? 'calc(70px + env(safe-area-inset-bottom, 0px))' : 0,
+    boxSizing: 'border-box',
+  };
+
+  const pageShellStyle = {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 0,
+    overflow: 'hidden',
+    display: 'flex',
+    flexDirection: 'column',
+  };
+
+  return React.createElement('div', { style: containerStyle },
+    // Rail: lateral no desktop/tablet, bottom-tab fixo no mobile.
+    // Some quando um chat está aberto no celular (tela cheia, estilo WhatsApp).
+    !chatMobileAberto && React.createElement(RailNavegacao, {
+      view, onChange: handleChangeView, isAdmin, verRelatorios, notifCount, breakpoint,
     }),
 
+    // Views de tela cheia
     view === 'configuracoes'
-      ? React.createElement(PaginaConfiguracoes, { onOpenQR: () => setShowQR(true) })
-      : view === 'kanban'
-      ? React.createElement(PainelKanban)
-      : view === 'arquivos'
-      ? React.createElement(PainelArquivos)
-      : view === 'reunioes'
-      ? React.createElement(PainelReunioes)
-      : view === 'wiki'
-      ? React.createElement(PainelWiki)
+      ? React.createElement('div', { style: pageShellStyle },
+          React.createElement(PaginaConfiguracoes, { onOpenQR: () => setShowQR(true), breakpoint }),
+        )
+      : view === 'relatorios'
+      ? React.createElement('div', { style: pageShellStyle },
+          React.createElement(PaginaRelatorios),
+        )
+      : view === 'protocolos'
+      ? React.createElement('div', { style: pageShellStyle },
+          React.createElement(PaginaProtocolos, { breakpoint }),
+        )
       : view === 'notificacoes'
-      ? React.createElement(CentroNotificacoes, { onCountChange: setNotifCount })
-      :       view === 'agenda'
-      ? React.createElement(PaginaAgenda, {
-          onSendMessage: (conv) => {
-            handleChangeView('atendimento');
-            handleSelectConversa(conv);
-          },
-        })
-      : React.createElement(React.Fragment, null,
-          React.createElement(ColunaEsquerda, {
-            view,
-            onSelectConversa: handleSelectConversa,
-            onSelectCanal: handleSelectCanal,
-            onOpenQR: () => setShowQR(true),
-            conversaAtivaId: conversaAtiva?.id,
-            canalAtivoId: canalAtivo?.id,
-            recarregar,
-          }),
-          view === 'atendimento'
-            ? React.createElement(PainelAtendimento, {
-                conversa: conversaAtiva,
-                onConversaUpdated: handleConversaUpdated,
-              })
-            : React.createElement(PainelChatInternoAvancado, { canal: canalAtivo }),
-        ),
+      ? React.createElement('div', { style: pageShellStyle },
+          React.createElement(CentroNotificacoes, { onCountChange: setNotifCount }),
+        )
+      : view === 'agenda'
+      ? (ehMobile
+          ? React.createElement('div', { style: { ...pageShellStyle, overflow: 'hidden' } },
+              React.createElement(PaginaAgenda, {
+                breakpoint,
+                onSendMessage: (conv) => {
+                  handleChangeView('atendimento');
+                  handleSelectConversa(conv);
+                },
+              }),
+            )
+          : React.createElement(PaginaAgenda, {
+              breakpoint,
+              onSendMessage: (conv) => {
+                handleChangeView('atendimento');
+                handleSelectConversa(conv);
+              },
+            })
+        )
+      : // Views chat (atendimento / interno)
+        ehMobile
+        ? React.createElement(React.Fragment, null,
+            mostrarListaMobile && React.createElement(ColunaEsquerda, {
+              view,
+              onChange: handleChangeView,
+              onSelectConversa: handleSelectConversa,
+              onSelectCanal: handleSelectCanal,
+              onOpenQR: () => setShowQR(true),
+              conversaAtivaId: conversaAtiva?.id,
+              canalAtivoId: canalAtivo?.id,
+              recarregar,
+              breakpoint,
+            }),
+            mostrarPainelMobile && React.createElement('div', { style: { flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 } },
+              view === 'atendimento'
+                ? React.createElement(PainelAtendimento, {
+                    conversa: conversaAtiva,
+                    onConversaUpdated: handleConversaUpdated,
+                    breakpoint,
+                    onVoltar: handleVoltar,
+                  })
+                : React.createElement(PainelChatInternoAvancado, {
+                    canal: canalAtivo,
+                    breakpoint,
+                    onVoltar: handleVoltar,
+                  }),
+            ),
+          )
+        : React.createElement(React.Fragment, null,
+            React.createElement(ColunaEsquerda, {
+              view,
+              onChange: handleChangeView,
+              onSelectConversa: handleSelectConversa,
+              onSelectCanal: handleSelectCanal,
+              onOpenQR: () => setShowQR(true),
+              conversaAtivaId: conversaAtiva?.id,
+              canalAtivoId: canalAtivo?.id,
+              recarregar,
+              breakpoint,
+            }),
+            view === 'atendimento'
+              ? React.createElement(PainelAtendimento, {
+                  conversa: conversaAtiva,
+                  onConversaUpdated: handleConversaUpdated,
+                  breakpoint,
+                })
+              : React.createElement(PainelChatInternoAvancado, { canal: canalAtivo, breakpoint }),
+          ),
 
     showQR && React.createElement(TelaQR, { onClose: () => setShowQR(false) }),
   );

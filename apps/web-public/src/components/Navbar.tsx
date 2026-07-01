@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useOrg } from "@/lib/org-context";
 import AccessibilityPanel from "./AccessibilityPanel";
@@ -26,11 +27,11 @@ export default function Navbar() {
         <div className="flex items-center gap-8">
           <Link href="/" className="text-headline-sm font-headline-sm font-bold text-primary flex items-center gap-2">
             {logoSrc ? (
-              <img src={logoSrc} alt={siteName} className="h-8 w-auto" />
+              <Image src={logoSrc} alt={siteName} width={32} height={32} className="h-8 w-auto" />
             ) : null}
             {siteName}
           </Link>
-          <nav className="hidden md:flex items-center gap-6">
+          <nav className="hidden md:flex items-center gap-6" aria-label="Navegação principal">
             {NAV_LINKS.map((link) => {
               const isActive = pathname === link.href || (link.href === "/" && pathname === "/");
               return (

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Clock } from "lucide-react";
 import type { AuditEvent } from "@/types/matter";
 import { api } from "@/lib/api";
+import { notifyError } from "@/lib/error-handler";
 import StatusBadge, { getStatusLabel } from "./StatusBadge";
 import type { MatterStatus } from "@/types/matter";
 
@@ -27,7 +28,7 @@ export default function StatusHistory({ matterId }: StatusHistoryProps) {
     api
       .listMatterAudit(matterId)
       .then(setEvents)
-      .catch(() => {})
+      .catch((err) => notifyError("StatusHistory", err))
       .finally(() => setLoading(false));
   }, [matterId]);
 

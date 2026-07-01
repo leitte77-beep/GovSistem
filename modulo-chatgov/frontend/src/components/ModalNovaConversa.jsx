@@ -1,12 +1,7 @@
-import React, { useState } from 'react';
-import { MessageSquarePlus } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Send, Phone, User, Building2, MessageSquare } from 'lucide-react';
 import { T } from '../theme';
 import { iniciarConversa } from '../api';
-
-const overlay = { position: 'fixed', inset: 0, background: 'rgba(15,26,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 };
-const card = { background: T.surface, borderRadius: T.radiusLg, padding: 24, maxWidth: 460, width: '90%', boxShadow: T.shadowLg };
-const label = { fontSize: 12, fontWeight: 600, color: T.textSecondary, marginBottom: 5, display: 'block' };
-const input = { width: '100%', padding: '11px 13px', background: T.surfaceMuted, border: `1px solid ${T.border}`, borderRadius: T.radiusSm, color: T.text, fontSize: 14, outline: 'none', boxSizing: 'border-box', marginBottom: 14 };
 
 export function ModalNovaConversa({ departamentos, onClose, onCriada }) {
   const [telefone, setTelefone] = useState('');
@@ -33,51 +28,154 @@ export function ModalNovaConversa({ departamentos, onClose, onCriada }) {
     }
   };
 
-  return React.createElement('div', { style: overlay },
-    React.createElement('div', { style: card },
-      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 } },
-        React.createElement('div', { style: { width: 38, height: 38, borderRadius: 10, background: T.primarySoft, display: 'flex', alignItems: 'center', justifyContent: 'center' } },
-          React.createElement(MessageSquarePlus, { size: 20, color: T.primary })),
-        React.createElement('h3', { style: { fontSize: 18, fontWeight: 700, color: T.text } }, 'Nova conversa'),
-      ),
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
-      React.createElement('label', { style: label }, 'Telefone (com DDD) *'),
-      React.createElement('input', {
-        value: telefone, onChange: (e) => setTelefone(e.target.value),
-        placeholder: '44 99999-9999', style: input,
+  const inputComIcone = (icone, props) =>
+    React.createElement('div', {
+      style: { position: 'relative', display: 'flex', alignItems: 'center', marginBottom: 14 },
+    },
+      React.createElement(icone, {
+        size: 18,
+        style: { position: 'absolute', left: 14, color: T.textMuted, pointerEvents: 'none', zIndex: 1 },
       }),
+      React.createElement(props.tag || 'input', {
+        ...props,
+        style: {
+          width: '100%', padding: '12px 14px 12px 44px',
+          background: T.surfaceMuted, border: `1px solid ${T.border}`,
+          borderRadius: T.radius, color: T.text, fontSize: 14, outline: 'none',
+          fontFamily: 'inherit', boxSizing: 'border-box',
+          transition: 'background 0.15s, box-shadow 0.15s',
+          resize: props.tag === 'textarea' ? 'vertical' : 'none',
+          ...(props.style || {}),
+        },
+      }),
+    );
 
-      React.createElement('label', { style: label }, 'Nome do contato'),
-      React.createElement('input', { value: nome, onChange: (e) => setNome(e.target.value), placeholder: 'Opcional', style: input }),
-
-      React.createElement('label', { style: label }, 'Secretaria / Departamento'),
-      React.createElement('select', {
-        value: departamentoId, onChange: (e) => setDepartamentoId(e.target.value), style: input,
+  return React.createElement('div', {
+    onClick: (e) => { if (e.target === e.currentTarget) onClose(); },
+    style: {
+      position: 'fixed', inset: 0, background: 'rgba(25,28,29,0.4)', backdropFilter: 'blur(12px)',
+      WebkitBackdropFilter: 'blur(12px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 1000, padding: 16,
+    },
+  },
+    React.createElement('div', {
+      style: {
+        background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(20px)',
+        WebkitBackdropFilter: 'blur(20px)',
+        border: '1px solid rgba(255,255,255,0.3)',
+        borderRadius: T.radiusLg, padding: 0, maxWidth: 500, width: '100%',
+        boxShadow: '0 24px 80px rgba(0,0,0,0.18)', overflow: 'hidden',
+        animation: 'modalnova-entrada 0.25s ease-out',
       },
-        React.createElement('option', { value: '' }, 'Sem encaminhamento'),
-        departamentos.map((d) => React.createElement('option', { key: d.id, value: d.id },
-          d.secretaria_nome ? `${d.secretaria_nome} › ${d.nome}` : d.nome)),
-      ),
-
-      React.createElement('label', { style: label }, 'Primeira mensagem'),
-      React.createElement('textarea', {
-        value: mensagem, onChange: (e) => setMensagem(e.target.value),
-        placeholder: 'Opcional — enviada agora pelo WhatsApp', rows: 3,
-        style: { ...input, resize: 'vertical', fontFamily: T.font },
-      }),
-
-      erro && React.createElement('div', { style: { color: T.danger, fontSize: 13, marginBottom: 10 } }, erro),
-
-      React.createElement('div', { style: { display: 'flex', gap: 8, justifyContent: 'flex-end' } },
+    },
+      // ── Cabeçalho ──
+      React.createElement('div', {
+        style: { padding: '24px 24px 16px', display: 'flex', alignItems: 'center', gap: 14 },
+      },
+        React.createElement('div', {
+          style: {
+            width: 48, height: 48, borderRadius: 12,
+            background: T.primaryGradient,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: `0 8px 24px ${T.primary}40`, flexShrink: 0,
+          },
+        }, React.createElement(MessageSquare, { size: 24, color: '#fff' })),
+        React.createElement('div', { style: { flex: 1 } },
+          React.createElement('h3', { style: { fontSize: 18, fontWeight: 700, color: T.text, margin: 0 } }, 'Nova conversa'),
+          React.createElement('p', { style: { fontSize: 12, color: T.textMuted, margin: '2px 0 0', fontWeight: 500 } },
+            'Inicie um novo atendimento via WhatsApp'),
+        ),
         React.createElement('button', {
           onClick: onClose,
-          style: { background: 'transparent', border: `1px solid ${T.borderStrong}`, color: T.textSecondary, padding: '10px 18px', borderRadius: T.radiusSm, cursor: 'pointer', fontSize: 13, fontWeight: 500 },
+          style: { background: 'none', border: 'none', cursor: 'pointer', color: T.textMuted, padding: 4, display: 'flex', borderRadius: '50%' },
+        }, React.createElement(X, { size: 20 })),
+      ),
+
+      // ── Formulário ──
+      React.createElement('div', { style: { padding: '8px 24px 0' } },
+        React.createElement('label', {
+          style: { fontSize: 11, fontWeight: 600, color: T.textSecondary, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 },
+        }, 'Telefone (com DDD) *'),
+        inputComIcone(Phone, {
+          value: telefone, onChange: (e) => setTelefone(e.target.value),
+          placeholder: '44 99999-9999', type: 'tel',
+        }),
+
+        React.createElement('label', {
+          style: { fontSize: 11, fontWeight: 600, color: T.textSecondary, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 },
+        }, 'Nome do contato'),
+        inputComIcone(User, {
+          value: nome, onChange: (e) => setNome(e.target.value),
+          placeholder: 'Ex: João da Silva',
+        }),
+
+        React.createElement('label', {
+          style: { fontSize: 11, fontWeight: 600, color: T.textSecondary, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 },
+        }, 'Secretaria / Departamento'),
+        inputComIcone(Building2, {
+          tag: 'select', value: departamentoId, onChange: (e) => setDepartamentoId(e.target.value),
+          style: { cursor: 'pointer', appearance: 'auto' },
+          children: [
+            React.createElement('option', { key: '', value: '' }, 'Sem encaminhamento'),
+            ...departamentos.map((d) =>
+              React.createElement('option', { key: d.id, value: d.id },
+                d.secretaria_nome ? `${d.secretaria_nome} › ${d.nome}` : d.nome)),
+          ],
+        }),
+
+        React.createElement('label', {
+          style: { fontSize: 11, fontWeight: 600, color: T.textSecondary, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 },
+        }, 'Primeira mensagem'),
+        inputComIcone(Send, {
+          tag: 'textarea', value: mensagem, onChange: (e) => setMensagem(e.target.value),
+          placeholder: 'Opcional — enviada agora pelo WhatsApp', rows: 3,
+          style: { minHeight: 60, paddingTop: 12 },
+        }),
+
+        erro && React.createElement('div', {
+          style: { padding: '10px 14px', background: T.dangerSoft, color: T.danger, borderRadius: T.radiusSm, fontSize: 13, marginBottom: 14 },
+        }, erro),
+      ),
+
+      // ── Rodapé ──
+      React.createElement('div', {
+        style: {
+          padding: '20px 24px', display: 'flex', justifyContent: 'flex-end', gap: 10,
+          background: 'rgba(0,0,0,0.02)', borderTop: `1px solid ${T.border}`,
+        },
+      },
+        React.createElement('button', {
+          onClick: onClose,
+          style: {
+            padding: '11px 24px', borderRadius: T.radius, border: `1px solid ${T.borderStrong}`,
+            background: 'transparent', color: T.textSecondary, fontSize: 13, fontWeight: 600,
+            cursor: 'pointer', transition: 'background 0.15s',
+          },
         }, 'Cancelar'),
         React.createElement('button', {
           onClick: submeter, disabled: enviando,
-          style: { background: T.primary, border: 'none', color: '#fff', padding: '10px 20px', borderRadius: T.radiusSm, cursor: 'pointer', fontSize: 13, fontWeight: 600, opacity: enviando ? 0.6 : 1 },
+          style: {
+            padding: '11px 28px', borderRadius: T.radius, border: 'none',
+            background: T.primaryGradient, color: '#fff', fontSize: 13, fontWeight: 700,
+            cursor: enviando ? 'not-allowed' : 'pointer', opacity: enviando ? 0.7 : 1,
+            boxShadow: `0 4px 16px ${T.primary}40`, transition: 'all 0.15s',
+          },
         }, enviando ? 'Iniciando...' : 'Iniciar conversa'),
       ),
     ),
+
+    // Animação de entrada
+    React.createElement('style', null, `
+      @keyframes modalnova-entrada {
+        from { opacity: 0; transform: translateY(24px) scale(0.97); }
+        to { opacity: 1; transform: translateY(0) scale(1); }
+      }
+    `),
   );
 }

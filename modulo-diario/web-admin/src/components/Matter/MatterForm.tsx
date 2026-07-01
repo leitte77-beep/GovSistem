@@ -12,6 +12,7 @@ import StatusBadge from "./StatusBadge";
 import Breadcrumbs from "@/components/Breadcrumbs";
 import { sanitizeHtml } from "@/lib/sanitize";
 import { api } from "@/lib/api";
+import { notifyError } from "@/lib/error-handler";
 import type { ActType, Attachment, Matter, MatterStatus, OrgUnit } from "@/types/matter";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9201/api/v1";
@@ -72,8 +73,8 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
   const matterId = matter?.id || createdId;
 
   useEffect(() => {
-    api.listActTypes().then(setActTypes).catch(() => {});
-    api.listOrgUnits().then(setOrgUnits).catch(() => {});
+    api.listActTypes().then(setActTypes).catch((err) => notifyError("MatterForm.listActTypes", err));
+    api.listOrgUnits().then(setOrgUnits).catch((err) => notifyError("MatterForm.listOrgUnits", err));
   }, []);
 
   useEffect(() => {

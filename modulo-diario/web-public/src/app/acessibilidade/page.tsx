@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect } from "react";
 
 export default function AcessibilidadePage() {
@@ -170,8 +171,10 @@ export default function AcessibilidadePage() {
 
       <section className="max-w-container-max mx-auto px-gutter mb-stack-lg">
         <div className="relative h-[400px] rounded-2xl overflow-hidden shadow-2xl">
-          <img
-            className="w-full h-full object-cover grayscale brightness-50"
+          <Image
+            fill
+            sizes="100vw"
+            className="object-cover grayscale brightness-50"
             alt="Espaço de trabalho tecnológico e acessível"
             src="https://lh3.googleusercontent.com/aida-public/AB6AXuBBYwze62zIPj1s6zupRaXZjWpAK0oiDveSp0JuiXbDHeQsRq4wnv74TQqqSNb158EihT0y69uFdWxylNs_vvLy6QCbsB4Vqck_XLVMMG1L1v8IMknNe8luvqyFk6R0JwDRgYLfL8sD9RNtCPLiKvR0CkquAFFUPj8BnQdTAlEbIRQFdc0rTRhTbbhY3H4uDO3jdOf29LysbroEE4WUKkKimUsTNfleRAnB-PFWshVutxNeI1uvR4loiJZ08L6asnicCTwTuD2cCnTN"
           />

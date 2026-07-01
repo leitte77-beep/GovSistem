@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { GripVertical, Trash2, Search, ChevronRight } from "lucide-react";
 import type { EditionItem, MatterListItem } from "@/types/edition";
 import { api } from "@/lib/api";
+import { notifyError } from "@/lib/error-handler";
 
 interface MatterKanbanProps {
   editionId: string;
@@ -23,7 +24,7 @@ export default function MatterKanban({ editionId, items, onItemsChange, disabled
     setLoading(true);
     api.listMatters({ status: "approved", search: search || undefined })
       .then(setAvailableMatters)
-      .catch(() => {})
+      .catch((err) => notifyError("MatterKanban.fetchAvailable", err))
       .finally(() => setLoading(false));
   };
 

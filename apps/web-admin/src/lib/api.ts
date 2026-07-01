@@ -1,3 +1,12 @@
+/**
+ * Token storage policy:
+ * - access_token: stored in sessionStorage (cleared on tab close, reduces XSS persistence window)
+ * - refresh_token: stored in localStorage (needed for cross-tab refresh; acceptable
+ *   risk because refresh tokens are short-lived and can be revoked server-side)
+ *
+ * TODO: Migrate to httpOnly cookies + CSRF tokens for defense-in-depth.
+ * This requires backend changes to set cookies on /auth/login, /auth/refresh, etc.
+ */
 import type {
   ActType,
   ApiError,
@@ -22,7 +31,7 @@ class AuthError extends Error {
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
   bootstrapTokenFromQuery();
-  return localStorage.getItem("access_token");
+  return sessionStorage.getItem("access_token");
 }
 
 export function bootstrapTokenFromQuery(): string | null {
@@ -30,7 +39,7 @@ export function bootstrapTokenFromQuery(): string | null {
   const urlParams = new URLSearchParams(window.location.search);
   const urlToken = urlParams.get("token");
   if (urlToken) {
-    localStorage.setItem("access_token", urlToken);
+    sessionStorage.setItem("access_token", urlToken);
     window.history.replaceState({}, "", window.location.pathname);
     return urlToken;
   }
@@ -76,17 +85,17 @@ async function tryRefreshToken(): Promise<boolean> {
         body: JSON.stringify({ refresh_token: refreshToken }),
       });
       if (!res.ok) {
-        localStorage.removeItem("access_token");
+        sessionStorage.removeItem("access_token");
         localStorage.removeItem("refresh_token");
         window.dispatchEvent(new Event("auth:logout"));
         return false;
       }
       const data = await res.json();
-      localStorage.setItem("access_token", data.access_token);
+      sessionStorage.setItem("access_token", data.access_token);
       localStorage.setItem("refresh_token", data.refresh_token);
       return true;
     } catch {
-      localStorage.removeItem("access_token");
+      sessionStorage.removeItem("access_token");
       localStorage.removeItem("refresh_token");
       window.dispatchEvent(new Event("auth:logout"));
       return false;

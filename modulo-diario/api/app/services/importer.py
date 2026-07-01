@@ -11,7 +11,7 @@ from fastapi import UploadFile
 
 from app.core.config import settings
 from app.core.file_validator import validate_upload
-from app.core.storage import storage
+from app.core.storage import set_storage_tenant, storage
 from app.models.file import File as FileModel
 from app.providers.antivirus import get_virus_scanner
 from app.services.pdf_utils import compute_hash
@@ -46,6 +46,15 @@ async def _save_file(
     ext: str,
     mime_type: str,
 ) -> FileModel:
+    from app.models.organization import Organization
+    from sqlalchemy import select
+
+    org_result = await db_session.execute(
+        select(Organization.slug).where(Organization.id == org_id)
+    )
+    org_slug = org_result.scalar_one_or_none()
+    if org_slug:
+        set_storage_tenant(org_slug)
     path = _storage_path(ext)
     await storage.store(path, content)
     file_hash = compute_hash(content)

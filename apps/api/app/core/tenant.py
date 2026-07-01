@@ -44,15 +44,6 @@ async def resolve_tenant_from_domain(
     origin = request.headers.get("origin", "").strip()
     referer = request.headers.get("referer", "").strip()
 
-    if tenant_slug:
-        result = await db.execute(
-            select(Organization).where(
-                Organization.slug == tenant_slug,
-                Organization.is_active.is_(True),
-            )
-        )
-        return result.scalar_one_or_none()
-
     for source in (origin, referer):
         if not source:
             continue
@@ -89,16 +80,38 @@ async def resolve_tenant_from_domain(
         .where(TenantDomain.domain == domain, TenantDomain.is_active == True)
     )
     td = result.scalar_one_or_none()
-    if td is None:
-        return None
-
-    result = await db.execute(
-        select(Organization).where(
-            Organization.id == td.organization_id,
-            Organization.is_active.is_(True),
+    if td is not None:
+        result = await db.execute(
+            select(Organization).where(
+                Organization.id == td.organization_id,
+                Organization.is_active.is_(True),
+            )
         )
-    )
-    return result.scalar_one_or_none()
+        return result.scalar_one_or_none()
+
+    if tenant_slug:
+        origin_slug = None
+        for source in (origin, referer):
+            if not source:
+                continue
+            parsed = urlparse(source)
+            origin_slug = _candidate_slug_from_host(parsed.netloc or parsed.hostname or "")
+            if origin_slug:
+                break
+        if origin_slug and origin_slug != tenant_slug:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="X-Tenant-Slug does not match request origin",
+            )
+        result = await db.execute(
+            select(Organization).where(
+                Organization.slug == tenant_slug,
+                Organization.is_active.is_(True),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    return None
 
 
 async def require_tenant(

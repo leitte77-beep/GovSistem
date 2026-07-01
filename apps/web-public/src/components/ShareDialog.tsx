@@ -96,7 +96,7 @@ export default function ShareDialog({ url, title }: ShareDialogProps) {
       <button
         onClick={() => setOpen(true)}
         className="p-2 border border-outline-variant rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-all"
-        title="Compartilhar"
+        aria-label="Compartilhar"
       >
         <span className="material-symbols-outlined">share</span>
       </button>
@@ -112,6 +112,7 @@ export default function ShareDialog({ url, title }: ShareDialogProps) {
               <button
                 onClick={() => setOpen(false)}
                 className="p-1 text-on-surface-variant hover:text-primary rounded-full"
+                aria-label="Fechar"
               >
                 <span className="material-symbols-outlined">close</span>
               </button>

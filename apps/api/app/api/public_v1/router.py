@@ -163,7 +163,9 @@ def _edition_detail_response(edition: Edition) -> EditionDetail:
     summary="Get current organization by domain",
     description="Returns public organization info based on the request domain/tenant. Returns null/default if no tenant configured.",
 )
+@limiter.limit("60/minute")
 async def v1_get_organization(
+    request: Request,
     tenant: Organization | None = Depends(resolve_tenant_from_domain),
 ):
     if tenant is None:
@@ -211,6 +213,13 @@ async def v1_list_editions(
     tenant: Organization | None = Depends(resolve_tenant_from_domain),
     db: AsyncSession = Depends(get_db),
 ):
+    if tenant is None:
+        params = {"year": year, "type": type, "search": search}
+        pagination = _pagination_links(
+            f"{request.base_url}api/public/v1/editions", 0, page, page_size, params
+        )
+        return EditionListResponse(data=[], pagination=PaginationMeta(**pagination))
+
     query = (
         select(Edition)
         .where(Edition.status == EditionStatus.PUBLISHED)
@@ -219,8 +228,7 @@ async def v1_list_editions(
             selectinload(Edition.signatures),
         )
     )
-    if tenant is not None:
-        query = query.where(Edition.organization_id == tenant.id)
+    query = query.where(Edition.organization_id == tenant.id)
     if year:
         query = query.where(Edition.year == year)
     if type:
@@ -230,9 +238,10 @@ async def v1_list_editions(
         query = query.where(or_(Edition.title.ilike(like), Edition.subtitle.ilike(like)))
     query = query.order_by(Edition.year.desc(), Edition.number.desc())
 
-    total_query = select(Edition).where(Edition.status == EditionStatus.PUBLISHED)
-    if tenant is not None:
-        total_query = total_query.where(Edition.organization_id == tenant.id)
+    total_query = select(Edition).where(
+        Edition.status == EditionStatus.PUBLISHED,
+        Edition.organization_id == tenant.id,
+    )
     if year:
         total_query = total_query.where(Edition.year == year)
     if type:
@@ -290,13 +299,14 @@ async def v1_get_edition_by_year_number(
     tenant: Organization | None = Depends(resolve_tenant_from_domain),
     db: AsyncSession = Depends(get_db),
 ):
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Edition not found")
     conditions = [
         Edition.year == year,
         Edition.number == number,
         Edition.status == EditionStatus.PUBLISHED,
+        Edition.organization_id == tenant.id,
     ]
-    if tenant is not None:
-        conditions.append(Edition.organization_id == tenant.id)
     result = await db.execute(
         select(Edition)
         .where(*conditions)
@@ -328,13 +338,14 @@ async def v1_get_edition_by_year_number_alt(
     tenant: Organization | None = Depends(resolve_tenant_from_domain),
     db: AsyncSession = Depends(get_db),
 ):
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Edition not found")
     conditions = [
         Edition.year == year,
         Edition.number == number,
         Edition.status == EditionStatus.PUBLISHED,
+        Edition.organization_id == tenant.id,
     ]
-    if tenant is not None:
-        conditions.append(Edition.organization_id == tenant.id)
     result = await db.execute(
         select(Edition)
         .where(*conditions)
@@ -392,9 +403,9 @@ async def v1_get_edition(
     tenant: Organization | None = Depends(resolve_tenant_from_domain),
     db: AsyncSession = Depends(get_db),
 ):
-    conditions = [Edition.id == edition_id, Edition.status == EditionStatus.PUBLISHED]
-    if tenant is not None:
-        conditions.append(Edition.organization_id == tenant.id)
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Edition not found")
+    conditions = [Edition.id == edition_id, Edition.status == EditionStatus.PUBLISHED, Edition.organization_id == tenant.id]
     result = await db.execute(
         select(Edition)
         .where(*conditions)
@@ -418,7 +429,7 @@ async def v1_get_edition(
     summary="List published matters",
     description="Returns paginated list of PUBLISHED matters with search and filters.",
 )
-@limiter.limit("60/minute")
+@limiter.limit("30/minute")
 async def v1_list_matters(
     request: Request,
     q: Optional[str] = Query(None, description="Search in title and summary"),
@@ -433,13 +444,18 @@ async def v1_list_matters(
     tenant: Organization | None = Depends(resolve_tenant_from_domain),
     db: AsyncSession = Depends(get_db),
 ):
+    if tenant is None:
+        params = {"q": q, "act_type": act_type, "org_unit": org_unit, "year": year}
+        pagination = _pagination_links(
+            f"{request.base_url}api/public/v1/matters", 0, page, page_size, params
+        )
+        return MatterListResponse(data=[], pagination=PaginationMeta(**pagination))
+
     query = (
         select(Matter)
-        .where(Matter.status == "published")
+        .where(Matter.status == "published", Matter.organization_id == tenant.id)
         .options(selectinload(Matter.act_type), selectinload(Matter.org_unit))
     )
-    if tenant is not None:
-        query = query.where(Matter.organization_id == tenant.id)
     if q:
         like = f"%{q}%"
         query = query.where(
@@ -459,10 +475,9 @@ async def v1_list_matters(
         query = query.where(Matter.published_at <= datetime.combine(date_to, datetime.max.time()))
     if year or edition is not None:
         subq = select(EditionItem.matter_id).join(Edition).where(
-            Edition.status == EditionStatus.PUBLISHED
+            Edition.status == EditionStatus.PUBLISHED,
+            Edition.organization_id == tenant.id,
         )
-        if tenant is not None:
-            subq = subq.where(Edition.organization_id == tenant.id)
         if year:
             subq = subq.where(Edition.year == year)
         if edition is not None:
@@ -530,9 +545,9 @@ async def v1_get_matter(
     tenant: Organization | None = Depends(resolve_tenant_from_domain),
     db: AsyncSession = Depends(get_db),
 ):
-    conditions = [Matter.id == matter_id, Matter.status == "published"]
-    if tenant is not None:
-        conditions.append(Matter.organization_id == tenant.id)
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Matter not found")
+    conditions = [Matter.id == matter_id, Matter.status == "published", Matter.organization_id == tenant.id]
     result = await db.execute(
         select(Matter)
         .where(*conditions)
@@ -587,9 +602,12 @@ async def v1_verify(
     tenant: Organization | None = Depends(resolve_tenant_from_domain),
     db: AsyncSession = Depends(get_db),
 ):
-    conditions = [Edition.verification_code == code]
-    if tenant is not None:
-        conditions.append(Edition.organization_id == tenant.id)
+    if tenant is None:
+        return VerifyResult(
+            valid=False,
+            message="Verification code not found or document not published",
+        )
+    conditions = [Edition.verification_code == code, Edition.organization_id == tenant.id]
     result = await db.execute(
         select(Edition)
         .where(*conditions)

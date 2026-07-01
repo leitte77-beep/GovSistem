@@ -627,12 +627,45 @@ export function iniciarGateway(httpServer, wa, storage) {
       }
     });
 
-    socket.on('mensagem:enviar', async ({ convId, jid, texto, tipo, mediaBase64, mediaMime, mediaNome }, ack) => {
+    socket.on('mensagem:enviar', async ({ convId, jid, texto, tipo, mediaBase64, mediaMime, mediaNome, respondendoA }, ack) => {
       try {
+        // Bloqueia extensões de arquivo maliciosas (camada de segurança no backend)
+        const EXTENSOES_PROIBIDAS = ['exe','bat','cmd','msi','vbs','ps1','scr','com','sh','dll','pif','cpl','wsf','wsh','hta','jar','reg','scf','lnk'];
+        const MIMES_PROIBIDOS = ['application/x-msdownload','application/x-msdos-program','application/x-bat'];
+        if (mediaNome) {
+          const ext = (mediaNome || '').split('.').pop()?.toLowerCase();
+          if (ext && EXTENSOES_PROIBIDAS.includes(ext)) {
+            if (ack) ack({ ok: false, erro: `Arquivo .${ext} não é permitido por segurança.` });
+            return;
+          }
+        }
+        if (mediaMime && MIMES_PROIBIDOS.includes(mediaMime.toLowerCase())) {
+          if (ack) ack({ ok: false, erro: 'Tipo de arquivo não permitido por segurança.' });
+          return;
+        }
+
         await setTenantContext(op.tenantId);
         const destinoJid = await obterJidDaConversa(op.tenantId, convId, jid);
         const cfgAssinatura = await obterConfigAssinatura(op.tenantId);
         const operadorPayload = await obterOperadorPayload(op.tenantId, op.id, op.nome);
+
+        // Responder citando: monta o objeto `quoted` do Baileys a partir da
+        // mensagem original (precisa do wa_message_id para o WhatsApp linkar a citação).
+        let quoted;
+        if (respondendoA) {
+          const orig = await db.oneOrNone(
+            `SELECT wa_message_id, direcao, conteudo, tipo FROM mensagens
+             WHERE id = $1 AND tenant_id = $2 AND conversa_id = $3`,
+            [respondendoA, op.tenantId, convId]
+          );
+          if (orig?.wa_message_id) {
+            const textoCitado = orig.conteudo || (orig.tipo && orig.tipo !== 'texto' ? `[${orig.tipo}]` : '');
+            quoted = {
+              key: { remoteJid: destinoJid, fromMe: orig.direcao === 'saida', id: orig.wa_message_id },
+              message: { conversation: textoCitado || ' ' },
+            };
+          }
+        }
 
         if (texto) {
           await wa.setTyping(op.tenantId, destinoJid, true);
@@ -656,7 +689,7 @@ export function iniciarGateway(httpServer, wa, storage) {
             mimetype: mediaMime || 'application/octet-stream',
             fileName: mediaNome,
             caption: texto ? assinarTexto({ nome: operadorPayload.nome }, texto, cfgAssinatura, operadorPayload.departamentos) : undefined,
-          });
+          }, { quoted });
           // sendMedia pode transcodificar áudio (webm→ogg) — usa o resultado final
           // para persistir o arquivo correto no storage.
           const bufFinal = result?.__mediaBufferFinal || buffer;
@@ -669,7 +702,7 @@ export function iniciarGateway(httpServer, wa, storage) {
           }
           mediaUrl = await storage.salvar(bufFinal, mimeFinal, op.tenantId);
         } else if (texto) {
-          result = await wa.sendText(op.tenantId, destinoJid, assinarTexto({ nome: operadorPayload.nome }, texto, cfgAssinatura, operadorPayload.departamentos));
+          result = await wa.sendText(op.tenantId, destinoJid, assinarTexto({ nome: operadorPayload.nome }, texto, cfgAssinatura, operadorPayload.departamentos), { quoted });
         } else {
           if (ack) ack({ ok: false, erro: 'Texto ou mídia obrigatórios' });
           return;
@@ -682,10 +715,10 @@ export function iniciarGateway(httpServer, wa, storage) {
         const msgId = uuidv4();
 
         const msg = await db.one(
-          `INSERT INTO mensagens (id, tenant_id, conversa_id, wa_message_id, direcao, operador_id, tipo, conteudo, media_url, media_mime, media_nome, status, criado_em)
-           VALUES ($1, $2, $3, $4, 'saida', $5, $6, $7, $8, $9, $10, 'enviado', now())
+          `INSERT INTO mensagens (id, tenant_id, conversa_id, wa_message_id, direcao, operador_id, tipo, conteudo, media_url, media_mime, media_nome, respondendo_a, status, criado_em)
+           VALUES ($1, $2, $3, $4, 'saida', $5, $6, $7, $8, $9, $10, $11, 'enviado', now())
            RETURNING *`,
-          [msgId, op.tenantId, convId, waMessageId, op.id, msgTipo, texto || null, mediaUrl, mimeFinal || mediaMime || null, mediaNome || null]
+          [msgId, op.tenantId, convId, waMessageId, op.id, msgTipo, texto || null, mediaUrl, mimeFinal || mediaMime || null, mediaNome || null, respondendoA || null]
         );
         const msgComOperador = {
           ...msg,
@@ -712,6 +745,36 @@ export function iniciarGateway(httpServer, wa, storage) {
       } catch (err) {
         console.error('[Socket] mensagem:enviar error:', err.message);
         try { await wa.setTyping(op.tenantId, jid, false); } catch {}
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    // Reagir (ou remover reação com emoji vazio) a uma mensagem do atendimento.
+    // Sincroniza com o WhatsApp do cidadão e persiste em mensagens.reacao.
+    socket.on('conversa:reagir', async ({ convId, msgId, emoji }, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        const msg = await db.oneOrNone(
+          `SELECT id, wa_message_id, direcao FROM mensagens
+           WHERE id = $1 AND conversa_id = $2 AND tenant_id = $3`,
+          [msgId, convId, op.tenantId]
+        );
+        if (!msg) {
+          if (ack) ack({ ok: false, erro: 'Mensagem não encontrada' });
+          return;
+        }
+        if (msg.wa_message_id) {
+          const destinoJid = await obterJidDaConversa(op.tenantId, convId, null);
+          await wa.sendReaction(op.tenantId, destinoJid, msg.wa_message_id, msg.direcao === 'saida', emoji || '');
+        }
+        await db.none(
+          `UPDATE mensagens SET reacao = $1 WHERE id = $2 AND tenant_id = $3`,
+          [emoji || null, msgId, op.tenantId]
+        );
+        io.to(salas.conversa(convId)).emit('mensagem:reacao', { mensagemId: msgId, emoji: emoji || null });
+        if (ack) ack({ ok: true });
+      } catch (err) {
+        console.error('[Socket] conversa:reagir error:', err.message);
         if (ack) ack({ ok: false, erro: err.message });
       }
     });

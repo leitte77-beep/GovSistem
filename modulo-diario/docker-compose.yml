@@ -12,6 +12,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-modulo_diario}
       POSTGRES_USER: ${POSTGRES_USER:-diario_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-diario_password}
+    # Development only - remove in production
     ports:
       - "9632:5432"
     volumes:
@@ -30,6 +31,7 @@ services:
     image: redis:7-alpine
     logging: *default-logging
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    # Development only - remove in production
     ports:
       - "9579:6379"
     healthcheck:
@@ -48,6 +50,7 @@ services:
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio_admin}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_password}
+    # Development only - remove in production
     ports:
       - "9990:9000"
       - "9991:9001"
@@ -84,8 +87,8 @@ services:
       MINIO_BUCKET: ${MINIO_BUCKET:-doe-publicacoes}
       MINIO_SECURE: "false"
       SIGNER_URL: http://signer:8100
-      SECRET_KEY: ${SECRET_KEY:-dev-saas-secret-key-change-in-production}
-      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-saas}
+      SECRET_KEY: ${SECRET_KEY:-change-me-in-dev}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-in-dev}
       CORS_ORIGINS: '["http://localhost:9202","http://localhost:9200","https://farol.govsistem.com.br"]'
       ENVIRONMENT: ${ENVIRONMENT:-development}
     ports:
@@ -138,8 +141,7 @@ services:
     environment:
       SIGNER_PROVIDER: ${SIGNER_PROVIDER:-a1}
       VERIFICATION_BASE_URL: https://govsistem.com.br/verificar
-    ports:
-      - "9210:8100"
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-in-dev}
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8100/api/v1/health"]
       interval: 30s

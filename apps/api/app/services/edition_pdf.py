@@ -61,7 +61,7 @@ def _save_to_storage(filename: str, content: bytes) -> str:
 
 def generate_edition_pdf_sync(
     edition_id: str,
-    organ_name: str = "Prefeitura Municipal",
+    organ_name: str | None = None,
     verification_base_url: str = "http://localhost:7200/verificar",
     layout: str = "classico",
 ) -> dict:
@@ -82,11 +82,15 @@ def generate_edition_pdf_sync(
             .where(Edition.id == uuid.UUID(edition_id))
             .options(
                 selectinload(Edition.items).selectinload(EditionItem.matter),
+                selectinload(Edition.organization),
             )
         )
         edition = result.scalar_one_or_none()
         if edition is None:
             raise ValueError(f"Edition {edition_id} not found")
+
+        if organ_name is None:
+            organ_name = edition.organization.name
 
         if not edition.verification_code:
             edition.generate_verification_code()

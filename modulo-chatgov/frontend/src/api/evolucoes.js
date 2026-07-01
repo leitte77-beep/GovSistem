@@ -38,52 +38,7 @@ export async function atualizarPresencaApi(status, mensagem) {
   return jsonReq('/api/evolucoes/presenca', 'PUT', { status, mensagem });
 }
 
-// Projetos e Tarefas
-export async function fetchProjetos() {
-  const res = await fetch('/api/evolucoes/projetos', { headers: { Authorization: `Bearer ${getToken()}` } });
-  if (!res.ok) throw new Error('Erro ao buscar projetos');
-  return res.json();
-}
-
-export async function criarProjetoApi(body) {
-  return jsonReq('/api/evolucoes/projetos', 'POST', body);
-}
-
-export async function fetchKanban(projetoId) {
-  const res = await fetch(`/api/evolucoes/projetos/${projetoId}/kanban`, { headers: { Authorization: `Bearer ${getToken()}` } });
-  if (!res.ok) throw new Error('Erro ao carregar kanban');
-  return res.json();
-}
-
-export async function criarColunaApi(projetoId, body) {
-  return jsonReq(`/api/evolucoes/projetos/${projetoId}/colunas`, 'POST', body);
-}
-
-export async function criarTarefaApi(body) {
-  return jsonReq('/api/evolucoes/tarefas', 'POST', body);
-}
-
-export async function fetchTarefa(id) {
-  const res = await fetch(`/api/evolucoes/tarefas/${id}`, { headers: { Authorization: `Bearer ${getToken()}` } });
-  if (!res.ok) throw new Error('Erro ao buscar tarefa');
-  return res.json();
-}
-
-export async function atualizarTarefaApi(id, body) {
-  return jsonReq(`/api/evolucoes/tarefas/${id}`, 'PATCH', body);
-}
-
-export async function moverTarefaApi(id, body) {
-  return jsonReq(`/api/evolucoes/tarefas/${id}/mover`, 'POST', body);
-}
-
-export async function fetchMinhasTarefas() {
-  const res = await fetch('/api/evolucoes/tarefas/minhas', { headers: { Authorization: `Bearer ${getToken()}` } });
-  if (!res.ok) throw new Error('Erro ao buscar tarefas');
-  return res.json();
-}
-
-// Arquivos
+// Arquivos (upload compartilhado pelo chat interno e mídias)
 export async function uploadArquivoApi(file, conversa_id, pasta_id, canal_id, tarefa_id) {
   const form = new FormData();
   form.append('arquivo', file);
@@ -100,37 +55,7 @@ export async function uploadArquivoApi(file, conversa_id, pasta_id, canal_id, ta
   return res.json();
 }
 
-export async function fetchPastas(setor_id) {
-  const params = setor_id ? `?setor_id=${encodeURIComponent(setor_id)}` : '';
-  const res = await fetch(`/api/evolucoes/pastas${params}`, { headers: { Authorization: `Bearer ${getToken()}` } });
-  if (!res.ok) throw new Error('Erro ao buscar pastas');
-  return res.json();
-}
-
-export async function fetchArquivosPasta(pastaId) {
-  const res = await fetch(`/api/evolucoes/pastas/${pastaId}/arquivos`, { headers: { Authorization: `Bearer ${getToken()}` } });
-  if (!res.ok) throw new Error('Erro ao buscar arquivos');
-  return res.json();
-}
-
-export async function fetchArquivosBusca(q) {
-  const res = await fetch(`/api/evolucoes/arquivos/buscar?q=${encodeURIComponent(q)}`, { headers: { Authorization: `Bearer ${getToken()}` } });
-  if (!res.ok) throw new Error('Erro na busca');
-  return res.json();
-}
-
-// Reuniões
-export async function criarReuniaoApi(body) {
-  return jsonReq('/api/evolucoes/reunioes', 'POST', body);
-}
-
-export async function fetchReunioes(params = {}) {
-  const qs = new URLSearchParams(params).toString();
-  const res = await fetch(`/api/evolucoes/reunioes?${qs}`, { headers: { Authorization: `Bearer ${getToken()}` } });
-  if (!res.ok) throw new Error('Erro ao buscar reuniões');
-  return res.json();
-}
-
+// Calendário (Agenda)
 export async function fetchCalendario(inicio, fim) {
   const params = new URLSearchParams();
   if (inicio) params.set('inicio', inicio);
@@ -176,24 +101,6 @@ export async function fetchConfigNotificacoes() {
 
 export async function salvarConfigNotificacoes(body) {
   return jsonReq('/api/evolucoes/config/notificacoes', 'PUT', body);
-}
-
-// Wiki
-export async function fetchArtigos(categoria) {
-  const params = categoria ? `?categoria=${encodeURIComponent(categoria)}` : '';
-  const res = await fetch(`/api/evolucoes/wiki${params}`, { headers: { Authorization: `Bearer ${getToken()}` } });
-  if (!res.ok) throw new Error('Erro ao buscar artigos');
-  return res.json();
-}
-
-export async function fetchCategoriasWiki() {
-  const res = await fetch('/api/evolucoes/wiki/categorias', { headers: { Authorization: `Bearer ${getToken()}` } });
-  if (!res.ok) throw new Error('Erro ao buscar categorias');
-  return res.json();
-}
-
-export async function criarArtigoApi(body) {
-  return jsonReq('/api/evolucoes/wiki', 'POST', body);
 }
 
 // Mensagens fixadas

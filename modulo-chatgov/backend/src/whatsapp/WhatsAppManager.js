@@ -363,12 +363,13 @@ export class WhatsAppManager extends EventEmitter {
     return undefined;
   }
 
-  async sendText(tenantId, jid, texto) {
+  async sendText(tenantId, jid, texto, opts = {}) {
     const { sock } = this._getSession(tenantId);
     return this._enqueueSend(tenantId, async () => {
       try {
         const destino = await this._resolveRecipientJid(tenantId, sock, jid);
-        const result = await this._comRetry(() => sock.sendMessage(destino, { text: texto }));
+        const sendOpts = opts.quoted ? { quoted: opts.quoted } : undefined;
+        const result = await this._comRetry(() => sock.sendMessage(destino, { text: texto }, sendOpts));
         this._guardarMensagemEnviada(result);
         return result;
       } catch (err) {
@@ -380,7 +381,7 @@ export class WhatsAppManager extends EventEmitter {
     });
   }
 
-  async sendMedia(tenantId, jid, { tipo, buffer, mimetype, fileName, caption }) {
+  async sendMedia(tenantId, jid, { tipo, buffer, mimetype, fileName, caption }, opts = {}) {
     const { sock } = this._getSession(tenantId);
     return this._enqueueSend(tenantId, async () => {
       const destino = await this._resolveRecipientJid(tenantId, sock, jid);
@@ -406,7 +407,8 @@ export class WhatsAppManager extends EventEmitter {
       }
 
       const payload = this._buildMediaPayload(tipoFinal, bufFinal, mimeFinal, fileName, caption);
-      const result = await this._comRetry(() => sock.sendMessage(destino, payload));
+      const sendOpts = opts.quoted ? { quoted: opts.quoted } : undefined;
+      const result = await this._comRetry(() => sock.sendMessage(destino, payload, sendOpts));
       this._guardarMensagemEnviada(result);
       // DIAGNÓSTICO (flag WA_MEDIA_SELFCHECK=1): baixa de volta a própria mídia do
       // CDN para provar se os bytes estão lá e descriptografáveis. Não afeta o envio.
@@ -541,6 +543,17 @@ export class WhatsAppManager extends EventEmitter {
       console.error(`[WA] revokeMessage error tenant=${tenantId}:`, err.message);
       return null;
     }
+  }
+
+  // Envia (ou remove, com emoji vazio) uma reação a uma mensagem.
+  // `fromMe` indica se a mensagem-alvo foi enviada por nós.
+  async sendReaction(tenantId, jid, waMessageId, fromMe, emoji) {
+    const { sock } = this._getSession(tenantId);
+    return this._enqueueSend(tenantId, async () => {
+      const destino = await this._resolveRecipientJid(tenantId, sock, jid);
+      const key = { remoteJid: destino, fromMe: !!fromMe, id: waMessageId };
+      return this._comRetry(() => sock.sendMessage(destino, { react: { text: emoji || '', key } }));
+    });
   }
 
   // Busca a foto de perfil do WhatsApp de um contato.

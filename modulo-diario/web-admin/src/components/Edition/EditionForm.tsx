@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import clsx from "clsx";
 import { api } from "@/lib/api";
+import { notifyError } from "@/lib/error-handler";
 import type { Edition, EditionType, EditionItem, MatterListItem } from "@/types/edition";
 import StatusBadge from "@/components/Matter/StatusBadge";
 import EditionPreview from "./EditionPreview";
@@ -72,14 +73,14 @@ export default function EditionForm({ edition, isNew }: EditionFormProps) {
       setItems(edition.items);
       setStatus(edition.status);
     } else if (isNew) {
-      api.listEditions({ year: new Date().getFullYear() })
-        .then((existing) => {
-          const maxNum = existing.reduce((max, e) => Math.max(max, e.number), 0);
-          const nextNum = maxNum + 1;
-          setNumber(nextNum);
-          setTitle(`Diário Oficial - Edição ${String(nextNum).padStart(2, "0")}`);
-        })
-        .catch(() => {});
+        api.listEditions({ year: new Date().getFullYear() })
+          .then((existing) => {
+            const maxNum = existing.reduce((max, e) => Math.max(max, e.number), 0);
+            const nextNum = maxNum + 1;
+            setNumber(nextNum);
+            setTitle(`Diário Oficial - Edição ${String(nextNum).padStart(2, "0")}`);
+          })
+          .catch((err) => notifyError("EditionForm.listEditions", err));
     }
   }, [edition]);
 
@@ -105,7 +106,7 @@ export default function EditionForm({ edition, isNew }: EditionFormProps) {
     const t = setTimeout(() => {
       api.listMatters({ status: "approved", search: search || undefined })
         .then(setAvailableMatters)
-        .catch(() => {})
+        .catch((err) => notifyError("EditionForm.listMatters", err))
         .finally(() => setLoadingMatters(false));
     }, search ? 300 : 0);
     return () => clearTimeout(t);
@@ -115,7 +116,7 @@ export default function EditionForm({ edition, isNew }: EditionFormProps) {
     if (hasItems) {
       api.listSigningCredentials?.()
         .then(setCredentials)
-        .catch(() => {});
+        .catch((err) => notifyError("EditionForm.listSigningCredentials", err));
     }
   }, [hasItems]);
 

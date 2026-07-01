@@ -47,6 +47,26 @@ export async function excluirMensagemConversa(convId, msgId) {
   return res.json();
 }
 
+export async function fetchMidiasConversa(convId) {
+  const res = await fetch(`/api/conversas/${convId}/midias`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) throw new Error('Erro ao buscar mídias');
+  return res.json();
+}
+
+export async function marcarConversaNaoLida(convId) {
+  const res = await fetch(`/api/conversas/${convId}/marcar-nao-lida`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) {
+    const e = await res.json().catch(() => ({}));
+    throw new Error(e.erro || 'Erro ao marcar como não lida');
+  }
+  return res.json();
+}
+
 export async function fetchMe() {
   try {
     const res = await fetch('/api/me', {
@@ -453,6 +473,54 @@ export async function solicitarExclusaoLGPD(body) {
 export async function fetchDashboard() {
   const res = await fetch('/api/admin/dashboard', { headers: { Authorization: `Bearer ${getToken()}` } });
   if (!res.ok) throw new Error('Erro ao carregar dashboard');
+  return res.json();
+}
+
+export async function fetchRelatorioMetricas(inicio, fim, { departamentoId, operadorId, status, canal, comparar } = {}) {
+  const params = new URLSearchParams();
+  if (inicio) params.set('inicio', inicio);
+  if (fim) params.set('fim', fim);
+  if (departamentoId) params.set('departamento_id', departamentoId);
+  if (operadorId) params.set('operador_id', operadorId);
+  if (status) params.set('status', status);
+  if (canal) params.set('canal', canal);
+  if (comparar) params.set('comparar', 'true');
+  const res = await fetch(`/api/relatorios/metricas?${params.toString()}`, { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!res.ok) throw new Error('Erro ao carregar relatórios');
+  return res.json();
+}
+
+export async function fetchRelatorioNPSDetalhado(inicio, fim) {
+  const params = new URLSearchParams();
+  if (inicio) params.set('inicio', inicio);
+  if (fim) params.set('fim', fim);
+  const res = await fetch(`/api/relatorios/nps-detalhado?${params.toString()}`, { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!res.ok) throw new Error('Erro ao carregar relatório NPS detalhado');
+  return res.json();
+}
+
+export async function fetchRelatorioSLA(inicio, fim, departamentoId) {
+  const params = new URLSearchParams();
+  if (inicio) params.set('inicio', inicio);
+  if (fim) params.set('fim', fim);
+  if (departamentoId) params.set('departamento_id', departamentoId);
+  const res = await fetch(`/api/relatorios/sla?${params.toString()}`, { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!res.ok) throw new Error('Erro ao carregar relatório SLA');
+  return res.json();
+}
+
+export async function fetchRelatorioAssuntos(inicio, fim) {
+  const params = new URLSearchParams();
+  if (inicio) params.set('inicio', inicio);
+  if (fim) params.set('fim', fim);
+  const res = await fetch(`/api/relatorios/conversas-por-assunto?${params.toString()}`, { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!res.ok) throw new Error('Erro ao carregar relatório de assuntos');
+  return res.json();
+}
+
+export async function fetchFiltrosRelatorio() {
+  const res = await fetch('/api/relatorios/filtros', { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!res.ok) throw new Error('Erro ao carregar filtros do relatório');
   return res.json();
 }
 

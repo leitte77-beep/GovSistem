@@ -15,10 +15,11 @@ import {
 } from '../api';
 
 export function ColunaEsquerda({
-  view, onSelectConversa, onSelectCanal, onOpenQR,
+  view, onChange, onSelectConversa, onSelectCanal, onOpenQR,
   conversaAtivaId, canalAtivoId, recarregar,
+  breakpoint,
 }) {
-  const { auth } = useAuth();
+  const { auth, logout } = useAuth();
   const { socket } = useSocket();
   const [conversas, setConversas] = useState([]);
   const [canais, setCanais] = useState([]);
@@ -34,6 +35,7 @@ export function ColunaEsquerda({
   const [showNovaDM, setShowNovaDM] = useState(false);
   const [novoGrupoNome, setNovoGrupoNome] = useState('');
   const [novoGrupoMembros, setNovoGrupoMembros] = useState([]);
+  const [showMenu, setShowMenu] = useState(false);
 
   const op = auth?.operador;
   const isAdmin = op?.papel === 'admin';
@@ -155,11 +157,15 @@ export function ColunaEsquerda({
   const countFila = conversas.filter((c) => c.status === 'fila').length;
   const countNaoLidas = conversas.reduce((sum, c) => sum + (c.nao_lidas || 0), 0);
 
+  const ehMobile = breakpoint === 'mobile';
+  const ehTablet = breakpoint === 'tablet';
+  const larguraPainel = ehMobile ? '100%' : ehTablet ? 280 : 400;
+
   return React.createElement('aside', {
     style: {
-      width: 400, minWidth: 400, height: '100%',
+      width: larguraPainel, minWidth: ehMobile ? 0 : larguraPainel, height: '100%',
       background: T.surface, display: 'flex', flexDirection: 'column',
-      borderRight: `1px solid #d1d7db`, zIndex: 40, flexShrink: 0,
+      borderRight: ehMobile ? 'none' : '1px solid #d1d7db', zIndex: 40, flexShrink: 0,
     },
   },
     React.createElement('div', {
@@ -191,17 +197,60 @@ export function ColunaEsquerda({
       ),
       React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 4 } },
         React.createElement('button', {
+          title: 'Notificações',
+          onClick: () => onChange?.('notificacoes'),
           style: { padding: 8, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'transparent', color: T.textMuted, display: 'flex' },
         },
           React.createElement('span', { className: 'material-symbols-outlined', style: { fontSize: 20 } }, 'circle_notifications')),
         React.createElement('button', {
+          title: 'Nova conversa',
+          onClick: () => setShowNovaConversa(true),
           style: { padding: 8, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'transparent', color: T.textMuted, display: 'flex' },
         },
           React.createElement('span', { className: 'material-symbols-outlined', style: { fontSize: 20 } }, 'chat_bubble')),
-        React.createElement('button', {
-          style: { padding: 8, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'transparent', color: T.textMuted, display: 'flex' },
-        },
-          React.createElement('span', { className: 'material-symbols-outlined', style: { fontSize: 20 } }, 'more_vert')),
+        React.createElement('div', { style: { position: 'relative', display: 'flex' } },
+          React.createElement('button', {
+            title: 'Mais opções',
+            onClick: () => setShowMenu((v) => !v),
+            style: { padding: 8, borderRadius: '50%', border: 'none', cursor: 'pointer', background: showMenu ? T.primarySoft : 'transparent', color: showMenu ? T.primary : T.textMuted, display: 'flex' },
+          },
+            React.createElement('span', { className: 'material-symbols-outlined', style: { fontSize: 20 } }, 'more_vert')),
+          showMenu && React.createElement(React.Fragment, null,
+            React.createElement('div', {
+              onClick: () => setShowMenu(false),
+              style: { position: 'fixed', inset: 0, zIndex: 998 },
+            }),
+            React.createElement('div', {
+              style: {
+                position: 'absolute', top: '100%', right: 0, marginTop: 4,
+                minWidth: 200, background: '#fff', border: '1px solid #d1d7db',
+                borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
+                zIndex: 999, overflow: 'hidden', padding: '4px 0',
+              },
+            },
+              React.createElement('div', { style: { padding: '8px 14px', borderBottom: '1px solid #eef2f6' } },
+                React.createElement('p', {
+                  style: { fontSize: 13, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+                }, perfil?.nome || op?.nome || ''),
+                React.createElement('p', {
+                  style: { fontSize: 11, color: T.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+                }, perfil?.email || op?.email || ''),
+              ),
+              isAdmin && React.createElement('button', {
+                onClick: () => { setShowMenu(false); onChange?.('configuracoes'); },
+                style: { width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', border: 'none', background: 'transparent', cursor: 'pointer', color: T.text, fontSize: 13, textAlign: 'left' },
+              },
+                React.createElement('span', { className: 'material-symbols-outlined', style: { fontSize: 19, color: T.textMuted } }, 'settings'),
+                'Configurações'),
+              React.createElement('button', {
+                onClick: () => { setShowMenu(false); logout(); },
+                style: { width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 14px', border: 'none', background: 'transparent', cursor: 'pointer', color: T.danger, fontSize: 13, fontWeight: 600, textAlign: 'left' },
+              },
+                React.createElement('span', { className: 'material-symbols-outlined', style: { fontSize: 19 } }, 'logout'),
+                'Sair'),
+            ),
+          ),
+        ),
       ),
     ),
 
@@ -284,6 +333,7 @@ export function ColunaEsquerda({
                 onClick: () => {
                   if (c.nao_lidas > 0) {
                     setConversas((prev) => prev.map((conv) => conv.id === c.id ? { ...conv, nao_lidas: 0 } : conv));
+                    socket.timeout(5000).emit('conversa:abrir', c.id, () => {});
                   }
                   onSelectConversa(c);
                 },

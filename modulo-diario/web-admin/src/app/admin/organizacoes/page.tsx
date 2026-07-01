@@ -3,13 +3,14 @@
 import { useEffect, useState } from "react";
 import AdminShell from "@/components/AdminShell";
 import { api } from "@/lib/api";
+import { notifyError } from "@/lib/error-handler";
 
 export default function AdminOrganizacoesPage() {
   const [orgs, setOrgs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    api.listOrganizations().then(setOrgs).catch(() => {}).finally(() => setLoading(false));
+    api.listOrganizations().then(setOrgs).catch((err) => notifyError("AdminOrgs", err)).finally(() => setLoading(false));
   }, []);
 
   return (

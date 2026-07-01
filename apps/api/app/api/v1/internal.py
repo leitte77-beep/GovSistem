@@ -1,7 +1,8 @@
 import uuid
 
+from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -10,9 +11,158 @@ from app.core.database import get_db
 from app.models.edition import Edition
 from app.models.edition_item import EditionItem
 from app.models.enums import EditionStatus
+from app.models.organization import Organization
+from app.models.role import Role
 from app.models.setting import SystemSetting
+from app.models.user import User
+from app.models.user_role import UserRole
 
 router = APIRouter()
+
+
+class OrganizationSyncPayload(BaseModel):
+    organization_id: str
+    name: str
+    slug: str
+    cnpj: str | None = None
+    description: str | None = None
+    logo_url: str | None = None
+    public_url: str | None = None
+    is_active: bool = True
+
+
+class UserSyncPayload(BaseModel):
+    user_id: str
+    organization_id: str
+    name: str
+    email: str
+    is_active: bool = True
+    roles: list[str] = Field(default_factory=list)
+
+
+# Roles that exist natively in this module's `roles` table.
+DIARIO_ROLES = {
+    "ADMIN",
+    "AUTOR",
+    "REVISOR",
+    "DIAGRAMADOR",
+    "ASSINADOR",
+    "PUBLICADOR",
+    "AUDITOR",
+}
+
+
+def _module_roles(platform_roles: list[str]) -> set[str]:
+    """Resolve the diário roles for a synced user.
+
+    Preference order:
+    1. If the platform sent explicit diário roles (from per-module grants),
+       use exactly those — this is how granular access is enforced.
+    2. Platform admins always get ADMIN.
+    3. Backward-compatible fallback for users without grants.
+    """
+    roles = set(platform_roles)
+    result = roles & DIARIO_ROLES
+    if roles & {"SUPER_ADMIN", "PLATFORM_ADMIN"}:
+        result.add("ADMIN")
+    if result:
+        return result
+    # Fallback for users that have no explicit grants yet.
+    if roles & {"SUPPORT"}:
+        return {"ADMIN"}
+    return {"AUTOR"}
+
+
+@router.post("/internal/sync-organization")
+async def sync_organization(
+    payload: OrganizationSyncPayload,
+    _: None = Depends(require_internal_key),
+    db: AsyncSession = Depends(get_db),
+):
+    organization_id = uuid.UUID(payload.organization_id)
+    result = await db.execute(
+        select(Organization).where(
+            or_(Organization.id == organization_id, Organization.slug == payload.slug)
+        )
+    )
+    org = result.scalar_one_or_none()
+    if not org:
+        org = Organization(
+            id=organization_id,
+            name=payload.name,
+            slug=payload.slug,
+            cnpj=payload.cnpj,
+            description=payload.description,
+            logo_url=payload.logo_url,
+            public_url=payload.public_url,
+            is_active=payload.is_active,
+        )
+        db.add(org)
+    else:
+        org.name = payload.name
+        org.slug = payload.slug
+        org.cnpj = payload.cnpj
+        org.description = payload.description
+        org.logo_url = payload.logo_url
+        org.public_url = payload.public_url
+        org.is_active = payload.is_active
+    await db.commit()
+    await db.refresh(org)
+    return {"status": "ok", "organization_id": str(org.id)}
+
+
+@router.post("/internal/sync-user")
+async def sync_user(
+    payload: UserSyncPayload,
+    _: None = Depends(require_internal_key),
+    db: AsyncSession = Depends(get_db),
+):
+    user_id = uuid.UUID(payload.user_id)
+    organization_id = uuid.UUID(payload.organization_id)
+    result = await db.execute(
+        select(User).where(or_(User.id == user_id, User.email == payload.email))
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        user = User(
+            id=user_id,
+            organization_id=organization_id,
+            name=payload.name,
+            email=payload.email,
+            is_active=payload.is_active,
+        )
+        db.add(user)
+    else:
+        user.organization_id = organization_id
+        user.name = payload.name
+        user.email = payload.email
+        user.is_active = payload.is_active
+
+    await db.flush()  # ensure user.id is available for new users
+
+    module_roles = _module_roles(payload.roles)
+    role_result = await db.execute(select(Role).where(Role.name.in_(module_roles)))
+    role_by_name = {role.name: role for role in role_result.scalars().all()}
+    desired_role_ids = {role.id for role in role_by_name.values()}
+
+    # Replace semantics: the platform is the source of truth, so drop any
+    # role the user no longer holds (e.g. revoked ASSINADOR) and add new ones.
+    current_result = await db.execute(
+        select(UserRole).where(UserRole.user_id == user.id)
+    )
+    current_by_role_id = {ur.role_id: ur for ur in current_result.scalars().all()}
+
+    for role_id, user_role in current_by_role_id.items():
+        if role_id not in desired_role_ids:
+            await db.delete(user_role)
+
+    for role_id in desired_role_ids:
+        if role_id not in current_by_role_id:
+            db.add(UserRole(user_id=user.id, role_id=role_id))
+
+    await db.commit()
+    await db.refresh(user)
+    return {"status": "ok", "user_id": str(user.id)}
 
 
 @router.post("/internal/editions/{edition_id}/generate-pdf")
@@ -38,15 +188,8 @@ async def internal_generate_edition_pdf(
         raise HTTPException(409, "PDF already generated for this edition")
 
     from app.services.edition_pdf import generate_edition_pdf_sync
-    from app.models.organization import Organization
 
-    org_result = await db.execute(
-        select(Organization).where(Organization.id == edition.organization_id)
-    )
-    organization = org_result.scalar_one_or_none()
-    pdf_layout = organization.pdf_layout if organization else "classico"
-
-    result = generate_edition_pdf_sync(edition_id=str(edition_id), layout=pdf_layout)
+    result = generate_edition_pdf_sync(edition_id=str(edition_id))
     edition.pdf_path = result["filename"]
     edition.pdf_hash = result["sha256"]
     edition.status = EditionStatus.PDF_GENERATED

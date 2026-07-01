@@ -2,9 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import type { EditionListItem } from "@/types/edition";
 import { api } from "@/lib/api";
 import toast from "react-hot-toast";
+import { notifyError } from "@/lib/error-handler";
 
 const TYPE_LABELS: Record<string, string> = { normal: "Normal", extra: "Extraordinária", suplementar: "Suplementar" };
 const PAGE_SIZE = 15;
@@ -58,7 +60,7 @@ export default function EditionsPage() {
   useEffect(() => {
     api.getRaw<DashboardData>("/operations/dashboard")
       .then((d) => setDashboard(d))
-      .catch(() => {});
+      .catch((err) => notifyError("Editions.dashboard", err));
   }, []);
 
   const fetch = useCallback(() => {
@@ -86,7 +88,7 @@ export default function EditionsPage() {
           setEditions(slice);
         }
       })
-      .catch(() => {})
+      .catch((err) => notifyError("Editions.listEditions", err))
       .finally(() => setLoading(false));
   }, [search, statusFilter, page]);
 
@@ -322,10 +324,12 @@ export default function EditionsPage() {
 
       {/* Banner */}
       <div className="rounded-2xl overflow-hidden h-[300px] relative group mt-2">
-        <img
+        <Image
           alt="Transparência Governamental"
           className="w-full h-full object-cover brightness-75 group-hover:scale-105 transition-transform duration-700"
           src="https://lh3.googleusercontent.com/aida-public/AB6AXuC2vaSQ-UfJeZzh3J2eykbEZ-3uaICv96aGquVT3FBIHmGEmxhVNNSDdKG24A_7xeAcDJcuysg7i3x2ffEHCc5lSW7IInVDY1HBRvy9dCsc-2-YvtLmyEV3A70wifmQ7gjnT-3GXxzEEUJI6tz0fgoPf_xWl_dP1-SR2h0hjlYGeyTrmHmk00Vx0yLJhFfpqmMBjJ5eqn7tF372S9CoGTFt8aDO2FD3_Y1pJW5x82d0WtGMWgeCVJvWmo1OoftMcAp-TsP8zNAQWr7U"
+          fill
+          unoptimized
         />
         <div className="absolute inset-0 bg-gradient-to-t from-primary/80 to-transparent flex flex-col justify-end p-gutter">
           <h4 className="text-white text-headline-md font-headline-md">Transparência Governamental</h4>

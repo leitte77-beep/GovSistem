@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect } from "react";
+import { useOrg } from "@/lib/org-context";
 
 export default function ContatoPage() {
+  const { org } = useOrg();
   useEffect(() => {
     const icons = document.querySelectorAll<HTMLElement>(
       ".contact-icon-hover"
@@ -64,7 +67,7 @@ export default function ContatoPage() {
               </span>
               <div className="contact-icon-hover flex items-center gap-2 text-primary font-semibold transition-transform duration-200">
                 <span className="material-symbols-outlined text-sm">mail</span>
-                <span>contato@farol.pr.gov.br</span>
+                <span>{org?.contact_email || "contato@exemplo.gov.br"}</span>
               </div>
             </div>
             <div className="flex flex-col gap-1">
@@ -98,17 +101,19 @@ export default function ContatoPage() {
               </span>
               <div>
                 <p className="text-on-surface font-semibold">
-                  Prefeitura Municipal de Farol
+                  {org?.name || "Prefeitura Municipal"}
                 </p>
                 <p className="text-on-surface-variant">
-                  Rua Bahia, 880 - Centro, Farol - PR, 87325-000
+                  {org?.address || "Endereço da Prefeitura"}
                 </p>
               </div>
             </div>
             <div className="mt-4 h-48 rounded-lg overflow-hidden relative">
-              <img
-                className="w-full h-full object-cover"
-                alt="Mapa da Prefeitura Municipal de Farol"
+              <Image
+                fill
+                sizes="(max-width: 768px) 100vw, 400px"
+                className="object-cover"
+                alt={org?.name ? `Mapa de ${org.name}` : "Mapa da Prefeitura"}
                 src="https://lh3.googleusercontent.com/aida-public/AB6AXuBQuvjRxmZjJIvvWSkFH23kr2jtb2a6bobRtrBq19XsQPFS28L0_tDcinx2sknfj2IT--xc6mQppTj2oX9uB-kwKIzR6FDyQprG9duBQbsDOZC5hul3pQbYkpy_2q_UIonWOL-HCB20NYTfKiPgXsizL1H-JCO3bEglt_4_VvZZUOwtEwS8ChkVKia2c4FkXlYGkzWxbu7PeaREWa3NNHcQiQjjAQHSHiwxzLbywUEN3lkYU5w3t0yGf-UF_nbURE_3EpQYcX-2ytoh"
               />
             </div>

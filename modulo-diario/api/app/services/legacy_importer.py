@@ -11,7 +11,7 @@ from typing import Optional
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.storage import storage
+from app.core.storage import set_storage_tenant, storage
 from app.models.act_type import ActType
 from app.models.edition import Edition
 from app.models.edition_item import EditionItem
@@ -109,6 +109,13 @@ async def import_items(
         select(OrgUnit).where(OrgUnit.organization_id == org_id).limit(1)
     )
     org_unit = org_unit_result.scalar_one_or_none()
+
+    org_result = await db.execute(
+        select(Organization.slug).where(Organization.id == org_id)
+    )
+    org_slug = org_result.scalar_one_or_none()
+    if org_slug:
+        set_storage_tenant(org_slug)
 
     act_type_result = await db.execute(select(ActType).limit(1))
     act_type = act_type_result.scalar_one_or_none()

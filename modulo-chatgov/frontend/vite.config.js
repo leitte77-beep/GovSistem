@@ -25,6 +25,9 @@ export default defineConfig({
           // "Cannot access 'X' before initialization" por dependência circular
           // entre chunks.
           if (id.includes('node_modules')) {
+            // xlsx é pesado e só usado sob demanda (exportar Excel) — chunk próprio,
+            // carregado apenas quando o usuário clica em "Excel" (não bloqueia o boot).
+            if (id.includes('xlsx')) return 'xlsx';
             return 'vendor';
           }
         },

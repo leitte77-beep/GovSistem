@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { notifyError } from "@/lib/error-handler";
 
 interface Notification {
   id: string;
@@ -23,7 +24,7 @@ export default function NotificationsPanel() {
     if (open) {
       api.getRaw<Notification[]>("/operations/notifications")
         .then(setNotifications)
-        .catch(() => {});
+        .catch((err) => notifyError("NotificationsPanel", err));
     }
   }, [open]);
 

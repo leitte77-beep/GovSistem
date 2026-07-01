@@ -20,22 +20,33 @@ class NoopVirusScanner(VirusScannerProvider):
 
 
 class ClamAvVirusScanner(VirusScannerProvider):
-    """ClamAV antivirus scanner via clamd socket.
+    """ClamAV antivirus scanner via clamd (Unix socket or TCP).
 
-    Requires clamav-daemon running and accessible.
-    Socket path defaults to /var/run/clamav/clamd.ctl or
-    can be configured via environment variable CLAMD_SOCKET_PATH.
+    Connects via Unix socket (default /var/run/clamav/clamd.ctl) or
+    TCP (host:port) when host is provided. Standard clamd TCP port is 3310.
     """
 
-    def __init__(self, socket_path: str = "/var/run/clamav/clamd.ctl"):
+    def __init__(
+        self,
+        socket_path: str = "/var/run/clamav/clamd.ctl",
+        host: str = "",
+        port: int = 3310,
+    ):
         self.socket_path = socket_path
+        self.host = host
+        self.port = port
 
     async def scan(self, content: bytes, filename: str = "") -> ScanResult:
         import socket as sock_mod
         try:
-            s = sock_mod.socket(sock_mod.AF_UNIX, sock_mod.SOCK_STREAM)
-            s.settimeout(30)
-            s.connect(self.socket_path)
+            if self.host:
+                s = sock_mod.socket(sock_mod.AF_INET, sock_mod.SOCK_STREAM)
+                s.settimeout(30)
+                s.connect((self.host, self.port))
+            else:
+                s = sock_mod.socket(sock_mod.AF_UNIX, sock_mod.SOCK_STREAM)
+                s.settimeout(30)
+                s.connect(self.socket_path)
             s.sendall(b"zINSTREAM\0")
             s.sendall(len(content).to_bytes(4, "big") + content)
             s.sendall(b"\x00\x00\x00\x00")
@@ -49,4 +60,10 @@ class ClamAvVirusScanner(VirusScannerProvider):
 
 
 def get_virus_scanner() -> VirusScannerProvider:
+    from app.core.config import settings
+    if settings.CLAMAV_HOST:
+        return ClamAvVirusScanner(
+            host=settings.CLAMAV_HOST,
+            port=settings.CLAMAV_PORT,
+        )
     return NoopVirusScanner()

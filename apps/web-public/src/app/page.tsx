@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { api, EditionSummary as Edition } from "@/lib/api";
 import { useOrg } from "@/lib/org-context";
@@ -73,10 +74,10 @@ export default function HomePage() {
       <section className="bg-surface py-stack-lg border-b border-outline-variant">
         <div className="max-w-container-max mx-auto px-gutter text-center">
           <h1 className="font-headline-lg text-headline-lg text-primary mb-stack-sm">
-            Diário Oficial Eletrônico
+              {org?.name || "Diário Oficial Eletrônico"}
           </h1>
           <p className="text-body-lg font-body-lg text-on-surface-variant mb-stack-md max-w-2xl mx-auto">
-            Acesse publicações oficiais, atos normativos e transparência governamental com facilidade e segurança jurídica.
+              {org?.description || "Acesse publicações oficiais, atos normativos e transparência governamental com facilidade e segurança jurídica."}
           </p>
 
           <div className="bg-surface-container-lowest p-2 rounded-xl shadow-lg border border-outline-variant max-w-4xl mx-auto">
@@ -142,7 +143,7 @@ export default function HomePage() {
               Últimas Edições
             </h2>
             <p className="text-body-sm font-body-sm text-on-surface-variant">
-              Publicações recentes do Diário Oficial da União
+              Publicações recentes{org?.name ? ` da(o) ${org.name}` : " do Diário Oficial"}
             </p>
           </div>
           <Link
@@ -226,7 +227,7 @@ export default function HomePage() {
                         target="_blank"
                         rel="noopener noreferrer"
                         className="p-2 text-on-surface-variant hover:bg-surface-container-highest rounded-lg transition-colors"
-                        title="Baixar PDF"
+                        aria-label="Baixar PDF"
                       >
                         <span className="material-symbols-outlined">
                           download
@@ -302,7 +303,7 @@ export default function HomePage() {
               </h4>
               <p className="text-body-sm font-body-sm text-on-primary-container mb-6">
                 Pesquise em nossa base de dados histórica que contempla edições
-                desde a fundação do Diário Oficial do Município.
+                desde a primeira edição do Diário Oficial.
               </p>
               <Link
                 href="/acervo"
@@ -380,9 +381,11 @@ export default function HomePage() {
               </p>
             </div>
             <div className="lg:w-1/2 relative min-h-[300px] w-full rounded-xl overflow-hidden shadow-inner">
-              <img
+              <Image
                 alt="Institutional"
-                className="absolute inset-0 w-full h-full object-cover"
+                fill
+                sizes="(max-width: 1024px) 100vw, 50vw"
+                className="object-cover"
                 src="https://lh3.googleusercontent.com/aida-public/AB6AXuDbkLKUPgGmqB36f1mghg52fm7xEC19nNAReJJ7tfQcBfkfT0dQ101PGlEHGIdDFQ4jsgxSHFMk_nREUOfWOqDRVIyIBZTzj4OGxqidtWFSXCgdQBA4cQmH6prCXK03HKoiEP9hHy_ZlAZuS_mwCHZq2Mh4iYddC7T-eWjSBG1V2yDJapd31x7KFYbxWqEtmZ1xrzPi-ly-GEot5a9lS1aJGBL_OBn8v-tgkdD7UE8pI9jDlGBT0-ZTlaIBhzZFlLRXSJBxPBS3VbYA"
               />
             </div>

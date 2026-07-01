@@ -33,7 +33,9 @@ export default function RegisterPage() {
         throw new Error(err.detail || "Erro ao cadastrar");
       }
       const data = await res.json();
-      localStorage.setItem("access_token", data.access_token);
+      // access_token in sessionStorage (cleared on tab close) to reduce XSS exposure window.
+      // refresh_token kept in localStorage for cross-tab persistence; revocable server-side.
+      sessionStorage.setItem("access_token", data.access_token);
       localStorage.setItem("refresh_token", data.refresh_token);
 
       const adminBase = process.env.NEXT_PUBLIC_ADMIN_URL || "https://admin.govsistem.com.br";
@@ -80,37 +82,41 @@ export default function RegisterPage() {
             </div>
 
             {error && (
-              <div className="bg-error-container text-on-error-container p-3 rounded-lg text-sm mb-6">
+              <div id="form-error" role="alert" className="bg-error-container text-on-error-container p-3 rounded-lg text-sm mb-6">
                 {error}
               </div>
             )}
 
-            <form onSubmit={handleSubmit} className="space-y-5">
+            <form onSubmit={handleSubmit} className="space-y-5" noValidate>
               <div>
-                <label className="text-label-md font-label-md text-on-surface uppercase tracking-wider block mb-1">
+                <label htmlFor="org-name" className="text-label-md font-label-md text-on-surface uppercase tracking-wider block mb-1">
                   Nome da Organização
                 </label>
                 <input
+                  id="org-name"
                   className="w-full h-12 px-4 bg-surface-container-low border border-outline-variant text-body-md rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
                   value={form.organization_name}
                   onChange={updateField("organization_name")}
                   required
-                  placeholder="Prefeitura Municipal de Farol"
+                  placeholder="Prefeitura Municipal de Exemplo"
+                  aria-describedby={error ? "form-error" : undefined}
                 />
               </div>
 
               <div>
-                <label className="text-label-md font-label-md text-on-surface uppercase tracking-wider block mb-1">
+                <label htmlFor="org-slug" className="text-label-md font-label-md text-on-surface uppercase tracking-wider block mb-1">
                   Slug (identificador único)
                 </label>
                 <div className="flex items-center gap-2">
                   <span className="text-body-sm text-outline">doeapp.com.br/</span>
                   <input
+                    id="org-slug"
                     className="flex-1 h-12 px-4 bg-surface-container-low border border-outline-variant text-body-md rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
                     value={form.organization_slug}
                     onChange={(e) => setForm((f) => ({ ...f, organization_slug: e.target.value }))}
                     required
-                    placeholder="prefeitura-farol"
+                    placeholder="exemplo-municipio"
+                    aria-describedby={error ? "form-error" : undefined}
                   />
                 </div>
               </div>
@@ -118,37 +124,42 @@ export default function RegisterPage() {
               <hr className="border-outline-variant" />
 
               <div>
-                <label className="text-label-md font-label-md text-on-surface uppercase tracking-wider block mb-1">
+                <label htmlFor="admin-name" className="text-label-md font-label-md text-on-surface uppercase tracking-wider block mb-1">
                   Nome do Administrador
                 </label>
                 <input
+                  id="admin-name"
                   className="w-full h-12 px-4 bg-surface-container-low border border-outline-variant text-body-md rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
                   value={form.admin_name}
                   onChange={updateField("admin_name")}
                   required
                   placeholder="João Silva"
+                  aria-describedby={error ? "form-error" : undefined}
                 />
               </div>
 
               <div>
-                <label className="text-label-md font-label-md text-on-surface uppercase tracking-wider block mb-1">
+                <label htmlFor="admin-email" className="text-label-md font-label-md text-on-surface uppercase tracking-wider block mb-1">
                   Email do Administrador
                 </label>
                 <input
+                  id="admin-email"
                   className="w-full h-12 px-4 bg-surface-container-low border border-outline-variant text-body-md rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
                   type="email"
                   value={form.admin_email}
                   onChange={(e) => setForm((f) => ({ ...f, admin_email: e.target.value }))}
                   required
-                  placeholder="joao@farol.gov.br"
+                  placeholder="admin@exemplo.gov.br"
+                  aria-describedby={error ? "form-error" : undefined}
                 />
               </div>
 
               <div>
-                <label className="text-label-md font-label-md text-on-surface uppercase tracking-wider block mb-1">
+                <label htmlFor="admin-password" className="text-label-md font-label-md text-on-surface uppercase tracking-wider block mb-1">
                   Senha
                 </label>
                 <input
+                  id="admin-password"
                   className="w-full h-12 px-4 bg-surface-container-low border border-outline-variant text-body-md rounded-lg focus:ring-2 focus:ring-primary focus:border-primary"
                   type="password"
                   value={form.admin_password}
@@ -156,6 +167,7 @@ export default function RegisterPage() {
                   required
                   minLength={6}
                   placeholder="Mínimo 6 caracteres"
+                  aria-describedby={error ? "form-error" : undefined}
                 />
               </div>
 

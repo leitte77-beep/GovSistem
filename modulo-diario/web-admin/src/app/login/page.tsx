@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import toast from "react-hot-toast";
 import { useAuth } from "@/lib/auth-context";
 
@@ -51,10 +52,12 @@ export default function LoginPage() {
 
       <main className="flex-grow flex items-center justify-center p-gutter relative overflow-hidden" style={{ background: "linear-gradient(135deg, #f7f9fb 0%, #eceef0 100%)" }}>
         <div className="absolute top-0 right-0 w-1/3 h-full opacity-10 pointer-events-none">
-          <img
+          <Image
             alt=""
             className="w-full h-full object-cover grayscale"
             src="https://lh3.googleusercontent.com/aida-public/AB6AXuBdC2wFP8qaCqiCbMPFO6ctkBaJltbDKxYTDEcltX5-a8YcpgUlfi8qZcATb69R1u93F6jG7Mtqx0kCLbz9CvX5dZQVK7xaealociFwS0DSO6aqJnS8w-0zLBGykeywfBld1XLBu9F-FKi4wiTGHSWzQmqTbq-KZIK84P4fUfgaWogxHpYXs1Bfq7UzkOMGhfxqBKFxHlXLiGkqwPS6h6xZARD1PxpntYWwEvQWRVLXgKTWZtskKgNnIQSFMwijSdzZcyteiq5cQ-Na"
+            fill
+            unoptimized
           />
         </div>
 

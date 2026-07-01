@@ -17,4 +17,17 @@ export const config = {
   rateLimitPerMinute: parseInt(process.env.RATE_LIMIT_PER_MINUTE || '30', 10),
   uploadsDir: process.env.UPLOADS_DIR || './uploads',
   internalApiKey: process.env.INTERNAL_API_KEY || 'chatgov-internal-key-change-me',
+
+  // Rotina que trata conversas abertas onde a última mensagem foi nossa (saída)
+  // e o cidadão não respondeu há mais de N horas.
+  //  - ativo:    liga/desliga a rotina (LIMPEZA_CONVERSAS_ATIVO=false desativa)
+  //  - acao:     'arquivar' (default, preserva tudo) | 'excluir' (apaga conversa+mensagens+mídia)
+  //  - horas:    janela de inatividade antes de agir
+  //  - intervaloMinutos: frequência da verificação
+  limpezaConversas: {
+    ativo: (process.env.LIMPEZA_CONVERSAS_ATIVO || 'true').toLowerCase() !== 'false',
+    acao: (process.env.LIMPEZA_CONVERSAS_ACAO || 'arquivar').toLowerCase() === 'excluir' ? 'excluir' : 'arquivar',
+    horas: parseInt(process.env.LIMPEZA_CONVERSAS_HORAS || '72', 10),
+    intervaloMinutos: parseInt(process.env.LIMPEZA_CONVERSAS_INTERVALO_MIN || '30', 10),
+  },
 };

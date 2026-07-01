@@ -24,7 +24,7 @@ const allNavItems: NavItem[] = [
   { href: "/configuracoes", icon: "settings", label: "Configurações", adminOnly: true },
 ];
 
-export default function Sidebar() {
+export default function Sidebar({ open = false, onClose }: { open?: boolean; onClose?: () => void }) {
   const pathname = usePathname();
   const { user } = useAuth();
 
@@ -45,18 +45,38 @@ export default function Sidebar() {
   const visibleItems = allNavItems.filter(canAccess);
 
   return (
-    <aside
-      className="flex flex-col h-screen fixed left-0 top-0 z-40 px-4 py-6"
-      style={{ width: "var(--sidebar-width)", backgroundColor: "#002b54" }}
-    >
+    <>
+      {/* Fundo escurecido no celular quando o menu está aberto */}
+      {open && (
+        <div
+          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          onClick={onClose}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside
+        className={`flex flex-col h-screen fixed left-0 top-0 z-50 px-4 py-6 transition-transform duration-200 lg:translate-x-0 ${
+          open ? "translate-x-0" : "-translate-x-full"
+        }`}
+        style={{ width: "var(--sidebar-width)", backgroundColor: "#002b54" }}
+      >
       <div className="mb-10 px-2 flex items-center gap-3">
         <div className="w-10 h-10 bg-white/10 flex items-center justify-center rounded-lg">
           <span className="material-symbols-outlined text-white" style={{ fontVariationSettings: "'FILL' 1" }}>account_balance</span>
         </div>
-        <div>
+        <div className="flex-1 min-w-0">
           <h1 className="text-headline-md font-bold text-white">GovSistem</h1>
           <p className="text-label-md text-white/60">Admin Portal</p>
         </div>
+        {/* Fechar (só no celular) */}
+        <button
+          onClick={onClose}
+          aria-label="Fechar menu"
+          className="lg:hidden text-white/60 hover:text-white"
+        >
+          <span className="material-symbols-outlined">close</span>
+        </button>
       </div>
 
       <nav className="flex-1 space-y-1">
@@ -78,6 +98,7 @@ export default function Sidebar() {
           );
         })}
       </nav>
-    </aside>
+      </aside>
+    </>
   );
 }

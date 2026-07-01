@@ -301,11 +301,13 @@ app.use('/api', rateLimiter);
         SELECT c.*, co.nome as contato_nome, co.telefone as contato_telefone, co.wa_jid,
                co.avatar_url as contato_avatar_url,
                d.nome as departamento_nome, d.cor as departamento_cor,
-               o.nome as operador_nome
+               o.nome as operador_nome,
+               pr.numero as protocolo_numero
         FROM conversas c
         JOIN contatos co ON co.id = c.contato_id
         LEFT JOIN departamentos d ON d.id = c.departamento_id
         LEFT JOIN operadores o ON o.id = c.operador_id
+        LEFT JOIN protocolos pr ON pr.id = c.protocolo_id
         WHERE c.tenant_id = $1
       `;
       const params = [op.tenantId];
@@ -323,7 +325,7 @@ app.use('/api', rateLimiter);
       } else if (arquivadas === 'true') {
         query += ` AND c.status = 'arquivada'`;
       } else {
-        query += ` AND c.status NOT IN ('arquivada', 'resolvida')`;
+        query += ` AND c.status NOT IN ('resolvida')`;
       }
       if (departamento_id) {
         query += ` AND c.departamento_id = $${paramIdx++}::uuid`;
@@ -525,6 +527,46 @@ app.use('/api', rateLimiter);
       res.json(t || null);
     } catch (err) {
       res.status(500).json({ erro: 'Erro ao buscar transferência' });
+    }
+  });
+
+  // Galeria de mídia da conversa: todas as mensagens com arquivo (foto/vídeo/áudio/documento).
+  app.get('/api/conversas/:id/midias', async (req, res) => {
+    try {
+      const op = req.operador;
+      if (!(await podeVerConversa(op, req.params.id))) {
+        return res.status(403).json({ erro: 'Sem acesso a esta conversa' });
+      }
+      const rows = await db.manyOrNone(
+        `SELECT id, tipo, media_url, media_mime, media_nome, conteudo, direcao, criado_em
+         FROM mensagens
+         WHERE conversa_id = $1 AND tenant_id = $2
+           AND media_url IS NOT NULL AND excluida = false
+         ORDER BY criado_em DESC`,
+        [req.params.id, op.tenantId]
+      );
+      res.json(rows);
+    } catch (err) {
+      console.error('[API] midias conversa error:', err.message);
+      res.status(500).json({ erro: 'Erro ao buscar mídias' });
+    }
+  });
+
+  // Marca a conversa como não lida (badge na lista). É zerada ao reabrir a conversa.
+  app.post('/api/conversas/:id/marcar-nao-lida', async (req, res) => {
+    try {
+      const op = req.operador;
+      if (!(await podeVerConversa(op, req.params.id))) {
+        return res.status(403).json({ erro: 'Sem acesso a esta conversa' });
+      }
+      await db.none(
+        `UPDATE conversas SET nao_lidas = GREATEST(nao_lidas, 1) WHERE id = $1 AND tenant_id = $2`,
+        [req.params.id, op.tenantId]
+      );
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[API] marcar nao lida error:', err.message);
+      res.status(500).json({ erro: 'Erro ao marcar como não lida' });
     }
   });
 
@@ -1906,6 +1948,415 @@ app.use('/api', rateLimiter);
     } catch (err) {
       console.error('[API] dashboard error:', err.message);
       res.status(500).json({ erro: 'Erro ao carregar dashboard' });
+    }
+  });
+
+  // === Relatórios: métricas e séries para o dashboard (admin/supervisor) ===
+  app.get('/api/relatorios/metricas', requirePapel('admin', 'supervisor'), async (req, res) => {
+    try {
+      const op = req.operador;
+      const t = op.tenantId;
+      const hojeStr = new Date().toISOString().slice(0, 10);
+      const fim = String(req.query.fim || hojeStr).slice(0, 10);
+      const inicio = String(req.query.inicio || new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10)).slice(0, 10);
+      const { departamento_id, operador_id, status: statusFiltro, canal, comparar } = req.query;
+
+      // Build dynamic WHERE clauses — two variants:
+      //   convFilter4 / msgFilter4: for queries with $1=t,$2=inicio,$3=fim (extra params start at $4)
+      //   convFilter2 / msgFilter2: for queries with $1=t only (extra params start at $2)
+      let convFilter4 = '';
+      let msgFilter4 = '';
+      let convFilter2 = '';
+      let msgFilter2 = '';
+      const extraParams4 = [];
+      const extraParams2 = [];
+      let p4 = 4; // params start after $1(tenant), $2(inicio), $3(fim)
+      let p2 = 2; // params start after $1(tenant)
+
+      if (departamento_id) {
+        convFilter4 += ` AND departamento_id = $${p4}::uuid`;
+        msgFilter4 += ` AND m.conversa_id IN (SELECT id FROM conversas WHERE tenant_id=$1 AND departamento_id=$${p4}::uuid)`;
+        convFilter2 += ` AND departamento_id = $${p2}::uuid`;
+        msgFilter2 += ` AND m.conversa_id IN (SELECT id FROM conversas WHERE tenant_id=$1 AND departamento_id=$${p2}::uuid)`;
+        extraParams4.push(departamento_id);
+        extraParams2.push(departamento_id);
+        p4++; p2++;
+      }
+      if (operador_id) {
+        convFilter4 += ` AND (c.operador_id = $${p4}::uuid OR EXISTS (SELECT 1 FROM conversa_participantes cp WHERE cp.conversa_id=c.id AND cp.operador_id=$${p4}::uuid))`;
+        msgFilter4 += ` AND m.operador_id = $${p4 + 1}::uuid`;
+        convFilter2 += ` AND (c.operador_id = $${p2}::uuid OR EXISTS (SELECT 1 FROM conversa_participantes cp WHERE cp.conversa_id=c.id AND cp.operador_id=$${p2}::uuid))`;
+        msgFilter2 += ` AND m.operador_id = $${p2 + 1}::uuid`;
+        // msgFilter refere-se ao mesmo param (operador_id), mas passamos 2x no array
+        extraParams4.push(operador_id);
+        extraParams2.push(operador_id);
+        p4 += 2; p2 += 2;
+      }
+      if (statusFiltro) {
+        convFilter4 += ` AND c.status = $${p4}`;
+        convFilter2 += ` AND c.status = $${p2}`;
+        extraParams4.push(statusFiltro);
+        extraParams2.push(statusFiltro);
+        p4++; p2++;
+      }
+      if (canal === 'chatbot') {
+        const f = ` AND c.operador_id IS NULL`;
+        convFilter4 += f;
+        convFilter2 += f;
+        msgFilter4 += ` AND m.operador_id IS NULL`;
+        msgFilter2 += ` AND m.operador_id IS NULL`;
+      } else if (canal === 'interno') {
+        const f = ` AND FALSE`;
+        convFilter4 += f;
+        convFilter2 += f;
+        msgFilter4 += f;
+        msgFilter2 += f;
+      }
+
+      const msgExtra4 = [];
+      if (departamento_id) {
+        msgExtra4.push(departamento_id);
+      }
+      if (operador_id) {
+        msgExtra4.push(operador_id);
+        msgExtra4.push(operador_id);
+      }
+      if (statusFiltro) {
+        msgExtra4.push(statusFiltro);
+      }
+      const msgParams = [t, inicio, fim, ...msgExtra4];
+
+      const convParams = [t, inicio, fim, ...extraParams4];
+      // msgParams inclui duplicatas para queries que referenciam operador_id em posições diferentes (conv e msg)
+      const allParams = [t, inicio, fim, ...msgExtra4];
+      const baseParams = [t, ...extraParams2];
+
+      const [resumo, primeiraResposta, porStatus, porDia, porSetor, porHora, ranking] = await Promise.all([
+        db.one(
+          `SELECT
+             (SELECT COUNT(*)::int FROM conversas WHERE tenant_id=$1 AND criado_em::date BETWEEN $2 AND $3${convFilter4}) AS criadas,
+             (SELECT COUNT(*)::int FROM mensagens m WHERE tenant_id=$1 AND direcao='saida' AND criado_em::date BETWEEN $2 AND $3${msgFilter4}) AS enviadas,
+             (SELECT COUNT(*)::int FROM mensagens m WHERE tenant_id=$1 AND direcao='entrada' AND criado_em::date BETWEEN $2 AND $3${msgFilter4}) AS recebidas,
+             (SELECT COUNT(*)::int FROM conversas WHERE tenant_id=$1 AND status='aberta'${convFilter4}) AS em_aberto,
+             (SELECT COUNT(*)::int FROM conversas WHERE tenant_id=$1 AND status='fila'${convFilter4}) AS na_fila,
+             (SELECT COUNT(*)::int FROM conversas WHERE tenant_id=$1 AND status IN ('resolvida','arquivada') AND criado_em::date BETWEEN $2 AND $3${convFilter4}) AS resolvidas_periodo`,
+          allParams
+        ),
+        db.oneOrNone(
+          `SELECT AVG(EXTRACT(EPOCH FROM (primeira_saida - primeira_entrada)))::int AS seg
+           FROM (
+             SELECT conversa_id,
+               MIN(criado_em) FILTER (WHERE direcao='entrada') AS primeira_entrada,
+               MIN(criado_em) FILTER (WHERE direcao='saida')   AS primeira_saida
+             FROM mensagens m
+             WHERE tenant_id=$1 AND criado_em::date BETWEEN $2 AND $3${msgFilter4}
+             GROUP BY conversa_id
+           ) q
+           WHERE primeira_entrada IS NOT NULL AND primeira_saida IS NOT NULL AND primeira_saida > primeira_entrada`,
+          allParams
+        ),
+        db.manyOrNone(`SELECT status, COUNT(*)::int AS total FROM conversas WHERE tenant_id=$1${convFilter2} GROUP BY status`, baseParams),
+        db.manyOrNone(
+          `SELECT to_char(d.dia,'YYYY-MM-DD') AS dia, COALESCE(c.total,0)::int AS total
+           FROM generate_series($2::date, $3::date, interval '1 day') d(dia)
+           LEFT JOIN (
+             SELECT criado_em::date AS dia, COUNT(*)::int AS total
+             FROM conversas WHERE tenant_id=$1 AND criado_em::date BETWEEN $2 AND $3${convFilter4}
+             GROUP BY criado_em::date
+           ) c ON c.dia = d.dia
+           ORDER BY d.dia`,
+          convParams
+        ),
+        db.manyOrNone(
+          `SELECT COALESCE(dp.nome,'Sem setor') AS nome, COUNT(*)::int AS total
+           FROM conversas c LEFT JOIN departamentos dp ON dp.id=c.departamento_id
+           WHERE c.tenant_id=$1 AND c.criado_em::date BETWEEN $2 AND $3${convFilter4}
+           GROUP BY dp.nome ORDER BY total DESC LIMIT 10`,
+          convParams
+        ),
+        db.manyOrNone(
+          `SELECT EXTRACT(HOUR FROM (criado_em AT TIME ZONE 'America/Sao_Paulo'))::int AS hora, COUNT(*)::int AS total
+           FROM mensagens m WHERE tenant_id=$1 AND direcao='entrada' AND criado_em::date BETWEEN $2 AND $3${msgFilter4}
+           GROUP BY hora ORDER BY hora`,
+          allParams
+        ),
+        db.manyOrNone(
+          `SELECT o.nome,
+                  COUNT(*) FILTER (WHERE m.direcao='saida')::int AS enviadas,
+                  COUNT(DISTINCT m.conversa_id)::int AS conversas
+           FROM mensagens m JOIN operadores o ON o.id=m.operador_id
+           WHERE m.tenant_id=$1 AND m.operador_id IS NOT NULL AND m.criado_em::date BETWEEN $2 AND $3${msgFilter4}
+           GROUP BY o.id, o.nome ORDER BY enviadas DESC LIMIT 10`,
+          allParams
+        ),
+      ]);
+
+      let nps = null;
+      try { nps = await calcularNPS(t, inicio, fim); } catch (e) { /* NPS opcional */ }
+
+      const resumoData = {
+        criadas: resumo.criadas,
+        enviadas: resumo.enviadas,
+        recebidas: resumo.recebidas,
+        em_aberto: resumo.em_aberto,
+        na_fila: resumo.na_fila,
+        resolvidas_periodo: resumo.resolvidas_periodo,
+        taxa_resolucao: resumo.criadas > 0 ? Math.round((resumo.resolvidas_periodo / resumo.criadas) * 100) : 0,
+        tempo_primeira_resposta_seg: primeiraResposta?.seg || 0,
+      };
+
+      let comparacao = null;
+      if (comparar === 'true') {
+        const diffMs = new Date(fim).getTime() - new Date(inicio).getTime();
+        const diffDias = Math.ceil(diffMs / 86400000) + 1;
+        const fimAntDate = new Date(new Date(inicio).getTime() - 86400000);
+        const inicioAntDate = new Date(fimAntDate.getTime() - (diffDias - 1) * 86400000);
+        const inicioAnt = inicioAntDate.toISOString().slice(0, 10);
+        const fimAnt = fimAntDate.toISOString().slice(0, 10);
+
+        try {
+          const allParamsAnt = [t, inicioAnt, fimAnt, ...msgExtra4];
+          const [resumoAnt, primeiraRespAnt] = await Promise.all([
+            db.one(
+              `SELECT
+                 (SELECT COUNT(*)::int FROM conversas WHERE tenant_id=$1 AND criado_em::date BETWEEN $2 AND $3${convFilter4}) AS criadas,
+                 (SELECT COUNT(*)::int FROM mensagens m WHERE tenant_id=$1 AND direcao='saida' AND criado_em::date BETWEEN $2 AND $3${msgFilter4}) AS enviadas,
+                 (SELECT COUNT(*)::int FROM mensagens m WHERE tenant_id=$1 AND direcao='entrada' AND criado_em::date BETWEEN $2 AND $3${msgFilter4}) AS recebidas,
+                 (SELECT COUNT(*)::int FROM conversas WHERE tenant_id=$1 AND status='aberta'${convFilter4}) AS em_aberto,
+                 (SELECT COUNT(*)::int FROM conversas WHERE tenant_id=$1 AND status='fila'${convFilter4}) AS na_fila,
+                 (SELECT COUNT(*)::int FROM conversas WHERE tenant_id=$1 AND status IN ('resolvida','arquivada') AND criado_em::date BETWEEN $2 AND $3${convFilter4}) AS resolvidas_periodo`,
+              allParamsAnt
+            ),
+            db.oneOrNone(
+              `SELECT AVG(EXTRACT(EPOCH FROM (primeira_saida - primeira_entrada)))::int AS seg
+               FROM (
+                 SELECT conversa_id,
+                   MIN(criado_em) FILTER (WHERE direcao='entrada') AS primeira_entrada,
+                   MIN(criado_em) FILTER (WHERE direcao='saida')   AS primeira_saida
+                 FROM mensagens m
+                 WHERE tenant_id=$1 AND criado_em::date BETWEEN $2 AND $3${msgFilter4}
+                 GROUP BY conversa_id
+               ) q
+               WHERE primeira_entrada IS NOT NULL AND primeira_saida IS NOT NULL AND primeira_saida > primeira_entrada`,
+              allParamsAnt
+            ),
+          ]);
+
+          const taxaAnt = resumoAnt.criadas > 0 ? Math.round((resumoAnt.resolvidas_periodo / resumoAnt.criadas) * 100) : 0;
+          const pct = (atual, ant) => ant > 0 ? Math.round(((atual - ant) / ant) * 100) : (atual > 0 ? 100 : 0);
+
+          comparacao = {
+            periodo: { inicio: inicioAnt, fim: fimAnt },
+            criadas: resumoAnt.criadas,
+            enviadas: resumoAnt.enviadas,
+            recebidas: resumoAnt.recebidas,
+            em_aberto: resumoAnt.em_aberto,
+            na_fila: resumoAnt.na_fila,
+            resolvidas_periodo: resumoAnt.resolvidas_periodo,
+            taxa_resolucao: taxaAnt,
+            tempo_primeira_resposta_seg: primeiraRespAnt?.seg || 0,
+            delta_criadas: pct(resumoData.criadas, resumoAnt.criadas),
+            delta_recebidas: pct(resumoData.recebidas, resumoAnt.recebidas),
+            delta_enviadas: pct(resumoData.enviadas, resumoAnt.enviadas),
+            delta_taxa_resolucao: pct(resumoData.taxa_resolucao, taxaAnt),
+            delta_tempo_resposta: resumoAnt.criadas > 0
+              ? pct(resumoData.tempo_primeira_resposta_seg, resumoAnt.tempo_primeira_resposta_seg || 1)
+              : 0,
+          };
+        } catch (e) {
+          console.error('[API] comparacao error:', e.message);
+        }
+      }
+
+      res.json({
+        periodo: { inicio, fim },
+        resumo: resumoData,
+        por_status: porStatus,
+        por_dia: porDia,
+        por_setor: porSetor,
+        por_hora: porHora,
+        ranking_atendentes: ranking,
+        nps,
+        comparacao,
+      });
+    } catch (err) {
+      console.error('[API] relatorios metricas error:', err.message);
+      res.status(500).json({ erro: 'Erro ao carregar relatórios' });
+    }
+  });
+
+  // === Relatórios: NPS detalhado (admin/supervisor) ===
+  app.get('/api/relatorios/nps-detalhado', requirePapel('admin', 'supervisor'), async (req, res) => {
+    try {
+      const t = req.operador.tenantId;
+      const hojeStr = new Date().toISOString().slice(0, 10);
+      const fim = String(req.query.fim || hojeStr).slice(0, 10);
+      const inicio = String(req.query.inicio || new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10)).slice(0, 10);
+
+      const [geral, por_setor, por_atendente] = await Promise.all([
+        calcularNPS(t, inicio, fim),
+        npsPorSetor(t, inicio, fim),
+        npsPorAtendente(t, inicio, fim),
+      ]);
+
+      res.json({ geral, por_setor, por_atendente });
+    } catch (err) {
+      console.error('[API] nps-detalhado error:', err.message);
+      res.status(500).json({ erro: 'Erro ao carregar NPS detalhado' });
+    }
+  });
+
+  // === Relatórios: SLA (admin/supervisor) ===
+  app.get('/api/relatorios/sla', requirePapel('admin', 'supervisor'), async (req, res) => {
+    try {
+      const t = req.operador.tenantId;
+      const hojeStr = new Date().toISOString().slice(0, 10);
+      const fim = String(req.query.fim || hojeStr).slice(0, 10);
+      const inicio = String(req.query.inicio || new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10)).slice(0, 10);
+      const { departamento_id } = req.query;
+
+      let deptoFilter = '';
+      const slaParams = [t, inicio, fim];
+      if (departamento_id) {
+        deptoFilter = ' AND c.departamento_id = $4::uuid';
+        slaParams.push(departamento_id);
+      }
+
+      const [tmaGeral, tmaSetor, abandono, p95Resp, distTempo] = await Promise.all([
+        db.oneOrNone(
+          `SELECT EXTRACT(EPOCH FROM AVG(ultima_mensagem_em - criado_em))::int AS seg
+           FROM conversas c
+           WHERE c.tenant_id=$1 AND c.status IN ('resolvida','arquivada')
+             AND c.ultima_mensagem_em IS NOT NULL
+             AND c.criado_em::date BETWEEN $2 AND $3${deptoFilter}`,
+          slaParams
+        ),
+        db.manyOrNone(
+          `SELECT COALESCE(d.nome,'Sem setor') AS nome,
+                  EXTRACT(EPOCH FROM AVG(c.ultima_mensagem_em - c.criado_em))::int AS tma_seg,
+                  COUNT(*)::int AS conversas
+           FROM conversas c LEFT JOIN departamentos d ON d.id=c.departamento_id
+           WHERE c.tenant_id=$1 AND c.status IN ('resolvida','arquivada')
+             AND c.ultima_mensagem_em IS NOT NULL
+             AND c.criado_em::date BETWEEN $2 AND $3${deptoFilter}
+           GROUP BY d.nome ORDER BY conversas DESC`,
+          slaParams
+        ),
+        db.one(
+          `SELECT ROUND(
+             COUNT(*) FILTER (WHERE c.status='fila' AND c.criado_em < now() - interval '30 minutes')
+               * 100.0 / GREATEST(COUNT(*), 1), 1
+           ) AS pct
+           FROM conversas c
+           WHERE c.tenant_id=$1 AND c.criado_em::date BETWEEN $2 AND $3${deptoFilter}`,
+          slaParams
+        ),
+        db.oneOrNone(
+          `SELECT percentile_cont(0.95) WITHIN GROUP (ORDER BY primeira_saida - primeira_entrada)::int AS seg
+           FROM (
+             SELECT MIN(criado_em) FILTER (WHERE direcao='entrada') AS primeira_entrada,
+                    MIN(criado_em) FILTER (WHERE direcao='saida')   AS primeira_saida
+             FROM mensagens m
+             WHERE m.tenant_id=$1 AND m.criado_em::date BETWEEN $2 AND $3
+             GROUP BY m.conversa_id
+           ) q
+           WHERE primeira_entrada IS NOT NULL AND primeira_saida IS NOT NULL AND primeira_saida > primeira_entrada`,
+          [t, inicio, fim]
+        ),
+        db.manyOrNone(
+          `SELECT faixa, COUNT(*)::int AS total FROM (
+             SELECT CASE
+               WHEN EXTRACT(EPOCH FROM (primeira_saida - primeira_entrada)) <= 30 THEN '0-30s'
+               WHEN EXTRACT(EPOCH FROM (primeira_saida - primeira_entrada)) <= 60 THEN '30s-1min'
+               WHEN EXTRACT(EPOCH FROM (primeira_saida - primeira_entrada)) <= 300 THEN '1min-5min'
+               WHEN EXTRACT(EPOCH FROM (primeira_saida - primeira_entrada)) <= 900 THEN '5min-15min'
+               WHEN EXTRACT(EPOCH FROM (primeira_saida - primeira_entrada)) <= 1800 THEN '15min-30min'
+               WHEN EXTRACT(EPOCH FROM (primeira_saida - primeira_entrada)) <= 3600 THEN '30min-1h'
+               ELSE '1h+'
+             END AS faixa
+             FROM (
+               SELECT MIN(criado_em) FILTER (WHERE direcao='entrada') AS primeira_entrada,
+                      MIN(criado_em) FILTER (WHERE direcao='saida')   AS primeira_saida
+               FROM mensagens m
+               WHERE m.tenant_id=$1 AND m.criado_em::date BETWEEN $2 AND $3
+               GROUP BY m.conversa_id
+             ) q
+             WHERE primeira_entrada IS NOT NULL AND primeira_saida IS NOT NULL AND primeira_saida > primeira_entrada
+           ) sub
+           GROUP BY faixa ORDER BY MIN(EXTRACT(EPOCH FROM (primeira_saida - primeira_entrada)))`,
+          [t, inicio, fim]
+        ),
+      ]);
+
+      const faixasOrdem = ['0-30s', '30s-1min', '1min-5min', '5min-15min', '15min-30min', '30min-1h', '1h+'];
+      const distribuicao_tempo = faixasOrdem.map(f => {
+        const found = (distTempo || []).find(d => d.faixa === f);
+        return { faixa: f, total: found ? found.total : 0 };
+      });
+
+      res.json({
+        tma_geral_seg: tmaGeral?.seg || 0,
+        tma_por_setor: tmaSetor,
+        taxa_abandono: parseFloat(abandono?.pct) || 0,
+        p95_resposta_seg: p95Resp?.seg || 0,
+        distribuicao_tempo,
+      });
+    } catch (err) {
+      console.error('[API] sla error:', err.message);
+      res.status(500).json({ erro: 'Erro ao carregar SLA' });
+    }
+  });
+
+  // === Relatórios: Conversas por assunto (admin/supervisor) ===
+  app.get('/api/relatorios/conversas-por-assunto', requirePapel('admin', 'supervisor'), async (req, res) => {
+    try {
+      const t = req.operador.tenantId;
+      const hojeStr = new Date().toISOString().slice(0, 10);
+      const fim = String(req.query.fim || hojeStr).slice(0, 10);
+      const inicio = String(req.query.inicio || new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10)).slice(0, 10);
+
+      const assuntos = await db.manyOrNone(
+        `SELECT COALESCE(d.nome, 'Sem setor') AS assunto, COUNT(*)::int AS total
+         FROM conversas c
+         LEFT JOIN departamentos d ON d.id = c.departamento_id
+         WHERE c.tenant_id = $1 AND c.criado_em::date BETWEEN $2 AND $3
+         GROUP BY d.nome
+         ORDER BY total DESC`,
+        [t, inicio, fim]
+      );
+
+      res.json({ assuntos });
+    } catch (err) {
+      console.error('[API] conversas-por-assunto error:', err.message);
+      res.status(500).json({ erro: 'Erro ao carregar conversas por assunto' });
+    }
+  });
+
+  // === Relatórios: Filtros disponíveis (admin/supervisor) ===
+  app.get('/api/relatorios/filtros', requirePapel('admin', 'supervisor'), async (req, res) => {
+    try {
+      const t = req.operador.tenantId;
+
+      const [departamentos, operadores] = await Promise.all([
+        db.manyOrNone(
+          `SELECT id, nome FROM departamentos WHERE tenant_id = $1 AND ativo = true ORDER BY nome`,
+          [t]
+        ),
+        db.manyOrNone(
+          `SELECT id, nome FROM operadores WHERE tenant_id = $1 AND papel IN ('operador','supervisor') ORDER BY nome`,
+          [t]
+        ),
+      ]);
+
+      res.json({
+        departamentos,
+        operadores,
+        status: ['fila', 'aberta', 'resolvida', 'arquivada'],
+        canais: ['whatsapp', 'interno', 'chatbot'],
+      });
+    } catch (err) {
+      console.error('[API] filtros error:', err.message);
+      res.status(500).json({ erro: 'Erro ao carregar filtros' });
     }
   });
 

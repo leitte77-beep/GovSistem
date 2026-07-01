@@ -7,6 +7,7 @@ import { api, EditionSummary as Edition } from "@/lib/api";
 import { useOrg } from "@/lib/org-context";
 import { formatSummary } from "@/lib/summary";
 import ShareDialog from "@/components/ShareDialog";
+import { notifyError } from "@/lib/error-handler";
 
 const TYPE_LABELS: Record<string, string> = {
   normal: "ORDINÁRIA",
@@ -52,7 +53,7 @@ export default function HomeClient({ initialEditions }: Props) {
     api
       .listEditions({ page_size: 6 })
       .then((res) => setEditions(res.data))
-      .catch(() => {})
+      .catch((err) => notifyError("HomeClient", err))
       .finally(() => setLoading(false));
   }, [initialEditions]);
 
@@ -179,7 +180,7 @@ export default function HomeClient({ initialEditions }: Props) {
                   </Link>
                   <div className="flex gap-1">
                     {edition.pdf_url && (
-                      <a href={edition.pdf_url} target="_blank" rel="noopener noreferrer" className="p-2 text-on-surface-variant hover:bg-surface-container-highest rounded-lg transition-colors" title="Baixar PDF">
+                      <a href={edition.pdf_url} target="_blank" rel="noopener noreferrer" className="p-2 text-on-surface-variant hover:bg-surface-container-highest rounded-lg transition-colors" aria-label="Baixar PDF">
                         <span className="material-symbols-outlined">download</span>
                       </a>
                     )}
@@ -205,7 +206,7 @@ export default function HomeClient({ initialEditions }: Props) {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
             {[
               { icon: "verified_user", title: "Verificar Assinatura", desc: "Confirme a validade jurídica de documentos digitais através do nosso sistema de verificação ICP-Brasil.", href: "/verificar", label: "ACESSAR VALIDADOR" },
-              { icon: "archive", title: "Acervo Histórico", desc: "Pesquise em nossa base de dados histórica que contempla edições desde a fundação do Diário Oficial do Município.", href: "/acervo", label: "EXPLORAR ACERVO" },
+              { icon: "archive", title: "Acervo Histórico", desc: "Pesquise em nossa base de dados histórica que contempla edições desde a primeira edição do Diário Oficial.", href: "/acervo", label: "EXPLORAR ACERVO" },
               { icon: "gavel", title: "Pesquisa Legislativa", desc: "Localize leis, decretos, portarias e normas por assunto, órgão emissor ou numeração específica.", href: "/buscar", label: "INICIAR PESQUISA" },
             ].map((svc) => (
               <div key={svc.href} className="bg-primary-container p-8 rounded-xl border border-on-primary-fixed-variant/20 hover:scale-[1.02] transition-transform duration-300">

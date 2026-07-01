@@ -93,6 +93,12 @@ async def get_current_user(
             detail="Inactive user",
         )
 
+    if token_type == "module_access" and payload.get("module") != "diario":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token not valid for this module",
+        )
+
     return user
 
 

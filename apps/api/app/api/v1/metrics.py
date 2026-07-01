@@ -2,7 +2,6 @@
 
 import logging
 import platform
-import shutil
 import time
 from datetime import datetime
 
@@ -11,7 +10,7 @@ from sqlalchemy import func as sa_func
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_user, require_roles
+from app.core.auth import require_roles
 from app.core.database import get_db
 from app.models.audit_event import AuditEvent
 from app.models.edition import Edition
@@ -118,28 +117,18 @@ async def operations_health(
     except Exception:
         checks["editions_published"] = -1
 
-    # Disk usage
-    disk = shutil.disk_usage("/")
-    disk_info = {
-        "total_gb": round(disk.total / (1024 ** 3), 2),
-        "used_gb": round(disk.used / (1024 ** 3), 2),
-        "free_gb": round(disk.free / (1024 ** 3), 2),
-        "percent_used": round((disk.used / disk.total) * 100, 1),
-    }
-
     return {
         "service": "doe-api",
         "version": "0.1.0",
         "uptime_seconds": int(time.time() - START_TIME),
         "checks": checks,
-        "disk": disk_info,
     }
 
 
 @router.get("/operations/dashboard")
 async def operations_dashboard(
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_roles("ADMIN", "AUDITOR")),
 ):
     """Admin dashboard with system status."""
     total_editions = await db.execute(select(sa_func.count(Edition.id)))

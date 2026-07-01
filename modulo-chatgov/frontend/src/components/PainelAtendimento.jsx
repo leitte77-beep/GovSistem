@@ -1,13 +1,14 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, Paperclip, Smile, ShieldCheck, Clock, UserPlus, CheckCircle2, Building2, MessageSquare, Tag, StickyNote, ChevronDown, Archive, Trash2, ArrowRightLeft, Undo2, UserCheck, X, MoreVertical, ArrowDown, Loader2, Mic, Square, Play, Pause, RotateCcw } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Send, Paperclip, Smile, ShieldCheck, Clock, UserPlus, CheckCircle2, Building2, MessageSquare, Tag, StickyNote, ChevronDown, ChevronRight, Archive, Trash2, ArrowRightLeft, Undo2, UserCheck, X, MoreVertical, ArrowDown, Loader2, Mic, Square, Play, Pause, RotateCcw, Images, Mail, Search, ArrowLeft } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { BolhaConversa } from './BolhaConversa';
 import { DeptBadge } from './DeptBadge';
 import { ModalParticipantes } from './ModalParticipantes';
 import { ModalTransferir } from './ModalTransferir';
+import { MediaPreview, MediaLightbox } from './MediaPreview';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
-import { fetchMensagens, fetchDepartamentos, fetchTemplates, fetchEtiquetas, fetchEtiquetasConversa, fetchNotasInternas, editarContato, fetchTransferenciaPendente, excluirMensagemConversa } from '../api';
+import { fetchMensagens, fetchDepartamentos, fetchTemplates, fetchEtiquetas, fetchEtiquetasConversa, fetchNotasInternas, editarContato, fetchTransferenciaPendente, excluirMensagemConversa, fetchMidiasConversa, marcarConversaNaoLida } from '../api';
 import { mimeParaTipo, encodeFileBase64 } from '../utils/arquivo';
 import { T } from '../theme';
 
@@ -15,6 +16,7 @@ const EMOJIS_RAPIDOS = ['😀', '😅', '👍', '🙏', '❤️', '😊', '👏'
 const PERTO_DO_FIM_PX = 120;
 const MAX_MIDIA_BYTES = 16 * 1024 * 1024; // 16 MB (limite prático do WhatsApp)
 const AUDIO_MAX_MS = 2 * 60 * 1000; // 2 minutos
+const EXTENSOES_PROIBIDAS = ['exe','bat','cmd','msi','vbs','ps1','scr','com','sh','dll','pif','cpl','wsf','wsh','hta','jar','reg','scf','lnk'];
 
 function formatarDuracao(ms) {
   if (!ms || ms <= 0) return '0:00';
@@ -34,15 +36,21 @@ function aplicarVariaveis(texto, conversa) {
     .replace(/\{\{\s*data\s*\}\}/gi, new Date().toLocaleDateString('pt-BR'));
 }
 
-export function PainelAtendimento({ conversa, onConversaUpdated }) {
+export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onVoltar }) {
   const { socket, connected } = useSocket();
   const { auth } = useAuth();
+  const ehMobile = breakpoint === 'mobile';
+  // No celular e no tablet o header não comporta os ~9 botões com texto, então
+  // tudo colapsa num único menu "⋮" e os menus ricos viram bottom-sheets.
+  const ehCompacto = breakpoint === 'mobile' || breakpoint === 'tablet';
   const [mensagens, setMensagens] = useState([]);
   const [texto, setTexto] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [erroEnvio, setErroEnvio] = useState('');
   const [departamentos, setDepartamentos] = useState([]);
   const [showEncaminhar, setShowEncaminhar] = useState(false);
+  const [secEncAberta, setSecEncAberta] = useState(null); // secretaria expandida no menu Encaminhar
+  const [filtroEnc, setFiltroEnc] = useState('');         // busca dentro do menu Encaminhar
   const [showParticipantes, setShowParticipantes] = useState(false);
   const [showTransferir, setShowTransferir] = useState(false);
   const [transferencia, setTransferencia] = useState(null);
@@ -63,8 +71,14 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
   const [botDigitando, setBotDigitando] = useState(null); // null | 'iris' | 'chatbot'
   const [conversaStatus, setConversaStatus] = useState(conversa?.status);
   const [showMenuMais, setShowMenuMais] = useState(false);
+  const [showAcoes, setShowAcoes] = useState(false); // menu de ações combinado (mobile/tablet)
   const [showEmojis, setShowEmojis] = useState(false);
   const [anexando, setAnexando] = useState(false);
+  const [respondendoA, setRespondendoA] = useState(null);
+  const [showGaleria, setShowGaleria] = useState(false);
+  const [midias, setMidias] = useState([]);
+  const [carregandoMidias, setCarregandoMidias] = useState(false);
+  const [galeriaLightbox, setGaleriaLightbox] = useState(null);
   const [draggingFile, setDraggingFile] = useState(false);
   const [toast, setToast] = useState(null);
   const [confirmacao, setConfirmacao] = useState(null);
@@ -76,6 +90,8 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
   const [audioErro, setAudioErro] = useState(null);
   const [tocando, setTocando] = useState(false);
   const [tempoGravadoMs, setTempoGravadoMs] = useState(0);
+  const [previewArquivo, setPreviewArquivo] = useState(null); // { file, dataUrl, tipo }
+  const [previewLegenda, setPreviewLegenda] = useState('');
   const mediaRecorderRef = useRef(null);
   const audioStreamRef = useRef(null);
   const gravacaoInicioRef = useRef(0);
@@ -356,12 +372,14 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
         mediaBase64,
         mediaMime: mime,
         mediaNome: `audio-${new Date().toISOString().slice(0, 19).replace(/[T:]/g, '-')}.webm`,
+        respondendoA: respondendoA?.id || undefined,
       }, (err, ack) => {
         setEnviando(false);
         if (err) { setErroEnvio('Tempo esgotado ao enviar o áudio.'); return; }
         if (!ack?.ok) { setErroEnvio(ack?.erro || 'Não foi possível enviar o áudio.'); return; }
         if (ack.mensagem) setMensagens((prev) => (prev.some((m) => m.id === ack.mensagem.id) ? prev : [...prev, ack.mensagem]));
         setTexto('');
+        setRespondendoA(null);
         irParaOFim();
         onConversaUpdated?.();
       });
@@ -370,7 +388,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
       setErroEnvio('Erro ao processar o áudio.');
     }
     limparGravacao();
-  }, [audioBlob, conversa, socket, connected, irParaOFim, onConversaUpdated, limparGravacao]);
+  }, [audioBlob, conversa, socket, connected, irParaOFim, onConversaUpdated, limparGravacao, respondendoA]);
 
   // Cleanup gravação ao desmontar
   useEffect(() => () => {
@@ -388,6 +406,12 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
     e?.preventDefault();
     if (!conversa || enviando) return;
 
+    // Se tem preview de arquivo, envia com legenda
+    if (previewArquivo) {
+      enviarMidia(previewArquivo.file, previewLegenda || texto.trim() || undefined);
+      return;
+    }
+
     // Se tem áudio gravado, envia o áudio (com legenda opcional)
     if (audioBlob) {
       enviarAudio(texto.trim() || undefined);
@@ -403,7 +427,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
 
     setEnviando(true);
     setErroEnvio('');
-    socket.timeout(8000).emit('mensagem:enviar', { convId: conversa.id, jid: conversa.wa_jid, texto: txt }, (err, ack) => {
+    socket.timeout(8000).emit('mensagem:enviar', { convId: conversa.id, jid: conversa.wa_jid, texto: txt, respondendoA: respondendoA?.id || undefined }, (err, ack) => {
       setEnviando(false);
       if (err) {
         setErroEnvio('Tempo esgotado ao enviar. Verifique a conexão e tente novamente.');
@@ -419,10 +443,54 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
         setMensagens((prev) => prev.some((m) => m.id === ack.mensagem.id) ? prev : [...prev, ack.mensagem]);
       }
       setTexto('');
+      setRespondendoA(null);
       inputRef.current?.focus();
       irParaOFim();
       onConversaUpdated?.();
     });
+  };
+
+  // Agrupa os departamentos por secretaria para o menu Encaminhar ficar em árvore
+  // (secretaria → departamentos) em vez de uma lista única que toma a tela toda.
+  // A API já devolve ordenado por secretaria e depois por departamento.
+  const gruposEncaminhar = useMemo(() => {
+    const mapa = new Map();
+    for (const dep of departamentos) {
+      const chave = dep.secretaria_id || '__sem__';
+      if (!mapa.has(chave)) {
+        mapa.set(chave, {
+          id: chave,
+          nome: dep.secretaria_nome || 'Sem secretaria',
+          cor: dep.secretaria_cor || dep.cor || T.primary,
+          deps: [],
+        });
+      }
+      mapa.get(chave).deps.push(dep);
+    }
+    return Array.from(mapa.values());
+  }, [departamentos]);
+
+  const termoEnc = filtroEnc.trim().toLowerCase();
+  const gruposEncFiltrados = termoEnc
+    ? gruposEncaminhar
+        .map((g) => ({
+          ...g,
+          deps: g.nome.toLowerCase().includes(termoEnc)
+            ? g.deps
+            : g.deps.filter((d) => (d.nome || '').toLowerCase().includes(termoEnc)),
+        }))
+        .filter((g) => g.deps.length > 0)
+    : gruposEncaminhar;
+
+  const abrirEncaminhar = () => {
+    const abrir = !showEncaminhar;
+    setShowEncaminhar(abrir);
+    if (abrir) {
+      setFiltroEnc('');
+      // Já deixa aberta a secretaria do departamento atual (se houver), senão nada.
+      const atual = departamentos.find((d) => d.id === conversa?.departamento_id);
+      setSecEncAberta(atual?.secretaria_id || (gruposEncaminhar.length === 1 ? gruposEncaminhar[0].id : null));
+    }
   };
 
   const encaminhar = (depId) => {
@@ -543,7 +611,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
     inputRef.current?.focus();
   };
 
-  const enviarMidia = async (file) => {
+  const enviarMidia = async (file, legenda) => {
     if (!file || !conversa) return;
     if (!socket || !connected) {
       setErroEnvio('Conexão em tempo real indisponível.');
@@ -561,23 +629,68 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
       socket.timeout(30000).emit('mensagem:enviar', {
         convId: conversa.id,
         jid: conversa.wa_jid,
-        texto: texto.trim() || undefined,
+        texto: legenda?.trim() || texto.trim() || undefined,
         tipo: mimeParaTipo(file.type),
         mediaBase64,
         mediaMime: file.type || 'application/octet-stream',
         mediaNome: file.name,
+        respondendoA: respondendoA?.id || undefined,
       }, (err, ack) => {
         setAnexando(false);
         if (err) { setErroEnvio('Tempo esgotado ao enviar o arquivo.'); return; }
         if (!ack?.ok) { setErroEnvio(ack?.erro || 'Não foi possível enviar o arquivo.'); return; }
         if (ack.mensagem) setMensagens((prev) => (prev.some((m) => m.id === ack.mensagem.id) ? prev : [...prev, ack.mensagem]));
         setTexto('');
+        setPreviewArquivo(null);
+        setPreviewLegenda('');
+        setRespondendoA(null);
         irParaOFim();
         onConversaUpdated?.();
       });
     } catch (e) {
       setAnexando(false);
       notificar('Falha ao ler o arquivo.', 'erro');
+    }
+  };
+
+  const cancelarPreview = () => {
+    setPreviewArquivo(null);
+    setPreviewLegenda('');
+  };
+
+  // Limpa o "respondendo a" ao trocar de conversa.
+  useEffect(() => { setRespondendoA(null); }, [conversa?.id]);
+
+  // Reagir a uma mensagem (alterna: mesma reação remove). Sincroniza com o WhatsApp.
+  const reagirMsg = (msg, emoji) => {
+    if (!conversa || !socket) return;
+    const novo = msg.reacao === emoji ? '' : emoji;
+    socket.emit('conversa:reagir', { convId: conversa.id, msgId: msg.id, emoji: novo }, (ack) => {
+      if (ack && !ack.ok) notificar(ack.erro || 'Não foi possível reagir.', 'erro');
+    });
+  };
+
+  const marcarNaoLida = async () => {
+    if (!conversa) return;
+    try {
+      await marcarConversaNaoLida(conversa.id);
+      notificar('Conversa marcada como não lida.', 'sucesso');
+      onConversaUpdated?.();
+    } catch (e) {
+      notificar(e.message || 'Erro ao marcar como não lida.', 'erro');
+    }
+  };
+
+  const abrirGaleria = async () => {
+    if (!conversa) return;
+    setShowGaleria(true);
+    setCarregandoMidias(true);
+    try {
+      setMidias(await fetchMidiasConversa(conversa.id));
+    } catch {
+      setMidias([]);
+    } finally {
+      setCarregandoMidias(false);
     }
   };
 
@@ -630,8 +743,74 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
     e.stopPropagation();
     setDraggingFile(false);
     dragCounterRef.current = 0;
-    const f = e.dataTransfer?.files?.[0];
-    if (f) enviarMidia(f);
+    const file = e.dataTransfer?.files?.[0];
+    if (!file) return;
+    if (!arquivoPermitido(file.name, file.type)) {
+      notificar('Tipo de arquivo não permitido por segurança.', 'erro');
+      return;
+    }
+    if (file.size > MAX_MIDIA_BYTES) {
+      notificar('Arquivo muito grande (máx. 16 MB).', 'erro');
+      return;
+    }
+    const tipo = file.type.startsWith('image/') ? 'imagem'
+      : file.type.startsWith('audio/') ? 'audio'
+      : file.type.startsWith('video/') ? 'video'
+      : 'documento';
+    const reader = new FileReader();
+    reader.onload = () => setPreviewArquivo({ file, dataUrl: reader.result, tipo });
+    reader.readAsDataURL(file);
+  };
+
+  const arquivoPermitido = (nome, tipo) => {
+    const ext = (nome || '').split('.').pop()?.toLowerCase();
+    if (ext && EXTENSOES_PROIBIDAS.includes(ext)) return false;
+    if (tipo === 'application/x-msdownload' || tipo === 'application/x-msdos-program' || tipo === 'application/x-bat') return false;
+    return true;
+  };
+
+  const handlePaste = (e) => {
+    const items = e.clipboardData?.items || [];
+    if (items.length === 0) return;
+
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault();
+        const blob = item.getAsFile();
+        if (!blob) continue;
+        const file = new File([blob], `imagem-colada-${Date.now()}.png`, { type: blob.type || 'image/png' });
+        const reader = new FileReader();
+        reader.onload = () => setPreviewArquivo({ file, dataUrl: reader.result, tipo: 'imagem' });
+        reader.readAsDataURL(file);
+        break;
+      }
+      if (item.kind === 'file') {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (!file) continue;
+        const ext = (file.name || '').split('.').pop()?.toLowerCase();
+        if (ext && EXTENSOES_PROIBIDAS.includes(ext)) {
+          notificar(`Arquivo .${ext} não é permitido por segurança.`, 'erro');
+          continue;
+        }
+        if (!arquivoPermitido(file.name, file.type)) {
+          notificar('Tipo de arquivo não permitido por segurança.', 'erro');
+          continue;
+        }
+        if (file.size > MAX_MIDIA_BYTES) {
+          notificar('Arquivo muito grande (máx. 16 MB).', 'erro');
+          continue;
+        }
+        const tipo = file.type.startsWith('image/') ? 'imagem'
+          : file.type.startsWith('audio/') ? 'audio'
+          : file.type.startsWith('video/') ? 'video'
+          : 'documento';
+        const reader = new FileReader();
+        reader.onload = () => setPreviewArquivo({ file, dataUrl: reader.result, tipo });
+        reader.readAsDataURL(file);
+        break;
+      }
+    }
   };
 
   if (!conversa) {
@@ -643,6 +822,12 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
 
   const nome = conversa.contato_nome || conversa.contato_telefone || 'Desconhecido';
   const isNumber = !conversa.contato_nome;
+
+  // Item do menu de ações (bottom-sheet) usado no celular/tablet.
+  const acaoSheetItem = (Icone, label, onClick, cor) => React.createElement('button', {
+    key: label, onClick,
+    style: { display: 'flex', alignItems: 'center', gap: 16, width: '100%', padding: '14px 20px', border: 'none', background: 'transparent', color: cor || T.text, cursor: 'pointer', fontSize: 15, fontWeight: 500, textAlign: 'left' },
+  }, React.createElement(Icone, { size: 20, style: { flexShrink: 0 } }), label);
 
   return React.createElement('div', {
     style: { flex: 1, display: 'flex', flexDirection: 'column', height: '100%', background: T.bg, position: 'relative' },
@@ -661,9 +846,14 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
     ),
     // Header - WhatsApp style header bar
     React.createElement('div', {
-      style: { display: 'flex', alignItems: 'center', padding: '10px 20px', background: T.surface, gap: 12, flexShrink: 0, borderBottom: `1px solid #d1d7db`, minHeight: 56 },
+      style: { display: 'flex', alignItems: 'center', padding: ehCompacto ? '8px 10px' : '10px 20px', background: T.surface, gap: ehCompacto ? 8 : 12, flexShrink: 0, borderBottom: `1px solid #d1d7db`, minHeight: 56 },
     },
-      React.createElement(Avatar, { nome, url: conversa.contato_avatar_url, tamanho: 42, isNumber }),
+      // Voltar (apenas no celular, onde a lista some ao abrir a conversa)
+      onVoltar && ehMobile && React.createElement('button', {
+        onClick: onVoltar, 'aria-label': 'Voltar', title: 'Voltar',
+        style: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, flexShrink: 0, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'transparent', color: T.text },
+      }, React.createElement(ArrowLeft, { size: 22 })),
+      React.createElement(Avatar, { nome, url: conversa.contato_avatar_url, tamanho: ehCompacto ? 38 : 42, isNumber }),
       React.createElement('div', {
         style: { flex: 1, minWidth: 0, cursor: 'pointer' },
         onClick: () => {
@@ -696,9 +886,20 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
             ),
         React.createElement('div', { style: { fontSize: 12, color: T.textMuted, display: 'flex', alignItems: 'center', gap: 6 } },
           React.createElement('span', null, conversa.contato_telefone || ''),
+          (conversa.protocolo_numero || conversa.protocolo) && React.createElement('span', {
+            title: 'Protocolo do atendimento',
+            style: { display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 7px', borderRadius: 999, background: T.primarySoft, color: T.primary, fontWeight: 700, fontSize: 11, fontVariantNumeric: 'tabular-nums' },
+          }, '#', conversa.protocolo_numero || conversa.protocolo),
           conversa.departamento_nome && React.createElement(DeptBadge, { nome: conversa.departamento_nome, cor: conversa.departamento_cor }),
         ),
       ),
+      // Celular/tablet: todas as ações colapsam num único menu "⋮"
+      ehCompacto && React.createElement('button', {
+        onClick: () => setShowAcoes(true), 'aria-label': 'Ações da conversa', title: 'Ações',
+        style: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 38, height: 38, flexShrink: 0, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'transparent', color: T.textSecondary },
+      }, React.createElement(MoreVertical, { size: 22 })),
+      // Desktop: barra completa de ações inline
+      !ehCompacto && React.createElement(React.Fragment, null,
       // Assumir conversa (sem dono)
       semDono && React.createElement('button', {
         onClick: assumir, title: 'Assumir esta conversa',
@@ -749,17 +950,54 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
           etiquetas.length === 0 && React.createElement('div', { style: { padding: 14, fontSize: 12, color: T.textMuted } }, 'Nenhuma etiqueta.'),
         ),
       ),
-      // Atribuir secretaria
+      // Atribuir secretaria — árvore secretaria › departamento, recolhível e com busca
       React.createElement('div', { style: { position: 'relative' } },
-        React.createElement('button', { onClick: () => setShowEncaminhar(!showEncaminhar), style: { ...acaoBtn } },
+        React.createElement('button', { onClick: abrirEncaminhar, style: { ...acaoBtn } },
           React.createElement(Building2, { size: 16 }), 'Encaminhar'),
-        showEncaminhar && React.createElement('div', { style: dropdown },
-          React.createElement('div', { style: { padding: '8px 14px', fontSize: 11, color: T.textMuted, fontWeight: 700, textTransform: 'uppercase' } }, 'Encaminhar para'),
-          departamentos.map((dep) =>
-            React.createElement('button', { key: dep.id, onClick: () => encaminhar(dep.id), style: dropdownItem },
-              React.createElement('span', { style: { width: 10, height: 10, borderRadius: '50%', background: dep.cor || T.primary } }),
-              dep.secretaria_nome ? `${dep.secretaria_nome} › ${dep.nome}` : dep.nome,
-            )),
+        showEncaminhar && React.createElement('div', { className: 'cg-enc-menu', style: { ...dropdown, minWidth: 280 } },
+          React.createElement('style', null, ESTILO_ENCAMINHAR),
+          React.createElement('div', { style: { padding: '8px 14px 6px', fontSize: 11, color: T.textMuted, fontWeight: 700, textTransform: 'uppercase' } }, 'Encaminhar para'),
+          // Busca
+          React.createElement('div', { style: { padding: '0 10px 8px', position: 'relative' } },
+            React.createElement(Search, { size: 14, color: T.textMuted, style: { position: 'absolute', left: 20, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' } }),
+            React.createElement('input', {
+              value: filtroEnc, onChange: (e) => setFiltroEnc(e.target.value), autoFocus: true,
+              placeholder: 'Buscar secretaria ou departamento…',
+              style: { width: '100%', boxSizing: 'border-box', fontSize: 13, padding: '7px 10px 7px 30px', border: `1px solid ${T.border}`, borderRadius: T.radiusSm, color: T.text, background: T.surface, outline: 'none', transition: 'border-color 0.15s ease, box-shadow 0.15s ease' },
+              onFocus: (e) => { e.target.style.borderColor = T.primary; e.target.style.boxShadow = `0 0 0 3px ${T.primarySoft}`; },
+              onBlur: (e) => { e.target.style.borderColor = T.border; e.target.style.boxShadow = 'none'; },
+            }),
+          ),
+          // Lista agrupada com rolagem própria (não toma a tela toda)
+          React.createElement('div', { style: { maxHeight: 320, overflowY: 'auto', paddingBottom: 4 } },
+            gruposEncFiltrados.length === 0
+              ? React.createElement('div', { style: { padding: '10px 14px', fontSize: 13, color: T.textMuted } }, 'Nenhum resultado.')
+              : gruposEncFiltrados.map((g) => {
+                  const aberta = !!termoEnc || secEncAberta === g.id;
+                  return React.createElement('div', { key: g.id, style: { borderTop: `1px solid ${T.surfaceMuted}` } },
+                    // Cabeçalho da secretaria (recolhível)
+                    React.createElement('button', {
+                      className: 'cg-enc-sec',
+                      onClick: () => setSecEncAberta(aberta && !termoEnc ? null : g.id),
+                    },
+                      React.createElement(ChevronRight, { size: 15, className: 'cg-enc-chevron' + (aberta ? ' aberta' : '') }),
+                      React.createElement('span', { style: { width: 9, height: 9, borderRadius: '50%', background: g.cor, flexShrink: 0 } }),
+                      React.createElement('span', { style: { flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, g.nome),
+                      React.createElement('span', { className: 'cg-enc-badge' }, String(g.deps.length)),
+                    ),
+                    // Departamentos da secretaria — entram em cascata
+                    aberta && g.deps.map((dep, i) =>
+                      React.createElement('button', {
+                        key: dep.id, onClick: () => encaminhar(dep.id),
+                        className: 'cg-enc-dep' + (dep.id === conversa?.departamento_id ? ' sel' : ''),
+                        style: { animationDelay: `${Math.min(i, 8) * 0.035}s` },
+                      },
+                        React.createElement('span', { style: { width: 8, height: 8, borderRadius: '50%', background: dep.cor || g.cor || T.primary, flexShrink: 0 } }),
+                        React.createElement('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, dep.nome),
+                      )),
+                  );
+                }),
+          ),
         ),
       ),
       React.createElement('button', { onClick: resolver, 'aria-label': 'Resolver conversa', style: { ...acaoBtn, color: T.success, borderColor: '#CDEBD6' } },
@@ -772,6 +1010,10 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
           style: { ...acaoBtn, padding: '7px 9px' },
         }, React.createElement(MoreVertical, { size: 16 })),
         showMenuMais && React.createElement('div', { style: dropdown, role: 'menu' },
+          React.createElement('button', { role: 'menuitem', onClick: () => { setShowMenuMais(false); abrirGaleria(); }, style: { ...dropdownItem, color: T.textSecondary } },
+            React.createElement(Images, { size: 15 }), 'Ver mídias'),
+          React.createElement('button', { role: 'menuitem', onClick: () => { setShowMenuMais(false); marcarNaoLida(); }, style: { ...dropdownItem, color: T.textSecondary } },
+            React.createElement(Mail, { size: 15 }), 'Marcar como não lida'),
           conversa.status === 'arquivada'
             ? React.createElement('button', { role: 'menuitem', onClick: () => { setShowMenuMais(false); desarquivar(); }, style: { ...dropdownItem, color: T.primary } },
                 React.createElement(Archive, { size: 15 }), 'Desarquivar')
@@ -781,6 +1023,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
             React.createElement(Trash2, { size: 15 }), 'Excluir conversa'),
         ),
       ),
+      ), // fecha o Fragment da barra de ações desktop (!ehCompacto)
     ),
 
     // Banner de transferência pendente para mim (aceitar/recusar)
@@ -846,7 +1089,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
         'aria-live': 'polite',
         'aria-label': 'Mensagens da conversa',
         style: {
-          flex: 1, overflowY: 'auto', padding: '20px 24px',
+          flex: 1, overflowY: 'auto', padding: ehMobile ? '12px 10px' : '20px 24px',
           backgroundColor: '#f0f2f5',
           backgroundImage: 'radial-gradient(#d1d7db 0.5px, transparent 0.5px)',
           backgroundSize: '20px 20px',
@@ -861,6 +1104,11 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
           msg,
           podeExcluir: !msg.excluida && (msg.direcao === 'saida' ? (msg.operador_id === opId || ehGestor) : ehGestor),
           onExcluir: () => excluirMsg(msg),
+          onResponder: () => setRespondendoA(msg),
+          onReagir: (emoji) => reagirMsg(msg, emoji),
+          respondida: msg.respondendo_a ? mensagens.find((m) => m.id === msg.respondendo_a) : null,
+          nomeContato: nome,
+          compacto: ehMobile,
         })),
         clienteDigitando && React.createElement('div', {
           style: { fontSize: 12, color: T.textMuted, fontStyle: 'italic', padding: '4px 2px' },
@@ -948,6 +1196,78 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
       React.createElement('button', { onClick: () => setAudioErro(null), 'aria-label': 'Fechar', style: { background: 'none', border: 'none', cursor: 'pointer', color: '#991B1B' } }, React.createElement(X, { size: 14 })),
     ),
 
+    // Barra "respondendo a" (acima do compositor)
+    respondendoA && React.createElement('div', {
+      style: { padding: '8px 16px', background: T.surfaceMuted, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0, borderTop: `1px solid ${T.border}` },
+    },
+      React.createElement('div', { style: { width: 3, alignSelf: 'stretch', background: T.primary, borderRadius: 2 } }),
+      React.createElement('div', { style: { flex: 1, minWidth: 0 } },
+        React.createElement('div', { style: { fontSize: 11, fontWeight: 600, color: T.primary } },
+          respondendoA.direcao === 'saida' ? (respondendoA.operador_nome || 'Operador') : (nome || 'Cidadão')),
+        React.createElement('div', { style: { fontSize: 12.5, color: T.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
+          respondendoA.conteudo || `[${respondendoA.tipo || 'mídia'}]`),
+      ),
+      React.createElement('button', {
+        onClick: () => setRespondendoA(null), 'aria-label': 'Cancelar resposta', title: 'Cancelar',
+        style: { background: 'none', border: 'none', cursor: 'pointer', color: T.textMuted, padding: 4, display: 'flex' },
+      }, React.createElement(X, { size: 16 })),
+    ),
+
+    // Preview do arquivo antes de enviar (Ctrl+V, drag & drop, anexo)
+    previewArquivo && React.createElement('div', {
+      style: { padding: '10px 16px', background: T.surface, display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0, borderTop: `1px solid ${T.border}` },
+    },
+      // Thumbnail / preview da imagem
+      previewArquivo.tipo === 'imagem'
+        ? React.createElement('img', {
+            src: previewArquivo.dataUrl,
+            alt: previewArquivo.file.name,
+            style: { width: 60, height: 60, objectFit: 'cover', borderRadius: 8, border: `1px solid ${T.border}`, flexShrink: 0 },
+          })
+        : React.createElement('div', {
+            style: { width: 60, height: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, border: `1px solid ${T.border}`, flexShrink: 0, background: T.surfaceMuted },
+          },
+            React.createElement(Paperclip, { size: 24, color: T.textMuted })),
+      // Info do arquivo + legenda
+      React.createElement('div', { style: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 6 } },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+          React.createElement('span', {
+            style: { fontSize: 12.5, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+          }, previewArquivo.file.name),
+          React.createElement('span', { style: { fontSize: 11, color: T.textMuted, flexShrink: 0 } },
+            previewArquivo.file.size > 1024 * 1024
+              ? `${(previewArquivo.file.size / (1024 * 1024)).toFixed(1)} MB`
+              : `${Math.round(previewArquivo.file.size / 1024)} KB`),
+        ),
+        React.createElement('input', {
+          type: 'text',
+          value: previewLegenda,
+          onChange: (e) => setPreviewLegenda(e.target.value),
+          placeholder: 'Adicione uma legenda (opcional)...',
+          maxLength: 1000,
+          onKeyDown: (e) => { if (e.key === 'Enter') { e.preventDefault(); enviarMidia(previewArquivo.file, previewLegenda); } },
+          style: { width: '100%', border: `1px solid ${T.borderStrong}`, borderRadius: 8, padding: '6px 10px', fontSize: 13, color: T.text, outline: 'none', fontFamily: 'inherit', boxSizing: 'border-box' },
+        }),
+      ),
+      // Botões
+      React.createElement('button', {
+        type: 'button',
+        onClick: cancelarPreview,
+        disabled: anexando,
+        title: 'Cancelar',
+        style: { background: 'none', border: 'none', cursor: anexando ? 'not-allowed' : 'pointer', color: T.textMuted, padding: 6, display: 'flex', flexShrink: 0 },
+      }, React.createElement(X, { size: 20 })),
+      React.createElement('button', {
+        type: 'button',
+        onClick: () => enviarMidia(previewArquivo.file, previewLegenda),
+        disabled: anexando,
+        title: 'Enviar arquivo',
+        style: { width: 40, height: 40, borderRadius: '50%', border: 'none', cursor: anexando ? 'not-allowed' : 'pointer', background: T.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+      }, anexando
+        ? React.createElement(Loader2, { size: 18, color: '#fff', className: 'spin' })
+        : React.createElement(Send, { size: 18, color: '#fff' })),
+    ),
+
     // Composer
     erroEnvio && React.createElement('div', {
       role: 'alert',
@@ -955,7 +1275,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
     }, erroEnvio),
     React.createElement('form', {
       onSubmit: enviar,
-      style: { position: 'relative', display: 'flex', alignItems: 'flex-end', padding: '10px 16px', background: T.surface, gap: 10, flexShrink: 0, borderTop: `1px solid ${T.border}` },
+      style: { position: 'relative', display: 'flex', alignItems: 'flex-end', padding: ehMobile ? '8px 8px' : '10px 16px', background: T.surface, gap: ehMobile ? 6 : 10, flexShrink: 0, borderTop: `1px solid ${T.border}` },
     },
       // Picker de emojis rápidos
       showEmojis && React.createElement('div', {
@@ -972,7 +1292,26 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
       }, React.createElement(Smile, { size: 22, color: showEmojis ? T.primary : T.textMuted })),
       React.createElement('input', {
         ref: fileRef, type: 'file', style: { display: 'none' },
-        onChange: (e) => { const f = e.target.files?.[0]; if (f) enviarMidia(f); e.target.value = ''; },
+        onChange: (e) => {
+          const file = e.target.files?.[0];
+          if (!file) { e.target.value = ''; return; }
+          if (!arquivoPermitido(file.name, file.type)) {
+            notificar('Tipo de arquivo não permitido por segurança.', 'erro');
+            e.target.value = ''; return;
+          }
+          if (file.size > MAX_MIDIA_BYTES) {
+            notificar('Arquivo muito grande (máx. 16 MB).', 'erro');
+            e.target.value = ''; return;
+          }
+          const tipo = file.type.startsWith('image/') ? 'imagem'
+            : file.type.startsWith('audio/') ? 'audio'
+            : file.type.startsWith('video/') ? 'video'
+            : 'documento';
+          const reader = new FileReader();
+          reader.onload = () => setPreviewArquivo({ file, dataUrl: reader.result, tipo });
+          reader.readAsDataURL(file);
+          e.target.value = '';
+        },
       }),
       React.createElement('button', {
         type: 'button', onClick: () => fileRef.current?.click(), 'aria-label': 'Anexar arquivo', disabled: anexando,
@@ -983,13 +1322,15 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
       React.createElement('div', { style: { flex: 1, position: 'relative' } },
         React.createElement('textarea', {
           ref: inputRef, value: texto, onChange: (e) => setTexto(e.target.value),
-          placeholder: gravando ? 'Gravando áudio...' : audioBlob ? 'Adicione uma legenda (opcional)...' : 'Digite uma mensagem (Enter envia, Shift+Enter quebra linha)',
+          placeholder: gravando ? 'Gravando áudio...' : previewArquivo ? 'Digite uma legenda e pressione Enter para enviar...' : audioBlob ? 'Adicione uma legenda (opcional)...' : 'Digite (Enter envia, Shift+Enter quebra linha, Ctrl+V cola arquivo)',
           rows: 1,
           'aria-label': 'Mensagem',
           maxLength: 4000,
           disabled: gravando,
+          onPaste: handlePaste,
           onKeyDown: (e) => {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(e); }
+            else if (e.key === 'Escape' && respondendoA) { setRespondendoA(null); }
           },
           style: { width: '100%', resize: 'none', maxHeight: 120, minHeight: 22, boxSizing: 'border-box', background: T.surfaceMuted, border: `1px solid ${T.border}`, borderRadius: 22, padding: '11px 52px 11px 16px', color: T.text, fontSize: 14, outline: 'none', fontFamily: 'inherit', lineHeight: '20px', opacity: gravando ? 0.5 : 1 },
         }),
@@ -1028,8 +1369,117 @@ export function PainelAtendimento({ conversa, onConversaUpdated }) {
         : React.createElement(Send, { size: 20, color: (texto.trim() || audioBlob) && !enviando && !gravando ? '#fff' : T.textMuted })),
     ),
 
+    // ===== Bottom-sheets do celular/tablet (substituem os dropdowns do header) =====
+    ehCompacto && showAcoes && React.createElement(BottomSheet, { titulo: nome, onClose: () => setShowAcoes(false) },
+      semDono && acaoSheetItem(UserCheck, 'Assumir conversa', () => { setShowAcoes(false); assumir(); }, T.primary),
+      conversa.operador_id && podeGerir && acaoSheetItem(ArrowRightLeft, 'Transferir', () => { setShowAcoes(false); setShowTransferir(true); }),
+      conversa.operador_id && podeGerir && acaoSheetItem(Undo2, 'Devolver para a fila', () => { setShowAcoes(false); devolver(); }),
+      acaoSheetItem(UserPlus, 'Anexar atendente', () => { setShowAcoes(false); setShowParticipantes(true); }),
+      acaoSheetItem(MessageSquare, 'Templates / respostas rápidas', () => { setShowAcoes(false); setShowTemplates(true); }),
+      acaoSheetItem(Tag, 'Etiquetas', () => { setShowAcoes(false); setShowEtiquetas(true); }),
+      acaoSheetItem(Building2, 'Encaminhar para setor', () => { setShowAcoes(false); if (!showEncaminhar) abrirEncaminhar(); }),
+      acaoSheetItem(CheckCircle2, 'Resolver conversa', () => { setShowAcoes(false); resolver(); }, T.success),
+      acaoSheetItem(Images, 'Ver mídias', () => { setShowAcoes(false); abrirGaleria(); }),
+      acaoSheetItem(Mail, 'Marcar como não lida', () => { setShowAcoes(false); marcarNaoLida(); }),
+      conversa.status === 'arquivada'
+        ? acaoSheetItem(Archive, 'Desarquivar', () => { setShowAcoes(false); desarquivar(); }, T.primary)
+        : acaoSheetItem(Archive, 'Arquivar', () => { setShowAcoes(false); arquivar(); }),
+      acaoSheetItem(Trash2, 'Excluir conversa', () => { setShowAcoes(false); excluirConversa(); }, T.danger),
+    ),
+
+    ehCompacto && showTemplates && React.createElement(BottomSheet, { titulo: 'Respostas rápidas', onClose: () => setShowTemplates(false) },
+      templates.length === 0
+        ? React.createElement('div', { style: { padding: 20, fontSize: 13, color: T.textMuted } }, 'Nenhum template. Crie no menu Admin > Templates.')
+        : templates.map((t) => React.createElement('button', {
+            key: t.id, onClick: () => { aplicarTemplate(t.conteudo); setShowTemplates(false); },
+            style: { display: 'block', width: '100%', padding: '13px 20px', border: 'none', borderBottom: `1px solid ${T.border}`, background: 'transparent', cursor: 'pointer', textAlign: 'left' },
+          },
+            React.createElement('div', { style: { fontSize: 14, fontWeight: 600, color: T.text } }, t.titulo),
+            React.createElement('div', { style: { fontSize: 12.5, color: T.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, t.conteudo),
+          )),
+    ),
+
+    ehCompacto && showEtiquetas && React.createElement(BottomSheet, { titulo: 'Categorizar', onClose: () => setShowEtiquetas(false) },
+      etiquetas.length === 0
+        ? React.createElement('div', { style: { padding: 20, fontSize: 13, color: T.textMuted } }, 'Nenhuma etiqueta.')
+        : etiquetas.map((et) => {
+            const ativo = etiquetasConv.some((e) => e.id === et.id);
+            return React.createElement('button', {
+              key: et.id, onClick: () => toggleEtiqueta(et.id),
+              style: { display: 'flex', alignItems: 'center', gap: 12, width: '100%', padding: '14px 20px', border: 'none', borderBottom: `1px solid ${T.border}`, background: ativo ? T.primarySoft : 'transparent', cursor: 'pointer', fontSize: 14.5, color: T.text, textAlign: 'left' },
+            },
+              React.createElement('span', { style: { width: 12, height: 12, borderRadius: '50%', background: et.cor, flexShrink: 0 } }),
+              React.createElement('span', { style: { flex: 1 } }, et.nome),
+              ativo && React.createElement(CheckCircle2, { size: 16, color: T.success }),
+            );
+          }),
+    ),
+
+    ehCompacto && showEncaminhar && React.createElement(BottomSheet, { titulo: 'Encaminhar para', onClose: () => setShowEncaminhar(false) },
+      React.createElement('style', null, ESTILO_ENCAMINHAR),
+      React.createElement('div', { style: { padding: '4px 16px 10px', position: 'relative' } },
+        React.createElement(Search, { size: 16, color: T.textMuted, style: { position: 'absolute', left: 26, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' } }),
+        React.createElement('input', {
+          value: filtroEnc, onChange: (e) => setFiltroEnc(e.target.value),
+          placeholder: 'Buscar secretaria ou departamento…',
+          style: { width: '100%', boxSizing: 'border-box', fontSize: 14, padding: '10px 12px 10px 34px', border: `1px solid ${T.border}`, borderRadius: T.radiusSm, color: T.text, background: T.surface, outline: 'none' },
+        }),
+      ),
+      gruposEncFiltrados.length === 0
+        ? React.createElement('div', { style: { padding: '10px 18px', fontSize: 14, color: T.textMuted } }, 'Nenhum resultado.')
+        : gruposEncFiltrados.map((g) => {
+            const aberta = !!termoEnc || secEncAberta === g.id;
+            return React.createElement('div', { key: g.id, style: { borderTop: `1px solid ${T.surfaceMuted}` } },
+              React.createElement('button', { className: 'cg-enc-sec', onClick: () => setSecEncAberta(aberta && !termoEnc ? null : g.id) },
+                React.createElement(ChevronRight, { size: 16, className: 'cg-enc-chevron' + (aberta ? ' aberta' : '') }),
+                React.createElement('span', { style: { width: 9, height: 9, borderRadius: '50%', background: g.cor, flexShrink: 0 } }),
+                React.createElement('span', { style: { flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' } }, g.nome),
+                React.createElement('span', { className: 'cg-enc-badge' }, String(g.deps.length)),
+              ),
+              aberta && g.deps.map((dep) => React.createElement('button', {
+                key: dep.id, onClick: () => encaminhar(dep.id),
+                className: 'cg-enc-dep' + (dep.id === conversa?.departamento_id ? ' sel' : ''),
+              },
+                React.createElement('span', { style: { width: 8, height: 8, borderRadius: '50%', background: dep.cor || g.cor || T.primary, flexShrink: 0 } }),
+                React.createElement('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, dep.nome),
+              )),
+            );
+          }),
+    ),
+
     showParticipantes && React.createElement(ModalParticipantes, { conversa, onClose: () => setShowParticipantes(false) }),
     showTransferir && React.createElement(ModalTransferir, { conversa, onClose: () => setShowTransferir(false), onTransferido: () => onConversaUpdated?.() }),
+
+    // Galeria de mídia da conversa
+    showGaleria && React.createElement('div', {
+      onClick: () => setShowGaleria(false),
+      style: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 },
+    },
+      React.createElement('div', {
+        onClick: (e) => e.stopPropagation(),
+        style: { background: T.surface, borderRadius: 12, width: 'min(720px, 100%)', maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: T.shadowMd },
+      },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: `1px solid ${T.border}` } },
+          React.createElement('span', { style: { fontWeight: 700, fontSize: 15, color: T.text } }, `Mídias da conversa${midias.length ? ` (${midias.length})` : ''}`),
+          React.createElement('button', { onClick: () => setShowGaleria(false), 'aria-label': 'Fechar', style: { background: 'none', border: 'none', cursor: 'pointer', color: T.textMuted, display: 'flex' } }, React.createElement(X, { size: 20 })),
+        ),
+        React.createElement('div', { style: { padding: 16, overflowY: 'auto' } },
+          carregandoMidias
+            ? React.createElement('div', { style: { textAlign: 'center', padding: 30, color: T.textMuted } }, React.createElement(Loader2, { size: 22, className: 'spin' }))
+            : midias.length === 0
+            ? React.createElement('div', { style: { textAlign: 'center', padding: 30, color: T.textMuted, fontSize: 13 } }, 'Nenhuma mídia trocada nesta conversa.')
+            : React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 } },
+                midias.map((m) => React.createElement('div', {
+                  key: m.id, style: { background: T.surfaceMuted, borderRadius: 8, padding: 6, overflow: 'hidden' },
+                },
+                  React.createElement(MediaPreview, { msg: m, isMe: m.direcao === 'saida', onOpenLightbox: (src, t, mime, nome) => setGaleriaLightbox({ src, tipo: t, mime, nome }) }),
+                  React.createElement('div', { style: { fontSize: 10, color: T.textMuted, marginTop: 4, textAlign: 'center' } }, new Date(m.criado_em).toLocaleDateString('pt-BR')),
+                )),
+              ),
+        ),
+      ),
+    ),
+    galeriaLightbox && React.createElement(MediaLightbox, { src: galeriaLightbox.src, tipo: galeriaLightbox.tipo, mime: galeriaLightbox.mime, nome: galeriaLightbox.nome, onClose: () => setGaleriaLightbox(null) }),
     // Toast + modal de confirmação (substituem alert/confirm/prompt)
     toast && React.createElement('div', {
       role: 'status',
@@ -1207,5 +1657,46 @@ function EstadoVazio({ title, subtitle }) {
 
 const acaoBtn = { display: 'flex', alignItems: 'center', gap: 5, background: T.surface, border: `1px solid ${T.borderStrong}`, color: T.textSecondary, fontSize: 12.5, fontWeight: 600, padding: '7px 12px', borderRadius: T.radiusSm, cursor: 'pointer', whiteSpace: 'nowrap' };
 const iconBtn = { background: 'transparent', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' };
+
+// Painel deslizante de baixo (estilo WhatsApp mobile) para os menus de ação.
+function BottomSheet({ titulo, onClose, children }) {
+  return React.createElement('div', { style: { position: 'fixed', inset: 0, zIndex: 1190 } },
+    React.createElement('style', null, '@keyframes cgSheetUp { from { transform: translateY(100%); } to { transform: translateY(0); } }'),
+    React.createElement('div', { onClick: onClose, style: { position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.35)' } }),
+    React.createElement('div', {
+      style: {
+        position: 'absolute', left: 0, right: 0, bottom: 0,
+        background: T.surface, borderTopLeftRadius: 16, borderTopRightRadius: 16,
+        maxHeight: '78vh', display: 'flex', flexDirection: 'column',
+        boxShadow: '0 -4px 24px rgba(0,0,0,0.18)', animation: 'cgSheetUp 0.22s ease both',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+      },
+    },
+      React.createElement('div', { style: { display: 'flex', justifyContent: 'center', padding: '8px 0 2px', flexShrink: 0 } },
+        React.createElement('div', { style: { width: 40, height: 4, borderRadius: 2, background: T.borderStrong } })),
+      titulo && React.createElement('div', {
+        style: { padding: '6px 20px 10px', fontSize: 12, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.4, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 0, borderBottom: `1px solid ${T.border}` },
+      }, titulo),
+      React.createElement('div', { style: { overflowY: 'auto', flex: 1, paddingBottom: 6 } }, children),
+    ),
+  );
+}
 const dropdown = { position: 'absolute', top: '100%', right: 0, background: T.surface, borderRadius: T.radius, boxShadow: T.shadowMd, border: `1px solid ${T.border}`, zIndex: 100, minWidth: 230, overflow: 'hidden', marginTop: 6 };
 const dropdownItem = { display: 'flex', alignItems: 'center', gap: 9, width: '100%', padding: '10px 14px', border: 'none', background: 'transparent', color: T.text, cursor: 'pointer', fontSize: 13.5, textAlign: 'left' };
+
+// Estilos + animações do menu Encaminhar (hover real e cascata exigem CSS, não dá com inline)
+const ESTILO_ENCAMINHAR = `
+@keyframes cgEncMenuIn { from { opacity: 0; transform: translateY(-6px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes cgEncDepIn { from { opacity: 0; transform: translateY(-5px); } to { opacity: 1; transform: translateY(0); } }
+.cg-enc-menu { animation: cgEncMenuIn 0.16s ease both; transform-origin: top right; }
+.cg-enc-sec { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 12px; border: none; background: transparent; color: ${T.text}; cursor: pointer; font-size: 13px; font-weight: 600; text-align: left; transition: background 0.15s ease; }
+.cg-enc-sec:hover { background: ${T.surfaceAlt}; }
+.cg-enc-chevron { color: ${T.textMuted}; flex-shrink: 0; transition: transform 0.22s cubic-bezier(0.4,0,0.2,1); }
+.cg-enc-chevron.aberta { transform: rotate(90deg); }
+.cg-enc-badge { font-size: 11px; font-weight: 600; color: ${T.textSecondary}; background: ${T.surfaceMuted}; border-radius: 10px; padding: 1px 7px; flex-shrink: 0; transition: background 0.15s ease, color 0.15s ease; }
+.cg-enc-sec:hover .cg-enc-badge { background: ${T.primarySoft}; color: ${T.primary}; }
+.cg-enc-dep { display: flex; align-items: center; gap: 8px; width: 100%; padding: 8px 12px 8px 34px; border: none; background: transparent; color: ${T.text}; cursor: pointer; font-size: 13px; text-align: left; animation: cgEncDepIn 0.2s ease both; transition: background 0.15s ease, padding-left 0.15s ease; }
+.cg-enc-dep:hover { background: ${T.surfaceAlt}; padding-left: 38px; }
+.cg-enc-dep.sel { background: ${T.primarySoft}; box-shadow: inset 3px 0 0 ${T.primary}; }
+.cg-enc-dep.sel:hover { background: #cfe0fd; }
+`;

@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import Breadcrumbs from "@/components/Breadcrumbs";
 import { useAuth } from "@/lib/auth-context";
 import type { Role } from "@/types/user";
+import { notifyError } from "@/lib/error-handler";
 
 const ROLE_ICONS: Record<string, string> = {
   ADMIN: "key",
@@ -34,7 +35,7 @@ export default function NewUserPage() {
   useEffect(() => {
     api.listRoles()
       .then((items) => setRoles(items.filter((role) => role.name !== "SUPER_ADMIN")))
-      .catch(() => {});
+      .catch((err) => notifyError("NewUser.listRoles", err));
   }, []);
 
   const errors: Record<string, string> = {};

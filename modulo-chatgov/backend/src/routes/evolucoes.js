@@ -12,23 +12,11 @@ import {
   marcarLido, contarNaoLidas, buscarMensagens
 } from '../services/mensagens.js';
 import {
-  listarProjetos, criarProjeto, getKanban,
-  criarColuna, atualizarColuna,
-  criarTarefa, getTarefa, atualizarTarefa, moverTarefa,
-  adicionarChecklistItem, toggleChecklistItem,
-  adicionarComentario, listarTarefas, minhasTarefas, relatorioProdutividade
-} from '../services/tarefas.js';
-import {
-  uploadArquivo, getArquivo, getArquivosConversa, getArquivosPasta,
-  excluirArquivo, listarPastas, criarPasta, buscarArquivos,
-  downloadArquivo, novaVersaoArquivo, getVersoesArquivo
+  uploadArquivo, getArquivo, getArquivosConversa,
+  excluirArquivo, downloadArquivo, novaVersaoArquivo, getVersoesArquivo
 } from '../services/arquivos.js';
 import {
-  criarReuniao, getReuniao, listarReunioes, atualizarReuniao,
-  cancelarReuniao, adicionarParticipante, removerParticipante,
-  confirmarPresenca, getReunioesLembrete, getTarefasVencidas,
-  getTarefasProximoPrazo, getCalendario,
-  criarEventoCalendario, solicitarAusencia, aprovarAusencia
+  getCalendario, criarEventoCalendario, solicitarAusencia, aprovarAusencia
 } from '../services/reunioes.js';
 import {
   criarNotificacao, listarNotificacoes, contarNaoLidasNotificacoes,
@@ -36,10 +24,6 @@ import {
   getConfigNotificacoes, atualizarConfigNotificacoes,
   silenciarConversa, getSilenciadas, getContagemNaoLidasPorCanal
 } from '../services/notificacoes.js';
-import {
-  listarArtigos, getArtigo, criarArtigo, atualizarArtigo,
-  getVersoesArtigo, getCategoriasWiki
-} from '../services/wiki.js';
 import { createStorage } from '../storage/index.js';
 import multer from 'multer';
 
@@ -264,179 +248,7 @@ router.get('/busca/mensagens', async (req, res) => {
 });
 
 // ============================================================
-// PROJETOS E TAREFAS / KANBAN
-// ============================================================
-router.get('/projetos', async (req, res) => {
-  try {
-    const op = req.operador;
-    const projetos = await listarProjetos(op.tenantId, op.id);
-    res.json(projetos);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao buscar projetos' });
-  }
-});
-
-router.post('/projetos', async (req, res) => {
-  try {
-    const op = req.operador;
-    const projeto = await criarProjeto(op.tenantId, op.id, req.body);
-    res.json(projeto);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao criar projeto' });
-  }
-});
-
-router.get('/projetos/:id/kanban', async (req, res) => {
-  try {
-    const op = req.operador;
-    const kanban = await getKanban(op.tenantId, req.params.id);
-    if (!kanban) return res.status(404).json({ erro: 'Projeto não encontrado' });
-    res.json(kanban);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao carregar kanban' });
-  }
-});
-
-router.post('/projetos/:id/colunas', async (req, res) => {
-  try {
-    const op = req.operador;
-    const coluna = await criarColuna(op.tenantId, req.params.id, req.body);
-    res.json(coluna);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao criar coluna' });
-  }
-});
-
-router.patch('/colunas/:id', async (req, res) => {
-  try {
-    const op = req.operador;
-    const coluna = await atualizarColuna(op.tenantId, req.params.id, req.body);
-    if (!coluna) return res.status(404).json({ erro: 'Coluna não encontrada' });
-    res.json(coluna);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao atualizar coluna' });
-  }
-});
-
-router.get('/tarefas', async (req, res) => {
-  try {
-    const op = req.operador;
-    const tarefas = await listarTarefas(op.tenantId, req.query);
-    res.json(tarefas);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao buscar tarefas' });
-  }
-});
-
-router.post('/tarefas', async (req, res) => {
-  try {
-    const op = req.operador;
-    const tarefa = await criarTarefa(op.tenantId, op.id, req.body);
-    res.json(tarefa);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao criar tarefa' });
-  }
-});
-
-router.get('/tarefas/minhas', async (req, res) => {
-  try {
-    const op = req.operador;
-    const tarefas = await minhasTarefas(op.tenantId, op.id);
-    res.json(tarefas);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao buscar tarefas' });
-  }
-});
-
-router.get('/tarefas/:id', async (req, res) => {
-  try {
-    const op = req.operador;
-    const tarefa = await getTarefa(op.tenantId, req.params.id);
-    if (!tarefa) return res.status(404).json({ erro: 'Tarefa não encontrada' });
-    res.json(tarefa);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao buscar tarefa' });
-  }
-});
-
-router.patch('/tarefas/:id', async (req, res) => {
-  try {
-    const op = req.operador;
-    const tarefa = await atualizarTarefa(op.tenantId, req.params.id, op.id, req.body);
-    if (!tarefa) return res.status(404).json({ erro: 'Tarefa não encontrada' });
-    res.json(tarefa);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao atualizar tarefa' });
-  }
-});
-
-router.post('/tarefas/:id/mover', async (req, res) => {
-  try {
-    const op = req.operador;
-    const { coluna_id, ordem } = req.body;
-    const tarefa = await moverTarefa(op.tenantId, req.params.id, coluna_id, ordem || 0, op.id);
-    if (!tarefa) return res.status(404).json({ erro: 'Tarefa não encontrada' });
-    res.json(tarefa);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao mover tarefa' });
-  }
-});
-
-router.post('/tarefas/:id/checklist', async (req, res) => {
-  try {
-    const op = req.operador;
-    const item = await adicionarChecklistItem(op.tenantId, req.params.id, req.body.texto);
-    res.json(item);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao adicionar item' });
-  }
-});
-
-router.patch('/tarefas/:id/checklist/:itemId', async (req, res) => {
-  try {
-    const op = req.operador;
-    const item = await toggleChecklistItem(op.tenantId, req.params.id, req.params.itemId, req.body.concluido);
-    if (!item) return res.status(404).json({ erro: 'Item não encontrado' });
-    res.json(item);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao atualizar item' });
-  }
-});
-
-router.post('/tarefas/:id/comentarios', async (req, res) => {
-  try {
-    const op = req.operador;
-    const comentario = await adicionarComentario(op.tenantId, req.params.id, op.id, req.body.texto);
-    res.json(comentario);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao adicionar comentário' });
-  }
-});
-
-router.get('/tarefas/:id/historico', async (req, res) => {
-  try {
-    const op = req.operador;
-    const tarefa = await getTarefa(op.tenantId, req.params.id);
-    if (!tarefa) return res.status(404).json({ erro: 'Tarefa não encontrada' });
-    res.json(tarefa.historico);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao buscar histórico' });
-  }
-});
-
-router.get('/relatorios/tarefas', requirePapel('admin'), async (req, res) => {
-  try {
-    const op = req.operador;
-    const { inicio, fim } = req.query;
-    const relatorio = await relatorioProdutividade(op.tenantId, inicio || null, fim || null);
-    res.json(relatorio);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao gerar relatório' });
-  }
-});
-
-// ============================================================
-// ARQUIVOS
+// ARQUIVOS (infra compartilhada: chat interno e mídias de conversa)
 // ============================================================
 router.post('/arquivos/upload', upload.single('arquivo'), async (req, res) => {
   try {
@@ -526,49 +338,6 @@ router.get('/conversas/:id/arquivos', async (req, res) => {
   }
 });
 
-router.get('/pastas', async (req, res) => {
-  try {
-    const op = req.operador;
-    const { setor_id } = req.query;
-    const pastas = await listarPastas(op.tenantId, setor_id || null);
-    res.json(pastas);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao buscar pastas' });
-  }
-});
-
-router.post('/pastas', async (req, res) => {
-  try {
-    const op = req.operador;
-    const pasta = await criarPasta(op.tenantId, op.id, req.body);
-    res.json(pasta);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao criar pasta' });
-  }
-});
-
-router.get('/pastas/:id/arquivos', async (req, res) => {
-  try {
-    const op = req.operador;
-    const arquivos = await getArquivosPasta(op.tenantId, req.params.id);
-    res.json(arquivos);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao buscar arquivos da pasta' });
-  }
-});
-
-router.get('/arquivos/buscar', async (req, res) => {
-  try {
-    const op = req.operador;
-    const { q } = req.query;
-    if (!q || q.length < 2) return res.json([]);
-    const arquivos = await buscarArquivos(op.tenantId, q);
-    res.json(arquivos);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro na busca' });
-  }
-});
-
 router.post('/arquivos/:id/nova-versao', upload.single('arquivo'), async (req, res) => {
   try {
     const op = req.operador;
@@ -591,97 +360,8 @@ router.get('/arquivos/:id/versoes', async (req, res) => {
 });
 
 // ============================================================
-// REUNIÕES
+// CALENDÁRIO E AUSÊNCIAS (Agenda)
 // ============================================================
-router.post('/reunioes', async (req, res) => {
-  try {
-    const op = req.operador;
-    const reuniao = await criarReuniao(op.tenantId, op.id, req.body);
-    if (req.body.participantes && Array.isArray(req.body.participantes)) {
-      for (const pId of req.body.participantes) {
-        await adicionarParticipante(op.tenantId, reuniao.id, pId);
-      }
-    }
-    res.json(reuniao);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao criar reunião' });
-  }
-});
-
-router.get('/reunioes', async (req, res) => {
-  try {
-    const op = req.operador;
-    const reunioes = await listarReunioes(op.tenantId, op.id, req.query);
-    res.json(reunioes);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao buscar reuniões' });
-  }
-});
-
-router.get('/reunioes/:id', async (req, res) => {
-  try {
-    const op = req.operador;
-    const reuniao = await getReuniao(op.tenantId, req.params.id);
-    if (!reuniao) return res.status(404).json({ erro: 'Reunião não encontrada' });
-    res.json(reuniao);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao buscar reunião' });
-  }
-});
-
-router.patch('/reunioes/:id', async (req, res) => {
-  try {
-    const op = req.operador;
-    const reuniao = await atualizarReuniao(op.tenantId, req.params.id, req.body);
-    if (!reuniao) return res.status(404).json({ erro: 'Reunião não encontrada' });
-    res.json(reuniao);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao atualizar reunião' });
-  }
-});
-
-router.delete('/reunioes/:id', async (req, res) => {
-  try {
-    const op = req.operador;
-    const reuniao = await cancelarReuniao(op.tenantId, req.params.id, op.id);
-    if (!reuniao) return res.status(404).json({ erro: 'Reunião não encontrada' });
-    res.json(reuniao);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao cancelar reunião' });
-  }
-});
-
-router.post('/reunioes/:id/participantes', async (req, res) => {
-  try {
-    const op = req.operador;
-    const { operador_id } = req.body;
-    await adicionarParticipante(op.tenantId, req.params.id, operador_id);
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao adicionar participante' });
-  }
-});
-
-router.delete('/reunioes/:id/participantes/:operadorId', async (req, res) => {
-  try {
-    const op = req.operador;
-    await removerParticipante(op.tenantId, req.params.id, req.params.operadorId);
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao remover participante' });
-  }
-});
-
-router.post('/reunioes/:id/confirmar', async (req, res) => {
-  try {
-    const op = req.operador;
-    await confirmarPresenca(op.tenantId, req.params.id, op.id);
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao confirmar presença' });
-  }
-});
-
 router.get('/calendario', async (req, res) => {
   try {
     const op = req.operador;
@@ -850,72 +530,6 @@ router.get('/config/silenciadas', async (req, res) => {
     res.json(silenciadas);
   } catch (err) {
     res.status(500).json({ erro: 'Erro ao buscar silenciadas' });
-  }
-});
-
-// ============================================================
-// WIKI
-// ============================================================
-router.get('/wiki', async (req, res) => {
-  try {
-    const op = req.operador;
-    const { categoria } = req.query;
-    const artigos = await listarArtigos(op.tenantId, categoria || null);
-    res.json(artigos);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao buscar artigos' });
-  }
-});
-
-router.get('/wiki/categorias', async (req, res) => {
-  try {
-    const op = req.operador;
-    const categorias = await getCategoriasWiki(op.tenantId);
-    res.json(categorias);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao buscar categorias' });
-  }
-});
-
-router.get('/wiki/:id', async (req, res) => {
-  try {
-    const op = req.operador;
-    const artigo = await getArtigo(op.tenantId, req.params.id);
-    if (!artigo) return res.status(404).json({ erro: 'Artigo não encontrado' });
-    res.json(artigo);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao buscar artigo' });
-  }
-});
-
-router.post('/wiki', async (req, res) => {
-  try {
-    const op = req.operador;
-    const artigo = await criarArtigo(op.tenantId, op.id, req.body);
-    res.json(artigo);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao criar artigo' });
-  }
-});
-
-router.put('/wiki/:id', async (req, res) => {
-  try {
-    const op = req.operador;
-    const artigo = await atualizarArtigo(op.tenantId, req.params.id, op.id, req.body);
-    if (!artigo) return res.status(404).json({ erro: 'Artigo não encontrado' });
-    res.json(artigo);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao atualizar artigo' });
-  }
-});
-
-router.get('/wiki/:id/versoes', async (req, res) => {
-  try {
-    const op = req.operador;
-    const versoes = await getVersoesArtigo(op.tenantId, req.params.id);
-    res.json(versoes);
-  } catch (err) {
-    res.status(500).json({ erro: 'Erro ao buscar versões' });
   }
 });
 

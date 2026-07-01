@@ -129,7 +129,19 @@ export default function DashboardPage() {
                   <div className="p-6 flex flex-col flex-1">
                     <div className="flex justify-between items-start mb-4">
                       <h3 className="text-headline-sm text-[#001631]">{mod.name}</h3>
-                      <span className="px-2 py-0.5 bg-surface-container text-on-surface-variant text-[10px] rounded uppercase tracking-wider font-semibold">v{mod.version}</span>
+                      <div className="flex items-center gap-2">
+                        {mod.slug === "chatgov" && (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); router.push("/novidades/chatgov"); }}
+                            title="Ver novidades desta versão"
+                            className="px-2 py-0.5 border border-[#001631]/20 text-[#001631] text-[10px] rounded uppercase tracking-wider font-semibold hover:bg-[#001631]/5 transition-colors"
+                          >
+                            Novidades
+                          </button>
+                        )}
+                        <span className="px-2 py-0.5 bg-surface-container text-on-surface-variant text-[10px] rounded uppercase tracking-wider font-semibold">v{mod.version}</span>
+                      </div>
                     </div>
                     <p className="text-body-md text-on-surface-variant mb-8 flex-1">
                       {mod.description || "Módulo do sistema de gestão."}

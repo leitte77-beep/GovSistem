@@ -26,7 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const fetchUser = useCallback(async () => {
-    const token = bootstrapTokenFromQuery() || localStorage.getItem("access_token");
+    const token = bootstrapTokenFromQuery() || sessionStorage.getItem("access_token");
     if (!token) {
       setLoading(false);
       return;
@@ -35,7 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const u = await api.me();
       setUser(u);
     } catch {
-      localStorage.removeItem("access_token");
+      sessionStorage.removeItem("access_token");
       localStorage.removeItem("refresh_token");
     } finally {
       setLoading(false);
@@ -54,21 +54,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async (email: string, password: string) => {
     const tokens = await api.login(email, password);
-    localStorage.setItem("access_token", tokens.access_token);
+    sessionStorage.setItem("access_token", tokens.access_token);
     localStorage.setItem("refresh_token", tokens.refresh_token);
     const u = await api.me();
     setUser(u);
   };
 
   const logout = () => {
-    localStorage.removeItem("access_token");
+    sessionStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
     setUser(null);
   };
 
   const switchOrganization = async (orgId: string) => {
     const tokens = await api.switchOrganization(orgId);
-    localStorage.setItem("access_token", tokens.access_token);
+    sessionStorage.setItem("access_token", tokens.access_token);
     localStorage.setItem("refresh_token", tokens.refresh_token);
     const u = await api.me();
     setUser(u);

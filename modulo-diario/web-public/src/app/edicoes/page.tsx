@@ -2,9 +2,12 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { api, EditionSummary, PaginationMeta } from "@/lib/api";
+import { useOrg } from "@/lib/org-context";
 import { formatSummary } from "@/lib/summary";
 import ShareDialog from "@/components/ShareDialog";
+import { notifyError } from "@/lib/error-handler";
 
 const TYPE_LABELS: Record<string, string> = {
   normal: "ORDINÁRIA",
@@ -37,6 +40,7 @@ function formatShortDate(dateStr: string): string {
 }
 
 export default function EditionsPage() {
+  const { org } = useOrg();
   const [editions, setEditions] = useState<EditionSummary[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta | null>(null);
   const [year, setYear] = useState("");
@@ -60,7 +64,7 @@ export default function EditionsPage() {
         setEditions(res.data);
         setPagination(res.pagination);
       })
-      .catch(() => {})
+      .catch((err) => notifyError("EdicoesPublic", err))
       .finally(() => setLoading(false));
   }, [year, search, page]);
 
@@ -98,7 +102,7 @@ export default function EditionsPage() {
         </h1>
         <p className="text-body-md font-body-md text-on-surface-variant max-w-2xl">
           Acesse o histórico completo de publicações oficiais, atos normativos e
-          decisões administrativas do Município de Farol.
+          decisões administrativas {org?.name ? `da(o) ${org.name}` : "do município"}.
         </p>
       </section>
 
@@ -255,7 +259,7 @@ export default function EditionsPage() {
                         target="_blank"
                         rel="noopener noreferrer"
                         className="p-2 border border-outline-variant rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-all"
-                        title="Baixar PDF"
+                        aria-label="Baixar PDF"
                       >
                         <span className="material-symbols-outlined">
                           download
@@ -347,9 +351,11 @@ export default function EditionsPage() {
             </div>
           </div>
           <div className="rounded-xl overflow-hidden shadow-xl aspect-video relative group">
-            <img
+            <Image
               alt="Segurança jurídica"
-              className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-700"
+              fill
+              sizes="(max-width: 768px) 100vw, 50vw"
+              className="object-cover grayscale group-hover:grayscale-0 transition-all duration-700"
               src="https://lh3.googleusercontent.com/aida-public/AB6AXuB17a1fxXJD2D-OsgQhGI42eFho94Py9-ndKjPfk-fYvuMkYXvu2ymhBCmXcgd-EFSDurMPaHEz4FiDDFJmnvWVClyDIJ2xMbsdLo44gIoONgnJHFB39jNczui3ek05Oh_ZWq8MHgT_V0uTryEkg3o03Ek3BZt2Jsm0Q5gbpoN_IoV8WTKwUDXpzAMcBeumIYlxS5W3xoBtYu9lLdFQ8bAj8Nb_0KcHzE_b78RPEAJjGI4jytVOE7bClMxt4Andma91w-4Ee0t9ZFKm"
             />
           </div>

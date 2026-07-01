@@ -30,14 +30,32 @@ const ABAS = [
   { id: 'equipe', label: 'Equipe', icon: Users },
 ];
 
-export function PaginaConfiguracoes({ onOpenQR }) {
+export function PaginaConfiguracoes({ onOpenQR, breakpoint }) {
   const [aba, setAba] = useState('conexao');
+  const ehMobile = breakpoint === 'mobile';
 
-  return React.createElement('div', { style: { flex: 1, display: 'flex', flexDirection: 'column', height: '100%', background: T.bg } },
-    React.createElement('div', { style: { padding: '22px 32px 0', background: T.surface, borderBottom: `1px solid ${T.border}` } },
-      React.createElement('h1', { style: { fontSize: 22, fontWeight: 800, letterSpacing: -0.5, marginBottom: 4 } }, 'Configurações'),
-      React.createElement('p', { style: { fontSize: 13, color: T.textMuted, marginBottom: 16 } }, 'Estruture seu órgão, equipe e canais de atendimento.'),
-      React.createElement('div', { style: { display: 'flex', gap: 4 } },
+  return React.createElement('div', { style: { flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', height: '100%', background: T.bg, overflow: 'hidden' } },
+    React.createElement('div', {
+      style: {
+        padding: ehMobile ? '18px 16px 0' : '22px 32px 0',
+        background: T.surface,
+        borderBottom: `1px solid ${T.border}`,
+        minWidth: 0,
+      },
+    },
+      React.createElement('h1', { style: { fontSize: ehMobile ? 22 : 22, fontWeight: 800, letterSpacing: -0.5, marginBottom: 4 } }, 'Configurações'),
+      React.createElement('p', { style: { fontSize: 13, color: T.textMuted, marginBottom: 16, lineHeight: '20px' } }, 'Estruture seu órgão, equipe e canais de atendimento.'),
+      React.createElement('div', {
+        style: {
+          display: 'flex',
+          gap: 4,
+          flexWrap: ehMobile ? 'nowrap' : 'wrap',
+          overflowX: ehMobile ? 'auto' : 'visible',
+          overflowY: 'hidden',
+          maxWidth: '100%',
+          WebkitOverflowScrolling: 'touch',
+        },
+      },
         ABAS.map((a) =>
           React.createElement('button', {
             key: a.id, onClick: () => setAba(a.id),
@@ -46,11 +64,13 @@ export function PaginaConfiguracoes({ onOpenQR }) {
               background: 'transparent', fontSize: 14, fontWeight: 600,
               color: aba === a.id ? T.primary : T.textSecondary,
               borderBottom: `2px solid ${aba === a.id ? T.primary : 'transparent'}`,
+              whiteSpace: 'nowrap',
+              flexShrink: 0,
             },
           }, React.createElement(a.icon, { size: 16 }), a.label)),
       ),
     ),
-    React.createElement('div', { style: { flex: 1, overflowY: 'auto', padding: 32 } },
+    React.createElement('div', { style: { flex: 1, minWidth: 0, overflowY: 'auto', overflowX: 'hidden', padding: ehMobile ? 16 : 32, boxSizing: 'border-box' } },
       aba === 'conexao' && React.createElement(AbaConexao, { onOpenQR }),
       aba === 'dashboard' && React.createElement(AbaDashboard),
       aba === 'geral' && React.createElement(AbaGeral),
@@ -67,12 +87,12 @@ export function PaginaConfiguracoes({ onOpenQR }) {
 }
 
 // ---------- estilos compartilhados ----------
-const painel = { maxWidth: 820, background: T.surface, borderRadius: T.radiusLg, border: `1px solid ${T.border}`, boxShadow: T.shadow, overflow: 'hidden' };
-const painelHead = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 22px', borderBottom: `1px solid ${T.border}` };
+const painel = { width: '100%', maxWidth: 820, background: T.surface, borderRadius: T.radiusLg, border: `1px solid ${T.border}`, boxShadow: T.shadow, overflow: 'hidden', boxSizing: 'border-box' };
+const painelHead = { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap', padding: '18px 22px', borderBottom: `1px solid ${T.border}` };
 const tituloPainel = { fontSize: 16, fontWeight: 700, color: T.text };
-const btnAdd = { display: 'flex', alignItems: 'center', gap: 6, background: T.primary, color: '#fff', border: 'none', borderRadius: T.radiusSm, padding: '9px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer' };
-const linha = { display: 'flex', alignItems: 'center', gap: 12, padding: '14px 22px', borderBottom: `1px solid ${T.border}` };
-const input = { padding: '10px 12px', background: T.surfaceMuted, border: `1px solid ${T.border}`, borderRadius: T.radiusSm, color: T.text, fontSize: 14, outline: 'none' };
+const btnAdd = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, background: T.primary, color: '#fff', border: 'none', borderRadius: T.radiusSm, padding: '9px 16px', fontSize: 13, fontWeight: 600, cursor: 'pointer', minHeight: 38, boxSizing: 'border-box' };
+const linha = { display: 'flex', alignItems: 'center', gap: 12, padding: '14px 22px', borderBottom: `1px solid ${T.border}`, flexWrap: 'wrap', minWidth: 0 };
+const input = { padding: '10px 12px', background: T.surfaceMuted, border: `1px solid ${T.border}`, borderRadius: T.radiusSm, color: T.text, fontSize: 14, outline: 'none', boxSizing: 'border-box', maxWidth: '100%' };
 const btnIcon = { background: 'transparent', border: 'none', cursor: 'pointer', color: T.textMuted, padding: 6, display: 'flex' };
 
 function PontoCor({ cor }) {
@@ -283,11 +303,11 @@ function AbaConexao({ onOpenQR }) {
 
   if (!cfg) return React.createElement('div', { style: { color: T.textMuted } }, 'Carregando...');
 
-  return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 620 } },
+  return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 24, width: '100%', maxWidth: 620 } },
     // Seletor de provedor
     React.createElement('div', { style: painel },
       React.createElement('div', { style: painelHead }, React.createElement('div', { style: tituloPainel }, 'Como o WhatsApp será conectado')),
-      React.createElement('div', { style: { padding: 18, display: 'flex', gap: 12 } },
+      React.createElement('div', { style: { padding: 18, display: 'flex', gap: 12, flexWrap: 'wrap' } },
         React.createElement(CartaoProvider, {
           ativo: provider === 'baileys', icon: QrCode, titulo: 'Via QR Code', desc: 'Conecta um número lendo o QR no celular. Ideal para começar rápido.',
           onClick: () => setField('provider', 'baileys'),
@@ -321,7 +341,7 @@ function AbaConexao({ onOpenQR }) {
             React.createElement('li', null, 'Conectar um aparelho'),
             React.createElement('li', null, 'Aponte para o QR ao lado'),
           ),
-          React.createElement('div', { style: { display: 'flex', gap: 8 } },
+          React.createElement('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap' } },
             React.createElement('button', { onClick: gerarQR, style: btnAdd }, React.createElement(QrCode, { size: 16 }), conectado ? 'Trocar número' : 'Gerar QR Code'),
             conectado && React.createElement('button', { onClick: handleLogout, disabled: logoutLoading, style: { ...btnAdd, background: T.danger } },
               React.createElement(LogOut, { size: 16 }), logoutLoading ? 'Desconectando...' : 'Desconectar'),
@@ -352,7 +372,7 @@ function AbaConexao({ onOpenQR }) {
       ),
     ),
 
-    provider === 'baileys' && React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', maxWidth: 620 } },
+    provider === 'baileys' && React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', width: '100%', maxWidth: 620 } },
       React.createElement(BotaoSalvar, { salvando, salvo, onClick: salvar, texto: 'Salvar preferências' }),
     ),
   );
@@ -362,7 +382,7 @@ function CartaoProvider({ ativo, icon: Icon, titulo, desc, onClick }) {
   return React.createElement('button', {
     onClick,
     style: {
-      flex: 1, textAlign: 'left', cursor: 'pointer', padding: 16, borderRadius: T.radius,
+      flex: '1 1 220px', textAlign: 'left', cursor: 'pointer', padding: 16, borderRadius: T.radius,
       background: ativo ? T.primarySoft : T.surface, border: `2px solid ${ativo ? T.primary : T.border}`,
     },
   },
@@ -405,7 +425,7 @@ function AbaGeral() {
       React.createElement('textarea', { value: cfg.mensagem_ausencia || '', onChange: (e) => setField('mensagem_ausencia', e.target.value), rows: 2, placeholder: 'Nosso atendimento funciona de seg. a sex...', style: { ...campo, resize: 'vertical', fontFamily: T.font } }),
 
       React.createElement('label', { style: label }, 'Dias de atendimento'),
-      React.createElement('div', { style: { display: 'flex', gap: 6, marginBottom: 16 } },
+      React.createElement('div', { style: { display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' } },
         DIAS.map(([v, lbl]) =>
           React.createElement('button', {
             key: v, onClick: () => toggleDia(v),
@@ -417,12 +437,12 @@ function AbaGeral() {
             },
           }, lbl))),
 
-      React.createElement('div', { style: { display: 'flex', gap: 16, marginBottom: 16 } },
+      React.createElement('div', { style: { display: 'flex', gap: 16, marginBottom: 16, flexWrap: 'wrap' } },
         React.createElement('div', { style: { flex: 1 } },
           React.createElement('label', { style: label }, 'Início'),
           React.createElement('input', { type: 'time', value: cfg.horario_inicio || '', onChange: (e) => setField('horario_inicio', e.target.value), style: { ...campo, marginBottom: 0 } }),
         ),
-        React.createElement('div', { style: { flex: 1 } },
+        React.createElement('div', { style: { flex: 1, minWidth: 140 } },
           React.createElement('label', { style: label }, 'Fim'),
           React.createElement('input', { type: 'time', value: cfg.horario_fim || '', onChange: (e) => setField('horario_fim', e.target.value), style: { ...campo, marginBottom: 0 } }),
         ),
@@ -451,7 +471,7 @@ function AbaGeral() {
         ),
       ),
 
-      React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end' } },
+      React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', flexWrap: 'wrap' } },
         React.createElement(BotaoSalvar, { salvando, salvo, onClick: salvar }),
       ),
     ),
@@ -553,7 +573,7 @@ function AbaDashboard() {
     // Status
     React.createElement('div', { style: painel },
       React.createElement('div', { style: painelHead }, React.createElement('div', { style: tituloPainel }, 'Conversas por status')),
-      React.createElement('div', { style: { display: 'flex', gap: 16, padding: 22 } },
+      React.createElement('div', { style: { display: 'flex', gap: 16, padding: 22, flexWrap: 'wrap' } },
         (data.por_status || []).map((s) =>
           React.createElement('div', {
             key: s.status,
@@ -656,7 +676,7 @@ function AbaChatbot() {
   };
   const delFaq = async (id) => { await excluirFaq(id); fetchFaqs().then(setFaqs).catch(console.error); };
 
-  return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 700 } },
+  return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 24, width: '100%', maxWidth: 700 } },
     React.createElement('div', { style: painel },
       React.createElement('div', { style: painelHead },
         React.createElement('div', { style: tituloPainel }, 'Configuração do Chatbot'),
@@ -670,7 +690,7 @@ function AbaChatbot() {
         React.createElement('label', { style: label }, 'Mensagem de boas-vindas'),
         React.createElement('textarea', { value: cfg?.mensagem_boas_vindas || '', onChange: (e) => setField('mensagem_boas_vindas', e.target.value), rows: 2, style: { ...campo, resize: 'vertical', fontFamily: T.font } }),
 
-        React.createElement('div', { style: { display: 'flex', gap: 12, marginBottom: 14 } },
+        React.createElement('div', { style: { display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' } },
           React.createElement('label', { style: { display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 13 } },
             React.createElement('input', { type: 'checkbox', checked: cfg?.usar_keywords !== false, onChange: (e) => setField('usar_keywords', e.target.checked) }),
             'Palavras-chave'),
@@ -689,8 +709,8 @@ function AbaChatbot() {
         ),
 
         cfg?.usar_llm === true && React.createElement(React.Fragment, null,
-          React.createElement('div', { style: { display: 'flex', gap: 12, marginBottom: 14 } },
-            React.createElement('div', { style: { flex: 1 } },
+          React.createElement('div', { style: { display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' } },
+            React.createElement('div', { style: { flex: 1, minWidth: 180 } },
               React.createElement('label', { style: label }, 'Provider'),
               React.createElement('select', { value: cfg?.llm_provider || 'openai', onChange: (e) => setField('llm_provider', e.target.value), style: { ...campo, marginBottom: 0 } },
                 React.createElement('option', { value: 'openai' }, 'OpenAI'),
@@ -698,7 +718,7 @@ function AbaChatbot() {
                 React.createElement('option', { value: 'anthropic' }, 'Anthropic (Claude)'),
               ),
             ),
-            React.createElement('div', { style: { flex: 1 } },
+            React.createElement('div', { style: { flex: 1, minWidth: 180 } },
               React.createElement('label', { style: label }, 'Modelo'),
               React.createElement('input', { value: cfg?.llm_model || '', onChange: (e) => setField('llm_model', e.target.value), placeholder: 'gpt-4o-mini', style: campo }),
             ),
@@ -712,7 +732,7 @@ function AbaChatbot() {
         React.createElement('label', { style: label }, 'Mensagem de fallback (quando não entende)'),
         React.createElement('textarea', { value: cfg?.mensagem_fallback || '', onChange: (e) => setField('mensagem_fallback', e.target.value), rows: 2, style: { ...campo, resize: 'vertical', fontFamily: T.font } }),
 
-        React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end' } },
+        React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', flexWrap: 'wrap' } },
           React.createElement(BotaoSalvar, { salvando, salvo, onClick: salvarCfg }),
         ),
       ),
@@ -724,7 +744,7 @@ function AbaChatbot() {
       React.createElement('div', { style: { ...linha, background: T.surfaceAlt } },
         React.createElement('input', { value: pNome, onChange: (e) => setPNome(e.target.value), placeholder: 'Palavras (separadas por vírgula)', style: { ...input, flex: 1 } }),
         React.createElement('input', { value: pResposta, onChange: (e) => setPResposta(e.target.value), placeholder: 'Resposta automática', style: { ...input, flex: 2 } }),
-        React.createElement('select', { value: pDepto, onChange: (e) => setPDepto(e.target.value), style: { ...input, width: 140 } },
+        React.createElement('select', { value: pDepto, onChange: (e) => setPDepto(e.target.value), style: { ...input, width: 140, flex: '1 1 140px' } },
           React.createElement('option', { value: '' }, 'Setor (opcional)'),
           departamentos.map((d) => React.createElement('option', { key: d.id, value: d.id }, d.secretaria_nome ? `${d.secretaria_nome} › ${d.nome}` : d.nome)),
         ),
@@ -782,7 +802,7 @@ function AbaIris() {
     catch (e) { alert(e.message); } finally { setSalvando(false); }
   };
 
-  return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 700 } },
+  return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 24, width: '100%', maxWidth: 700 } },
     React.createElement('div', { style: painel },
       React.createElement('div', { style: painelHead },
         React.createElement('div', { style: tituloPainel }, 'Configuração da Iris'),
@@ -795,15 +815,15 @@ function AbaIris() {
       React.createElement('div', { style: { padding: 22 } },
         React.createElement('p', { style: { fontSize: 13, color: T.textSecondary, marginBottom: 16 } },
           'A Iris é uma assistente virtual com IA que atende os cidadãos 24 horas por dia. Ela entende a intenção da mensagem, conversa com o cidadão e encaminha automaticamente para o departamento correto.'),
-        React.createElement('div', { style: { display: 'flex', gap: 12, marginBottom: 14 } },
-          React.createElement('div', { style: { flex: 1 } },
+        React.createElement('div', { style: { display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' } },
+          React.createElement('div', { style: { flex: 1, minWidth: 180 } },
             React.createElement('label', { style: label }, 'Modelo'),
             React.createElement('select', { value: cfg?.model || 'deepseek-chat', onChange: (e) => setField('model', e.target.value), style: { ...campo, marginBottom: 0 } },
               React.createElement('option', { value: 'deepseek-chat' }, 'DeepSeek V4 Flash'),
               React.createElement('option', { value: 'deepseek-reasoner' }, 'DeepSeek R1 (Reasoner)'),
             ),
           ),
-          React.createElement('div', { style: { flex: 1 } },
+          React.createElement('div', { style: { flex: 1, minWidth: 180 } },
             React.createElement('label', { style: label }, 'Temperatura'),
             React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
               React.createElement('input', { type: 'range', min: 0.1, max: 1, step: 0.1, value: cfg?.temperatura ?? 0.7, onChange: (e) => setField('temperatura', parseFloat(e.target.value)), style: { flex: 1 } }),
@@ -813,15 +833,15 @@ function AbaIris() {
         ),
         React.createElement('label', { style: label }, 'API Key da DeepSeek'),
         React.createElement('input', { type: 'password', value: cfg?.api_key || '', onChange: (e) => setField('api_key', e.target.value), placeholder: cfg?.api_key_set ? '•••• (preencha para trocar)' : 'sk-...', style: campo }),
-        React.createElement('div', { style: { display: 'flex', gap: 12, marginBottom: 14 } },
-          React.createElement('div', { style: { flex: 1 } },
+        React.createElement('div', { style: { display: 'flex', gap: 12, marginBottom: 14, flexWrap: 'wrap' } },
+          React.createElement('div', { style: { flex: 1, minWidth: 180 } },
             React.createElement('label', { style: label }, 'Max Tokens'),
             React.createElement('input', { type: 'number', value: cfg?.max_tokens ?? 1024, onChange: (e) => setField('max_tokens', parseInt(e.target.value) || 1024), min: 256, max: 4096, style: campo }),
           ),
         ),
         React.createElement('label', { style: label }, 'System Prompt personalizado (opcional — deixe vazio para usar o padrão)'),
         React.createElement('textarea', { value: cfg?.system_prompt || '', onChange: (e) => setField('system_prompt', e.target.value), rows: 4, placeholder: 'Prompt padrão: a Iris conhece automaticamente todos os departamentos cadastrados...', style: { ...campo, resize: 'vertical', fontFamily: T.font } }),
-        React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end' } },
+        React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', flexWrap: 'wrap' } },
           React.createElement(BotaoSalvar, { salvando, salvo, onClick: salvar, texto: 'Salvar configuração' }),
         ),
       ),
@@ -866,13 +886,13 @@ function AbaNotificacoes() {
     }
   };
 
-  return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 24, maxWidth: 500 } },
+  return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 24, width: '100%', maxWidth: 500 } },
     React.createElement('div', { style: painel },
       React.createElement('div', { style: painelHead },
         React.createElement('div', { style: tituloPainel }, 'Preferências de notificação'),
       ),
       React.createElement('div', { style: { padding: 22, display: 'flex', flexDirection: 'column', gap: 20 } },
-        React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 } },
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
             cfg?.push_ativo ? React.createElement(Bell, { size: 20, color: T.primary })
                             : React.createElement(BellOff, { size: 20, color: T.textMuted }),
@@ -903,7 +923,7 @@ function AbaNotificacoes() {
             }),
           ),
         ),
-        React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 } },
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
             React.createElement(Volume2, { size: 20, color: cfg?.som_ativado !== false ? T.primary : T.textMuted }),
             React.createElement('div', null,
@@ -933,8 +953,8 @@ function AbaNotificacoes() {
             }),
           ),
         ),
-        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
-          React.createElement('div', { style: { flex: 1 } },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' } },
+          React.createElement('div', { style: { flex: 1, minWidth: 130 } },
             React.createElement('label', { style: label }, 'Não perturbe — início'),
             React.createElement('input', {
               type: 'time', value: cfg?.nao_perturbe_inicio || '',
@@ -943,7 +963,7 @@ function AbaNotificacoes() {
             }),
           ),
           React.createElement('span', { style: { color: T.textMuted, fontSize: 13, marginTop: 20 } }, 'até'),
-          React.createElement('div', { style: { flex: 1 } },
+          React.createElement('div', { style: { flex: 1, minWidth: 130 } },
             React.createElement('label', { style: label }, 'Não perturbe — fim'),
             React.createElement('input', {
               type: 'time', value: cfg?.nao_perturbe_fim || '',
@@ -954,7 +974,7 @@ function AbaNotificacoes() {
         ),
         React.createElement('div', { style: { fontSize: 11, color: T.textMuted, marginTop: -8 } },
           'Durante este período, notificações desktop e sons são suprimidos.'),
-        React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end' } },
+        React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', flexWrap: 'wrap' } },
           React.createElement(BotaoSalvar, { salvando, salvo, onClick: salvar, texto: 'Salvar preferências' }),
         ),
       ),
@@ -984,8 +1004,8 @@ function AbaTemplates() {
     React.createElement('div', { style: { ...linha, background: T.surfaceAlt, flexDirection: 'column', alignItems: 'stretch', gap: 8 } },
       React.createElement('input', { value: titulo, onChange: (e) => setTitulo(e.target.value), placeholder: 'Título do template', style: input }),
       React.createElement('textarea', { value: conteudo, onChange: (e) => setConteudo(e.target.value), rows: 2, placeholder: 'Conteúdo da mensagem', style: { ...campo, resize: 'vertical', fontFamily: T.font, marginBottom: 0 } }),
-      React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' } },
-        React.createElement('input', { value: categoria, onChange: (e) => setCategoria(e.target.value), placeholder: 'Categoria', style: { ...input, width: 160 } }),
+      React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+        React.createElement('input', { value: categoria, onChange: (e) => setCategoria(e.target.value), placeholder: 'Categoria', style: { ...input, width: 160, flex: '1 1 160px' } }),
         React.createElement('button', { onClick: criar, style: btnAdd }, React.createElement(Plus, { size: 16 }), 'Criar template'),
       ),
     ),

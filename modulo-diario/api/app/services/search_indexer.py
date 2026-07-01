@@ -46,6 +46,7 @@ class SearchProvider(ABC):
         date_to: Optional[date] = None,
         org_unit: Optional[str] = None,
         act_type: Optional[str] = None,
+        organization_id: Optional[uuid.UUID] = None,
         page: int = 0, page_size: int = 20,
     ) -> tuple[list[SearchResult], int]: ...
 
@@ -109,6 +110,7 @@ class PostgresFtsProvider(SearchProvider):
         date_to: Optional[date] = None,
         org_unit: Optional[str] = None,
         act_type: Optional[str] = None,
+        organization_id: Optional[uuid.UUID] = None,
         page: int = 0, page_size: int = 20,
     ) -> tuple[list[SearchResult], int]:
         text("plainto_tsquery(:fts, unaccent(:q))")
@@ -133,6 +135,9 @@ class PostgresFtsProvider(SearchProvider):
         if act_type:
             filters.append("si.act_type ILIKE :act_type")
             params["act_type"] = f"%{act_type}%"
+        if organization_id:
+            filters.append("si.organization_id = :organization_id")
+            params["organization_id"] = organization_id
 
         where_extra = " AND " + " AND ".join(filters) if filters else ""
         base_str = str(base) + where_extra

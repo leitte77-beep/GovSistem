@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth-provider";
 import Sidebar from "./Sidebar";
@@ -11,6 +11,7 @@ function AppLayoutInner({ children, title }: { children: React.ReactNode; title:
   const router = useRouter();
   const pathname = usePathname();
   const redirected = useRef(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && !user && pathname !== "/login" && !redirected.current) {
@@ -18,6 +19,11 @@ function AppLayoutInner({ children, title }: { children: React.ReactNode; title:
       router.replace("/login");
     }
   }, [loading, user, pathname, router]);
+
+  // Fecha o menu lateral ao navegar (no celular o drawer some após clicar).
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
   if (loading) {
     return (
@@ -40,11 +46,11 @@ function AppLayoutInner({ children, title }: { children: React.ReactNode; title:
       className="min-h-screen bg-background"
       style={{ "--sidebar-width": "16rem", "--header-height": "3.5rem" } as React.CSSProperties}
     >
-      <Sidebar />
-      <Header title={title} />
+      <Sidebar open={mobileOpen} onClose={() => setMobileOpen(false)} />
+      <Header title={title} onMenuClick={() => setMobileOpen(true)} />
       <div
-        className="flex flex-col min-h-screen"
-        style={{ marginLeft: "var(--sidebar-width)", paddingTop: "var(--header-height)" }}
+        className="flex flex-col min-h-screen lg:ml-[var(--sidebar-width)]"
+        style={{ paddingTop: "var(--header-height)" }}
       >
         <main className="flex-1">
           <div className="max-w-[1200px] mx-auto px-gutter py-stack-lg">

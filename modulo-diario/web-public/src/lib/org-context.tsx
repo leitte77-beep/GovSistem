@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 import { api, type OrganizationInfo } from "./api";
+import { notifyError } from "./error-handler";
 
 interface OrgContextType {
   org: OrganizationInfo | null;
@@ -17,7 +18,7 @@ export function OrgProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     api.getOrganization()
       .then(setOrg)
-      .catch(() => setOrg(null))
+      .catch((err) => { setOrg(null); notifyError("OrgContext.getOrganization", err); })
       .finally(() => setLoading(false));
   }, []);
 

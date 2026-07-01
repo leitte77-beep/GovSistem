@@ -27,5 +27,7 @@ async def list_roles(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(get_current_user),
 ):
-    result = await db.execute(select(Role).order_by(Role.name))
+    result = await db.execute(
+        select(Role).where(Role.name != "SUPER_ADMIN").order_by(Role.name)
+    )
     return result.scalars().all()

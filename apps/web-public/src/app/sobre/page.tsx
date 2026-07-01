@@ -1,9 +1,12 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect } from "react";
+import { useOrg } from "@/lib/org-context";
 
 export default function SobrePage() {
+  const { org } = useOrg();
   useEffect(() => {
     const els = document.querySelectorAll<HTMLElement>("a, button");
     const onMouseDown = (e: MouseEvent) => {
@@ -41,17 +44,19 @@ export default function SobrePage() {
               Sobre o Portal
             </h1>
             <p className="font-body-lg text-body-lg text-on-surface-variant leading-relaxed">
-              Bem-vindo ao novo Portal do Diário Oficial Eletrônico de Farol.
+              Bem-vindo ao Portal do Diário Oficial Eletrônico{org?.name ? ` de ${org.name}` : ""}.
               Uma plataforma moderna desenvolvida para garantir transparência,
               acessibilidade e agilidade na divulgação dos atos oficiais do
               nosso município.
             </p>
           </div>
           <div className="flex-shrink-0">
-            <img
-              alt="Brasão de Farol"
+            <Image
+              alt={org?.name ? `Brasão de ${org.name}` : "Brasão do Município"}
               className="h-48 w-auto drop-shadow-lg"
               src="https://lh3.googleusercontent.com/aida-public/AB6AXuA0Kcjp4McoeNBLyh6h2jUM4wajiprutuZzieuAJ6BkQz9ArrtQucTEpXOeMP8TzEBmF6MEsNPzHbF_sMf5o8kYz9EYxeZPYM3Sb-QqjLMtgpQ6hHKk2z-dArpbEe3DPZfn9zo1O3dn8O5vagDmqRlSGsHQEv21hQ5RJDkdzgAs9VuFApkUklT3gr5GdYFlROLNR4dKp9RitFWc_yj8vxA4s-J8_TZVR6HzKS6LkBCeSGXMDzMG0goqOtRGN3VggB9STY5Wj00iTeg6"
+              width={192}
+              height={192}
             />
           </div>
         </div>
@@ -75,7 +80,7 @@ export default function SobrePage() {
                 <p className="font-body-md text-body-md text-on-surface-variant mb-6 leading-relaxed">
                   O Diário Oficial Eletrônico é o veículo oficial de
                   comunicação, publicidade e fomento da transparência dos atos
-                  administrativos da Prefeitura Municipal de Farol. Sua
+                  administrativos {org?.name ? `da(o) ${org.name}` : "do município"}. Sua
                   finalidade principal é centralizar e disponibilizar, de forma
                   digital e totalmente gratuita, todos os atos normativos,
                   editais de licitação, decretos e documentos públicos.
@@ -229,9 +234,11 @@ export default function SobrePage() {
             </div>
           </div>
           <div className="relative rounded-xl overflow-hidden shadow-xl aspect-video">
-            <img
+            <Image
               alt="Acesso Digital"
-              className="w-full h-full object-cover"
+              fill
+              sizes="(max-width: 768px) 100vw, 50vw"
+              className="object-cover"
               src="https://lh3.googleusercontent.com/aida-public/AB6AXuCXLpQ5iiG4ly38t_iOL98Qg0SA4nMDNIXtopRSeSw8shkzsoOBdb-GIPC35uQuRaiUoLNieGKpC8YJzVItagIcFovlmu6UFKRWIWlQCRq0WeQ1WTHnwosN9I8DUrLYUPxGgKMCsukSqFn9XiiECEn8NkXzQA0mokGuwKyS24gAIKduBzCR8MAfpUotIctF123e9jjM7bMyo6MDXn_YsW1R3UPVpyD0810eGfA5bVn4IJNgszvSSowpHy5Pf9-HG8d6VkZQOgexJSHo"
             />
             <div className="absolute inset-0 bg-primary/10" />

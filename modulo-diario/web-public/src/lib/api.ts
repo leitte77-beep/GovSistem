@@ -75,6 +75,8 @@ export interface OrganizationInfo {
   slug: string;
   logo_url: string | null;
   description: string | null;
+  contact_email: string | null;
+  address: string | null;
   theme: {
     primary_color: string;
     secondary_color: string;

@@ -13,15 +13,25 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Header, UploadFile, File, Form
 from pydantic import BaseModel
 
+from app.core.config import settings
 from app.providers import create_provider
 
 logger = logging.getLogger(__name__)
 router = APIRouter(tags=["internal"])
 
 _audit_log: list[dict] = []
+
+
+def _verify_internal_api_key(x_internal_api_key: str = Header(...)) -> None:
+    """Verify that the request comes from an authorized internal service."""
+    expected = settings.INTERNAL_API_KEY.get_secret_value()
+    if not expected:
+        return  # No key configured — allow in dev mode
+    if x_internal_api_key != expected:
+        raise HTTPException(status_code=403, detail="Forbidden: invalid internal API key")
 
 
 def _sanitize_log(record: dict) -> dict:
@@ -105,6 +115,7 @@ class VerifyResponse(BaseModel):
 async def inspect_certificate(
     pfx_base64: str = Form(...),
     password: str = Form(...),
+    _auth: None = Depends(_verify_internal_api_key),
 ):
     """Inspect an A1 certificate and return detailed information with ICP-Brasil validation."""
     try:
@@ -136,7 +147,10 @@ async def inspect_certificate(
 
 
 @router.post("/internal/sign-pdf", response_model=SignResponse)
-async def sign_pdf(request: InternalSignRequest):
+async def sign_pdf(
+    request: InternalSignRequest,
+    _auth: None = Depends(_verify_internal_api_key),
+):
     """Sign a PDF with an A1 certificate using PAdES AD-RB (ICP-Brasil)."""
 
     logger.info(
@@ -222,6 +236,7 @@ async def sign_pdf(request: InternalSignRequest):
 @router.post("/internal/verify-pdf", response_model=VerifyResponse)
 async def verify_pdf_signature(
     request: VerifyRequest,
+    _auth: None = Depends(_verify_internal_api_key),
 ):
     """Verify a signed PDF and return detailed validation report."""
     try:

@@ -8,6 +8,8 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import Response
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -15,6 +17,7 @@ from sqlalchemy.orm import selectinload
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.tenant import require_tenant, resolve_tenant_from_domain
+from app.core.storage import set_storage_tenant
 from app.models.edition import Edition
 from app.models.edition_item import EditionItem
 from app.models.enums import EditionStatus
@@ -24,6 +27,8 @@ from app.models.organization import Organization
 from app.models.signature import Signature
 
 router = APIRouter(tags=["public"])
+
+limiter = Limiter(key_func=get_remote_address)
 
 
 def _count_pdf_pages(path: Path) -> int | None:
@@ -37,12 +42,27 @@ def _count_pdf_pages(path: Path) -> int | None:
     return count if count > 0 else None
 
 
-def _resolve_upload_path(file_path: str) -> Path | None:
+def _resolve_upload_path(file_path: str, tenant_slug: str | None = None) -> Path | None:
     clean_path = Path(file_path)
     if clean_path.is_absolute() or ".." in clean_path.parts:
         return None
 
     base_dir = Path(settings.UPLOAD_DIR).resolve()
+
+    if settings.STORAGE_TENANT_ISOLATION and tenant_slug:
+        prefix = Path(tenant_slug)
+        candidates = [
+            (base_dir / prefix / clean_path).resolve(),
+            (base_dir / prefix / "pdf" / clean_path).resolve(),
+        ]
+        return next(
+            (
+                path for path in candidates
+                if str(path).startswith(str(base_dir)) and path.exists() and path.is_file()
+            ),
+            None,
+        )
+
     candidates = [
         (base_dir / clean_path).resolve(),
         (base_dir / "pdf" / clean_path).resolve(),
@@ -57,13 +77,24 @@ def _resolve_upload_path(file_path: str) -> Path | None:
     )
 
 
-def _public_pdf_path(edition: Edition) -> str | None:
+def _public_pdf_path(edition: Edition, tenant_slug: str | None = None) -> str | None:
     if edition.signed_pdf_path:
         for signature in edition.signatures or []:
             certificate_info = signature.certificate_info or {}
             if certificate_info.get("sha256_signed") == edition.pdf_hash:
-                return edition.signed_pdf_path
-    return edition.pdf_path
+                signed_path = _resolve_upload_path(edition.signed_pdf_path, tenant_slug)
+                if signed_path is not None:
+                    return edition.signed_pdf_path
+                break
+    if edition.pdf_path:
+        pdf_path = _resolve_upload_path(edition.pdf_path, tenant_slug)
+        if pdf_path is not None:
+            return edition.pdf_path
+    if edition.signed_pdf_path:
+        signed_path = _resolve_upload_path(edition.signed_pdf_path, tenant_slug)
+        if signed_path is not None:
+            return edition.signed_pdf_path
+    return edition.pdf_path  # fallback
 
 
 @router.get("/public/organization")
@@ -87,8 +118,17 @@ async def public_get_organization(
 
 
 @router.get("/public/download/{file_path:path}")
-async def public_download(file_path: str, inline: bool = False):
-    full_path = _resolve_upload_path(file_path)
+@limiter.limit("120/minute")
+async def public_download(
+    request: Request, file_path: str, inline: bool = False,
+    tenant: Organization | None = Depends(resolve_tenant_from_domain),
+):
+    tenant_slug = tenant.slug if tenant else None
+    if settings.STORAGE_TENANT_ISOLATION and not tenant_slug:
+        raise HTTPException(status_code=400, detail="Tenant context required for file download")
+    if tenant_slug:
+        set_storage_tenant(tenant_slug)
+    full_path = _resolve_upload_path(file_path, tenant_slug)
     if full_path is None and (Path(file_path).is_absolute() or ".." in Path(file_path).parts):
         raise HTTPException(status_code=400, detail="Invalid file path")
     if full_path is None:
@@ -111,7 +151,9 @@ async def public_download(file_path: str, inline: bool = False):
 
 
 @router.get("/public/editions")
+@limiter.limit("60/minute")
 async def public_list_editions(
+    request: Request,
     year: Optional[int] = None,
     type: Optional[str] = None,
     search: Optional[str] = None,
@@ -160,6 +202,7 @@ async def public_list_editions(
 
 
 @router.get("/public/editions/{year}/{number}")
+@limiter.limit("60/minute")
 async def public_get_edition(
     year: int,
     number: int,
@@ -217,9 +260,10 @@ async def public_get_edition(
         })
 
     page_count = None
-    public_pdf_path = _public_pdf_path(edition)
+    tenant_slug = tenant.slug if tenant else None
+    public_pdf_path = _public_pdf_path(edition, tenant_slug)
     if public_pdf_path:
-        pdf_full_path = _resolve_upload_path(public_pdf_path)
+        pdf_full_path = _resolve_upload_path(public_pdf_path, tenant_slug)
         if pdf_full_path:
             page_count = _count_pdf_pages(pdf_full_path)
 
@@ -246,7 +290,9 @@ async def public_get_edition(
 
 
 @router.get("/public/matters/{matter_id}")
+@limiter.limit("60/minute")
 async def public_get_matter(
+    request: Request,
     matter_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     tenant: Organization | None = Depends(resolve_tenant_from_domain),
@@ -335,7 +381,9 @@ async def public_get_matter(
 
 
 @router.get("/public/search")
+@limiter.limit("30/minute")
 async def public_search(
+    request: Request,
     q: str = Query("", min_length=1),
     date_from: Optional[date] = None,
     date_to: Optional[date] = None,
@@ -344,6 +392,7 @@ async def public_search(
     page: int = Query(0, ge=0),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    tenant: Organization | None = Depends(resolve_tenant_from_domain),
 ):
     from app.services.search_indexer import get_search_provider
 
@@ -354,6 +403,7 @@ async def public_search(
         date_to=date_to,
         org_unit=org_unit,
         act_type=act_type,
+        organization_id=tenant.id if tenant else None,
         page=page,
         page_size=page_size,
     )
@@ -379,7 +429,9 @@ async def public_search(
 
 
 @router.get("/public/verify/{code}")
+@limiter.limit("30/minute")
 async def public_verify(
+    request: Request,
     code: str,
     db: AsyncSession = Depends(get_db),
     tenant: Organization | None = Depends(resolve_tenant_from_domain),
@@ -424,7 +476,8 @@ async def public_verify(
 
 
 @router.post("/public/verify-pdf")
-async def public_verify_pdf(body: dict):
+@limiter.limit("30/minute")
+async def public_verify_pdf(request: Request, body: dict):
     """Public endpoint to verify a signed PDF. No authentication required."""
     signed_pdf_base64 = body.get("signed_pdf_base64")
     if not signed_pdf_base64:
@@ -453,7 +506,8 @@ async def public_verify_pdf(body: dict):
 
 
 @router.post("/public/verify-code")
-async def public_verify_code(body: dict):
+@limiter.limit("30/minute")
+async def public_verify_code(request: Request, body: dict):
     """Public endpoint to look up signing info by verification code."""
     code = (body.get("code") or "").strip().upper()
     if not code:
