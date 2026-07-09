@@ -7,7 +7,8 @@ import { fetchMensagensFixadas, uploadArquivoApi } from '../api/evolucoes';
 import { T } from '../theme';
 import { BolhaMensagem } from './BolhaMensagem';
 import { normalizarMsg, normalizarMensagens, normalizarCanal } from '../utils/normalizar';
-import { encodeFileBase64, mimeParaTipo, agruparMensagens, formatarHora } from '../utils/arquivo';
+import { encodeFileBase64, mimeParaTipo, agruparMensagens, formatarHora, mesmaData, formatarDataSeparador } from '../utils/arquivo';
+import { SeparadorData } from './SeparadorData';
 
 const EMOJIS_RAPIDOS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '👏', '🎉', '🤔', '✅', '👀'];
 const SCROLL_THRESHOLD = 100;
@@ -864,15 +865,24 @@ export function PainelChatInternoAvancado({ canal, breakpoint, onVoltar }) {
       carregandoMais && React.createElement('div', { style: { textAlign: 'center', padding: 8, color: T.textMuted, fontSize: 12 } }, 'Carregando...'),
       !carregandoMais && temMaisAntigas && React.createElement('button', { onClick: carregarMaisAntigas, style: { display: 'block', margin: '0 auto 8px', background: 'transparent', border: 'none', color: T.primary, fontSize: 12, cursor: 'pointer' } }, 'Carregar mensagens anteriores'),
 
-      grupos.map((grupo, gi) => {
+      grupos.reduce((acc, grupo, gi) => {
         const isMe = grupo.isMe;
-        return React.createElement('div', { key: `${grupo.autorId}-${grupo.msgs[0].id}-${gi}`, style: { display: 'flex', flexDirection: 'column', alignItems: isMe ? 'flex-end' : 'flex-start' } },
+        const anterior = grupos[gi - 1];
+        const msgAtual = grupo.msgs[0];
+        const msgAnterior = anterior ? anterior.msgs[anterior.msgs.length - 1] : null;
+        const tsAtual = msgAtual?.criado_em || msgAtual?.criadoEm;
+        const tsAnterior = msgAnterior?.criado_em || msgAnterior?.criadoEm;
+        if (gi === 0 || !mesmaData(tsAnterior, tsAtual)) {
+          acc.push(React.createElement(SeparadorData, { key: `sep-${msgAtual?.id}-${gi}`, label: formatarDataSeparador(tsAtual) }));
+        }
+        acc.push(React.createElement('div', { key: `${grupo.autorId}-${msgAtual?.id}-${gi}`, style: { display: 'flex', flexDirection: 'column', alignItems: isMe ? 'flex-end' : 'flex-start' } },
           ...grupo.msgs.map((msg, mi) => React.createElement(BolhaMensagem, {
             key: msg.id, msg, isMe: msg._isMe, agrupada: mi > 0, opId, operadores: operadoresMap, onContextMenu: handleContextMenu, mostrarAutor: mi === 0,
             onTouchStart: () => handleTouchStart(msg.id), onTouchEnd: handleTouchEnd,
           })),
-        );
-      }),
+        ));
+        return acc;
+      }, []),
 
       novasPendentes > 0 && React.createElement('button', {
         onClick: () => { setNovasPendentes(0); scrollToBottom(true); },

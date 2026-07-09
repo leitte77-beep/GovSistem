@@ -2,6 +2,7 @@ import React from 'react';
 import { ShieldCheck } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { SocketProvider } from './context/SocketContext';
+import { ThemeProvider } from './context/ThemeContext';
 import { ChatGov } from './ChatGov';
 
 function LoginScreen() {
@@ -67,8 +68,10 @@ function AuthenticatedApp() {
 
 export function App() {
   return React.createElement('div', { 'data-build': '2.0.0-imp', style: { height: '100%', display: 'flex', flex: 1, minWidth: 0, overflow: 'hidden' } },
-    React.createElement(AuthProvider, null,
-      React.createElement(AuthenticatedApp),
+    React.createElement(ThemeProvider, null,
+      React.createElement(AuthProvider, null,
+        React.createElement(AuthenticatedApp),
+      ),
     ),
   );
 }

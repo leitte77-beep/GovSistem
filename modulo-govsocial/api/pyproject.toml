@@ -1,0 +1,42 @@
+[project]
+name = "govsocial-api"
+version = "0.1.0"
+description = "GovAssist - Módulo de Assistência Social (SUAS) - API Backend"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn[standard]>=0.30.0",
+    "sqlalchemy[asyncio]>=2.0.30",
+    "asyncpg>=0.29.0",
+    "alembic>=1.13.0",
+    "pydantic>=2.7.0",
+    "pydantic-settings>=2.3.0",
+    "httpx>=0.28.0",
+    "bcrypt>=4.0.0",
+    "pyjwt>=2.8.0",
+    "redis>=5.0.0",
+    "minio>=7.2.0",
+    "cryptography>=43.0.0",
+    "python-multipart>=0.0.12",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.0",
+    "pytest-asyncio>=0.24.0",
+    "aiosqlite>=0.20.0",
+    "ruff>=0.7.0",
+    "coverage>=7.6.0",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+per-file-ignores = {"app/core/config.py" = ["N802"], "app/core/database.py" = ["N806"], "app/core/seeds.py" = ["E501"], "app/api/v1/router.py" = ["I001"], "alembic/versions/*" = ["E501", "W291", "I001"], "tests/*" = ["E501"]}
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

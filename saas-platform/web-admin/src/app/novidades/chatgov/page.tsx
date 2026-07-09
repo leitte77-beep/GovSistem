@@ -52,6 +52,11 @@ const NOVIDADES: Item[] = [
     desc: "O menu lateral agora exibe o nome ao lado de cada ícone (Atendimento, Agenda, Equipe, Protocolos, Relatórios, Notificações e Configurações), com um menu \"Mais\" para itens extras.",
   },
   {
+    icon: "calendar_month",
+    title: "Separadores de data nas conversas",
+    desc: "As mensagens agora exibem separadores de data como no WhatsApp: \"Hoje\", \"Ontem\", dia da semana (ex: Segunda-feira) ou data completa (DD/MM/AAAA), facilitando a navegação pelo histórico.",
+  },
+  {
     icon: "touch_app",
     title: "Botões do topo funcionais",
     desc: "Os botões do cabeçalho da lista de conversas agora funcionam: Notificações, Nova conversa e o menu de perfil (configurações e sair).",

@@ -79,6 +79,37 @@ export function formatarHoraRelativa(ts) {
   } catch { return ''; }
 }
 
+// Verifica se dois timestamps pertencem ao mesmo dia (calendario local).
+export function mesmaData(ts1, ts2) {
+  if (!ts1 || !ts2) return false;
+  try {
+    const d1 = new Date(ts1);
+    const d2 = new Date(ts2);
+    return d1.toDateString() === d2.toDateString();
+  } catch { return false; }
+}
+
+// Formata a data para o separador entre mensagens, estilo WhatsApp.
+// "Hoje", "Ontem", dia da semana, ou DD/MM/AAAA.
+export function formatarDataSeparador(ts) {
+  if (!ts) return '';
+  try {
+    const d = new Date(ts);
+    const hoje = new Date();
+    const ontem = new Date(hoje);
+    ontem.setDate(ontem.getDate() - 1);
+
+    if (d.toDateString() === hoje.toDateString()) return 'Hoje';
+    if (d.toDateString() === ontem.toDateString()) return 'Ontem';
+
+    const diffDias = Math.floor((hoje.getTime() - d.getTime()) / 86400000);
+    if (diffDias < 7) {
+      return d.toLocaleDateString('pt-BR', { weekday: 'long' });
+    }
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+  } catch { return ''; }
+}
+
 export function agruparMensagens(mensagens) {
   const grupos = [];
   let atual = null;

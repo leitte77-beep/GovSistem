@@ -1,7 +1,8 @@
 import React from 'react';
-import { ShieldCheck, LogOut } from 'lucide-react';
+import { ShieldCheck, LogOut, Sun, Moon } from 'lucide-react';
 import { T } from '../theme';
 import { useAuth } from '../context/AuthContext';
+import { useTheme } from '../context/ThemeContext';
 
 const NAV_ICONS = {
   atendimento: 'chat',
@@ -127,6 +128,7 @@ function BotaoRailMobile({ view, ativo, onClick, badge }) {
 
 export function RailNavegacao({ view, onChange, isAdmin, verRelatorios, notifCount, breakpoint }) {
   const { auth, logout } = useAuth();
+  const { isDark, toggle } = useTheme();
   const op = auth?.operador;
   const inicial = (op?.nome || '?').trim().charAt(0).toUpperCase();
   const somenteIcone = breakpoint === 'tablet';
@@ -284,6 +286,51 @@ export function RailNavegacao({ view, onChange, isAdmin, verRelatorios, notifCou
     ),
 
     !somenteIcone && React.createElement('div', {
+      style: { padding: '4px 12px', marginBottom: 4 },
+    },
+      React.createElement('button', {
+        onClick: toggle,
+        title: isDark ? 'Modo claro' : 'Modo escuro',
+        style: {
+          width: '100%', height: 36,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          gap: 8, padding: 0,
+          border: '1px solid ' + T.borderStrong,
+          borderRadius: T.radius,
+          cursor: 'pointer',
+          background: 'transparent',
+          transition: 'border-color 0.2s',
+        },
+      },
+        React.createElement(Sun, { size: 14, color: isDark ? T.textMuted : T.primary }),
+        React.createElement('div', {
+          style: {
+            width: 32, height: 18,
+            borderRadius: 9,
+            background: isDark ? T.primary : '#d1d7db',
+            position: 'relative',
+            transition: 'background 0.25s',
+            flexShrink: 0,
+          },
+        },
+          React.createElement('div', {
+            style: {
+              width: 14, height: 14,
+              borderRadius: '50%',
+              background: '#fff',
+              position: 'absolute',
+              top: 2,
+              left: isDark ? 16 : 2,
+              transition: 'left 0.25s cubic-bezier(0.4,0,0.2,1)',
+              boxShadow: '0 1px 3px rgba(0,0,0,0.15)',
+            },
+          }),
+        ),
+        React.createElement(Moon, { size: 14, color: isDark ? T.primary : T.textMuted }),
+      ),
+    ),
+
+    !somenteIcone && React.createElement('div', {
       style: {
         display: 'flex', flexDirection: 'column', gap: 4, marginTop: 'auto',
         alignItems: 'stretch',
@@ -342,6 +389,25 @@ export function RailNavegacao({ view, onChange, isAdmin, verRelatorios, notifCou
         React.createElement('span', { style: { fontSize: 14 } }, 'Sair'),
       ),
     ),
+
+    somenteIcone && React.createElement('button', {
+      onClick: toggle,
+      title: isDark ? 'Modo claro' : 'Modo escuro',
+      style: {
+        width: '100%', height: 36,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        border: 'none', borderRadius: T.radiusSm,
+        cursor: 'pointer',
+        background: 'transparent',
+        color: T.railText,
+        marginBottom: 4,
+      },
+    },
+      isDark
+        ? React.createElement(Sun, { size: 18, color: T.railText })
+        : React.createElement(Moon, { size: 18, color: T.railText }),
+    ),
+
     somenteIcone && React.createElement('button', {
       onClick: logout,
       title: 'Sair (' + (op?.nome || '') + ')',

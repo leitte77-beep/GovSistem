@@ -9,7 +9,8 @@ import { MediaPreview, MediaLightbox } from './MediaPreview';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
 import { fetchMensagens, fetchDepartamentos, fetchTemplates, fetchEtiquetas, fetchEtiquetasConversa, fetchNotasInternas, editarContato, fetchTransferenciaPendente, excluirMensagemConversa, fetchMidiasConversa, marcarConversaNaoLida } from '../api';
-import { mimeParaTipo, encodeFileBase64 } from '../utils/arquivo';
+import { mimeParaTipo, encodeFileBase64, mesmaData, formatarDataSeparador } from '../utils/arquivo';
+import { SeparadorData } from './SeparadorData';
 import { T } from '../theme';
 
 const EMOJIS_RAPIDOS = ['😀', '😅', '👍', '🙏', '❤️', '😊', '👏', '✅', '⚠️', '📎'];
@@ -1099,17 +1100,24 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
           React.createElement(Loader2, { size: 18, className: 'spin' })),
         temMais && !carregandoMais && React.createElement('div', { style: { textAlign: 'center', marginBottom: 8 } },
           React.createElement('button', { onClick: carregarMais, style: { ...acaoBtn, margin: '0 auto' } }, 'Carregar mensagens anteriores')),
-        mensagens.map((msg) => React.createElement(BolhaConversa, {
-          key: msg.id,
-          msg,
-          podeExcluir: !msg.excluida && (msg.direcao === 'saida' ? (msg.operador_id === opId || ehGestor) : ehGestor),
-          onExcluir: () => excluirMsg(msg),
-          onResponder: () => setRespondendoA(msg),
-          onReagir: (emoji) => reagirMsg(msg, emoji),
-          respondida: msg.respondendo_a ? mensagens.find((m) => m.id === msg.respondendo_a) : null,
-          nomeContato: nome,
-          compacto: ehMobile,
-        })),
+        mensagens.reduce((acc, msg, i) => {
+          const anterior = mensagens[i - 1];
+          if (!anterior || !mesmaData(anterior.criado_em, msg.criado_em)) {
+            acc.push(React.createElement(SeparadorData, { key: `sep-${msg.id}`, label: formatarDataSeparador(msg.criado_em) }));
+          }
+          acc.push(React.createElement(BolhaConversa, {
+            key: msg.id,
+            msg,
+            podeExcluir: !msg.excluida && (msg.direcao === 'saida' ? (msg.operador_id === opId || ehGestor) : ehGestor),
+            onExcluir: () => excluirMsg(msg),
+            onResponder: () => setRespondendoA(msg),
+            onReagir: (emoji) => reagirMsg(msg, emoji),
+            respondida: msg.respondendo_a ? mensagens.find((m) => m.id === msg.respondendo_a) : null,
+            nomeContato: nome,
+            compacto: ehMobile,
+          }));
+          return acc;
+        }, []),
         clienteDigitando && React.createElement('div', {
           style: { fontSize: 12, color: T.textMuted, fontStyle: 'italic', padding: '4px 2px' },
         }, `${nome} está digitando…`),
