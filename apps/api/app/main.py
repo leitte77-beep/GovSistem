@@ -1,3 +1,6 @@
+import logging
+import traceback
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -14,22 +17,8 @@ from app.middleware.audit import audit_middleware
 from app.middleware.json_logging import JSONLogMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
 
+logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
-
-
-def create_app() -> FastAPI:
-    init_sentry()
-
-    app = FastAPI(
-        title=settings.APP_NAME,
-        description="Diário Oficial Eletrônico - API Backend",
-        version=settings.VERSION,
-        docs_url="/docs",
-        redoc_url="/redoc",
-    )
-
-    app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 
 def create_app() -> FastAPI:
@@ -56,6 +45,10 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(Exception)
     async def catch_all_exception_handler(request: Request, exc: Exception):
+        logger.error(
+            "Unhandled exception on %s %s: %s\n%s",
+            request.method, request.url.path, exc, traceback.format_exc(),
+        )
         origin = request.headers.get("origin", "")
         headers = {}
         if origin in settings.CORS_ORIGINS:
