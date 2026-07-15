@@ -349,6 +349,190 @@ services:
         reservations:
           memory: 128M
 
+  govtask-db-init:
+    image: postgres:16-alpine
+    <<: [*restart-policy]
+    logging: *default-logging
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        echo "Creating govtask database if not exists..."
+        PGPASSWORD=${POSTGRES_PASSWORD} psql -h postgres -U ${POSTGRES_USER:-doe_user} -d ${POSTGRES_DB:-doe} -tc "SELECT 1 FROM pg_database WHERE datname = '${GOVTASK_POSTGRES_DB:-govtask}'" | grep -q 1 || \
+        PGPASSWORD=${POSTGRES_PASSWORD} psql -h postgres -U ${POSTGRES_USER:-doe_user} -d ${POSTGRES_DB:-doe} -c "CREATE DATABASE ${GOVTASK_POSTGRES_DB:-govtask}"
+        echo "GovTask database ready"
+        exit 0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+
+  govtask-api:
+    build:
+      context: ../modulo-govtask/api
+      dockerfile: Dockerfile
+    <<: [*restart-policy]
+    logging: *default-logging
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${GOVTASK_POSTGRES_DB:-govtask}
+      POSTGRES_USER: ${POSTGRES_USER:-doe_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: redis
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minio_access}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minio_secret}
+      MINIO_BUCKET: ${GOVTASK_MINIO_BUCKET:-govtask-files}
+      MINIO_SECURE: "false"
+      CORS_ORIGINS: '["https://govtask.govsistem.com.br"]'
+      DEBUG: "false"
+      SECRET_KEY: ${GOVTASK_SECRET_KEY}
+      SAAS_JWT_SECRET: ${SAAS_JWT_SECRET}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+    volumes:
+      - govtask_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      govtask-db-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/govtask/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  govtask-web:
+    build:
+      context: ../modulo-govtask/web-admin
+      dockerfile: Dockerfile
+    <<: [*restart-policy]
+    logging: *default-logging
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+    depends_on:
+      govtask-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+
+  govsocial-db-init:
+    image: postgres:16-alpine
+    <<: [*restart-policy]
+    logging: *default-logging
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        echo "Creating govsocial database if not exists..."
+        PGPASSWORD=${POSTGRES_PASSWORD} psql -h postgres -U ${POSTGRES_USER:-doe_user} -d ${POSTGRES_DB:-doe} -tc "SELECT 1 FROM pg_database WHERE datname = '${GOVSOCIAL_POSTGRES_DB:-govsocial}'" | grep -q 1 || \
+        PGPASSWORD=${POSTGRES_PASSWORD} psql -h postgres -U ${POSTGRES_USER:-doe_user} -d ${POSTGRES_DB:-doe} -c "CREATE DATABASE ${GOVSOCIAL_POSTGRES_DB:-govsocial}"
+        echo "GovSocial database ready"
+        exit 0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - internal
+
+  govsocial-api:
+    build:
+      context: ../modulo-govsocial/api
+      dockerfile: Dockerfile
+    <<: [*restart-policy]
+    logging: *default-logging
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${GOVSOCIAL_POSTGRES_DB:-govsocial}
+      POSTGRES_USER: ${POSTGRES_USER:-doe_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      REDIS_HOST: redis
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minio_access}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minio_secret}
+      MINIO_BUCKET: ${GOVSOCIAL_MINIO_BUCKET:-govsocial-files}
+      MINIO_SECURE: "false"
+      CORS_ORIGINS: '["https://govsocial.govsistem.com.br"]'
+      PUBLIC_URL: ${GOVSOCIAL_PUBLIC_URL:-https://govsocial.govsistem.com.br}
+      DEBUG: "false"
+      SECRET_KEY: ${GOVSOCIAL_SECRET_KEY}
+      SAAS_JWT_SECRET: ${GOVSOCIAL_SAAS_JWT_SECRET}
+      INTERNAL_API_KEY: ${GOVSOCIAL_INTERNAL_API_KEY}
+      FIELD_ENCRYPTION_KEY: ${GOVSOCIAL_FIELD_ENCRYPTION_KEY:-}
+    volumes:
+      - govsocial_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      govsocial-db-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/govsocial/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  govsocial-web:
+    build:
+      context: ../modulo-govsocial/web
+      dockerfile: Dockerfile
+    <<: [*restart-policy]
+    logging: *default-logging
+    depends_on:
+      govsocial-api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - internal
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+        reservations:
+          memory: 128M
+
   nginx:
     image: nginx:1.25-alpine
     <<: [*restart-policy]
@@ -369,6 +553,10 @@ services:
       - web-admin
       - web-public
       - landing
+      - govtask-api
+      - govtask-web
+      - govsocial-api
+      - govsocial-web
     networks:
       - internal
       - public
@@ -401,6 +589,10 @@ volumes:
   uploads:
     driver: local
   certbot-www:
+    driver: local
+  govtask_uploads:
+    driver: local
+  govsocial_uploads:
     driver: local
 
 networks:
