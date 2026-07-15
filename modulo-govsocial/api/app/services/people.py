@@ -169,3 +169,32 @@ async def merge_persons(
     drop.deleted_at = datetime.now(timezone.utc)
     await db.flush()
     return keep
+
+
+async def merge_families(db: AsyncSession, keep_id: str, merge_id: str, tenant_id: str, user_id: str) -> dict:
+    """Unifica duas familias duplicadas, transferindo todas as relacoes para a mantida (CCCL)."""
+    from sqlalchemy import update as sa_update
+    from app.models.family import Family
+    from app.models.person_family_membership import PersonFamilyMembership
+    from app.models.case_file import CaseFile
+
+    keep = await db.get(Family, keep_id)
+    merge = await db.get(Family, merge_id)
+    if not keep or not merge or str(keep.tenant_id) != tenant_id or str(merge.tenant_id) != tenant_id:
+        raise ValueError("Familias invalidas para unificacao")
+
+    # Migrar membros
+    await db.execute(sa_update(PersonFamilyMembership).where(PersonFamilyMembership.family_id == merge_id).values(family_id=keep_id))
+    # Migrar prontuarios
+    await db.execute(sa_update(CaseFile).where(CaseFile.family_id == merge_id).values(family_id=keep_id))
+    # Migrar beneficios
+    await db.execute(sa_update(text("benefit_concessions SET family_id = :keep WHERE family_id = :merge"), {"keep": keep_id, "merge": merge_id}))
+    # Soft-delete a familia mesclada
+    merge.deleted_at = datetime.now(timezone.utc)
+    # Registrar log
+    from app.models.unificacao import UnificacaoLog
+    log = UnificacaoLog(tenant_id=tenant_id, tabela="families", registro_mantido_id=keep_id,
+                        registros_excluidos=[merge_id], realizado_por_id=user_id)
+    db.add(log)
+    await db.commit()
+    return {"mantido": str(keep.id), "mesclado": str(merge.id), "status": "ok"}

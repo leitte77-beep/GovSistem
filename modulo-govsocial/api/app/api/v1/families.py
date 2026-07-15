@@ -2,7 +2,8 @@ import uuid
 from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import select
+from pydantic import BaseModel
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -13,6 +14,7 @@ from app.models.enums import AuditAccessType, AuditAction, RoleName
 from app.models.family import Family
 from app.models.person import Person
 from app.models.person_family_membership import PersonFamilyMembership
+from app.models.unificacao import UnificacaoLog
 from app.models.user import User
 from app.schemas.people import (
     AddMemberRequest,
@@ -22,10 +24,11 @@ from app.schemas.people import (
     FamilyUpdate,
     MemberOut,
     MoveMemberRequest,
+    UpdateMemberRequest,
 )
 from app.services.audit import record_audit
 from app.services.geocode import enqueue_family_geocode
-from app.services.people import next_family_codigo
+from app.services.people import merge_families, next_family_codigo
 
 router = APIRouter(prefix="/families", tags=["families"])
 
@@ -50,8 +53,48 @@ _DELETE = require_roles(
     RoleName.GESTOR_MUNICIPAL.value,
     RoleName.ADMIN.value,
 )
+_MERGE = require_roles(
+    RoleName.COORDENADOR_UNIDADE.value,
+    RoleName.GESTOR_MUNICIPAL.value,
+    RoleName.ADMIN.value,
+)
 
 _ADDRESS_FIELDS = {"cep", "logradouro", "numero", "bairro", "municipio", "uf"}
+
+
+async def _membership_ativo(db, tenant_id, family_id, person_id):
+    return (
+        await db.execute(
+            select(PersonFamilyMembership).where(
+                PersonFamilyMembership.tenant_id == tenant_id,
+                PersonFamilyMembership.family_id == family_id,
+                PersonFamilyMembership.person_id == person_id,
+                PersonFamilyMembership.status == "ATIVO",
+            )
+        )
+    ).scalar_one_or_none()
+
+
+async def _aplicar_responsavel(
+    db, tenant_id, fam: Family, person: Person, vinculo, nis_explicito: bool = False
+) -> None:
+    """Torna `person` responsável da família, mantendo parentesco e NIS coerentes.
+
+    O parentesco é declarado em relação ao responsável, então o responsável
+    anterior fica sem relação conhecida — zeramos em vez de inventar um valor,
+    e a UI permite corrigir depois.
+    """
+    anterior_id = fam.responsavel_id
+    if anterior_id == person.id:
+        return
+    fam.responsavel_id = person.id
+    vinculo.parentesco = "RESPONSAVEL"
+    if anterior_id:
+        antigo = await _membership_ativo(db, tenant_id, fam.id, anterior_id)
+        if antigo and antigo.parentesco == "RESPONSAVEL":
+            antigo.parentesco = None
+    if not nis_explicito:
+        fam.nis_responsavel = person.nis
 
 
 async def _load_family(db, tenant_id, family_id) -> Family:
@@ -113,6 +156,15 @@ def _to_out(fam: Family) -> dict:
         "bairro": fam.bairro,
         "municipio": fam.municipio,
         "uf": fam.uf,
+        "ponto_referencia": fam.ponto_referencia,
+        "telefone_contato": fam.telefone_contato,
+        "situacao_rua": fam.situacao_rua,
+        "data_cadastramento": fam.data_cadastramento,
+        "despesa_aluguel": fam.despesa_aluguel,
+        "despesa_transporte": fam.despesa_transporte,
+        "despesa_alimentacao": fam.despesa_alimentacao,
+        "despesa_medicamentos": fam.despesa_medicamentos,
+        "despesa_outros": fam.despesa_outros,
         "latitude": fam.latitude,
         "longitude": fam.longitude,
         "geocode_status": fam.geocode_status,
@@ -131,7 +183,7 @@ def _to_out(fam: Family) -> dict:
 
 @router.get("", response_model=list[FamilyListItem])
 async def listar_familias(
-    search: str | None = Query(None, description="Código, bairro ou território"),
+    search: str | None = Query(None, description="Código, bairro, território ou nome do responsável"),
     territorio: str | None = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
@@ -141,16 +193,46 @@ async def listar_familias(
 ):
     query = (
         select(Family)
+        .outerjoin(Person, Person.id == Family.responsavel_id)
         .where(Family.tenant_id == tenant_id, Family.deleted_at.is_(None))
         .options(selectinload(Family.responsavel))
     )
     if territorio:
         query = query.where(Family.territorio == territorio)
     if search:
-        if search.isdigit():
-            query = query.where(Family.codigo == int(search))
+        search = search.strip()[:100]
+        codigo_search: int | None = None
+        try:
+            codigo_search = int(search)
+        except (ValueError, TypeError):
+            codigo_search = None
+        if codigo_search is not None:
+            query = query.where(Family.codigo == codigo_search)
         else:
-            query = query.where(Family.bairro.ilike(f"%{search}%"))
+            # Subquery: IDs de famílias que contêm membros com o nome buscado
+            membro_q = (
+                select(PersonFamilyMembership.family_id)
+                .join(Person, Person.id == PersonFamilyMembership.person_id)
+                .where(
+                    PersonFamilyMembership.status == "ATIVO",
+                    Person.deleted_at.is_(None),
+                    or_(
+                        Person.nome_civil.ilike(f"%{search}%"),
+                        Person.nome_social.ilike(f"%{search}%"),
+                        Person.busca.ilike(f"%{search}%"),
+                    ),
+                )
+            ).distinct()
+            query = query.where(
+                or_(
+                    Person.nome_civil.ilike(f"%{search}%"),
+                    Person.nome_social.ilike(f"%{search}%"),
+                    Person.busca.ilike(f"%{search}%"),
+                    Family.bairro.ilike(f"%{search}%"),
+                    Family.territorio.ilike(f"%{search}%"),
+                    Family.id.in_(membro_q),
+                )
+            )
     query = query.order_by(Family.codigo).offset(skip).limit(limit)
     fams = (await db.execute(query)).scalars().all()
     return [
@@ -240,21 +322,40 @@ async def atualizar_familia(
     fam = await _load_family(db, tenant_id, family_id)
     changes = body.model_dump(exclude_unset=True)
 
+    novo_responsavel: Person | None = None
     if body.responsavel_id is not None:
-        ok = (
+        novo_responsavel = (
             await db.execute(
-                select(Person.id).where(
+                select(Person).where(
                     Person.id == body.responsavel_id,
                     Person.tenant_id == tenant_id,
                     Person.deleted_at.is_(None),
                 )
             )
         ).scalar_one_or_none()
-        if not ok:
+        if not novo_responsavel:
             raise HTTPException(status_code=422, detail="Responsável inválido")
+        # O responsável precisa ser alguém que de fato compõe a família.
+        vinculo = await _membership_ativo(db, tenant_id, family_id, body.responsavel_id)
+        if not vinculo:
+            raise HTTPException(
+                status_code=422,
+                detail="Responsável deve ser membro ativo da família",
+            )
 
     for field, value in changes.items():
-        setattr(fam, field, value)
+        if field != "responsavel_id":
+            setattr(fam, field, value)
+
+    if novo_responsavel is not None:
+        await _aplicar_responsavel(
+            db,
+            tenant_id,
+            fam,
+            novo_responsavel,
+            vinculo,
+            nis_explicito="nis_responsavel" in changes,
+        )
     if _ADDRESS_FIELDS & set(changes.keys()):
         fam.territorio = fam.bairro
         if fam.logradouro:
@@ -347,20 +448,17 @@ async def adicionar_membro(
     if existing:
         raise HTTPException(status_code=409, detail="Pessoa já é membro ativo")
 
-    db.add(
-        PersonFamilyMembership(
-            tenant_id=tenant_id,
-            person_id=body.person_id,
-            family_id=family_id,
-            parentesco=body.parentesco,
-            status="ATIVO",
-            data_entrada=body.data_entrada or date.today(),
-        )
+    vinculo = PersonFamilyMembership(
+        tenant_id=tenant_id,
+        person_id=body.person_id,
+        family_id=family_id,
+        parentesco=body.parentesco,
+        status="ATIVO",
+        data_entrada=body.data_entrada or date.today(),
     )
+    db.add(vinculo)
     if body.definir_responsavel:
-        fam.responsavel_id = body.person_id
-        if person.nis and not fam.nis_responsavel:
-            fam.nis_responsavel = person.nis
+        await _aplicar_responsavel(db, tenant_id, fam, person, vinculo)
 
     await record_audit(
         db,
@@ -374,6 +472,48 @@ async def adicionar_membro(
     )
     await db.commit()
     fam = await _load_family(db, tenant_id, fam.id)
+    return _to_out(fam)
+
+
+@router.patch("/{family_id}/members/{person_id}", response_model=FamilyOut)
+async def atualizar_membro(
+    family_id: uuid.UUID,
+    person_id: uuid.UUID,
+    body: UpdateMemberRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_tenant_id),
+    user: User = Depends(_MANAGE),
+):
+    """Atualiza o vínculo do membro (parentesco). Os dados cadastrais da pessoa
+    são editados em PATCH /persons/{id}."""
+    membership = await _membership_ativo(db, tenant_id, family_id, person_id)
+    if not membership:
+        raise HTTPException(status_code=404, detail="Vínculo ativo não encontrado")
+
+    changes = body.model_dump(exclude_unset=True)
+    if "parentesco" in changes:
+        fam = await _load_family(db, tenant_id, family_id)
+        if changes["parentesco"] == "RESPONSAVEL" and fam.responsavel_id != person_id:
+            raise HTTPException(
+                status_code=422,
+                detail="Para marcar como RESPONSAVEL, defina a pessoa como "
+                "responsável da família",
+            )
+        membership.parentesco = changes["parentesco"]
+
+    await record_audit(
+        db,
+        tenant_id=tenant_id,
+        action=AuditAction.UPDATE,
+        entity="family",
+        entity_id=family_id,
+        actor=user,
+        client_info=get_client_info(request),
+        diff_summary={"update_member": str(person_id), "campos": list(changes.keys())},
+    )
+    await db.commit()
+    fam = await _load_family(db, tenant_id, family_id)
     return _to_out(fam)
 
 
@@ -497,3 +637,57 @@ async def remover_membro(
     )
     await db.commit()
     return None
+
+
+class MergeFamiliesRequest(BaseModel):
+    keep_id: uuid.UUID
+    merge_id: uuid.UUID
+
+
+@router.post("/merge")
+async def mesclar_familias(
+    body: MergeFamiliesRequest,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_tenant_id),
+    user: User = Depends(_MERGE),
+):
+    try:
+        result = await merge_families(
+            db, str(body.keep_id), str(body.merge_id),
+            str(tenant_id), str(user.id),
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+
+@router.get("/unificacoes")
+async def listar_unificacoes(
+    tabela: str | None = Query(None),
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_tenant_id),
+    user: User = Depends(_READ),
+):
+    q = select(UnificacaoLog).where(
+        UnificacaoLog.tenant_id == str(tenant_id)
+    )
+    if tabela:
+        q = q.where(UnificacaoLog.tabela == tabela)
+    r = await db.execute(
+        q.order_by(UnificacaoLog.created_at.desc()).limit(100)
+    )
+    return [
+        {
+            "id": str(u.id),
+            "tabela": u.tabela,
+            "registro_mantido_id": u.registro_mantido_id,
+            "registros_excluidos": u.registros_excluidos,
+            "realizado_por_id": (
+                str(u.realizado_por_id) if u.realizado_por_id else None
+            ),
+            "created_at": (
+                u.created_at.isoformat() if u.created_at else None
+            ),
+        }
+        for u in r.scalars().all()
+    ]

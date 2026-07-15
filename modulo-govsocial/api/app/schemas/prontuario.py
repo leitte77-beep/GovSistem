@@ -24,6 +24,15 @@ class CaseFileUpdate(BaseModel):
     acolhida_profissional_id: Optional[uuid.UUID] = None
 
 
+class CaseFileEncerrar(BaseModel):
+    """Encerramento do acompanhamento: arquiva o prontuário e encerra os
+    acompanhamentos (PAIF/PAEFI/...) ativos vinculados."""
+
+    motivo_desligamento: str = Field(..., max_length=40)
+    data_fim: Optional[date] = None
+    observacoes: Optional[str] = None
+
+
 class CaseFileListItem(BaseModel):
     id: uuid.UUID
     family_id: uuid.UUID

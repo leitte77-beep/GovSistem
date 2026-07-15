@@ -24,6 +24,9 @@ from app.services.audit import record_audit
 
 router = APIRouter(tags=["auth"])
 
+MAX_LOGIN_FAILURES = 5
+LOCKOUT_MINUTES = 15
+
 
 def _serialize_roles(user: User) -> list[dict]:
     return [
@@ -50,11 +53,32 @@ async def login(
     user = (await db.execute(query)).scalar_one_or_none()
 
     if not user or not user.password_hash:
+        if user:
+            _record_login_failure(user)
+            await db.commit()
+        await _audit_login_failed(db, request, login)
+        await db.commit()
         raise HTTPException(status_code=401, detail="Credenciais inválidas")
+
+    if user.locked_until and user.locked_until > datetime.now(timezone.utc):
+        await _audit_login_failed(db, request, login)
+        await db.commit()
+        raise HTTPException(status_code=423, detail="Conta bloqueada temporariamente")
+
     if not verify_password(body.password, user.password_hash):
+        user.password_failures += 1
+        if user.password_failures >= MAX_LOGIN_FAILURES:
+            user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=LOCKOUT_MINUTES)
+        await db.commit()
+        await _audit_login_failed(db, request, login)
+        await db.commit()
         raise HTTPException(status_code=401, detail="Credenciais inválidas")
+
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Usuário inativo")
+
+    user.password_failures = 0
+    user.locked_until = None
 
     roles = [ur.role.name for ur in user.user_roles]
     access_token = create_access_token(
@@ -98,6 +122,29 @@ async def login(
     }
 
 
+def _record_login_failure(user: User) -> None:
+    user.password_failures += 1
+    if user.password_failures >= MAX_LOGIN_FAILURES:
+        user.locked_until = datetime.now(timezone.utc) + timedelta(minutes=LOCKOUT_MINUTES)
+
+
+async def _audit_login_failed(db: AsyncSession, request: Request, login: str) -> None:
+    try:
+        await record_audit(
+            db,
+            tenant_id=None,
+            action=AuditAction.LOGIN,
+            entity="user",
+            entity_id=None,
+            access_type=AuditAccessType.WRITE,
+            actor=None,
+            client_info=get_client_info(request),
+            diff_summary={"login": login, "resultado": "falha"},
+        )
+    except Exception:
+        pass
+
+
 @router.post("/auth/refresh")
 async def refresh_token(body: RefreshRequest, db: AsyncSession = Depends(get_db)):
     try:
@@ -114,6 +161,10 @@ async def refresh_token(body: RefreshRequest, db: AsyncSession = Depends(get_db)
     ).scalar_one_or_none()
     if not rt:
         raise HTTPException(status_code=401, detail="Refresh token revogado")
+
+    user_id = payload.get("sub")
+    if not user_id or rt.user_id != uuid.UUID(user_id):
+        raise HTTPException(status_code=401, detail="Token inválido")
 
     await db.delete(rt)
 
@@ -154,4 +205,13 @@ async def me(user: User = Depends(get_current_user)):
         "organization_id": (
             str(user.organization_id) if user.organization_id else None
         ),
+    }
+
+
+@router.get("/auth/server-time")
+async def server_time():
+    from datetime import datetime, timezone
+    return {
+        "iso": datetime.now(timezone.utc).isoformat(),
+        "timestamp": int(datetime.now(timezone.utc).timestamp()),
     }

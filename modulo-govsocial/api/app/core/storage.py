@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from abc import ABC, abstractmethod
@@ -36,25 +37,41 @@ class LocalStorage(StorageBackend):
         directory = os.path.dirname(full_path)
         if directory:
             os.makedirs(directory, exist_ok=True)
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(None, self._write_file, full_path, content)
+        return path
+
+    @staticmethod
+    def _write_file(full_path: str, content: bytes):
         with open(full_path, "wb") as f:
             f.write(content)
-        return path
 
     async def get(self, path: str) -> bytes:
         full_path = os.path.join(self.base_path, path)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(None, self._read_file, full_path)
+
+    @staticmethod
+    def _read_file(full_path: str) -> bytes:
         with open(full_path, "rb") as f:
             return f.read()
 
     async def delete(self, path: str) -> None:
         full_path = os.path.join(self.base_path, path)
         if os.path.exists(full_path):
-            os.remove(full_path)
+            loop = asyncio.get_running_loop()
+            await loop.run_in_executor(None, os.remove, full_path)
 
     async def exists(self, path: str) -> bool:
-        return os.path.exists(os.path.join(self.base_path, path))
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None, os.path.exists, os.path.join(self.base_path, path)
+        )
 
 
 class MinioStorage(StorageBackend):
+    """MinIO storage com operações offloaded para thread pool (não bloqueia event loop)."""
+
     def __init__(self):
         self._bucket = settings.MINIO_BUCKET
         self._client = _SyncMinioClient(
@@ -71,25 +88,38 @@ class MinioStorage(StorageBackend):
             logger.info("Created MinIO bucket: %s", self._bucket)
 
     async def store(self, path: str, content: bytes) -> str:
-        self._client.put_object(self._bucket, path, BytesIO(content), len(content))
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            None,
+            self._client.put_object,
+            self._bucket,
+            path,
+            BytesIO(content),
+            len(content),
+        )
         return path
 
     async def get(self, path: str) -> bytes:
-        return self._client.get_object(self._bucket, path)
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None, self._client.get_object, self._bucket, path
+        )
 
     async def delete(self, path: str) -> None:
-        self._client.remove_object(self._bucket, path)
+        loop = asyncio.get_running_loop()
+        await loop.run_in_executor(
+            None, self._client.remove_object, self._bucket, path
+        )
 
     async def exists(self, path: str) -> bool:
-        try:
-            self._client.stat_object(self._bucket, path)
-            return True
-        except Exception:
-            return False
+        loop = asyncio.get_running_loop()
+        return await loop.run_in_executor(
+            None, self._client.object_exists, self._bucket, path
+        )
 
 
 class _SyncMinioClient:
-    """Thin sync wrapper around the MinIO client."""
+    """Thin sync wrapper around the MinIO client — nunca chamado direto de corrotinas."""
 
     def __init__(self, endpoint: str, access_key: str, secret_key: str, secure: bool):
         from minio import Minio
@@ -121,8 +151,12 @@ class _SyncMinioClient:
     def remove_object(self, bucket: str, path: str) -> None:
         self._client.remove_object(bucket, path)
 
-    def stat_object(self, bucket: str, path: str):
-        return self._client.stat_object(bucket, path)
+    def object_exists(self, bucket: str, path: str) -> bool:
+        try:
+            self._client.stat_object(bucket, path)
+            return True
+        except Exception:
+            return False
 
 
 def get_storage_backend() -> StorageBackend:

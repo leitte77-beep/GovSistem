@@ -36,6 +36,7 @@ const moduleConfig: Record<string, { icon: string; gradient: string }> = {
   chatgov: { icon: "smart_toy", gradient: "from-[#075e54] via-[#075e54] to-[#25D366]" },
   govtask: { icon: "assignment_turned_in", gradient: "from-[#1e3a5f] via-[#1e3a5f] to-[#60a5fa]" },
   govavalia: { icon: "mood", gradient: "from-[#15524c] via-[#15524c] to-[#4ecdc4]" },
+  govsocial: { icon: "diversity_3", gradient: "from-[#5b2172] via-[#5b2172] to-[#c77dff]" },
 };
 
 export default function DashboardPage() {
@@ -130,10 +131,10 @@ export default function DashboardPage() {
                     <div className="flex justify-between items-start mb-4">
                       <h3 className="text-headline-sm text-[#001631]">{mod.name}</h3>
                       <div className="flex items-center gap-2">
-                        {mod.slug === "chatgov" && (
+                        {(mod.slug === "chatgov" || mod.slug === "govsocial") && (
                           <button
                             type="button"
-                            onClick={(e) => { e.stopPropagation(); router.push("/novidades/chatgov"); }}
+                            onClick={(e) => { e.stopPropagation(); router.push(`/novidades/${mod.slug}`); }}
                             title="Ver novidades desta versão"
                             className="px-2 py-0.5 border border-[#001631]/20 text-[#001631] text-[10px] rounded uppercase tracking-wider font-semibold hover:bg-[#001631]/5 transition-colors"
                           >

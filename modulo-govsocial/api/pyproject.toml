@@ -1,7 +1,7 @@
 [project]
 name = "govsocial-api"
 version = "0.1.0"
-description = "GovAssist - Módulo de Assistência Social (SUAS) - API Backend"
+description = "GovSocial - Módulo de Assistência Social (SUAS) - API Backend"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115.0",
@@ -40,3 +40,9 @@ per-file-ignores = {"app/core/config.py" = ["N802"], "app/core/database.py" = ["
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+# O engine de testes é de módulo e o SQLite em memória usa StaticPool (uma única
+# conexão). Com loop por teste (padrão do pytest-asyncio >= 0.23) essa conexão
+# fica presa ao loop do primeiro teste e os demais quebram com "Event loop is
+# closed" — daí o loop único para toda a sessão.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"

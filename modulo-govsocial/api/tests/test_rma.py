@@ -207,6 +207,113 @@ class TestRmaFechamento:
         assert resp.status_code == 404
 
 
+class TestRmaDrillDown:
+    """Lupa do RMA: os registros que compõem cada número."""
+
+    async def _setup_e_calcular(self, client, db, world, unit_id):
+        cf = CaseFile(
+            tenant_id=world["org_a"].id, family_id=world["family_a"].id,
+            unit_id=unit_id, service_type_code="PAIF",
+            aberto_em=datetime.now(timezone.utc),
+        )
+        db.add(cf)
+        await db.flush()
+        db.add(Attendance(
+            tenant_id=world["org_a"].id, case_file_id=cf.id, unit_id=unit_id,
+            service_type_code="PAIF",
+            data_atendimento=datetime(2026, 7, 10, 10, 0, tzinfo=timezone.utc),
+            tipo="INDIVIDUAL",
+        ))
+        db.add(Acompanhamento(
+            tenant_id=world["org_a"].id, case_file_id=cf.id, tipo="PAIF",
+            data_inicio=date(2026, 7, 1), situacao="ATIVO",
+        ))
+        await db.commit()
+        resp = await client.post(
+            f"{PREFIX}/rma/calculate?unit_id={unit_id}&ano=2026&mes=7",
+            headers=world["auth"]("coordenador_unidade"),
+        )
+        return resp.json()["id"]
+
+    async def test_drilldown_lista_familia_e_bate_com_o_numero(
+        self, client: AsyncClient, world: dict, db_session: AsyncSession
+    ):
+        rma_id = await self._setup_e_calcular(
+            client, db_session, world, world["unit_a"].id
+        )
+        resp = await client.get(
+            f"{PREFIX}/rma/{rma_id}/drilldown"
+            "?bloco=CRAS_C&campo=C1_total_familias_atendidas",
+            headers=world["auth"]("coordenador_unidade"),
+        )
+        assert resp.status_code == 200
+        d = resp.json()
+        assert d["bloco"] == "CRAS_C"
+        assert d["valor"] == 1
+        # A lista de registros corresponde ao total apurado
+        assert len(d["registros"]) == d["valor"]
+        reg = d["registros"][0]
+        assert reg["referencia"] == f"Família nº {world['family_a'].codigo}"
+        assert reg["href"] == f"/familias/{world['family_a'].id}"
+
+    async def test_drilldown_acompanhamento_paif(
+        self, client: AsyncClient, world: dict, db_session: AsyncSession
+    ):
+        rma_id = await self._setup_e_calcular(
+            client, db_session, world, world["unit_a"].id
+        )
+        resp = await client.get(
+            f"{PREFIX}/rma/{rma_id}/drilldown"
+            "?bloco=CRAS_A&campo=A1_familias_acompanhamento",
+            headers=world["auth"]("gestor_municipal"),
+        )
+        assert resp.status_code == 200
+        d = resp.json()
+        assert d["valor"] == 1 and len(d["registros"]) == 1
+
+    async def test_drilldown_sem_pii(
+        self, client: AsyncClient, world: dict, db_session: AsyncSession
+    ):
+        rma_id = await self._setup_e_calcular(
+            client, db_session, world, world["unit_a"].id
+        )
+        resp = await client.get(
+            f"{PREFIX}/rma/{rma_id}/drilldown"
+            "?bloco=CRAS_C&campo=C1_total_familias_atendidas",
+            headers=world["auth"]("coordenador_unidade"),
+        )
+        corpo = resp.text
+        # Nome civil e CPF do responsável nunca aparecem no drill-down
+        assert world["person_a"].nome_civil not in corpo
+        assert "52998224725" not in corpo
+
+    async def test_drilldown_recepcao_negado(
+        self, client: AsyncClient, world: dict, db_session: AsyncSession
+    ):
+        rma_id = await self._setup_e_calcular(
+            client, db_session, world, world["unit_a"].id
+        )
+        resp = await client.get(
+            f"{PREFIX}/rma/{rma_id}/drilldown"
+            "?bloco=CRAS_C&campo=C1_total_familias_atendidas",
+            headers=world["auth"]("recepcao"),
+        )
+        assert resp.status_code == 403
+
+    async def test_drilldown_isolamento_tenant(
+        self, client: AsyncClient, world: dict, db_session: AsyncSession
+    ):
+        rma_id = await self._setup_e_calcular(
+            client, db_session, world, world["unit_a"].id
+        )
+        resp = await client.get(
+            f"{PREFIX}/rma/{rma_id}/drilldown"
+            "?bloco=CRAS_C&campo=C1_total_familias_atendidas",
+            headers=world["auth"]("gestor_municipal", "B"),
+        )
+        assert resp.status_code == 404
+
+
 class TestRegrasContagem:
     """Valida regras de negócio do RMA conforme manuais do MDS."""
 

@@ -1,0 +1,8 @@
+<!DOCTYPE html><html lang="pt-BR">
+<head><meta charset="UTF-8"><title>Comprovante de Agendamento</title>
+<style>body{font-family:Arial;padding:30px;font-size:14px;max-width:500px;margin:0 auto}h1{text-align:center;font-size:18px}.destaque{font-size:22px;font-weight:bold;text-align:center;margin:15px 0}.info{margin:10px 0;line-height:1.8}.assinatura{margin-top:60px}.linha{border-top:1px solid #000;width:250px;margin:20px auto 0;padding-top:5px;text-align:center}</style></head>
+<body><h1>{{ municipio }}</h1><h2 style="text-align:center">Comprovante de Agendamento</h2>
+<div class="destaque">Senha: {{ senha }}</div>
+<div class="info"><p><strong>Data:</strong> {{ data }}</p><p><strong>Horário:</strong> {{ hora }}</p><p><strong>Local:</strong> {{ local }}</p>
+{% if documentos %}<p><strong>Documentos Necessários:</strong></p><ul>{% for d in documentos %}<li>{{ d.strip() }}</li>{% endfor %}</ul>{% endif %}</div>
+<p style="font-size:10px;margin-top:40px">Gerado em: {{ gerado_em }}</p></body></html>

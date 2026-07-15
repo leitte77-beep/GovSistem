@@ -12,8 +12,13 @@ from app.models.attendance import (
     AttendanceProfessional,
 )
 from app.models.audit_trail import AuditTrail
+from app.models.autenticador import (
+    DocumentoAutenticavel,
+    ExportacaoExecucao,
+    ExportadorDado,
+)
 from app.models.base import Base, SoftDeleteMixin, TenantMixin, TimestampMixin
-from app.models.beneficio import ConcessaoBeneficio, EstoqueUnidade
+from app.models.beneficio import ConcessaoBeneficio, EstoqueUnidade, LimiteBeneficio
 from app.models.case_file import CaseFile
 from app.models.case_file_attachment import CaseFileAttachment
 from app.models.domain import (
@@ -21,6 +26,47 @@ from app.models.domain import (
     BenefitType,
     ReferralCode,
     ServiceType,
+)
+from app.models.domicilio import DadosDomicilio
+from app.models.domain_tables import (
+    AtoInfracional,
+    Bairro,
+    Cargo,
+    Cartorio,
+    EquipeAtendimento,
+    Escolaridade,
+    Especialidade,
+    EstadoCivil,
+    EstrategiaAtendimento,
+    Feriado,
+    GrauInstrucao,
+    GrupoInsumo,
+    Instituicao,
+    Logradouro,
+    MotivoAcolhimento,
+    MotivoCancelamento,
+    MotivoEncerramentoAcolhimento,
+    MotivoInativacao,
+    MotivoInativacaoPrograma,
+    MotivoReinsercao,
+    NecessidadeEspecial,
+    ObjetivoEncaminhamento,
+    OrgaoEmissor,
+    OrientacaoSexual,
+    OrigemEncaminhamento,
+    Parentesco,
+    Parceria,
+    PessoaJuridica,
+    PontoEmbarque,
+    Potencialidade,
+    ProcedimentoRealizado,
+    ProgramaSocial,
+    RegimeContratacao,
+    Religiao,
+    TipoAtividadeColetiva,
+    UnidadeFederativa,
+    UnidadeMedida,
+    VulnerabilidadeTipo,
 )
 from app.models.encaminhamento import Encaminhamento
 from app.models.enums import (
@@ -62,8 +108,16 @@ from app.models.enums import (
     UnitType,
     VisitaStatus,
 )
+from app.models.external_shortcut import ExternalShortcut
 from app.models.family import Family
+from app.models.habitacional import (
+    AtividadeHabitacional,
+    DemandaHabitacional,
+    DocumentoHabitacional,
+    ProgramaHabitacional,
+)
 from app.models.importacao import ImportJob, ImportLog
+from app.models.notificacao import FiltroSalvo, Notificacao
 from app.models.organization import Organization
 from app.models.person import Person
 from app.models.person_family_membership import PersonFamilyMembership
@@ -75,11 +129,29 @@ from app.models.plano_acompanhamento import (
 )
 from app.models.professional import Professional
 from app.models.professional_assignment import ProfessionalAssignment
+from app.models.questionario import (
+    Questao,
+    Questionario,
+    RespostaQuestao,
+    RespostaQuestionario,
+)
 from app.models.reception_log import ReceptionLog
 from app.models.refresh_token import RefreshToken
 from app.models.retention import RetentionPolicy
 from app.models.rma import RmaAjuste, RmaFechamento
 from app.models.role import Role
+from app.models.sibec import SibecData
+from app.models.sicon import SiconData
+from app.models.socioeconomico import (
+    CondicoesEducacionais,
+    CondicoesSaude,
+    ConvivenciaFamiliar,
+    DadosRua,
+    DespesaFamiliar,
+    PotencialidadeFamiliar,
+    RendaMembro,
+    VulnerabilidadeFamiliar,
+)
 from app.models.unit import Unit
 from app.models.user import User
 from app.models.user_role import UserRole
@@ -99,6 +171,7 @@ __all__ = [
     "Appointment",
     "AppointmentStatus",
     "AppointmentTipo",
+    "AtividadeHabitacional",
     "AuditAccessType",
     "AuditAction",
     "AvaliacaoPlano",
@@ -106,22 +179,38 @@ __all__ = [
     "CaseFileStatus",
     "ConcessaoBeneficio",
     "ConcessaoStatus",
+    "CondicoesEducacionais",
+    "CondicoesSaude",
+    "ConvivenciaFamiliar",
+    "DadosRua",
+    "DemandaHabitacional",
+    "DespesaFamiliar",
+    "DocumentoAutenticavel",
+    "DocumentoHabitacional",
     "DomainSource",
+    "DadosDomicilio",
+    "DocumentoAutenticavel",
     "Encaminhamento",
     "EncaminhamentoStatus",
     "EncaminhamentoTipo",
     "EncontroFrequencia",
     "Escolaridade",
     "EstoqueUnidade",
+    "ExportacaoExecucao",
+    "ExportadorDado",
+    "ExternalShortcut",
     "FaixaEtaria",
     "FaixaRenda",
+    "FiltroSalvo",
     "FrequenciaCumprimento",
     "ImportJob",
     "ImportLog",
     "Inscricao",
+    "LimiteBeneficio",
     "MedidaSocioeducativa",
     "MembershipStatus",
     "MotivoDesligamento",
+    "Notificacao",
     "Parentesco",
     "Periodicidade",
     "ProtecaoNivel",
@@ -132,6 +221,8 @@ __all__ = [
     "RmaAjuste",
     "RmaFechamento",
     "RoleName",
+    "SibecData",
+    "SiconData",
     "Sexo",
     "StatusAcaoColetiva",
     "StatusInscricao",
@@ -167,5 +258,13 @@ __all__ = [
     "CaseFileAttachment",
     "PlanoAcompanhamento",
     "Pia",
+    "PotencialidadeFamiliar",
+    "ProgramaHabitacional",
+    "Questao",
+    "Questionario",
     "RelatorioPia",
+    "RendaMembro",
+    "RespostaQuestao",
+    "RespostaQuestionario",
+    "VulnerabilidadeFamiliar",
 ]

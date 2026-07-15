@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
-import { api } from "@/lib/api";
+import { api, SAAS_URL } from "@/lib/api";
 import { notifyError } from "@/lib/error-handler";
 import NotificationsPanel from "./NotificationsPanel";
 
@@ -18,7 +18,7 @@ const NAV_ITEMS = [
   { label: "Configurações", href: "/settings", icon: "tune" },
   { label: "Certificados", href: "/settings/certificates", icon: "verified_user" },
   { label: "Verificar PDF", href: "/verify", icon: "picture_as_pdf" },
-  { label: "Voltar ao SaaS", href: "https://admin.govsistem.com.br", icon: "arrow_back", external: true },
+  { label: "Voltar ao SaaS", href: SAAS_URL, icon: "arrow_back", external: true },
 ];
 
 const PLATFORM_ITEMS = [
@@ -29,7 +29,6 @@ const PLATFORM_ITEMS = [
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
   const { user, loading, logout, switchOrganization } = useAuth();
-  const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [logoutConfirm, setLogoutConfirm] = useState(false);
@@ -52,9 +51,9 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     if (!loading && !user) {
-      router.push("/login");
+      window.location.replace(SAAS_URL);
     }
-  }, [loading, user, router]);
+  }, [loading, user]);
 
   useEffect(() => {
     setSidebarOpen(false);

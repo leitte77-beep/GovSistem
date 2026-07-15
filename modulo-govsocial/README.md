@@ -1,13 +1,13 @@
 # GovSocial — Módulo de Assistência Social (SUAS)
 
-SaaS multi-tenant para prefeituras, sobre a plataforma GovAssist. Este README
+SaaS multi-tenant para prefeituras, sobre a plataforma GovSocial. Este README
 documenta a **FASE 1 — Fundação técnica multi-tenant**.
 
 Referência de escopo e normas: `../../plano.md`.
 
 ## Stack
 
-Mesmo padrão dos demais módulos GovAssist:
+Mesmo padrão dos demais módulos GovSocial:
 
 | Camada | Tecnologia |
 |---|---|
@@ -135,7 +135,7 @@ Cobertura da fase (34 testes):
 
 > Observação sobre RLS: o `plano.md` cita RLS como opção; nesta fase, por decisão
 > do time, mantivemos o padrão de isolamento por aplicação já usado nos demais
-> módulos GovAssist. A introdução de RLS no PostgreSQL pode ser adicionada numa
+> módulos GovSocial. A introdução de RLS no PostgreSQL pode ser adicionada numa
 > fase de endurecimento (Fase 12) sem alterar o modelo de dados (tenant_id já está
 > em todas as tabelas).
 

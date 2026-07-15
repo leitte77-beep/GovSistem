@@ -21,6 +21,9 @@ import type { SystemSetting } from "@/types/setting";
 
 const BASE_URL = "/api/v1";
 
+export const SAAS_URL =
+  process.env.NEXT_PUBLIC_SAAS_URL || "https://admin.govsistem.com.br";
+
 class AuthError extends Error {
   constructor() {
     super("Not authenticated");

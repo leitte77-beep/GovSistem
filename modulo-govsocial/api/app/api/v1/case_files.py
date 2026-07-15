@@ -7,14 +7,21 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_client_info, get_tenant_id, require_roles
 from app.core.database import get_db
+from app.models.acompanhamento import Acompanhamento
 from app.models.attendance import Attendance
 from app.models.case_file import CaseFile
-from app.models.enums import AuditAccessType, AuditAction, RoleName
+from app.models.enums import (
+    AuditAccessType,
+    AuditAction,
+    MotivoDesligamento,
+    RoleName,
+)
 from app.models.family import Family
 from app.models.unit import Unit
 from app.models.user import User
 from app.schemas.prontuario import (
     CaseFileCreate,
+    CaseFileEncerrar,
     CaseFileListItem,
     CaseFileOut,
     CaseFileUpdate,
@@ -245,6 +252,74 @@ async def atualizar_prontuario(
         actor=user,
         client_info=get_client_info(request),
         diff_summary={"campos": list(changes.keys())},
+    )
+    await db.commit()
+    cf = await _load(db, tenant_id, cf.id)
+    return _to_out(cf)
+
+
+@router.post("/{case_file_id}/encerrar", response_model=CaseFileOut)
+async def encerrar_prontuario(
+    case_file_id: uuid.UUID,
+    body: CaseFileEncerrar,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_tenant_id),
+    user: User = Depends(_MANAGE),
+):
+    """Encerra o acompanhamento: arquiva o prontuário e encerra os
+    acompanhamentos (PAIF/PAEFI/MSE) ativos vinculados, com motivo de
+    desligamento e data de fim — mantendo o RMA consistente."""
+    cf = await _load(db, tenant_id, case_file_id)
+    await _assert_unit_scope(db, tenant_id, user, cf.unit_id)
+
+    if cf.status != "ATIVO":
+        raise HTTPException(status_code=409, detail="Prontuário já encerrado")
+
+    motivos_validos = {m.value for m in MotivoDesligamento}
+    if body.motivo_desligamento not in motivos_validos:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Motivo de desligamento inválido. Use um de: {sorted(motivos_validos)}",
+        )
+
+    data_fim = body.data_fim or datetime.now(timezone.utc).date()
+
+    acs = (
+        await db.execute(
+            select(Acompanhamento).where(
+                Acompanhamento.tenant_id == tenant_id,
+                Acompanhamento.case_file_id == cf.id,
+                Acompanhamento.situacao == "ATIVO",
+                Acompanhamento.deleted_at.is_(None),
+            )
+        )
+    ).scalars().all()
+    for ac in acs:
+        ac.situacao = "ENCERRADO"
+        ac.data_fim = data_fim
+        ac.motivo_desligamento = body.motivo_desligamento
+        if body.observacoes:
+            ac.observacoes = (
+                f"{ac.observacoes}\n{body.observacoes}" if ac.observacoes else body.observacoes
+            )
+
+    cf.status = "ARQUIVADO"
+
+    await record_audit(
+        db,
+        tenant_id=tenant_id,
+        action=AuditAction.UPDATE,
+        entity="case_file",
+        entity_id=cf.id,
+        actor=user,
+        client_info=get_client_info(request),
+        diff_summary={
+            "status": "ARQUIVADO",
+            "motivo_desligamento": body.motivo_desligamento,
+            "data_fim": data_fim.isoformat(),
+            "acompanhamentos_encerrados": len(acs),
+        },
     )
     await db.commit()
     cf = await _load(db, tenant_id, cf.id)

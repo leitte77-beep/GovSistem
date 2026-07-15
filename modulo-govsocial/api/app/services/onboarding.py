@@ -1,6 +1,7 @@
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import cast, func, select
+from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.beneficio import ConcessaoBeneficio  # noqa: F401
@@ -44,10 +45,13 @@ async def get_tenant_setup_status(db: AsyncSession, tenant_id: uuid.UUID) -> dic
 
     territories_count = (
         await db.execute(
-            select(func.count(Family.territorio.distinct())).where(
-                Family.tenant_id == tenant_id,
-                Family.deleted_at.is_(None),
-                Family.territorio.isnot(None),
+            select(func.count(Unit.id)).where(
+                Unit.tenant_id == tenant_id,
+                Unit.deleted_at.is_(None),
+                Unit.territorios.isnot(None),
+                func.json_array_length(
+                    func.cast(Unit.territorios, JSON)
+                ) > 0,
             )
         )
     ).scalar() or 0
@@ -65,7 +69,7 @@ async def get_tenant_setup_status(db: AsyncSession, tenant_id: uuid.UUID) -> dic
         {"step": "territories", "completed": territories_count > 0},
         {"step": "benefits", "completed": benefit_types_count > 0},
         {"step": "professionals", "completed": professionals_count > 0},
-        {"step": "import", "completed": imports_count > 0},
+        {"step": "import", "completed": True},
     ]
 
     ready = all(s["completed"] for s in steps)
@@ -107,11 +111,15 @@ async def execute_wizard_setup(
         unidades = data.get("unidades", [])
         if nome and unidades:
             for uid in unidades:
+                try:
+                    unit_id = uuid.UUID(uid)
+                except (ValueError, AttributeError):
+                    continue
                 unit = (
                     await db.execute(
                         select(Unit).where(
                             Unit.tenant_id == tenant_id,
-                            Unit.id == uuid.UUID(uid),
+                            Unit.id == unit_id,
                         )
                     )
                 ).scalar_one_or_none()

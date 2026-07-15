@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Guia de Encaminhamento — {{ familia_codigo }}</title>
+<style>
+  @page {
+    size: A4;
+    margin: 25mm 20mm 30mm 20mm;
+    @bottom-center {
+      content: "Guia de Encaminhamento";
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 9pt;
+      color: #999;
+    }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: Georgia, "Times New Roman", "DejaVu Serif", serif;
+    font-size: 11pt;
+    line-height: 1.6;
+    color: #1a1a1a;
+  }
+
+  .cabecalho {
+    text-align: center;
+    margin-bottom: 24px;
+    border-bottom: 2px solid #2a5c8a;
+    padding-bottom: 16px;
+  }
+  .cabecalho .brasao { max-height: 56px; margin-bottom: 6px; }
+  .cabecalho h1 { font-size: 14pt; color: #2a5c8a; font-weight: 700; }
+  .cabecalho .org { font-size: 10pt; color: #444; }
+
+  h2 {
+    font-size: 12pt;
+    font-weight: 700;
+    border-bottom: 1.5px solid #2a5c8a;
+    padding-bottom: 4px;
+    margin: 20px 0 10px;
+    color: #2a5c8a;
+  }
+
+  .numero-oficio {
+    text-align: right;
+    font-weight: 700;
+    font-size: 10pt;
+    margin-bottom: 20px;
+    color: #2a5c8a;
+  }
+
+  .info-grid {
+    display: table;
+    width: 100%;
+    margin-bottom: 16px;
+  }
+  .info-grid .row { display: table-row; }
+  .info-grid .label {
+    display: table-cell;
+    width: 160px;
+    font-weight: 700;
+    padding: 3px 0;
+    color: #444;
+    white-space: nowrap;
+  }
+  .info-grid .value { display: table-cell; padding: 3px 0; }
+
+  .secao {
+    margin-bottom: 16px;
+    page-break-inside: avoid;
+  }
+
+  .motivo-box {
+    background: #f4f7fa;
+    border-left: 3px solid #2a5c8a;
+    padding: 10px 14px;
+    margin: 10px 0;
+    line-height: 1.6;
+  }
+
+  .assinatura-grid {
+    display: table;
+    width: 100%;
+    margin-top: 60px;
+  }
+  .assinatura-grid .col {
+    display: table-cell;
+    width: 50%;
+    text-align: center;
+    padding: 0 10px;
+  }
+  .assinatura-grid .linha {
+    border-top: 1px solid #000;
+    margin: 0 auto 4px;
+    width: 220px;
+  }
+  .assinatura-grid .rotulo {
+    font-size: 9pt;
+    color: #555;
+  }
+
+  .rodape {
+    margin-top: 50px;
+    padding-top: 8px;
+    border-top: 1px solid #ccc;
+    font-size: 9pt;
+    color: #888;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div class="cabecalho">
+  {% if brasao %}
+    <img class="brasao" src="{{ brasao }}" alt="Brasão">
+  {% endif %}
+  <h1>GUIA DE ENCAMINHAMENTO À REDE</h1>
+  <div class="org">{{ municipio }} — Assistência Social</div>
+</div>
+
+{% if numero_oficio %}
+<div class="numero-oficio">
+  Ofício nº {{ numero_oficio }}/{{ ano }}
+</div>
+{% endif %}
+
+<div class="secao">
+  <h2>1. Identificação do Usuário</h2>
+  <div class="info-grid">
+    <div class="row">
+      <span class="label">Nome do responsável</span>
+      <span class="value">{{ responsavel }}</span>
+    </div>
+    <div class="row">
+      <span class="label">Família</span>
+      <span class="value">Código {{ familia_codigo }}{% if nis %} · NIS {{ nis }}{% endif %}</span>
+    </div>
+    {% if endereco %}
+    <div class="row">
+      <span class="label">Endereço</span>
+      <span class="value">{{ endereco }}</span>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="secao">
+  <h2>2. Unidade de Origem</h2>
+  <div class="info-grid">
+    <div class="row">
+      <span class="label">Unidade</span>
+      <span class="value">{{ unidade }}</span>
+    </div>
+    <div class="row">
+      <span class="label">Profissional responsável</span>
+      <span class="value">{{ nome_profissional }}{% if registro %} · {{ registro }}{% endif %}</span>
+    </div>
+    <div class="row">
+      <span class="label">Data do encaminhamento</span>
+      <span class="value">{{ data_encaminhamento }}</span>
+    </div>
+  </div>
+</div>
+
+<div class="secao">
+  <h2>3. Destino</h2>
+  <div class="info-grid">
+    <div class="row">
+      <span class="label">Instituição / Serviço</span>
+      <span class="value">{{ instituicao_destino }}</span>
+    </div>
+    {% if endereco_destino %}
+    <div class="row">
+      <span class="label">Endereço</span>
+      <span class="value">{{ endereco_destino }}</span>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<div class="secao">
+  <h2>4. Motivo do Encaminhamento</h2>
+  <div class="motivo-box">
+    {{ motivo }}
+  </div>
+</div>
+
+{% if descricao %}
+<div class="secao">
+  <h2>5. Descrição Complementar</h2>
+  <p style="white-space: pre-wrap;">{{ descricao }}</p>
+</div>
+{% endif %}
+
+<div class="assinatura-grid">
+  <div class="col">
+    <div class="linha"></div>
+    <div class="rotulo">Assinatura do Profissional (Origem)</div>
+  </div>
+  <div class="col">
+    <div class="linha"></div>
+    <div class="rotulo">Assinatura do Profissional (Destino)</div>
+  </div>
+</div>
+
+<div class="rodape">
+  Documento gerado pelo GovSocial em {{ gerado_em }} — A contrarreferência (devolutiva) é sigilosa e não consta nesta guia.
+</div>
+
+</body>
+</html>

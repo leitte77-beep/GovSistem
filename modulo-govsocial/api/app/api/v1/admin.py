@@ -11,7 +11,7 @@ from app.core.auth import (
 )
 from app.core.database import get_db
 from app.core.seed_bulk import seed_bulk_municipio
-from app.core.seeds import seed_national_domains
+from app.core.seeds import seed_national_domains, seed_notificacoes_por_papel
 from app.models.enums import AuditAction, RoleName
 from app.models.organization import Organization
 from app.models.user import User
@@ -82,3 +82,29 @@ async def seed_bulk(
     )
     await db.commit()
     return {"status": "ok", "seeded": counts}
+
+
+@router.post("/seed-notificacoes")
+async def seed_notificacoes(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_tenant_id),
+    user: User = Depends(_ADMIN),
+):
+    """Gera notificações de exemplo segmentadas por papel (role_alvo).
+
+    Cada papel (gestor_municipal, tecnico_superior, recepcao etc.) recebe
+    notificações contextualizadas com seu fluxo de trabalho.
+    """
+    org = await db.get(Organization, tenant_id)
+    if not org:
+        raise HTTPException(status_code=404, detail="Tenant não encontrado")
+
+    count = await seed_notificacoes_por_papel(db, tenant_id)
+    await record_audit(
+        db, tenant_id=tenant_id, action=AuditAction.SEED,
+        entity="seed_notificacoes", entity_id=tenant_id, actor=user,
+        client_info=get_client_info(request), diff_summary={"total": count},
+    )
+    await db.commit()
+    return {"status": "ok", "seeded": {"notificacoes": count}}

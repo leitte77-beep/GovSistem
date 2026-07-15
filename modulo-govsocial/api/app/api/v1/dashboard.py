@@ -9,6 +9,7 @@ from app.models.enums import RoleName
 from app.models.user import User
 from app.schemas.dashboard import (
     BenefitReportItem,
+    DashboardActivityItem,
     DashboardOverviewOut,
     IndicatorsOut,
     MapItem,
@@ -16,6 +17,7 @@ from app.schemas.dashboard import (
     TimeSeriesItem,
 )
 from app.services.dashboard import (
+    get_activity,
     get_benefits_report,
     get_by_territory,
     get_indicators,
@@ -89,3 +91,13 @@ async def dashboard_indicators(
     user: User = Depends(_READ),
 ):
     return await get_indicators(db, tenant_id)
+
+
+@router.get("/dashboard/activity", response_model=list[DashboardActivityItem])
+async def dashboard_activity(
+    limit: int = Query(10, ge=1, le=30),
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_tenant_id),
+    user: User = Depends(_READ),
+):
+    return await get_activity(db, tenant_id, limit)

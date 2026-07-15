@@ -439,6 +439,101 @@ services:
       - doe-network
     restart: unless-stopped
 
+  govsocial-db-init:
+    image: postgres:16-alpine
+    logging: *default-logging
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        echo "Creating govsocial database if not exists..."
+        PGPASSWORD=${POSTGRES_PASSWORD:-doe_password} psql -h postgres -U ${POSTGRES_USER:-doe_user} -d ${POSTGRES_DB:-doe} -tc "SELECT 1 FROM pg_database WHERE datname = '${GOVSOCIAL_POSTGRES_DB:-govsocial}'" | grep -q 1 || \
+        PGPASSWORD=${POSTGRES_PASSWORD:-doe_password} psql -h postgres -U ${POSTGRES_USER:-doe_user} -d ${POSTGRES_DB:-doe} -c "CREATE DATABASE ${GOVSOCIAL_POSTGRES_DB:-govsocial}"
+        echo "GovSocial database ready"
+        exit 0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - doe-network
+
+  govsocial-api:
+    build:
+      context: ../modulo-govsocial/api
+      dockerfile: Dockerfile
+    logging: *default-logging
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${GOVSOCIAL_POSTGRES_DB:-govsocial}
+      POSTGRES_USER: ${POSTGRES_USER:-doe_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-doe_password}
+      REDIS_HOST: redis
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minio_access}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minio_secret}
+      MINIO_BUCKET: ${GOVSOCIAL_MINIO_BUCKET:-govsocial-files}
+      MINIO_SECURE: "false"
+      CORS_ORIGINS: '["https://govsocial.govsistem.com.br","http://localhost:7501"]'
+      PUBLIC_URL: ${GOVSOCIAL_PUBLIC_URL:-https://govsocial.govsistem.com.br}
+      DEBUG: ${API_DEBUG:-false}
+      SECRET_KEY: ${GOVSOCIAL_SECRET_KEY:-govsocial-dev-secret-key-change-in-production}
+      # SSO: DEVE ser igual ao SECRET_KEY da plataforma SaaS (assina o module_access).
+      SAAS_JWT_SECRET: ${GOVSOCIAL_SAAS_JWT_SECRET:-dev-saas-secret-key-change-in-production}
+      # SSO: DEVE ser igual ao INTERNAL_API_KEY da plataforma SaaS (protege /internal/sync-*).
+      INTERNAL_API_KEY: ${GOVSOCIAL_INTERNAL_API_KEY:-dev-internal-key-123}
+      # LGPD: chave Fernet (44 chars). Vazio → derivada do SECRET_KEY (só dev).
+      FIELD_ENCRYPTION_KEY: ${GOVSOCIAL_FIELD_ENCRYPTION_KEY:-}
+    volumes:
+      - govsocial_uploads:/app/uploads
+    ports:
+      - "8202:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      govsocial-db-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/govsocial/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - doe-network
+      - internal
+    restart: unless-stopped
+
+  govsocial-web:
+    build:
+      context: ../modulo-govsocial/web
+      dockerfile: Dockerfile
+    logging: *default-logging
+    ports:
+      - "7501:80"
+    depends_on:
+      govsocial-api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://127.0.0.1:80/",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - doe-network
+      - internal
+    restart: unless-stopped
+
 networks:
   doe-network:
     driver: bridge
@@ -458,4 +553,6 @@ volumes:
   chatgov_uploads:
     driver: local
   govtask_uploads:
+    driver: local
+  govsocial_uploads:
     driver: local

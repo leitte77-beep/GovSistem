@@ -73,10 +73,23 @@ class Family(Base, TimestampMixin, SoftDeleteMixin):
 
     faixa_renda: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
 
+    # CadÚnico — campos complementares
+    ponto_referencia: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    telefone_contato: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    situacao_rua: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    data_cadastramento: Mapped[Optional[str]] = mapped_column(Date, nullable=True)
+
+    # Despesas familiares (CadÚnico)
+    despesa_aluguel: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    despesa_transporte: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    despesa_alimentacao: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    despesa_medicamentos: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+    despesa_outros: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
+
     # Marcações socioassistenciais.
     no_cadunico: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False,
-        comment="Família não está no CadÚnico",
+        comment="Família está inscrita no CadÚnico",
     )
     cadunico_atualizado_em: Mapped[Optional[str]] = mapped_column(
         Date, nullable=True

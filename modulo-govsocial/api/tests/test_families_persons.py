@@ -253,6 +253,142 @@ async def test_search_scoped_to_tenant(client, world):
     assert all(i["person_id"] != str(world["person_b"].id) for i in r.json())
 
 
+# ── Persistência completa do cadastro ─────────────────────────────
+async def test_create_person_persists_every_field(client, world):
+    """Regressão: os campos do CadÚnico eram aceitos e silenciosamente
+    descartados na criação (só o PATCH gravava)."""
+    enviado = {
+        "nome_civil": "Joana Completa",
+        "nome_social": "Joana C.",
+        "nis": "12345678900",
+        "data_nascimento": "1985-07-21",
+        "sexo": "FEMININO",
+        "escolaridade": "MEDIO_COMPLETO",
+        "ocupacao": "Costureira",
+        "tipo_deficiencia": "VISUAL",
+        "raca_cor": "PARDA",
+        "estado_civil": "UNIAO_ESTAVEL",
+        "frequenta_escola": False,
+        "situacao_mercado_trabalho": "AUTONOMO",
+        "gestante": True,
+        "amamentando": False,
+        "renda_mensal": 1320.5,
+        "confirmar_duplicata": True,
+    }
+    r = await client.post(PER, json=enviado, headers=world["auth"]("recepcao", "A"))
+    assert r.status_code == 201
+    pid = r.json()["person"]["id"]
+
+    lido = (
+        await client.get(f"{PER}/{pid}", headers=world["auth"]("recepcao", "A"))
+    ).json()
+    for campo, valor in enviado.items():
+        if campo in ("nis", "confirmar_duplicata"):
+            continue
+        assert lido[campo] == valor, f"campo {campo} não foi persistido"
+    assert lido["nis_mascarado"] is not None
+
+
+# ── Responsável familiar ──────────────────────────────────────────
+async def test_set_responsavel_requires_active_member(client, world):
+    fora = await client.post(
+        PER, json={"nome_civil": "Alheio Silva"}, headers=world["auth"]("recepcao", "A")
+    )
+    r = await client.patch(
+        f"{FAM}/{world['family_a'].id}",
+        json={"responsavel_id": fora.json()["person"]["id"]},
+        headers=world["auth"]("recepcao", "A"),
+    )
+    assert r.status_code == 422
+    assert "membro ativo" in r.json()["detail"].lower()
+
+
+async def test_set_responsavel_moves_parentesco_and_nis(client, world):
+    fid = str(world["family_a"].id)
+    novo = await client.post(
+        PER,
+        json={"nome_civil": "Novo Responsavel", "nis": "23456789013"},
+        headers=world["auth"]("recepcao", "A"),
+    )
+    npid = novo.json()["person"]["id"]
+    add = await client.post(
+        f"{FAM}/{fid}/members",
+        json={"person_id": npid, "parentesco": "CONJUGE"},
+        headers=world["auth"]("recepcao", "A"),
+    )
+    assert add.status_code == 201
+
+    r = await client.patch(
+        f"{FAM}/{fid}",
+        json={"responsavel_id": npid},
+        headers=world["auth"]("recepcao", "A"),
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["responsavel_id"] == npid
+    assert body["responsavel_nome"] == "Novo Responsavel"
+    # NIS da família acompanha o novo responsável
+    assert body["nis_responsavel_mascarado"] is not None
+
+    por_pessoa = {m["person_id"]: m for m in body["membros"]}
+    assert por_pessoa[npid]["parentesco"] == "RESPONSAVEL"
+    assert por_pessoa[npid]["is_responsavel"] is True
+    # o anterior deixa de ser RESPONSAVEL e fica sem parentesco declarado
+    antigo = por_pessoa[str(world["person_a"].id)]
+    assert antigo["parentesco"] is None
+    assert antigo["is_responsavel"] is False
+
+
+async def test_update_member_parentesco(client, world):
+    fid = str(world["family_a"].id)
+    p = await client.post(
+        PER, json={"nome_civil": "Filho Um"}, headers=world["auth"]("recepcao", "A")
+    )
+    pid = p.json()["person"]["id"]
+    await client.post(
+        f"{FAM}/{fid}/members",
+        json={"person_id": pid, "parentesco": "FILHO"},
+        headers=world["auth"]("recepcao", "A"),
+    )
+
+    r = await client.patch(
+        f"{FAM}/{fid}/members/{pid}",
+        json={"parentesco": "ENTEADO"},
+        headers=world["auth"]("recepcao", "A"),
+    )
+    assert r.status_code == 200
+    membro = next(m for m in r.json()["membros"] if m["person_id"] == pid)
+    assert membro["parentesco"] == "ENTEADO"
+
+
+async def test_update_member_cannot_forge_responsavel(client, world):
+    fid = str(world["family_a"].id)
+    p = await client.post(
+        PER, json={"nome_civil": "Filho Dois"}, headers=world["auth"]("recepcao", "A")
+    )
+    pid = p.json()["person"]["id"]
+    await client.post(
+        f"{FAM}/{fid}/members",
+        json={"person_id": pid, "parentesco": "FILHO"},
+        headers=world["auth"]("recepcao", "A"),
+    )
+    r = await client.patch(
+        f"{FAM}/{fid}/members/{pid}",
+        json={"parentesco": "RESPONSAVEL"},
+        headers=world["auth"]("recepcao", "A"),
+    )
+    assert r.status_code == 422
+
+
+async def test_update_member_requires_active_link(client, world):
+    r = await client.patch(
+        f"{FAM}/{world['family_a'].id}/members/{uuid.uuid4()}",
+        json={"parentesco": "FILHO"},
+        headers=world["auth"]("recepcao", "A"),
+    )
+    assert r.status_code == 404
+
+
 # ── RBAC ──────────────────────────────────────────────────────────
 async def test_conselho_cannot_read_persons(client, world):
     assert (await client.get(PER, headers=world["auth"]("conselho", "A"))).status_code == 403

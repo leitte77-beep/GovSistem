@@ -1370,6 +1370,8 @@ export function iniciarGateway(httpServer, wa, storage) {
 
 // Busca e salva a foto de perfil do WhatsApp de um contato, em background.
 // Só faz a requisição se o avatar_url ainda estiver nulo no banco.
+// A imagem é baixada e persistida no storage local, pois as URLs do CDN do
+// WhatsApp (pps.whatsapp.net) são temporárias e expiram (retornam 403).
 export async function buscarAvatarContato(wa, tenantId, contatoId) {
   try {
     const row = await db.oneOrNone(
@@ -1391,15 +1393,27 @@ export async function buscarAvatarContato(wa, tenantId, contatoId) {
 
     console.log(`[Avatar] buscando foto para contato ${contatoId} JID=${jidAlvo}`);
     const ppUrl = await wa.fetchProfilePicture(tenantId, jidAlvo);
-    if (ppUrl) {
-      await db.none(
-        'UPDATE contatos SET avatar_url = $1 WHERE id = $2 AND tenant_id = $3',
-        [ppUrl, contatoId, tenantId]
-      );
-      console.log(`[Avatar] foto salva para contato ${contatoId}`);
-    } else {
+    if (!ppUrl) {
       console.log(`[Avatar] contato ${contatoId} não tem foto de perfil`);
+      return;
     }
+
+    // Baixa a imagem enquanto a URL temporária ainda é válida e persiste localmente.
+    const resp = await fetch(ppUrl, { signal: AbortSignal.timeout(15000) });
+    if (!resp.ok) {
+      console.error(`[Avatar] download falhou para contato ${contatoId}: HTTP ${resp.status}`);
+      return;
+    }
+    const buffer = Buffer.from(await resp.arrayBuffer());
+    const mime = resp.headers.get('content-type') || 'image/jpeg';
+    const storage = createStorage();
+    const localUrl = await storage.salvar(buffer, mime, tenantId);
+
+    await db.none(
+      'UPDATE contatos SET avatar_url = $1 WHERE id = $2 AND tenant_id = $3',
+      [localUrl, contatoId, tenantId]
+    );
+    console.log(`[Avatar] foto salva para contato ${contatoId} em ${localUrl}`);
   } catch (err) {
     console.error(`[Avatar] erro ao buscar foto do contato ${contatoId}:`, err.message);
   }

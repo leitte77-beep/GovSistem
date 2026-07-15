@@ -5,13 +5,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import (
     get_client_info,
+    get_current_user,
     get_tenant_id,
     require_roles,
 )
 from app.core.database import get_db
 from app.models.enums import AuditAction, RoleName
+from app.models.organization import Organization
 from app.models.user import User
 from app.schemas.onboarding import (
+    OrganizationConfigOut,
     SystemHealthOut,
     SystemMetricsOut,
     TenantOnboardingStatus,
@@ -77,3 +80,18 @@ async def system_metrics(
     user: User = Depends(_ADMIN_ONLY),
 ):
     return await get_system_metrics(db)
+
+
+@router.get("/organizations/config", response_model=OrganizationConfigOut)
+async def organization_config(
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_tenant_id),
+    user: User = Depends(get_current_user),
+):
+    org = await db.get(Organization, tenant_id)
+    theme = org.theme_config if org and org.theme_config else {}
+    return OrganizationConfigOut(
+        nome_municipio=org.name if org else "",
+        brasao_url=org.brasao_url if org else None,
+        cor_destaque=theme.get("cor_destaque") if theme else None,
+    )

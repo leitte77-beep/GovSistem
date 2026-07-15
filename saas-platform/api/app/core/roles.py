@@ -35,6 +35,16 @@ MODULE_ROLE_CATALOG: dict[str, list[dict]] = {
         {"name": "COMPRAS_LICITACAO", "label": "Compras e Licitação"},
         {"name": "GESTOR", "label": "Gestor / Prefeito — somente leitura"},
     ],
+    "govsocial": [
+        {"name": "ADMIN", "label": "Administrador do GovSocial"},
+        {"name": "gestor_municipal", "label": "Gestor municipal — dashboards, RMA consolidado, configurações"},
+        {"name": "coordenador_unidade", "label": "Coordenador de unidade — gestão e fechamento do RMA da unidade"},
+        {"name": "tecnico_superior", "label": "Técnico de nível superior — prontuário completo da unidade"},
+        {"name": "tecnico_medio", "label": "Técnico de nível médio — grupos, atividades coletivas, visitas"},
+        {"name": "recepcao", "label": "Recepção — cadastro de pessoas/famílias, agenda, fila"},
+        {"name": "vigilancia", "label": "Vigilância socioassistencial — indicadores, mapas, configurações"},
+        {"name": "conselho", "label": "Conselho (CMAS) — relatórios agregados e anonimizados"},
+    ],
 }
 
 

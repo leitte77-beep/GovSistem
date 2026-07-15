@@ -2,6 +2,7 @@ import logging
 import uuid
 from typing import Annotated
 
+import jwt as _jwt
 from fastapi import Depends, Header, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy import select
@@ -54,8 +55,6 @@ async def get_current_user(
         saas_secret = settings.SAAS_JWT_SECRET.get_secret_value()
         if saas_secret:
             try:
-                import jwt as _jwt
-
                 payload = _jwt.decode(
                     credentials.credentials,
                     saas_secret,

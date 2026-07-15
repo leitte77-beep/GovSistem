@@ -1,12 +1,25 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from app.api.v1.chat import router as chat_router
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.database import dispose_sync_engine, engine
 from app.core.problem_details import register_exception_handlers
+from app.core.redis import close_redis, get_redis
 from app.middleware import RequestContextMiddleware, SecurityHeadersMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    await get_redis()
+    yield
+    await close_redis()
+    dispose_sync_engine()
+    await engine.dispose()
 
 
 def create_app() -> FastAPI:
@@ -17,6 +30,7 @@ def create_app() -> FastAPI:
         docs_url="/docs",
         redoc_url="/redoc",
         openapi_url="/openapi.json",
+        lifespan=lifespan,
     )
 
     app.add_middleware(
@@ -34,6 +48,7 @@ def create_app() -> FastAPI:
     app.add_middleware(RateLimitMiddleware, max_requests=200, window=60)
 
     app.include_router(api_router, prefix="/api/govsocial/v1")
+    app.include_router(chat_router)
 
     @app.get("/api/govsocial/health")
     async def health():
@@ -42,11 +57,6 @@ def create_app() -> FastAPI:
             "app": settings.APP_NAME,
             "version": settings.VERSION,
         }
-
-    @app.on_event("shutdown")
-    async def shutdown():
-        dispose_sync_engine()
-        await engine.dispose()
 
     return app
 

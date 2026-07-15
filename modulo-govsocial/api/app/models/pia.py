@@ -50,9 +50,11 @@ class Pia(Base, TimestampMixin):
     medida_socioeducativa: Mapped[str] = mapped_column(
         String(30), nullable=False, comment="LA, PSC, SEMILIBERDADE, INTERNACAO"
     )
-    prazo_medida: Mapped[Optional[int]] = mapped_column(
-        Integer, nullable=True, comment="Prazo em meses"
-    )
+    prazo_medida: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="Prazo em meses")
+    horas_totais: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="Horas totais (CCXXII)")
+    horas_mensais: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="Horas mensais")
+    horas_cumpridas: Mapped[Optional[int]] = mapped_column(Integer, default=0, nullable=True, comment="Horas cumpridas")
+    horas_restantes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, comment="Horas restantes")
     data_inicio_medida: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     data_fim_medida: Mapped[Optional[date]] = mapped_column(Date, nullable=True)
     frequencia_cumprimento: Mapped[Optional[str]] = mapped_column(
@@ -121,3 +123,16 @@ class RelatorioPia(Base, TimestampMixin):
 
     def __repr__(self) -> str:
         return f"<RelatorioPia {self.tipo} {self.data_relatorio}>"
+
+    horas_totais: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, comment="Horas totais da medida (CCXXII)"
+    )
+    horas_mensais: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, comment="Horas mensais"
+    )
+    horas_cumpridas: Mapped[Optional[int]] = mapped_column(
+        Integer, default=0, nullable=True, comment="Horas cumpridas"
+    )
+    horas_restantes: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True, comment="Horas restantes"
+    )

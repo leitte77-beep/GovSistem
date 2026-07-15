@@ -530,7 +530,7 @@ async def sign_edition(
         if credential is None:
             raise HTTPException(404, "Signing credential not found")
 
-        from app.services.encryption import decrypt_bytes, decrypt
+        from app.services.encryption import decrypt_bytes
         try:
             pfx_encrypted = credential.config.get("pfx_encrypted", "")
             pfx_b64 = base64.b64encode(decrypt_bytes(pfx_encrypted.encode("utf-8"))).decode("utf-8")
@@ -543,6 +543,7 @@ async def sign_edition(
             raise HTTPException(500, f"Erro ao descriptografar certificado: {e}")
 
     from app.core.config import settings as api_settings
+    from app.models.organization import Organization
 
     org_result = await db.execute(
         select(Organization).where(Organization.id == edition.organization_id)
@@ -587,6 +588,7 @@ async def sign_edition(
             signer_resp = await http_client.post(
                 f"{settings.SIGNER_URL}/internal/sign-pdf",
                 json=signer_payload,
+                headers={"X-Internal-Key": settings.INTERNAL_API_KEY.get_secret_value()},
                 timeout=120,
             )
         if signer_resp.status_code != 200:

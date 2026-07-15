@@ -1,3 +1,4 @@
+import re
 import uuid
 from datetime import datetime, timezone
 
@@ -163,10 +164,11 @@ async def baixar_anexo(
         client_info=get_client_info(request),
     )
     await db.commit()
+    safe_name = re.sub(r'[^\w\-. ]', '_', a.nome_arquivo or "arquivo")
     return Response(
         content=content,
         media_type=a.content_type or "application/octet-stream",
-        headers={"Content-Disposition": f'attachment; filename="{a.nome_arquivo}"'},
+        headers={"Content-Disposition": f'attachment; filename="{safe_name}"'},
     )
 
 

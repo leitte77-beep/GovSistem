@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Declaração de Comparecimento</title>
+<style>
+  @page {
+    size: A4;
+    margin: 25mm 20mm 30mm 20mm;
+    @bottom-center {
+      content: "Declaração de Comparecimento";
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 9pt;
+      color: #999;
+    }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: Georgia, "Times New Roman", "DejaVu Serif", serif;
+    font-size: 12pt;
+    line-height: 1.8;
+    color: #1a1a1a;
+  }
+
+  .cabecalho {
+    text-align: center;
+    margin-bottom: 30px;
+    border-bottom: 2px solid #2a5c8a;
+    padding-bottom: 16px;
+  }
+  .cabecalho .brasao { max-height: 56px; margin-bottom: 6px; }
+  .cabecalho h1 { font-size: 14pt; color: #2a5c8a; font-weight: 700; }
+  .cabecalho .org { font-size: 10pt; color: #444; }
+
+  .titulo-doc {
+    text-align: center;
+    font-size: 14pt;
+    font-weight: 700;
+    margin: 24px 0;
+    padding: 10px 0;
+    border-top: 1px solid #ccc;
+    border-bottom: 1px solid #ccc;
+  }
+
+  .conteudo {
+    text-align: justify;
+    line-height: 2;
+    margin: 20px 0 16px;
+    text-indent: 30mm;
+  }
+
+  .info-destacada {
+    background: #f4f7fa;
+    border: 1px solid #d0d7de;
+    border-radius: 4px;
+    padding: 14px 18px;
+    margin: 20px 0;
+  }
+
+  .assinatura {
+    margin-top: 60px;
+    text-align: center;
+  }
+  .assinatura .linha {
+    border-top: 1px solid #000;
+    width: 300px;
+    margin: 0 auto 4px;
+  }
+  .assinatura .rotulo {
+    font-size: 10pt;
+    color: #555;
+  }
+  .assinatura .nome {
+    font-weight: 700;
+    font-size: 11pt;
+  }
+
+  .rodape {
+    margin-top: 40px;
+    padding-top: 8px;
+    border-top: 1px solid #ccc;
+    font-size: 9pt;
+    color: #888;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div class="cabecalho">
+  {% if brasao %}
+    <img class="brasao" src="{{ brasao }}" alt="Brasão">
+  {% endif %}
+  <h1>PREFEITURA MUNICIPAL DE {{ municipio | upper }}</h1>
+  <div class="org">Secretaria Municipal de Assistência Social</div>
+</div>
+
+<div class="titulo-doc">DECLARAÇÃO DE COMPARECIMENTO</div>
+
+<div class="conteudo">
+  <p>
+    Declaro{% if genero == 'F' %}a{% endif %}, para os devidos fins, que 
+    <strong>{{ nome_pessoa }}</strong>,
+    {% if documento %}portador(a) do {{ tipo_documento }} nº <strong>{{ documento }}</strong>,{% endif %}
+    compareceu a esta unidade de assistência social — <strong>{{ unidade }}</strong> — 
+    no dia <strong>{{ data_comparecimento }}</strong>{% if horario %}, às <strong>{{ horario }}</strong>{% endif %},
+    para {{ finalidade }}.
+  </p>
+</div>
+
+{% if observacoes %}
+<div class="info-destacada">
+  <strong>Observações:</strong>
+  <p style="margin-top:4px;">{{ observacoes }}</p>
+</div>
+{% endif %}
+
+<div class="assinatura">
+  <div class="linha"></div>
+  <div class="nome">{{ nome_profissional }}</div>
+  <div class="rotulo">{{ cargo_profissional }}{% if registro %} · {{ registro }}{% endif %}</div>
+</div>
+
+<div class="rodape">
+  Documento gerado pelo GovSocial em {{ gerado_em }} — {{ municipio }}
+</div>
+
+</body>
+</html>

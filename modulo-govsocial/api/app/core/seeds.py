@@ -7,7 +7,7 @@
 """
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import hash_password
 from app.models.domain import AccessForm, BenefitType, ReferralCode, ServiceType
 from app.models.enums import RoleName
+from app.models.notificacao import Notificacao
 from app.models.organization import Organization
 from app.models.professional import Professional
 from app.models.professional_assignment import ProfessionalAssignment
@@ -65,6 +66,12 @@ BENEFIT_TYPES = [
     ("CALAMIDADE", "Auxílio em situação de calamidade", "CALAMIDADE", "UNIDADE", True, None),
     ("PASSAGEM", "Passagem / Auxílio-transporte", "PASSAGEM", "UNIDADE", False, 30),
     ("DOCUMENTACAO", "Auxílio-documentação / 2ª via / foto", "DOCUMENTACAO", "UNIDADE", False, 180),
+    ("VALE_GAS", "Vale-Gás / Auxílio-gás de cozinha", "TRANSFERENCIA", "UNIDADE", False, 60),
+    ("ENXOVAL", "Kit enxoval / Auxílio-enxoval para gestante", "ENXOVAL", "KIT", False, 300),
+    ("FARDAMENTO", "Auxílio-fardamento / material escolar", "EDUCACAO", "KIT", False, 365),
+    ("FILTRO_AGUA", "Filtro de água / Kit tratamento de água", "HABITACAO", "KIT", False, None),
+    ("MEDICAMENTO", "Auxílio-medicamento / farmácia", "SAUDE", "UNIDADE", True, 30),
+    ("COLCHAO", "Kit colchão / Auxílio-mobiliário básico", "HABITACAO", "KIT", False, 180),
 ]
 
 
@@ -127,7 +134,7 @@ SEED_ROLES = [
     (RoleName.GESTOR_MUNICIPAL.value, "Gestor municipal", "Dashboards, RMA consolidado, configurações"),
     (RoleName.VIGILANCIA.value, "Vigilância socioassistencial", "Indicadores, mapas, configurações"),
     (RoleName.CONSELHO.value, "Conselho (CMAS)", "Relatórios agregados e anonimizados"),
-    (RoleName.SUPORTE_GOVASSIST.value, "Suporte GovAssist", "Operação assistida com consentimento"),
+    (RoleName.SUPORTE_GOVASSIST.value, "Suporte GovSocial", "Operação assistida com consentimento"),
 ]
 
 
@@ -158,7 +165,7 @@ SEED_USERS = [
     ("Gestor Eduardo", "gestor@nova-esperanca.gov.br", "66666666666", RoleName.GESTOR_MUNICIPAL.value),
     ("Vigilância Fernanda", "vigilancia@nova-esperanca.gov.br", "77777777777", RoleName.VIGILANCIA.value),
     ("Conselheiro Gilberto", "conselho@nova-esperanca.gov.br", "88888888888", RoleName.CONSELHO.value),
-    ("Suporte GovAssist", "suporte@govassist.com.br", "99999999999", RoleName.SUPORTE_GOVASSIST.value),
+    ("Suporte GovSocial", "suporte@govsocial.com.br", "99999999999", RoleName.SUPORTE_GOVASSIST.value),
 ]
 
 SEED_UNITS = [
@@ -379,7 +386,6 @@ async def seed_prontuarios(db: AsyncSession, tenant_id: uuid.UUID) -> int:
     from app.models.attendance import Attendance, AttendanceMember
     from app.models.case_file import CaseFile
     from app.models.family import Family
-    from app.models.professional import Professional
     from app.models.unit import Unit
 
     existing = (
@@ -450,6 +456,201 @@ async def seed_prontuarios(db: AsyncSession, tenant_id: uuid.UUID) -> int:
         ))
     await db.commit()
     return 1
+
+
+async def seed_notificacoes_por_papel(db: AsyncSession, tenant_id: uuid.UUID) -> int:
+    """Cria notificações de exemplo segmentadas por papel (role_alvo)."""
+
+    existing = await db.scalar(
+        select(Notificacao.id).where(
+            Notificacao.tenant_id == tenant_id,
+            Notificacao.role_alvo.isnot(None),
+        ).limit(1),
+    )
+    if existing:
+        return 0
+
+    notificacoes = [
+        # ── Gestor Municipal ──
+        {
+            "role_alvo": "gestor_municipal",
+            "titulo": "Relatório Mensal do PAIF disponível",
+            "mensagem": "O relatório consolidado de atendimentos do PAIF referente ao mês anterior já está disponível. Acesse o painel de relatórios para conferir os indicadores.",
+            "tipo": "SISTEMA",
+            "link": "/relatorios",
+        },
+        {
+            "role_alvo": "gestor_municipal",
+            "titulo": "Meta de cobertura do CadÚnico: 87%",
+            "mensagem": "O município está a 3 pontos percentuais da meta de 90% de cobertura do CadÚnico. Considere intensificar a busca ativa nos bairros com menor cobertura.",
+            "tipo": "ALERTA",
+            "link": "/relatorios",
+        },
+        {
+            "role_alvo": "gestor_municipal",
+            "titulo": "Prazo de prestação de contas se aproxima",
+            "mensagem": "O prazo para envio da prestação de contas trimestral ao Conselho Municipal encerra em 15 dias. Verifique os dados pendentes.",
+            "tipo": "PRAZO",
+            "link": "/relatorios",
+        },
+
+        # ── Coordenador de Unidade ──
+        {
+            "role_alvo": "coordenador_unidade",
+            "titulo": "3 encaminhamentos aguardando sua análise",
+            "mensagem": "Há encaminhamentos pendentes de triagem há mais de 48h. Revise a fila para garantir o atendimento dentro do prazo.",
+            "tipo": "ENCAMINHAMENTO",
+            "link": "/atendimentos",
+        },
+        {
+            "role_alvo": "coordenador_unidade",
+            "titulo": "Escala de plantão da próxima semana",
+            "mensagem": "A escala de plantão para a próxima semana precisa ser preenchida até sexta-feira. Lembre-se de balancear a carga entre os técnicos.",
+            "tipo": "AGENDA",
+            "link": "/agenda",
+        },
+        {
+            "role_alvo": "coordenador_unidade",
+            "titulo": "Nova família em situação de rua cadastrada",
+            "mensagem": "Foi registrada uma nova família em situação de rua na área de abrangência do CREAS. priorize o atendimento inicial em até 24h.",
+            "tipo": "ALERTA",
+            "link": "/familias",
+        },
+
+        # ── Técnico Superior ──
+        {
+            "role_alvo": "tecnico_superior",
+            "titulo": "Visita domiciliar agendada para amanhã",
+            "mensagem": "Você tem 2 visitas domiciliares agendadas para amanhã às 9h e 14h. Verifique os prontuários antes da saída.",
+            "tipo": "AGENDA",
+            "link": "/agenda",
+        },
+        {
+            "role_alvo": "tecnico_superior",
+            "titulo": "Parecer técnico solicitado pelo CREAS",
+            "mensagem": "O CREAS solicitou um parecer técnico para a família Silva. O prazo de resposta é de 5 dias úteis.",
+            "tipo": "ENCAMINHAMENTO",
+            "link": "/atendimentos",
+        },
+        {
+            "role_alvo": "tecnico_superior",
+            "titulo": "BPC protocolado — aguardando perícia",
+            "mensagem": "O requerimento de BPC para a Sra. Maria José (idoso, 78 anos) foi protocolado. Acompanhe o agendamento da perícia médica.",
+            "tipo": "BENEFICIO",
+            "link": "/beneficios",
+        },
+
+        # ── Técnico Médio ──
+        {
+            "role_alvo": "tecnico_medio",
+            "titulo": "SCFV: lista de presença do grupo de idosos",
+            "mensagem": "A lista de presença do grupo de convivência de idosos da terça-feira precisa ser registrada. São 18 participantes confirmados.",
+            "tipo": "AGENDA",
+            "link": "/agenda",
+        },
+        {
+            "role_alvo": "tecnico_medio",
+            "titulo": "Cadastro de nova família aguardando revisão",
+            "mensagem": "O cadastro da família Oliveira (NIS: 123.45678.90-1) está incompleto. Campos obrigatórios pendentes: renda familiar e composição do domicílio.",
+            "tipo": "ALERTA",
+            "link": "/familias",
+        },
+        {
+            "role_alvo": "tecnico_medio",
+            "titulo": "Reavaliação semestral: 12 famílias pendentes",
+            "mensagem": "Doze famílias da sua área de referência estão com reavaliação semestral vencida há mais de 15 dias.",
+            "tipo": "PRAZO",
+            "link": "/familias",
+        },
+
+        # ── Recepção ──
+        {
+            "role_alvo": "recepcao",
+            "titulo": "Agenda de atendimentos de hoje cheia",
+            "mensagem": "A agenda de hoje está com 14 atendimentos confirmados. Verifique se há documentação pendente para agilizar o acolhimento.",
+            "tipo": "AGENDA",
+            "link": "/agenda",
+        },
+        {
+            "role_alvo": "recepcao",
+            "titulo": "Nova demanda espontânea registrada",
+            "mensagem": "Uma nova família chegou por demanda espontânea e aguarda triagem. Certifique-se de coletar documentação básica antes do atendimento.",
+            "tipo": "ENCAMINHAMENTO",
+            "link": "/atendimentos",
+        },
+        {
+            "role_alvo": "recepcao",
+            "titulo": "Atualização do CadÚnico: documentos vencidos",
+            "mensagem": "3 famílias agendadas para hoje precisam atualizar documentos vencidos (RG, CPF, comprovante de residência). Avise-as na chegada.",
+            "tipo": "ALERTA",
+            "link": "/familias",
+        },
+
+        # ── Vigilância Socioassistencial ──
+        {
+            "role_alvo": "vigilancia",
+            "titulo": "Alerta de território: aumento de violações",
+            "mensagem": "O bairro Jardim Esperança registrou aumento de 40% em notificações de violação de direitos no último trimestre. Recomenda-se diagnóstico territorial.",
+            "tipo": "ALERTA",
+            "link": "/relatorios",
+        },
+        {
+            "role_alvo": "vigilancia",
+            "titulo": "Indicadores de vulnerabilidade atualizados",
+            "mensagem": "Os indicadores de vulnerabilidade territorial do município foram atualizados com dados do Censo 2024. Acesse o painel de vigilância.",
+            "tipo": "SISTEMA",
+            "link": "/relatorios",
+        },
+        {
+            "role_alvo": "vigilancia",
+            "titulo": "Mapeamento de rede: nova entidade cadastrada",
+            "mensagem": "Uma nova entidade socioassistencial foi cadastrada na rede. Atualize o mapeamento da rede no sistema.",
+            "tipo": "SISTEMA",
+            "link": "/configuracao",
+        },
+
+        # ── ADMIN ──
+        {
+            "role_alvo": "ADMIN",
+            "titulo": "Atualização de segurança: versão 3.2.1",
+            "mensagem": "Uma nova versão do sistema foi implantada com correções de segurança (LGPD) e melhorias de desempenho. Veja as notas de versão.",
+            "tipo": "SISTEMA",
+            "link": "/configuracao",
+        },
+        {
+            "role_alvo": "ADMIN",
+            "titulo": "Backup automático concluído com sucesso",
+            "mensagem": "O backup diário da base de dados foi concluído às 03:14. Tamanho: 2.4 GB. Nenhum erro detectado.",
+            "tipo": "SISTEMA",
+        },
+        {
+            "role_alvo": "ADMIN",
+            "titulo": "Usuário inativo há 90 dias: joao.silva",
+            "mensagem": "O usuário João Silva (técnico_medio, CRAS Central) está sem atividade há 90 dias. Considere revisar o acesso.",
+            "tipo": "ALERTA",
+            "link": "/configuracao",
+        },
+    ]
+
+    agora = datetime.utcnow()
+    contador = 0
+    for n in notificacoes:
+        db.add(Notificacao(
+            tenant_id=tenant_id,
+            user_id=uuid.UUID("00000000-0000-0000-0000-000000000000"),  # role-based: sem user específico
+            titulo=n["titulo"],
+            mensagem=n.get("mensagem"),
+            tipo=n["tipo"],
+            role_alvo=n["role_alvo"],
+            link=n.get("link"),
+            entity_type="seed",
+            created_at=agora,
+            updated_at=agora,
+        ))
+        contador += 1
+
+    await db.commit()
+    return contador
 
 
 async def run_all_seeds(db: AsyncSession) -> dict:

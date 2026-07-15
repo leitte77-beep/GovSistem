@@ -238,6 +238,7 @@ async def sign_pdf(
             signer_resp = await http_client.post(
                 f"{settings.SIGNER_URL}/internal/sign-pdf",
                 json=signer_payload,
+                headers={"X-Internal-Key": settings.INTERNAL_API_KEY.get_secret_value()},
                 timeout=120,
             )
 
@@ -330,6 +331,7 @@ async def verify_pdf_signature(
             resp = await http_client.post(
                 f"{settings.SIGNER_URL}/internal/verify-pdf",
                 json={"signed_pdf_base64": signed_pdf_base64},
+                headers={"X-Internal-Key": settings.INTERNAL_API_KEY.get_secret_value()},
                 timeout=60,
             )
 

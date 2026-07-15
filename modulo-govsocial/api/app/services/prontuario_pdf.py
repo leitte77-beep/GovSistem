@@ -5,8 +5,10 @@ tardio para não quebrar ambientes sem a lib (ex.: suíte de testes) — nesse c
 levanta 503 amigável via HTTPException.
 """
 
+import re
 import uuid
 from datetime import datetime, timezone
+from html import unescape
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -24,6 +26,28 @@ from app.models.user import User
 from app.services.scoping import can_read_evolution
 
 _TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "pdf"
+
+_RE_QUEBRA = re.compile(r"</(p|div|li|h[1-6]|blockquote)>|<br\s*/?>", re.IGNORECASE)
+_RE_TAG = re.compile(r"<[^>]+>")
+
+
+def evolucao_para_texto(valor: str | None) -> str | None:
+    """Converte a evolução (HTML do editor rich-text) em texto legível no PDF.
+
+    O frontend grava HTML (<p>, <b>, &nbsp;…). Sem esta conversão, o PDF
+    exibiria tags e entidades literalmente. Preserva quebras de parágrafo.
+    """
+    if not valor:
+        return valor
+    if "<" not in valor and "&" not in valor:
+        return valor
+    texto = _RE_QUEBRA.sub("\n", valor)
+    texto = _RE_TAG.sub("", texto)
+    texto = unescape(texto).replace("\u00a0", " ")
+    # Normaliza espaços preservando quebras de linha.
+    texto = re.sub(r"[ \t]+", " ", texto)
+    texto = re.sub(r"\n{3,}", "\n\n", texto)
+    return texto.strip()
 
 
 def _render_html(context: dict) -> str:
@@ -82,7 +106,7 @@ async def build_case_file_context(
             "tipo": att.tipo,
             "servico": att.service_type_code,
             "sigiloso": att.sigiloso_reforcado,
-            "evolucao": decrypt_text(att.evolution_text_enc) if pode else None,
+            "evolucao": evolucao_para_texto(decrypt_text(att.evolution_text_enc)) if pode else None,
             "restrita": not pode,
             "n_membros": len(att.members),
         })

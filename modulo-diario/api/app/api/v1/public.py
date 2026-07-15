@@ -492,6 +492,7 @@ async def public_verify_pdf(request: Request, body: dict):
             resp = await http_client.post(
                 f"{settings.SIGNER_URL}/internal/verify-pdf",
                 json={"signed_pdf_base64": signed_pdf_base64},
+                headers={"X-Internal-Key": settings.INTERNAL_API_KEY.get_secret_value()},
                 timeout=60,
             )
         if resp.status_code != 200:

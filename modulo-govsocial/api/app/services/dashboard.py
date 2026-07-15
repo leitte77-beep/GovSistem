@@ -1,12 +1,13 @@
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import func, select
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.acao_coletiva import AcaoColetiva, Inscricao
 from app.models.acompanhamento import Acompanhamento
 from app.models.attendance import Attendance
+from app.models.audit_trail import AuditTrail
 from app.models.beneficio import ConcessaoBeneficio
 from app.models.encaminhamento import Encaminhamento
 from app.models.family import Family
@@ -308,3 +309,208 @@ async def get_indicators(db: AsyncSession, tenant_id: uuid.UUID) -> dict:
         "inseguranca_alimentar": int(inseguranca),
         "renda_por_faixa": renda_por_faixa,
     }
+
+
+ENTIDADE_ROTULO: dict[str, str] = {
+    "family": "Família",
+    "person": "Pessoa",
+    "attendance": "Atendimento",
+    "benefit_concession": "Benefício",
+    "encaminhamento": "Encaminhamento",
+    "acao_coletiva": "Grupo SCFV",
+    "case_file": "Prontuário",
+    "unit": "Unidade",
+    "professional": "Profissional",
+    "benefit_type": "Tipo de benefício",
+    "domain_national_seed": "Domínios nacionais",
+    "org_signing_certificate": "Certificado digital",
+    "import_job": "Importação",
+    "onboarding_wizard": "Configuração",
+    "rma": "RMA",
+    "questionario": "Questionário",
+    "user": "Usuário",
+}
+
+ACAO_ROTULO: dict[str, str] = {
+    "CREATE": "criado",
+    "UPDATE": "atualizado",
+    "DELETE": "removido",
+    "READ": "consultado",
+    "LOGIN": "entrou no sistema",
+    "SEED": "inicializado",
+    "MERGE": "unificado",
+}
+
+_ONBOARDING_STEP_LABELS: dict[str, str] = {
+    "units": "Unidades cadastradas",
+    "territories": "Territórios configurados",
+    "benefits": "Benefícios configurados",
+    "professionals": "Equipe cadastrada",
+    "import": "Importação de dados concluída",
+}
+
+
+def _texto_atividade(
+    entity: str,
+    entity_id: str | None,
+    action: str,
+    diff_summary: dict | None,
+) -> tuple[str, str, str]:
+    """Retorna (texto_principal, descricao, categoria) para a linha de atividade."""
+    entidade = ENTIDADE_ROTULO.get(entity, entity)
+    acao = ACAO_ROTULO.get(action, action)
+    diff = diff_summary or {}
+
+    if entity == "onboarding_wizard":
+        step = diff.get("step", "")
+        label = _ONBOARDING_STEP_LABELS.get(step, f"Etapa {step}")
+        return "Configuração inicial", label, "config"
+
+    if entity == "user":
+        return "Usuário", "entrou no sistema", "acesso"
+
+    if entity == "family":
+        if action == "CREATE":
+            nome = diff.get("codigo", "") or ""
+            desc = f"Família {nome} cadastrada" if nome else "Nova família cadastrada"
+            return entidade, desc, "cadastro"
+        if action == "UPDATE":
+            return entidade, "Dados atualizados", "cadastro"
+        return entidade, acao, "cadastro"
+
+    if entity == "person":
+        if action == "CREATE":
+            nome = diff.get("nome", "") or ""
+            desc = nome if nome else "Nova pessoa cadastrada"
+            return entidade, desc, "cadastro"
+        if action == "UPDATE":
+            return entidade, "Dados atualizados", "cadastro"
+        return entidade, acao, "cadastro"
+
+    if entity == "attendance":
+        if action == "CREATE":
+            tipo = diff.get("tipo", "") or "Serviço"
+            sigiloso = "sigiloso" if diff.get("sigiloso") else ""
+            desc = f"{tipo} {sigiloso}".strip()
+            return entidade, desc, "atendimento"
+        if action == "UPDATE":
+            return entidade, "Registro atualizado", "atendimento"
+        if action == "READ":
+            return entidade, "Evolução consultada", "atendimento"
+        return entidade, acao, "atendimento"
+
+    if entity == "benefit_concession":
+        if action == "CREATE":
+            benef = diff.get("benefit", "") or "Benefício"
+            desc = f"{benef} concedido"
+            return entidade, desc, "beneficio"
+        status = diff.get("novo_status", "")
+        if status:
+            return entidade, status.replace("_", " ").title(), "beneficio"
+        if action == "UPDATE":
+            return entidade, "Dados atualizados", "beneficio"
+        return entidade, acao, "beneficio"
+
+    if entity == "encaminhamento":
+        if action == "CREATE":
+            tipo = diff.get("tipo", "") or ""
+            desc = f"{tipo} criado" if tipo else "Novo encaminhamento"
+            return entidade, desc, "encaminhamento"
+        status = diff.get("novo_status", "")
+        if status:
+            return entidade, status.replace("_", " ").title(), "encaminhamento"
+        return entidade, acao, "encaminhamento"
+
+    if entity == "acao_coletiva":
+        if action == "CREATE":
+            nome = diff.get("nome", "") or ""
+            desc = nome if nome else "Novo grupo SCFV"
+            return entidade, desc, "scfv"
+        if action == "UPDATE":
+            return entidade, "Dados atualizados", "scfv"
+        return entidade, acao, "scfv"
+
+    if entity == "case_file":
+        if action == "CREATE":
+            servico = diff.get("service", "") or ""
+            desc = servico if servico else "Novo prontuário"
+            return entidade, desc, "prontuario"
+        if action == "UPDATE":
+            return entidade, "Registro atualizado", "prontuario"
+        return entidade, acao, "prontuario"
+
+    if entity == "unit":
+        if action == "CREATE":
+            nome = diff.get("nome", "") or ""
+            desc = nome if nome else "Nova unidade"
+            return entidade, desc, "unidade"
+        return entidade, acao, "unidade"
+
+    if entity == "professional":
+        if action == "CREATE":
+            nome = diff.get("nome", "") or ""
+            desc = nome if nome else "Novo profissional"
+            return entidade, desc, "profissional"
+        return entidade, acao, "profissional"
+
+    if entity == "rma":
+        if action == "CREATE":
+            ano = diff.get("ano", "")
+            mes = diff.get("mes", "")
+            periodo = f"{mes}/{ano}" if mes and ano else ""
+            desc = f"RMA {periodo}" if periodo else "Novo RMA"
+            return entidade, desc, "rma"
+        status = diff.get("novo_status", "")
+        if status:
+            return entidade, status.replace("_", " ").title(), "rma"
+        return entidade, acao, "rma"
+
+    if entity == "import_job":
+        if action == "CREATE":
+            tipo = diff.get("tipo", "") or "Importação"
+            desc = f"{tipo} iniciada"
+            return entidade, desc, "importacao"
+        return entidade, acao, "importacao"
+
+    if entity == "domain_national_seed":
+        return entidade, "Tabelas de domínio inicializadas", "config"
+
+    # genérico
+    if action in ("CREATE", "UPDATE", "DELETE"):
+        eid = entity_id[:8] if entity_id else ""
+        return entidade, f"{eid} {acao}" if eid else acao, "geral"
+    if action == "LOGIN":
+        return "Usuário", "entrou no sistema", "acesso"
+    if action == "SEED":
+        return entidade, f"{acao}s", "config"
+    return entidade, acao, "geral"
+
+
+async def get_activity(db: AsyncSession, tenant_id: uuid.UUID, limit: int = 10) -> list[dict]:
+    rows = (
+        await db.execute(
+            select(AuditTrail)
+            .where(AuditTrail.tenant_id == tenant_id)
+            .order_by(desc(AuditTrail.occurred_at))
+            .limit(limit)
+        )
+    ).scalars().all()
+
+    resultados: list[dict] = []
+    for r in rows:
+        texto, descricao, categoria = _texto_atividade(
+            r.entity, r.entity_id, r.action, r.diff_summary
+        )
+
+        resultados.append({
+            "id": r.id,
+            "texto": texto,
+            "descricao": descricao,
+            "categoria": categoria,
+            "entidade": ENTIDADE_ROTULO.get(r.entity, r.entity),
+            "acao": ACAO_ROTULO.get(r.action, r.action),
+            "data": r.occurred_at,
+            "ator": r.actor_role,
+        })
+
+    return resultados

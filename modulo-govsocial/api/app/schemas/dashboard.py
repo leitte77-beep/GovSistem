@@ -1,3 +1,5 @@
+import uuid
+from datetime import datetime
 from typing import Optional
 
 from pydantic import BaseModel
@@ -53,3 +55,14 @@ class IndicatorsOut(BaseModel):
     cadunico_desatualizado_24m: int
     inseguranca_alimentar: int
     renda_por_faixa: list[FaixaRendaItem]
+
+
+class DashboardActivityItem(BaseModel):
+    id: uuid.UUID
+    texto: str
+    descricao: str = ""
+    categoria: str = ""
+    entidade: str
+    data: datetime
+    acao: str
+    ator: str | None = None

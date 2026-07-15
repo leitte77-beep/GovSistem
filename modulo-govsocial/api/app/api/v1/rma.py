@@ -13,12 +13,13 @@ from app.models.user import User
 from app.schemas.rma import (
     RmaAjusteCreate,
     RmaAjusteOut,
+    RmaDrillDown,
     RmaFechamentoListItem,
     RmaFechamentoOut,
     RmaReaberturaCreate,
 )
 from app.services.audit import record_audit
-from app.services.rma_engine import calcular_rma
+from app.services.rma_engine import calcular_rma, drilldown_rma
 
 router = APIRouter(tags=["rma"])
 
@@ -163,6 +164,52 @@ async def obter_fechamento(
     )
     await db.commit()
     return out
+
+
+@router.get("/rma/{fechamento_id}/drilldown", response_model=RmaDrillDown)
+async def drilldown_fechamento(
+    fechamento_id: uuid.UUID,
+    bloco: str = Query(..., max_length=50),
+    campo: str = Query(..., max_length=100),
+    request: Request = None,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_tenant_id),
+    user: User = Depends(_READ),
+):
+    """Lupa do RMA: registros que compõem um número (sem PII — só referências)."""
+    f = (
+        await db.execute(
+            select(RmaFechamento).where(
+                RmaFechamento.id == fechamento_id,
+                RmaFechamento.tenant_id == tenant_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not f:
+        raise HTTPException(status_code=404, detail="Fechamento não encontrado")
+
+    # Valor exibido reflete o dado armazenado (já inclui ajustes manuais); os
+    # registros vêm de uma reapuração ao vivo dos dados que compõem o número.
+    valor = 0
+    bloco_dados = (f.dados_calculados or {}).get(bloco)
+    if isinstance(bloco_dados, dict):
+        try:
+            valor = int(bloco_dados.get(campo) or 0)
+        except (TypeError, ValueError):
+            valor = 0
+
+    registros = await drilldown_rma(
+        db, tenant_id, f.unit_id, f.ano, f.mes, bloco, campo
+    )
+
+    await record_audit(
+        db, tenant_id=tenant_id, action=AuditAction.READ,
+        entity="rma_fechamento", entity_id=f.id, actor=user,
+        client_info=get_client_info(request) if request else {},
+        diff_summary={"drilldown": f"{bloco}.{campo}"},
+    )
+    await db.commit()
+    return {"bloco": bloco, "campo": campo, "valor": valor, "registros": registros}
 
 
 @router.post("/rma/{fechamento_id}/adjust", response_model=RmaAjusteOut, status_code=201)
@@ -330,3 +377,53 @@ async def exportar_rma_csv(
             ),
         },
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════
+# XML Export (CCXCVIII, CCCII)
+# ═══════════════════════════════════════════════════════════════════════
+
+from xml.etree.ElementTree import Element, SubElement, tostring
+from fastapi.responses import Response
+
+
+@router.get("/rma/{fechamento_id}/xml")
+async def exportar_rma_xml(
+    fechamento_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_tenant_id),
+    user: User = Depends(_READ),
+):
+    f = (await db.execute(select(RmaFechamento).where(RmaFechamento.id == fechamento_id, RmaFechamento.tenant_id == tenant_id))).scalar_one_or_none()
+    if not f: raise HTTPException(404, "RMA nao encontrado")
+
+    root = Element("RMA")
+    root.set("versao", "1.0")
+    cab = SubElement(root, "Cabecalho")
+    SubElement(cab, "Unidade").text = str(f.unit_id)
+    SubElement(cab, "Ano").text = str(f.ano)
+    SubElement(cab, "Mes").text = str(f.mes).zfill(2)
+    SubElement(cab, "Status").text = f.status
+    SubElement(cab, "Tipo").text = f.tipo or ""
+
+    blocos = SubElement(root, "Blocos")
+    if f.blocos:
+        for bloco_nome, bloco_valor in f.blocos.items():
+            bloco = SubElement(blocos, "Bloco", nome=bloco_nome)
+            if isinstance(bloco_valor, dict):
+                for campo_nome, campo_valor in bloco_valor.items():
+                    campo = SubElement(bloco, "Campo", nome=campo_nome)
+                    campo.text = str(campo_valor) if campo_valor is not None else "0"
+
+    if f.ajustes:
+        ajustes = SubElement(root, "Ajustes")
+        for a in f.ajustes:
+            aj = SubElement(ajustes, "Ajuste")
+            SubElement(aj, "Campo").text = a.get("campo", "")
+            SubElement(aj, "ValorCalculado").text = str(a.get("valor_calculado", 0))
+            SubElement(aj, "ValorAjustado").text = str(a.get("valor_ajustado", 0))
+            SubElement(aj, "Justificativa").text = a.get("justificativa", "")
+
+    xml_str = '<?xml version="1.0" encoding="UTF-8"?>\n' + tostring(root, encoding="unicode")
+    return Response(content=xml_str, media_type="application/xml",
+                    headers={"Content-Disposition": f"attachment; filename=rma_{f.ano}_{f.mes:02d}.xml"})

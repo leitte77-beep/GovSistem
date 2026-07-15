@@ -308,3 +308,95 @@ async def atualizar_visita(
         await db.execute(select(VisitaDomiciliar).where(VisitaDomiciliar.id == v.id))
     ).scalar_one()
     return v
+
+
+# ============================================================================
+# Cancelamento de agendamento (CCCXLI) + Horarios (CCCXXX-CCCXXXIV)
+# ============================================================================
+
+from app.models.agenda import AgendaBloqueio, AgendaHorario
+from datetime import date as date_type
+from pydantic import BaseModel as PydanticBase
+
+class HorarioCreate(PydanticBase):
+    professional_id: uuid.UUID | None = None
+    unit_id: uuid.UUID | None = None
+    equipe_id: uuid.UUID | None = None
+    dia_semana: int
+    hora_inicio: str
+    hora_fim: str
+    duracao_minutos: int = 30
+    data_inicio: date_type
+    data_fim: date_type | None = None
+
+class BloqueioCreate(PydanticBase):
+    professional_id: uuid.UUID | None = None
+    unit_id: uuid.UUID | None = None
+    data: date_type
+    hora_inicio: str | None = None
+    hora_fim: str | None = None
+    motivo: str | None = None
+    recorrente_anual: bool = False
+
+
+@router.post("/appointments/{appointment_id}/cancel")
+async def cancelar_agendamento(appointment_id: uuid.UUID, motivo: str = Query(..., min_length=3, max_length=200), request: Request = None, db: AsyncSession = Depends(get_db), tenant_id: uuid.UUID = Depends(get_tenant_id), user: User = Depends(_MANAGE)):
+    a = (await db.execute(select(Appointment).where(Appointment.id == appointment_id, Appointment.tenant_id == tenant_id, Appointment.deleted_at.is_(None)))).scalar_one_or_none()
+    if not a: raise HTTPException(404, "Agendamento nao encontrado")
+    if a.status not in ("AGENDADO", "AGUARDANDO"): raise HTTPException(400, "Agendamento nao pode ser cancelado")
+    a.status = "CANCELADO"; a.motivo_cancelamento = motivo
+    if request: await record_audit(db, tenant_id=tenant_id, action=AuditAction.UPDATE, entity="appointment", entity_id=a.id, actor=user, client_info=get_client_info(request))
+    await db.commit()
+    return a
+
+
+@router.get("/schedule")
+async def listar_horarios(db: AsyncSession = Depends(get_db), tenant_id: uuid.UUID = Depends(get_tenant_id), user: User = Depends(_READ)):
+    r = await db.execute(select(AgendaHorario).where(AgendaHorario.tenant_id == str(tenant_id), AgendaHorario.deleted_at.is_(None), AgendaHorario.ativo == True).order_by(AgendaHorario.dia_semana, AgendaHorario.hora_inicio))
+    return [_horario_out(h) for h in r.scalars().all()]
+
+
+@router.post("/schedule")
+async def criar_horario(body: HorarioCreate, db: AsyncSession = Depends(get_db), tenant_id: uuid.UUID = Depends(get_tenant_id), user: User = Depends(_MANAGE)):
+    h = AgendaHorario(tenant_id=str(tenant_id), professional_id=body.professional_id, unit_id=body.unit_id, equipe_id=body.equipe_id, dia_semana=body.dia_semana, hora_inicio=body.hora_inicio, hora_fim=body.hora_fim, duracao_minutos=body.duracao_minutos, data_inicio=datetime.combine(body.data_inicio, datetime.min.time()))
+    if body.data_fim: h.data_fim = datetime.combine(body.data_fim, datetime.min.time())
+    db.add(h); await db.commit(); await db.refresh(h)
+    return _horario_out(h)
+
+
+@router.delete("/schedule/{horario_id}")
+async def excluir_horario(horario_id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant_id: uuid.UUID = Depends(get_tenant_id), user: User = Depends(_MANAGE)):
+    h = await db.get(AgendaHorario, horario_id)
+    if not h or h.tenant_id != str(tenant_id): raise HTTPException(404, "Horario nao encontrado")
+    h.deleted_at = datetime.now(timezone.utc); await db.commit()
+    return {"ok": True}
+
+
+@router.get("/blocks")
+async def listar_bloqueios(unit_id: uuid.UUID | None = Query(None), db: AsyncSession = Depends(get_db), tenant_id: uuid.UUID = Depends(get_tenant_id), user: User = Depends(_READ)):
+    q = select(AgendaBloqueio).where(AgendaBloqueio.tenant_id == str(tenant_id), AgendaBloqueio.deleted_at.is_(None))
+    if unit_id: q = q.where(AgendaBloqueio.unit_id == unit_id)
+    r = await db.execute(q.order_by(AgendaBloqueio.data))
+    return [_bloqueio_out(b) for b in r.scalars().all()]
+
+
+@router.post("/blocks")
+async def criar_bloqueio(body: BloqueioCreate, db: AsyncSession = Depends(get_db), tenant_id: uuid.UUID = Depends(get_tenant_id), user: User = Depends(_MANAGE)):
+    b = AgendaBloqueio(tenant_id=str(tenant_id), professional_id=body.professional_id, unit_id=body.unit_id, data=datetime.combine(body.data, datetime.min.time()), hora_inicio=body.hora_inicio, hora_fim=body.hora_fim, motivo=body.motivo, recorrente_anual=body.recorrente_anual)
+    db.add(b); await db.commit(); await db.refresh(b)
+    return _bloqueio_out(b)
+
+
+@router.delete("/blocks/{bloqueio_id}")
+async def excluir_bloqueio(bloqueio_id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant_id: uuid.UUID = Depends(get_tenant_id), user: User = Depends(_MANAGE)):
+    b = await db.get(AgendaBloqueio, bloqueio_id)
+    if not b or b.tenant_id != str(tenant_id): raise HTTPException(404, "Bloqueio nao encontrado")
+    b.deleted_at = datetime.now(timezone.utc); await db.commit()
+    return {"ok": True}
+
+
+def _horario_out(h: AgendaHorario) -> dict:
+    return {"id": str(h.id), "professional_id": str(h.professional_id) if h.professional_id else None, "unit_id": str(h.unit_id) if h.unit_id else None, "dia_semana": h.dia_semana, "hora_inicio": h.hora_inicio, "hora_fim": h.hora_fim, "duracao_minutos": h.duracao_minutos}
+
+def _bloqueio_out(b: AgendaBloqueio) -> dict:
+    return {"id": str(b.id), "professional_id": str(b.professional_id) if b.professional_id else None, "unit_id": str(b.unit_id) if b.unit_id else None, "data": b.data.strftime("%Y-%m-%d"), "hora_inicio": b.hora_inicio, "hora_fim": b.hora_fim, "motivo": b.motivo}

@@ -1,6 +1,7 @@
 """Serviço de auditoria append-only (escritas e leituras sensíveis)."""
 
 import uuid
+from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,7 +21,7 @@ def _primary_role(user: User | None) -> str | None:
 async def record_audit(
     db: AsyncSession,
     *,
-    tenant_id: uuid.UUID,
+    tenant_id: Optional[uuid.UUID] = None,
     action: AuditAction | str,
     entity: str,
     entity_id: str | uuid.UUID | None = None,

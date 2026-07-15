@@ -35,3 +35,9 @@ class SystemMetricsOut(BaseModel):
     total_atendimentos_mes: int
     total_usuarios: int
     ultimo_rma_fechado: Optional[str] = None
+
+
+class OrganizationConfigOut(BaseModel):
+    nome_municipio: str
+    brasao_url: Optional[str] = None
+    cor_destaque: Optional[str] = None

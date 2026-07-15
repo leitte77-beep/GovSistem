@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>{{ titulo }}</title>
+<style>
+  @page {
+    size: A4;
+    margin: 25mm 20mm 30mm 20mm;
+    @bottom-center {
+      content: "RMA — Espelho";
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 9pt;
+      color: #999;
+    }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: Georgia, "Times New Roman", "DejaVu Serif", serif;
+    font-size: 10pt;
+    line-height: 1.5;
+    color: #1a1a1a;
+  }
+
+  .cabecalho {
+    text-align: center;
+    margin-bottom: 20px;
+    border-bottom: 2px solid #2a5c8a;
+    padding-bottom: 14px;
+  }
+  .cabecalho .brasao { max-height: 50px; margin-bottom: 4px; }
+  .cabecalho h1 { font-size: 14pt; color: #2a5c8a; font-weight: 700; }
+  .cabecalho .org { font-size: 10pt; color: #444; }
+
+  h2 {
+    font-size: 11pt;
+    font-weight: 700;
+    border-bottom: 1px solid #2a5c8a;
+    padding-bottom: 3px;
+    margin: 16px 0 8px;
+    color: #2a5c8a;
+  }
+
+  .meta {
+    text-align: center;
+    font-size: 10pt;
+    margin-bottom: 16px;
+    padding: 8px;
+    background: #f4f7fa;
+    border-radius: 3px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 14px;
+  }
+  th {
+    background: #e9ecf0;
+    font-weight: 700;
+    padding: 5px 7px;
+    border: 1px solid #c0c6ce;
+    text-align: left;
+    font-size: 9pt;
+  }
+  td {
+    padding: 4px 7px;
+    border: 1px solid #d0d7de;
+    font-size: 9.5pt;
+  }
+  td.num {
+    text-align: right;
+    font-family: "Courier New", monospace;
+    white-space: nowrap;
+  }
+  td.codigo {
+    font-family: "Courier New", monospace;
+    font-size: 9pt;
+    color: #555;
+    width: 60px;
+  }
+
+  .ajustado { color: #b91c1c; font-weight: 600; }
+
+  .ajustes-lista {
+    margin: 16px 0;
+    padding: 10px 14px;
+    background: #fff8f0;
+    border-left: 3px solid #e67e22;
+    font-size: 9.5pt;
+  }
+  .ajustes-lista ul { margin: 4px 0 0 16px; }
+  .ajustes-lista li { margin-bottom: 3px; }
+
+  .assinatura {
+    margin-top: 60px;
+    text-align: center;
+  }
+  .assinatura .linha {
+    border-top: 1px solid #000;
+    width: 280px;
+    margin: 0 auto 4px;
+  }
+  .assinatura .rotulo {
+    font-size: 9pt;
+    color: #555;
+  }
+
+  .rodape {
+    margin-top: 36px;
+    padding-top: 8px;
+    border-top: 1px solid #ccc;
+    font-size: 9pt;
+    color: #888;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div class="cabecalho">
+  {% if brasao %}
+    <img class="brasao" src="{{ brasao }}" alt="Brasão">
+  {% endif %}
+  <h1>RELATÓRIO MENSAL DE ATENDIMENTOS</h1>
+  <div class="org">{{ municipio }} — Assistência Social</div>
+</div>
+
+<h1 style="text-align:center; font-size:14pt; margin-bottom:6px;">RMA — ESPELHO</h1>
+
+<div class="meta">
+  <strong>Competência:</strong> {{ competencia }} &nbsp;|&nbsp;
+  <strong>Situação:</strong> {{ situacao }} &nbsp;|&nbsp;
+  <strong>Unidade:</strong> {{ unidade }}
+  {% if fechado_em %}
+    &nbsp;|&nbsp; <strong>Fechado em:</strong> {{ fechado_em }}
+  {% endif %}
+</div>
+
+{% for bloco in blocos %}
+  <h2>{{ bloco.rotulo }}</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Código</th>
+        <th>Indicador</th>
+        <th style="text-align:right;width:70px;">Valor</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for campo in bloco.campos %}
+        <tr>
+          <td class="codigo">{{ campo.codigo }}</td>
+          <td>
+            {{ campo.rotulo }}
+            {% if campo.ajustado_de is not none %}
+              <span class="ajustado">(ajustado de {{ campo.ajustado_de }})</span>
+            {% endif %}
+          </td>
+          <td class="num">{{ campo.valor }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% endfor %}
+
+{% if ajustes %}
+  <div class="ajustes-lista">
+    <strong>Ajustes Manuais Registrados</strong>
+    <ul>
+      {% for a in ajustes %}
+        <li>
+          <strong>{{ a.campo }}:</strong> {{ a.original }} → {{ a.ajustado }}
+          — {{ a.justificativa }}
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+{% endif %}
+
+<div class="assinatura">
+  <div class="linha"></div>
+  <div class="rotulo">Assinatura e Carimbo do Coordenador da Unidade</div>
+</div>
+
+<div class="rodape">
+  Documento gerado pelo GovSocial em {{ gerado_em }} — Ajustes manuais ficam registrados com justificativa.
+</div>
+
+</body>
+</html>

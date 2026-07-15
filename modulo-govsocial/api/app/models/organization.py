@@ -37,7 +37,7 @@ class Organization(Base, TimestampMixin, SoftDeleteMixin):
             "parâmetros de sigilo, janelas de antiduplicidade, etc."
         ),
     )
-    # Consentimento do tenant para acesso do suporte GovAssist (trilha reforçada).
+    # Consentimento do tenant para acesso do suporte GovSocial (trilha reforçada).
     suporte_consentido: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False
     )

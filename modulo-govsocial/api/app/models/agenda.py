@@ -77,6 +77,7 @@ class Appointment(Base, TimestampMixin, SoftDeleteMixin):
 
     lembrete_enviado: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     opt_in_lembrete: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    motivo_cancelamento: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
 
     unit: Mapped["Unit"] = relationship("Unit")
     professional: Mapped[Optional["Professional"]] = relationship("Professional")
@@ -145,3 +146,43 @@ class VisitaDomiciliar(Base, TimestampMixin, SoftDeleteMixin):
 
     def __repr__(self) -> str:
         return f"<VisitaDomiciliar {self.status}>"
+
+
+class AgendaHorario(Base, TimestampMixin, SoftDeleteMixin):
+    """Horários de atendimento por profissional/equipe/especialidade (CCCXXX-CCCXXXIV)."""
+
+    __tablename__ = "agenda_horarios"
+    __table_args__ = (
+        Index("ix_ah_tenant", "tenant_id"),
+    )
+
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    professional_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    unit_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    equipe_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    especialidade_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    dia_semana: Mapped[int] = mapped_column(nullable=False, comment="0=Seg ... 6=Dom")
+    hora_inicio: Mapped[str] = mapped_column(String(5), nullable=False, comment="HH:MM")
+    hora_fim: Mapped[str] = mapped_column(String(5), nullable=False, comment="HH:MM")
+    duracao_minutos: Mapped[int] = mapped_column(default=30, nullable=False)
+    data_inicio: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    data_fim: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    ativo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+
+class AgendaBloqueio(Base, TimestampMixin, SoftDeleteMixin):
+    """Bloqueio de datas/horários (feriados, folgas, fechamento) — CCCXXIX-CCCXXXI."""
+
+    __tablename__ = "agenda_bloqueios"
+    __table_args__ = (
+        Index("ix_ab_tenant", "tenant_id"),
+    )
+
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    professional_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    unit_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    data: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    hora_inicio: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)
+    hora_fim: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)
+    motivo: Mapped[Optional[str]] = mapped_column(String(200), nullable=True)
+    recorrente_anual: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

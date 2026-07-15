@@ -19,6 +19,7 @@ from app.schemas import (
     BenefitTypeOut,
     DomainCreate,
     DomainItemOut,
+    DomainUpdate,
     ReferralCodeOut,
     ServiceTypeOut,
 )
@@ -134,6 +135,46 @@ async def criar_override_local(
         actor=user,
         client_info=get_client_info(request),
         diff_summary={"code": body.code, "source": "LOCAL"},
+    )
+    await db.commit()
+    await db.refresh(obj)
+    return obj
+
+
+@router.patch("/{domain}/{item_id}", response_model=DomainItemOut)
+async def atualizar_dominio(
+    domain: str,
+    item_id: uuid.UUID,
+    body: DomainUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_tenant_id),
+    user: User = Depends(_MANAGE),
+):
+    if domain not in _MODELS:
+        raise HTTPException(status_code=404, detail="Domínio inválido")
+    model, entity = _MODELS[domain]
+    obj = (
+        await db.execute(
+            select(model).where(model.id == item_id, model.tenant_id == tenant_id)
+        )
+    ).scalar_one_or_none()
+    if not obj:
+        raise HTTPException(status_code=404, detail="Registro não encontrado")
+
+    changes = body.model_dump(exclude_unset=True)
+    for field, value in changes.items():
+        setattr(obj, field, value)
+
+    await record_audit(
+        db,
+        tenant_id=tenant_id,
+        action=AuditAction.UPDATE,
+        entity=entity,
+        entity_id=obj.id,
+        actor=user,
+        client_info=get_client_info(request),
+        diff_summary={"campos": list(changes.keys())},
     )
     await db.commit()
     await db.refresh(obj)

@@ -13,7 +13,7 @@ from app.core.storage import storage
 from app.models.case_file_attachment import CaseFileAttachment
 
 
-def _validate_upload(filename: str, content: bytes, content_type: str | None) -> str:
+def _validate_upload(filename: str | None, content_type: str | None) -> str:
     if not filename:
         raise HTTPException(status_code=400, detail="Nome do arquivo é obrigatório")
     ext = os.path.splitext(filename)[1].lower()
@@ -24,11 +24,6 @@ def _validate_upload(filename: str, content: bytes, content_type: str | None) ->
     if content_type and content_type not in settings.ALLOWED_MIME_TYPES:
         raise HTTPException(
             status_code=422, detail=f"Tipo de conteúdo não permitido: {content_type}"
-        )
-    if len(content) > settings.MAX_UPLOAD_SIZE_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Arquivo excede {settings.MAX_UPLOAD_SIZE_MB} MB",
         )
     return ext.lstrip(".") or "bin"
 
@@ -43,8 +38,22 @@ async def upload_case_file_attachment(
     enviado_por_id: uuid.UUID,
     attendance_id: uuid.UUID | None = None,
 ) -> CaseFileAttachment:
-    content = await file.read()
-    ext = _validate_upload(file.filename, content, file.content_type)
+    _validate_upload(file.filename, file.content_type)
+
+    chunks: list[bytes] = []
+    total = 0
+    while True:
+        chunk = await file.read(65536)
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > settings.MAX_UPLOAD_SIZE_BYTES:
+            raise HTTPException(
+                status_code=413,
+                detail=f"Arquivo excede {settings.MAX_UPLOAD_SIZE_MB} MB",
+            )
+        chunks.append(chunk)
+    content = b"".join(chunks)
 
     max_version = (
         await db.execute(
@@ -59,6 +68,7 @@ async def upload_case_file_attachment(
     next_version = int(max_version) + 1
 
     now = datetime.now(timezone.utc)
+    ext = _validate_upload(file.filename, None)
     storage_path = (
         f"govsocial/{tenant_id}/case_files/{case_file_id}/"
         f"{tipo_documento.lower()}_v{next_version}_{now.strftime('%Y%m%d%H%M%S')}.{ext}"

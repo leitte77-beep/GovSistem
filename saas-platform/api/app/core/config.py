@@ -71,6 +71,8 @@ class Settings(BaseSettings):
     GOVTASK_MODULE_ADMIN_URL: str | None = None
     GOVAVALIA_MODULE_INTERNAL_API_URL: str | None = None
     GOVAVALIA_MODULE_ADMIN_URL: str | None = None
+    GOVSOCIAL_MODULE_INTERNAL_API_URL: str | None = None
+    GOVSOCIAL_MODULE_ADMIN_URL: str | None = None
     PASSWORD_MIN_LENGTH: int = 8
     PASSWORD_MIN_UPPERCASE: int = 1
     PASSWORD_MIN_LOWERCASE: int = 1

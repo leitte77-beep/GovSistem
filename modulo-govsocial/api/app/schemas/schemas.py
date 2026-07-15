@@ -236,6 +236,20 @@ class DomainCreate(BaseModel):
     periodicidade_max_dias: Optional[int] = None
 
 
+class DomainUpdate(BaseModel):
+    nome: Optional[str] = Field(None, max_length=255)
+    vigencia_inicio: Optional[date] = None
+    vigencia_fim: Optional[date] = None
+    ativo: Optional[bool] = None
+    sigla: Optional[str] = None
+    protecao: Optional[str] = None
+    area: Optional[str] = None
+    categoria: Optional[str] = None
+    unidade_medida: Optional[str] = None
+    exige_parecer: Optional[bool] = None
+    periodicidade_max_dias: Optional[int] = None
+
+
 # ── Audit ─────────────────────────────────────────────────────────
 class AuditOut(BaseModel):
     id: uuid.UUID
@@ -249,5 +263,37 @@ class AuditOut(BaseModel):
     ip_address: Optional[str]
     request_id: Optional[str]
     diff_summary: Optional[dict]
+
+    model_config = {"from_attributes": True}
+
+
+# ── External Shortcuts ──────────────────────────────────────────
+class ExternalShortcutCreate(BaseModel):
+    label: str
+    url: str
+    icon: Optional[str] = None
+    ordem: int = 0
+    description: Optional[str] = None
+
+
+class ExternalShortcutUpdate(BaseModel):
+    label: Optional[str] = None
+    url: Optional[str] = None
+    icon: Optional[str] = None
+    ordem: Optional[int] = None
+    is_active: Optional[bool] = None
+    description: Optional[str] = None
+
+
+class ExternalShortcutResponse(BaseModel):
+    id: str
+    label: str
+    url: str
+    icon: Optional[str] = None
+    ordem: int
+    is_active: bool
+    description: Optional[str] = None
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
 
     model_config = {"from_attributes": True}

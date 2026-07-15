@@ -42,7 +42,7 @@ class TenantMixin:
     """Multi-tenancy: toda tabela de negócio carrega tenant_id (= organization_id).
 
     Isolamento imposto na camada de aplicação (guard/dependency de tenant) —
-    mesmo padrão dos demais módulos GovAssist.
+    mesmo padrão dos demais módulos GovSocial.
     """
 
     @staticmethod

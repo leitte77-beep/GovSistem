@@ -627,6 +627,56 @@ async def get_module_access(
         except Exception as e:
             logger.warning("Failed to sync with govavalia module: %s", e)
 
+    if module.slug == "govsocial" and settings.GOVSOCIAL_MODULE_INTERNAL_API_URL:
+        user_payload = {
+            "user_id": str(user.id),
+            "organization_id": str(org_id),
+            "name": user.name,
+            "email": user.email,
+            "is_active": user.is_active,
+            "roles": roles,
+        }
+
+        sync_org_payload = None
+        if org_id:
+            org_result = await db.execute(
+                select(Organization).where(Organization.id == org_id)
+            )
+            org = org_result.scalar_one_or_none()
+            if org:
+                sync_org_payload = {
+                    "organization_id": str(org.id),
+                    "name": org.name,
+                    "slug": org.slug,
+                    "cnpj": org.cnpj,
+                    "description": org.description,
+                    "logo_url": org.logo_url,
+                    "public_url": org.public_url,
+                    "is_active": org.is_active,
+                }
+
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                headers = {"X-Internal-Key": settings.INTERNAL_API_KEY.get_secret_value()}
+                if sync_org_payload:
+                    org_res = await client.post(
+                        f"{settings.GOVSOCIAL_MODULE_INTERNAL_API_URL}/internal/sync-organization",
+                        json=sync_org_payload,
+                        headers=headers,
+                    )
+                    org_res.raise_for_status()
+                    module_org_id = uuid.UUID(org_res.json()["organization_id"])
+                    user_payload["organization_id"] = str(module_org_id)
+                user_res = await client.post(
+                    f"{settings.GOVSOCIAL_MODULE_INTERNAL_API_URL}/internal/sync-user",
+                    json=user_payload,
+                    headers=headers,
+                )
+                user_res.raise_for_status()
+                module_user_id = uuid.UUID(user_res.json()["user_id"])
+        except Exception as e:
+            logger.warning("Failed to sync with govsocial module: %s", e)
+
     module_token = create_module_token(
         user_id=module_user_id,
         organization_id=module_org_id,
@@ -645,6 +695,8 @@ async def get_module_access(
         module_url = settings.GOVTASK_MODULE_ADMIN_URL
     elif module.slug == "govavalia" and settings.GOVAVALIA_MODULE_ADMIN_URL:
         module_url = settings.GOVAVALIA_MODULE_ADMIN_URL
+    elif module.slug == "govsocial" and settings.GOVSOCIAL_MODULE_ADMIN_URL:
+        module_url = settings.GOVSOCIAL_MODULE_ADMIN_URL
     return ModuleTokenResponse(
         module_token=module_token,
         module_url=module_url,

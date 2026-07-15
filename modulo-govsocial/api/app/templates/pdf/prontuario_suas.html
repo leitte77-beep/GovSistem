@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>{{ titulo }}</title>
+<style>
+  @page {
+    size: A4;
+    margin: 25mm 20mm 30mm 20mm;
+    @bottom-center {
+      content: "Prontuário SUAS";
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 9pt;
+      color: #999;
+    }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: Georgia, "Times New Roman", "DejaVu Serif", serif;
+    font-size: 11pt;
+    line-height: 1.6;
+    color: #1a1a1a;
+  }
+
+  .cabecalho {
+    text-align: center;
+    margin-bottom: 24px;
+    border-bottom: 2px solid #2a5c8a;
+    padding-bottom: 16px;
+  }
+  .cabecalho .brasao { max-height: 56px; margin-bottom: 6px; }
+  .cabecalho h1 { font-size: 16pt; color: #2a5c8a; font-weight: 700; }
+  .cabecalho .org { font-size: 10pt; color: #444; }
+
+  h2 {
+    font-size: 12pt;
+    font-weight: 700;
+    border-bottom: 1.5px solid #2a5c8a;
+    padding-bottom: 4px;
+    margin: 20px 0 10px;
+    color: #2a5c8a;
+  }
+
+  .info-grid {
+    display: table;
+    width: 100%;
+    margin-bottom: 16px;
+  }
+  .info-grid .row { display: table-row; }
+  .info-grid .label {
+    display: table-cell;
+    width: 180px;
+    font-weight: 700;
+    padding: 3px 0;
+    color: #444;
+    white-space: nowrap;
+  }
+  .info-grid .value { display: table-cell; padding: 3px 0; }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0;
+  }
+  th {
+    background: #e9ecf0;
+    font-weight: 700;
+    padding: 5px 7px;
+    border: 1px solid #c0c6ce;
+    text-align: left;
+    font-size: 9.5pt;
+  }
+  td {
+    padding: 4px 7px;
+    border: 1px solid #d0d7de;
+    font-size: 10pt;
+  }
+
+  .atendimento-card {
+    border: 1px solid #d0d7de;
+    border-radius: 4px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    page-break-inside: avoid;
+  }
+  .atendimento-card .meta {
+    display: table;
+    width: 100%;
+    margin-bottom: 6px;
+  }
+  .atendimento-card .meta .mrow { display: table-row; }
+  .atendimento-card .meta .mlbl {
+    display: table-cell;
+    width: 90px;
+    font-weight: 700;
+    padding: 2px 0;
+    color: #444;
+    white-space: nowrap;
+    font-size: 9.5pt;
+  }
+  .atendimento-card .meta .mval {
+    display: table-cell;
+    padding: 2px 0;
+    font-size: 9.5pt;
+  }
+
+  .badge-sigiloso {
+    display: inline-block;
+    background: #b91c1c;
+    color: #fff;
+    font-size: 8pt;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 3px;
+    margin-left: 6px;
+  }
+
+  .assinatura {
+    margin-top: 60px;
+    text-align: center;
+  }
+  .assinatura .linha {
+    border-top: 1px solid #000;
+    width: 280px;
+    margin: 0 auto 4px;
+  }
+
+  .rodape {
+    margin-top: 36px;
+    padding-top: 8px;
+    border-top: 1px solid #ccc;
+    font-size: 9pt;
+    color: #888;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div class="cabecalho">
+  {% if brasao %}
+    <img class="brasao" src="{{ brasao }}" alt="Brasão">
+  {% endif %}
+  <h1>PRONTUÁRIO SUAS</h1>
+  <div class="org">{{ municipio }} — {{ unidade }}</div>
+</div>
+
+<h2>Identificação da Família</h2>
+<div class="info-grid">
+  <div class="row">
+    <span class="label">Código da família</span>
+    <span class="value">{{ familia_codigo }}</span>
+  </div>
+  <div class="row">
+    <span class="label">Responsável familiar</span>
+    <span class="value">{{ responsavel }}</span>
+  </div>
+  {% if nis %}
+  <div class="row">
+    <span class="label">NIS</span>
+    <span class="value">{{ nis }}</span>
+  </div>
+  {% endif %}
+  {% if endereco %}
+  <div class="row">
+    <span class="label">Endereço</span>
+    <span class="value">{{ endereco }}</span>
+  </div>
+  {% endif %}
+  <div class="row">
+    <span class="label">Território</span>
+    <span class="value">{{ territorio or "—" }}</span>
+  </div>
+</div>
+
+<h2>Situação Socioeconômica</h2>
+<div class="info-grid">
+  <div class="row">
+    <span class="label">Faixa de renda</span>
+    <span class="value">{{ faixa_renda or "—" }}</span>
+  </div>
+  <div class="row">
+    <span class="label">CadÚnico</span>
+    <span class="value">{{ "Sim" if no_cadunico else "Não" }}{% if cadunico_atualizado %}, atualizado em {{ cadunico_atualizado }}{% endif %}</span>
+  </div>
+  <div class="row">
+    <span class="label">Bolsa Família</span>
+    <span class="value">{{ "Sim" if pbf else "Não" }}</span>
+  </div>
+  <div class="row">
+    <span class="label">BPC na família</span>
+    <span class="value">{{ "Sim" if bpc else "Não" }}</span>
+  </div>
+  {% if inseguranca_alimentar %}
+  <div class="row">
+    <span class="label">Insegurança alimentar</span>
+    <span class="value" style="color:#b91c1c;font-weight:700;">Identificada</span>
+  </div>
+  {% endif %}
+</div>
+
+<h2>Composição Familiar ({{ total_membros }} membros ativos)</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Nome</th>
+      <th>Parentesco</th>
+      <th style="width:110px;">NIS</th>
+      <th style="width:90px;">Data de entrada</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for m in membros %}
+    <tr>
+      <td>{{ m.nome }}</td>
+      <td>{{ m.parentesco }}</td>
+      <td>{{ m.nis or "—" }}</td>
+      <td>{{ m.desde }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+{% if atendimentos %}
+<h2>Histórico de Atendimentos ({{ atendimentos|length }})</h2>
+{% for at in atendimentos %}
+<div class="atendimento-card">
+  <div class="meta">
+    <div class="mrow">
+      <span class="mlbl">Data</span>
+      <span class="mval">{{ at.data }}{% if at.sigiloso %}<span class="badge-sigiloso">SIGILOSO</span>{% endif %}</span>
+    </div>
+    <div class="mrow">
+      <span class="mlbl">Tipo</span>
+      <span class="mval">{{ at.tipo }}</span>
+    </div>
+    <div class="mrow">
+      <span class="mlbl">Serviço</span>
+      <span class="mval">{{ at.servico }}</span>
+    </div>
+  </div>
+  {% if at.evolucao %}
+  <div style="margin-top:6px;padding:8px 10px;background:#fafafa;border:1px solid #e5e7eb;border-radius:3px;white-space:pre-wrap;font-size:10pt;">{{ at.evolucao }}</div>
+  {% endif %}
+</div>
+{% endfor %}
+{% endif %}
+
+{% if beneficio %}
+<h2>Benefícios Recebidos</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Benefício</th>
+      <th style="text-align:right;width:80px;">Quantidade</th>
+      <th style="text-align:right;width:100px;">Valor</th>
+      <th style="width:100px;">Data</th>
+      <th style="width:90px;">Situação</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for b in beneficios_lista %}
+    <tr>
+      <td>{{ b.tipo }}</td>
+      <td style="text-align:right;">{{ b.quantidade }}</td>
+      <td style="text-align:right;">R$ {{ b.valor }}</td>
+      <td>{{ b.data }}</td>
+      <td>{{ b.status }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<div class="assinatura">
+  <div class="linha"></div>
+  <span style="font-size:9pt;color:#555;">Carimbo e Assinatura do Técnico Responsável</span>
+</div>
+
+<div class="rodape">
+  Documento gerado pelo GovSocial em {{ gerado_em }} — A evolução técnica sigilosa é omitida conforme §4.2.
+</div>
+
+</body>
+</html>

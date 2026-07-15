@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8"><title>Atestado de Pobreza</title>
+<style>
+  body { font-family: Arial, sans-serif; padding: 30px; font-size: 12px; }
+  h1, h2 { text-align: center; }
+  .conteudo { margin-top: 30px; line-height: 1.8; }
+  .assinatura { margin-top: 60px; }
+  .linha { border-top: 1px solid #000; width: 300px; margin: 20px auto 0; padding-top: 5px; text-align: center; }
+</style></head>
+<body>
+  <h1>{{ municipio }}</h1>
+  <h2>ATESTADO DE POBREZA</h2>
+  <div class="conteudo">
+    <p>Atesto, para os devidos fins, que <strong>{{ responsavel }}</strong>, 
+    CPF nº <strong>{{ cpf_responsavel }}</strong>, residente no município de <strong>{{ municipio }}</strong>, 
+    pertence a grupo familiar composto por <strong>{{ total_membros }}</strong> pessoa(s), 
+    com renda per capita de <strong>R$ {{ "%.2f"|format(renda_per_capita) }}</strong>, 
+    estando em situação de vulnerabilidade socioeconômica.</p>
+    <p>Este atestado é válido para fins de isenção de taxas para solicitação de 2ª via de documentos civis.</p>
+    <p>{{ municipio }}, {{ gerado_em }}</p>
+  </div>
+  <div class="assinatura">
+    <div class="linha">Assinatura do Responsável Técnico</div>
+  </div>
+</body>
+</html>

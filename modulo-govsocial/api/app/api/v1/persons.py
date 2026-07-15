@@ -2,7 +2,7 @@ import uuid
 from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import (
@@ -75,6 +75,13 @@ def _to_out(p: Person) -> dict:
         "ocupacao": p.ocupacao,
         "tipo_deficiencia": p.tipo_deficiencia,
         "deficiencia_detalhe": decrypt_text(p.deficiencia_detalhe_enc),
+        "raca_cor": p.raca_cor,
+        "estado_civil": p.estado_civil,
+        "frequenta_escola": p.frequenta_escola,
+        "situacao_mercado_trabalho": p.situacao_mercado_trabalho,
+        "gestante": p.gestante,
+        "amamentando": p.amamentando,
+        "renda_mensal": p.renda_mensal,
         "documentos": p.documentos,
         "is_falecido": p.is_falecido,
         "created_at": p.created_at,
@@ -95,6 +102,51 @@ async def _get_owned(db, tenant_id, person_id) -> Person:
     if not p:
         raise HTTPException(status_code=404, detail="Pessoa não encontrada")
     return p
+
+
+@router.get("/search")
+async def buscar_pessoas_para_agendamento(
+    q: str = Query(..., min_length=2, max_length=100),
+    limit: int = Query(15, ge=1, le=50),
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_tenant_id),
+    user: User = Depends(_READ),
+):
+    """Busca qualquer pessoa cadastrada com info da família para agendamento."""
+    from sqlalchemy.orm import joinedload
+
+    termo = f"%{q.strip()}%"
+    query = (
+        select(Person, Family)
+        .join(PersonFamilyMembership, PersonFamilyMembership.person_id == Person.id)
+        .join(Family, Family.id == PersonFamilyMembership.family_id)
+        .where(
+            Person.tenant_id == tenant_id,
+            Person.deleted_at.is_(None),
+            Family.deleted_at.is_(None),
+            PersonFamilyMembership.status == "ATIVO",
+            or_(
+                Person.nome_civil.ilike(termo),
+                Person.nome_social.ilike(termo),
+                Person.busca.ilike(termo),
+            ),
+        )
+        .order_by(Person.nome_civil)
+        .limit(limit)
+    )
+    rows = (await db.execute(query)).all()
+    return [
+        {
+            "person_id": str(p.id),
+            "nome_exibicao": p.nome_exibicao,
+            "nome_civil": p.nome_civil,
+            "family_id": str(f.id),
+            "codigo_familia": f.codigo,
+            "responsavel_nome": f.responsavel.nome_exibicao if f.responsavel else None,
+            "bairro": f.bairro,
+        }
+        for p, f in rows
+    ]
 
 
 @router.get("", response_model=list[PersonListItem])
@@ -201,20 +253,17 @@ async def criar_pessoa(
         if not fam:
             raise HTTPException(status_code=422, detail="Família inválida para o tenant")
 
+    # Campos de controle do request que não são colunas de Person; o restante
+    # mapeia 1:1 e é repassado em bloco para que um campo novo no schema não
+    # seja silenciosamente descartado aqui.
+    dados = body.model_dump(
+        exclude={"family_id", "parentesco", "confirmar_duplicata", "deficiencia_detalhe"}
+    )
     person = Person(
         tenant_id=tenant_id,
-        nome_civil=body.nome_civil,
-        nome_social=body.nome_social,
         busca=build_person_busca(body.nome_civil, body.nome_social),
-        cpf=body.cpf,
-        nis=body.nis,
-        data_nascimento=body.data_nascimento,
-        sexo=body.sexo,
-        escolaridade=body.escolaridade,
-        ocupacao=body.ocupacao,
-        tipo_deficiencia=body.tipo_deficiencia,
         deficiencia_detalhe_enc=encrypt_text(body.deficiencia_detalhe),
-        documentos=body.documentos,
+        **dados,
     )
     db.add(person)
     await db.flush()

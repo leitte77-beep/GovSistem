@@ -8,6 +8,8 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
+    JSON,
     Numeric,
     String,
     Text,
@@ -15,7 +17,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import Base, SoftDeleteMixin, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.family import Family
@@ -180,3 +182,77 @@ class ConcessaoBeneficio(Base, TimestampMixin):
 
     def __repr__(self) -> str:
         return f"<ConcessaoBeneficio {self.benefit_type_code} {self.status}>"
+
+
+class LimiteBeneficio(Base, TimestampMixin):
+    """Limite quantitativo ou financeiro para concessao de beneficios por beneficiario."""
+
+    __tablename__ = "limites_beneficio"
+    __table_args__ = (
+        Index("ix_limites_tenant_benefit", "tenant_id", "benefit_type_code"),
+    )
+
+    tenant_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    benefit_type_code: Mapped[str] = mapped_column(String(40), nullable=False)
+    tipo_limite: Mapped[str] = mapped_column(
+        String(20), nullable=False, comment="QUANTITATIVO | FINANCEIRO"
+    )
+    valor_maximo: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    periodo_dias: Mapped[int] = mapped_column(default=365)
+    por_familia: Mapped[bool] = mapped_column(default=True)
+    bloquear_concessao: Mapped[bool] = mapped_column(default=True)
+    ativo: Mapped[bool] = mapped_column(default=True)
+
+
+class BeneficioRecorrente(Base, TimestampMixin, SoftDeleteMixin):
+    """Beneficio recorrente/periodico com programacao de entregas (CCXL-CCXLI, CCXXX-CCXXXIV)."""
+    __tablename__ = "beneficios_recorrentes"
+    __table_args__ = (Index("ix_br_tenant", "tenant_id"), Index("ix_br_tenant_family", "tenant_id", "family_id"))
+
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    benefit_type_code: Mapped[str] = mapped_column(String(40), nullable=False)
+    family_id: Mapped[str] = mapped_column(UUID(as_uuid=True), ForeignKey("families.id", ondelete="CASCADE"), nullable=False)
+    person_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=True), ForeignKey("persons.id", ondelete="SET NULL"), nullable=True)
+    unit_id: Mapped[str] = mapped_column(UUID(as_uuid=True), ForeignKey("units.id", ondelete="CASCADE"), nullable=False)
+    periodicidade: Mapped[str] = mapped_column(String(20), nullable=False, comment="DIARIA | SEMANAL | QUINZENAL | MENSAL | BIMESTRAL | TRIMESTRAL | SEMESTRAL | ANUAL")
+    quantidade: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    valor: Mapped[Optional[float]] = mapped_column(Numeric(12, 2), nullable=True)
+    data_inicio: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    data_fim: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    ativo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    entrega_automatica: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False, comment="Se True, gera entregas automaticamente")
+    observacoes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+
+class EntregaProgramada(Base, TimestampMixin):
+    """Entrega individual de um beneficio recorrente (CCXXXIV)."""
+    __tablename__ = "entregas_programadas"
+    __table_args__ = (Index("ix_ep_tenant", "tenant_id"), Index("ix_ep_status", "tenant_id", "status"))
+
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    beneficio_recorrente_id: Mapped[str] = mapped_column(UUID(as_uuid=True), ForeignKey("beneficios_recorrentes.id", ondelete="CASCADE"), nullable=False)
+    data_prevista: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+    data_entrega: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PENDENTE", comment="PENDENTE | ENTREGUE | CANCELADO")
+    quantidade: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
+    profissional_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+
+class BeneficioColetivo(Base, TimestampMixin, SoftDeleteMixin):
+    """Beneficio concedido de forma coletiva a multiplos cidadaos (CCXXXV, CCXXXI)."""
+    __tablename__ = "beneficios_coletivos"
+    __table_args__ = (Index("ix_bc_tenant", "tenant_id"),)
+
+    tenant_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
+    benefit_type_code: Mapped[str] = mapped_column(String(40), nullable=False)
+    unit_id: Mapped[str] = mapped_column(UUID(as_uuid=True), ForeignKey("units.id", ondelete="CASCADE"), nullable=False)
+    grupo_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    data: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    descricao: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    participantes: Mapped[Optional[list]] = mapped_column(JSON, nullable=True, comment="Lista [{person_id, nome, quantidade}]")
+    profissionais: Mapped[Optional[list]] = mapped_column(JSON, nullable=True, comment="Lista [{professional_id, nome}]")
+    registrado_por_id: Mapped[Optional[str]] = mapped_column(UUID(as_uuid=True), nullable=True)

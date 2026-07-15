@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, List, Optional
 from sqlalchemy import (
     Boolean,
     Date,
+    Float,
     ForeignKey,
     Index,
     String,
@@ -58,6 +59,24 @@ class Person(Base, TimestampMixin, SoftDeleteMixin):
     deficiencia_detalhe_enc: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True
     )
+
+    # CadÚnico — campos complementares do membro
+    raca_cor: Mapped[Optional[str]] = mapped_column(
+        String(20), nullable=True,
+        comment="BRANCA | PRETA | PARDA | AMARELA | INDIGENA | NAO_DECLARADO"
+    )
+    estado_civil: Mapped[Optional[str]] = mapped_column(
+        String(30), nullable=True,
+        comment="SOLTEIRO | CASADO | DIVORCIADO | VIUVO | UNIAO_ESTAVEL | NAO_INFORMADO"
+    )
+    frequenta_escola: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    situacao_mercado_trabalho: Mapped[Optional[str]] = mapped_column(
+        String(30), nullable=True,
+        comment="EMPREGADO | DESEMPREGADO | AUTONOMO | EMPREGADOR | APOSENTADO | PENSIONISTA | ESTAGIARIO | APRENDIZ | DO_LAR | NAO_INFORMADO"
+    )
+    gestante: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    amamentando: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
+    renda_mensal: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
 
     documentos: Mapped[Optional[dict]] = mapped_column(
         JSON, nullable=True,

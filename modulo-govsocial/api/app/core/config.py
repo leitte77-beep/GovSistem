@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     APP_NAME: str = "GovSocial API"
     VERSION: str = "0.1.0"
-    DEBUG: bool = True
+    DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
 
     POSTGRES_HOST: str = "localhost"
@@ -102,6 +102,8 @@ class Settings(BaseSettings):
 
     STORAGE_BACKEND: str = "local"
     STORAGE_LOCAL_PATH: str = "uploads"
+
+    SIGNER_URL: str = "http://signer:8100"
 
     LOG_RETENTION_DAYS: int = 365
 

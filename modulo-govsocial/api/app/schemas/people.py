@@ -26,6 +26,13 @@ class PersonCreate(BaseModel):
     ocupacao: Optional[str] = None
     tipo_deficiencia: Optional[str] = None
     deficiencia_detalhe: Optional[str] = None
+    raca_cor: Optional[str] = None
+    estado_civil: Optional[str] = None
+    frequenta_escola: Optional[bool] = None
+    situacao_mercado_trabalho: Optional[str] = None
+    gestante: Optional[bool] = None
+    amamentando: Optional[bool] = None
+    renda_mensal: Optional[float] = None
     documentos: Optional[dict] = None
     # vínculo familiar opcional na criação
     family_id: Optional[uuid.UUID] = None
@@ -64,6 +71,13 @@ class PersonUpdate(BaseModel):
     ocupacao: Optional[str] = None
     tipo_deficiencia: Optional[str] = None
     deficiencia_detalhe: Optional[str] = None
+    raca_cor: Optional[str] = None
+    estado_civil: Optional[str] = None
+    frequenta_escola: Optional[bool] = None
+    situacao_mercado_trabalho: Optional[str] = None
+    gestante: Optional[bool] = None
+    amamentando: Optional[bool] = None
+    renda_mensal: Optional[float] = None
     documentos: Optional[dict] = None
     is_falecido: Optional[bool] = None
 
@@ -111,6 +125,13 @@ class PersonOut(BaseModel):
     ocupacao: Optional[str]
     tipo_deficiencia: Optional[str]
     deficiencia_detalhe: Optional[str]
+    raca_cor: Optional[str]
+    estado_civil: Optional[str]
+    frequenta_escola: Optional[bool]
+    situacao_mercado_trabalho: Optional[str]
+    gestante: Optional[bool]
+    amamentando: Optional[bool]
+    renda_mensal: Optional[float]
     documentos: Optional[dict]
     is_falecido: bool
     created_at: datetime
@@ -146,6 +167,15 @@ class FamilyCreate(BaseModel):
     bairro: Optional[str] = None
     municipio: Optional[str] = None
     uf: Optional[str] = Field(None, max_length=2)
+    ponto_referencia: Optional[str] = None
+    telefone_contato: Optional[str] = None
+    situacao_rua: bool = False
+    data_cadastramento: Optional[date] = None
+    despesa_aluguel: Optional[float] = None
+    despesa_transporte: Optional[float] = None
+    despesa_alimentacao: Optional[float] = None
+    despesa_medicamentos: Optional[float] = None
+    despesa_outros: Optional[float] = None
     faixa_renda: Optional[str] = None
     no_cadunico: bool = False
     cadunico_atualizado_em: Optional[date] = None
@@ -173,6 +203,15 @@ class FamilyUpdate(BaseModel):
     bairro: Optional[str] = None
     municipio: Optional[str] = None
     uf: Optional[str] = Field(None, max_length=2)
+    ponto_referencia: Optional[str] = None
+    telefone_contato: Optional[str] = None
+    situacao_rua: Optional[bool] = None
+    data_cadastramento: Optional[date] = None
+    despesa_aluguel: Optional[float] = None
+    despesa_transporte: Optional[float] = None
+    despesa_alimentacao: Optional[float] = None
+    despesa_medicamentos: Optional[float] = None
+    despesa_outros: Optional[float] = None
     faixa_renda: Optional[str] = None
     no_cadunico: Optional[bool] = None
     cadunico_atualizado_em: Optional[date] = None
@@ -226,6 +265,15 @@ class FamilyOut(BaseModel):
     bairro: Optional[str]
     municipio: Optional[str]
     uf: Optional[str]
+    ponto_referencia: Optional[str] = None
+    telefone_contato: Optional[str] = None
+    situacao_rua: bool = False
+    data_cadastramento: Optional[date] = None
+    despesa_aluguel: Optional[float] = None
+    despesa_transporte: Optional[float] = None
+    despesa_alimentacao: Optional[float] = None
+    despesa_medicamentos: Optional[float] = None
+    despesa_outros: Optional[float] = None
     latitude: Optional[float]
     longitude: Optional[float]
     geocode_status: str
@@ -246,6 +294,12 @@ class AddMemberRequest(BaseModel):
     parentesco: Optional[str] = None
     data_entrada: Optional[date] = None
     definir_responsavel: bool = False
+
+
+class UpdateMemberRequest(BaseModel):
+    """Atualiza o vínculo com a família (não os dados da pessoa)."""
+
+    parentesco: Optional[str] = None
 
 
 class MoveMemberRequest(BaseModel):
