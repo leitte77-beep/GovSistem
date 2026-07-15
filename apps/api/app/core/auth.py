@@ -23,12 +23,16 @@ async def require_internal_key(
     x_internal_key: Annotated[str | None, Header()] = None,
 ) -> None:
     internal_key = settings.INTERNAL_API_KEY.get_secret_value()
+    saas_internal_key = settings.SAAS_INTERNAL_API_KEY.get_secret_value()
     if not internal_key:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Internal API not configured",
         )
-    if x_internal_key != internal_key:
+    valid_keys = {internal_key}
+    if saas_internal_key:
+        valid_keys.add(saas_internal_key)
+    if x_internal_key not in valid_keys:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid internal key",
@@ -47,16 +51,41 @@ async def get_current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
         )
+    decoded_with_saas_secret = False
     try:
         payload = decode_token(credentials.credentials)
     except Exception:
-        logger.warning("Token decode failed", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or expired token",
-        )
+        # Fallback: token module_access emitido pela plataforma SaaS (SSO)
+        saas_secret = settings.SAAS_JWT_SECRET.get_secret_value()
+        if saas_secret:
+            try:
+                import jwt as _jwt
+
+                payload = _jwt.decode(
+                    credentials.credentials,
+                    saas_secret,
+                    algorithms=[settings.ALGORITHM],
+                )
+                decoded_with_saas_secret = True
+            except Exception:
+                logger.warning("Token decode failed", exc_info=True)
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid or expired token",
+                )
+        else:
+            logger.warning("Token decode failed", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired token",
+            )
 
     token_type = payload.get("type")
+    if decoded_with_saas_secret and token_type != "module_access":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token type",
+        )
     if token_type == "module_access" and payload.get("module") != "diario":
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

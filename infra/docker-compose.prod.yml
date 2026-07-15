@@ -132,6 +132,8 @@ services:
       PDF_API_BASE_URL: https://diario.govsistem.com.br
       DEBUG: "false"
       SECRET_KEY: ${SECRET_KEY}
+      SAAS_JWT_SECRET: ${DIARIO_SAAS_JWT_SECRET:-}
+      SAAS_INTERNAL_API_KEY: ${DIARIO_SAAS_INTERNAL_API_KEY:-}
       SENTRY_DSN: ${SENTRY_DSN:-}
     volumes:
       - uploads:/app/uploads
@@ -145,6 +147,10 @@ services:
     networks:
       - internal
       - public
+    ports:
+      # Acesso interno da plataforma SaaS (host.docker.internal:9201) para SSO/sync
+      - "127.0.0.1:9201:8000"
+      - "172.17.0.1:9201:8000"
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
       interval: 30s

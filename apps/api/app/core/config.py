@@ -73,6 +73,12 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # Segredos compartilhados com a plataforma SaaS (SSO):
+    # SAAS_JWT_SECRET valida tokens module_access emitidos pela plataforma;
+    # SAAS_INTERNAL_API_KEY autentica as chamadas /internal/sync-* da plataforma.
+    SAAS_JWT_SECRET: SecretStr = SecretStr("")
+    SAAS_INTERNAL_API_KEY: SecretStr = SecretStr("")
+
     SIGNER_URL: str = "http://signer:8100"
     INTERNAL_API_KEY: SecretStr = SecretStr("")
 
