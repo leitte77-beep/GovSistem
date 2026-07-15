@@ -1,3 +1,4 @@
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
@@ -32,6 +33,8 @@ from app.schemas.edition import (
     SignResponse,
     ValidateSignatureResponse,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["editions"])
 
@@ -723,6 +726,35 @@ async def publish_edition(
     if not edition.signatures:
         raise HTTPException(422, "Edition has no signatures")
 
+    # Validate all matters can transition to PUBLISHED before any DB changes
+    from app.services.search_indexer import get_search_provider
+    indexer = get_search_provider()
+    failed_matters: list[dict[str, str]] = []
+    for item in edition.items or []:
+        if not item.matter:
+            continue
+        matter = item.matter
+        if matter.status == MatterStatus.PUBLISHED:
+            continue
+        if not matter.status.can_transition_to(MatterStatus.PUBLISHED):
+            failed_matters.append({
+                "id": str(matter.id),
+                "title": matter.title or "Sem título",
+                "status": matter.status.value,
+            })
+
+    if failed_matters:
+        raise HTTPException(
+            422,
+            {
+                "message": (
+                    "Algumas matérias não estão em status APPROVED "
+                    "e não podem ser publicadas"
+                ),
+                "failed_matters": failed_matters,
+            },
+        )
+
     edition.change_status(EditionStatus.PUBLISHED)
     edition.published_at = datetime.now(timezone.utc)
     edition.published_by = user.id
@@ -731,6 +763,23 @@ async def publish_edition(
     if not edition.immutability_hash:
         edition.immutability_hash = edition.compute_immutability_hash()
 
+    # Mark matters as published and index before committing
+    for item in edition.items or []:
+        if not item.matter:
+            continue
+        matter = item.matter
+        if matter.status == MatterStatus.PUBLISHED:
+            continue
+        matter.change_status(MatterStatus.PUBLISHED)
+        matter.published_at = datetime.now(timezone.utc)
+        try:
+            await indexer.index_matter(matter, edition, db)
+        except Exception as exc:
+            logger.warning(
+                "Failed to index matter %s during publish: %s", matter.id, exc
+            )
+
+    # Audit event commits the whole transaction atomically
     info = await capture_request_info(request)
     await log_audit_event(
         db=db, action=AuditAction.EDITION_PUBLISHED,
@@ -739,17 +788,6 @@ async def publish_edition(
         description=f"Edition {edition.year}/{edition.number} published",
         ip_address=info["ip_address"],
     )
-
-    # Index all matters in the edition for full-text search and mark as published
-    from app.services.search_indexer import get_search_provider
-    indexer = get_search_provider()
-    for item in edition.items or []:
-        if item.matter:
-            item.matter.change_status(MatterStatus.PUBLISHED)
-            item.matter.published_at = datetime.now(timezone.utc)
-            await indexer.index_matter(item.matter, edition, db)
-
-    await db.commit()
 
     return PublishResponse(
         edition_id=str(edition.id),
