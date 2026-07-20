@@ -73,16 +73,23 @@ export default function EditionForm({ edition, isNew }: EditionFormProps) {
       setItems(edition.items);
       setStatus(edition.status);
     } else if (isNew) {
-        api.listEditions({ year: new Date().getFullYear() })
-          .then((existing) => {
-            const maxNum = existing.reduce((max, e) => Math.max(max, e.number), 0);
-            const nextNum = maxNum + 1;
-            setNumber(nextNum);
-            setTitle(`Diário Oficial - Edição ${String(nextNum).padStart(2, "0")}`);
+        api.getNextEditionNumber({ year: new Date().getFullYear(), type })
+          .then((res) => {
+            setNumber(res.next_number);
+            setTitle(`Diário Oficial - Edição ${String(res.next_number).padStart(2, "0")}`);
           })
-          .catch((err) => notifyError("EditionForm.listEditions", err));
+          .catch(() => {
+            api.listEditions({ year: new Date().getFullYear() })
+              .then((existing) => {
+                const maxNum = existing.reduce((max, e) => Math.max(max, e.number), 0);
+                const nextNum = maxNum + 1;
+                setNumber(nextNum);
+                setTitle(`Diário Oficial - Edição ${String(nextNum).padStart(2, "0")}`);
+              })
+              .catch((err) => notifyError("EditionForm.listEditions", err));
+          });
     }
-  }, [edition]);
+  }, [edition, type]);
 
   const errors: Record<string, string> = {};
   if (touched.pubDate && !pubDate) errors.pubDate = "Selecione a data de publicação";
@@ -128,6 +135,8 @@ export default function EditionForm({ edition, isNew }: EditionFormProps) {
         const e = await api.createEdition({ number, year, type, title, subtitle: subtitle || undefined, publication_date: pubDate });
         setEditionId(e.id);
         setStatus(e.status);
+        setNumber(e.number);
+        setTitle(e.title);
         toast.success("Edição criada com sucesso!");
         return e;
       } else if (editionId) {

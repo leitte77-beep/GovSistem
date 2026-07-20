@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import clsx from "clsx";
 
-import Editor from "@/components/Editor";
+import Editor, { type GazetteDetection } from "@/components/Editor";
 import AttachmentUpload from "./AttachmentUpload";
 import StatusHistory from "./StatusHistory";
 import StatusBadge from "./StatusBadge";
@@ -68,6 +68,21 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
 
   const isEditable = status === "draft" || status === "review" || status === "rejected";
   const selectedActType = actTypes.find((a) => a.id === actTypeId);
+
+  // Dados detectados pela diagramação automática (módulo gazette):
+  // preenche título e súmula sem sobrescrever o que o usuário digitou.
+  const handleAutoDetect = useCallback((detected: GazetteDetection) => {
+    if (detected.title) {
+      setTitle((current) => {
+        if (current.trim() && !titleAutoFilled.current) return current;
+        titleAutoFilled.current = true;
+        return detected.title!.slice(0, 200);
+      });
+    }
+    if (detected.summary) {
+      setSummary((current) => (current.trim() ? current : detected.summary!.slice(0, 500)));
+    }
+  }, []);
 
   useEffect(() => {
     api.listActTypes().then(setActTypes).catch(() => {});
@@ -510,6 +525,7 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
                 <Editor content={contentHtml}
                   onChange={(html) => { setContentHtml(html); setTouched((p) => ({ ...p, content: true })); }}
                   onCleanWarnings={setCleanWarnings}
+                  onAutoDetect={handleAutoDetect}
                   aiContext={{ actType: selectedActType?.name, title, summary }} />
                 {errors.content && <p className="text-xs text-error px-5 pb-3 flex items-center gap-1"><span className="material-symbols-outlined text-xs">warning</span> {errors.content}</p>}
               </div>

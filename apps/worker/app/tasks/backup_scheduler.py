@@ -1,7 +1,8 @@
 """Backup scheduler task - checks if it's time to run automatic backup."""
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -18,11 +19,11 @@ HEADERS = {
     "Content-Type": "application/json",
 }
 
-TIMEZONE_OFFSET = -3  # America/Sao_Paulo
+BRASILIA = ZoneInfo("America/Sao_Paulo")
 
 
 def _now_sao_paulo() -> datetime:
-    return datetime.now(timezone.utc).utcnow()
+    return datetime.now(BRASILIA)
 
 
 @celery_app.task(name="backup.scheduler")

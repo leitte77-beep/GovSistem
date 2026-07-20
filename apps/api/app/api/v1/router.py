@@ -5,6 +5,7 @@ from app.api.v1.ai_formatter import router as ai_formatter_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.backup import router as backup_router
 from app.api.v1.editions import router as editions_router
+from app.api.v1.gazette_parser import router as gazette_parser_router
 from app.api.v1.health import router as health_router
 from app.api.v1.imports import router as imports_router
 from app.api.v1.internal import router as internal_router
@@ -28,6 +29,7 @@ api_router.include_router(auth_router)
 api_router.include_router(backup_router)
 api_router.include_router(act_types_router)
 api_router.include_router(ai_formatter_router)
+api_router.include_router(gazette_parser_router)
 api_router.include_router(org_units_router)
 api_router.include_router(plans_router)
 api_router.include_router(editions_router)

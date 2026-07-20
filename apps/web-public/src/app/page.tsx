@@ -6,36 +6,7 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { api, EditionSummary as Edition } from "@/lib/api";
 import { useOrg } from "@/lib/org-context";
-import { formatSummary } from "@/lib/summary";
-import ShareDialog from "@/components/ShareDialog";
-
-const TYPE_LABELS: Record<string, string> = {
-  normal: "ORDINÁRIA",
-  extra: "EXTRAORDINÁRIA",
-  suplementar: "SUPLEMENTAR",
-};
-
-const TYPE_STYLES: Record<string, string> = {
-  normal:
-    "bg-secondary-container text-on-secondary-container",
-  extra: "bg-primary-container text-on-primary-container",
-  suplementar:
-    "bg-tertiary-container text-on-tertiary-container",
-};
-
-const TYPE_BG: Record<string, string> = {
-  normal: "bg-surface-container-low/30",
-  extra: "bg-tertiary-container/10",
-  suplementar: "bg-surface-container-low/30",
-};
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr + "T00:00:00").toLocaleDateString("pt-BR", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-}
+import EditionCard from "@/components/EditionCard";
 
 export default function HomePage() {
   const router = useRouter();
@@ -168,79 +139,7 @@ export default function HomePage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-gutter">
             {displayed.map((edition) => (
-              <div
-                key={edition.id}
-                className="bg-surface-container-lowest rounded-xl border border-outline-variant shadow-sm flex flex-col hover:shadow-md transition-shadow duration-300"
-              >
-                <div
-                  className={`p-6 border-b border-outline-variant ${
-                    TYPE_BG[edition.type] || "bg-surface-container-low/30"
-                  }`}
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <span
-                      className={`${
-                        TYPE_STYLES[edition.type] || TYPE_STYLES.normal
-                      } px-2 py-0.5 rounded text-[10px] font-bold tracking-wider`}
-                    >
-                      {TYPE_LABELS[edition.type] || TYPE_LABELS.normal}
-                    </span>
-                    <span className="text-label-md font-label-md text-on-surface-variant">
-                      {formatDate(edition.publication_date)}
-                    </span>
-                  </div>
-                  <h3 className="font-headline-sm text-headline-sm text-primary leading-tight">
-                    {edition.title}
-                  </h3>
-                </div>
-                <div className="p-6 flex-grow">
-                  <div className="mb-3 flex items-center gap-2 text-label-md font-label-md text-on-surface-variant uppercase tracking-widest">
-                    <span className="h-px w-6 bg-secondary" />
-                    Súmula do Dia
-                  </div>
-                  <div className="relative min-h-[116px] rounded-lg border border-outline-variant/70 bg-surface-container-low/45 px-4 py-3">
-                    <p
-                      className="text-body-sm font-body-sm text-on-surface leading-7"
-                      style={{
-                        display: "-webkit-box",
-                        WebkitLineClamp: 4,
-                        WebkitBoxOrient: "vertical",
-                        overflow: "hidden",
-                      }}
-                    >
-                      {formatSummary(edition.daily_summary)}
-                    </p>
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 rounded-b-lg bg-gradient-to-t from-surface-container-low to-transparent" />
-                  </div>
-                </div>
-                <div className="p-4 bg-surface-container-low flex items-center justify-between">
-                  <Link
-                    href={`/edicoes/${edition.year}/${edition.number}`}
-                    className="bg-primary text-on-primary px-4 py-2 rounded-lg text-label-md font-label-md hover:opacity-90 transition-all"
-                  >
-                    Visualizar
-                  </Link>
-                  <div className="flex gap-1">
-                    {edition.pdf_url && (
-                      <a
-                        href={edition.pdf_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-2 text-on-surface-variant hover:bg-surface-container-highest rounded-lg transition-colors"
-                        aria-label="Baixar PDF"
-                      >
-                        <span className="material-symbols-outlined">
-                          download
-                        </span>
-                      </a>
-                    )}
-                    <ShareDialog
-                      url={`${typeof window !== "undefined" ? window.location.origin : ""}/edicoes/${edition.year}/${edition.number}`}
-                      title={`Edição ${edition.number}/${edition.year} - Diário Oficial`}
-                    />
-                  </div>
-                </div>
-              </div>
+              <EditionCard key={edition.id} edition={edition} />
             ))}
           </div>
         )}

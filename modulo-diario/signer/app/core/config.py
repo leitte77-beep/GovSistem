@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     SIGNER_A1_PASSWORD: SecretStr = SecretStr("")
 
     VERIFICATION_BASE_URL: str = Field(
-        default="http://localhost:7200/verificar",
+        default="https://govsistem.com.br/verificar",
         description="Base URL for verification links embedded in signed PDFs",
     )
 

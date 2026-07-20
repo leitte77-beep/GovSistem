@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
-import { api, bootstrapTokenFromQuery } from "./api";
+import { api, bootstrapTokenFromQuery, SAAS_URL } from "./api";
 
 interface User {
   id: string;
@@ -64,6 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     sessionStorage.removeItem("access_token");
     localStorage.removeItem("refresh_token");
     setUser(null);
+    window.location.href = SAAS_URL;
   };
 
   const switchOrganization = async (orgId: string) => {

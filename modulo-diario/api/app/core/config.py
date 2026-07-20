@@ -55,6 +55,8 @@ class Settings(BaseSettings):
 
     PUBLIC_URL: str = "http://localhost:7200"
 
+    VERIFICATION_BASE_URL: str = "https://govsistem.com.br/verificar"
+
     SENTRY_DSN: str | None = None
     ENVIRONMENT: str = "development"
 

@@ -255,9 +255,11 @@ async def update_matter(
     _own_matter_or_admin(matter, user)
 
     if not matter.can_edit():
+        # status vem do banco como str (coluna String, sem type decorator).
+        current = getattr(matter.status, "value", matter.status)
         raise HTTPException(
             status_code=422,
-            detail=f"Cannot edit matter in status '{matter.status.value}'",
+            detail=f"Cannot edit matter in status '{current}'",
         )
 
     if body.title is not None:
@@ -516,11 +518,22 @@ async def serve_matter_content_image(
     matter_id: uuid.UUID,
     filename: str,
 ):
-    """Serve a content image from a PDF converted matter."""
+    """Serve a content image from a PDF converted matter.
+
+    Unauthenticated by design: browsers load <img> tags without an
+    Authorization header, and matter_id is an unguessable UUID — same
+    trust model as the public edition PDF downloads.
+    """
     from pathlib import Path
     from app.core.config import settings
+    import re
 
-    filepath = Path(settings.UPLOAD_DIR).resolve() / "matter-content" / str(matter_id) / filename
+    if not re.fullmatch(r"[\w\-.]+", filename):
+        raise HTTPException(400, "Invalid filename")
+    base = Path(settings.UPLOAD_DIR).resolve()
+    filepath = (base / "matter-content" / str(matter_id) / filename).resolve()
+    if not str(filepath).startswith(str(base)):
+        raise HTTPException(403, "Path traversal denied")
     if not filepath.is_file():
         raise HTTPException(404, "Image not found")
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "png"

@@ -1,11 +1,14 @@
+import asyncio
 import logging
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -27,6 +30,7 @@ from app.schemas.edition import (
     EditionListResponse,
     EditionResponse,
     EditionUpdate,
+    NextEditionNumberResponse,
     PublishResponse,
     ReorderRequest,
     SignRequest,
@@ -42,10 +46,40 @@ def _status_value(status) -> str:
     return status.value if hasattr(status, "value") else str(status)
 
 
-async def _get_edition_or_404(
-    edition_id: uuid.UUID, db: AsyncSession
-) -> Edition:
+async def _auto_numbering_enabled(db: AsyncSession) -> bool:
+    """Read the 'edition.auto_numbering' system setting (defaults to True)."""
+    from app.models.setting import SystemSetting
+
     result = await db.execute(
+        select(SystemSetting).where(SystemSetting.key == "edition.auto_numbering")
+    )
+    setting = result.scalar_one_or_none()
+    if setting is None or setting.value is None:
+        return True
+    return str(setting.value).strip().lower() in ("true", "1", "yes", "on")
+
+
+async def _next_edition_number(
+    db: AsyncSession, organization_id: uuid.UUID, year: int, type_: EditionType
+) -> int:
+    result = await db.execute(
+        select(func.coalesce(func.max(Edition.number), 0)).where(
+            Edition.organization_id == organization_id,
+            Edition.year == year,
+            Edition.type == type_,
+        )
+    )
+    return int(result.scalar() or 0) + 1
+
+
+def _default_edition_title(number: int) -> str:
+    return f"Diário Oficial - Edição {number:02d}"
+
+
+async def _get_edition_or_404(
+    edition_id: uuid.UUID, db: AsyncSession, user: User | None = None
+) -> Edition:
+    query = (
         select(Edition)
         .where(Edition.id == edition_id)
         .options(
@@ -59,6 +93,9 @@ async def _get_edition_or_404(
             selectinload(Edition.signatures),
         )
     )
+    if user is not None:
+        query = query.where(Edition.organization_id == user.organization_id)
+    result = await db.execute(query)
     edition = result.scalar_one_or_none()
     if edition is None:
         raise HTTPException(status_code=404, detail="Edition not found")
@@ -104,32 +141,76 @@ async def create_edition(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("DIAGRAMADOR", "ADMIN")),
 ):
-    existing = await db.execute(
-        select(Edition).where(
-            Edition.year == body.year,
-            Edition.number == body.number,
-            Edition.type == body.type,
-        )
-    )
-    if existing.scalar_one_or_none():
+    auto_numbering = await _auto_numbering_enabled(db)
+
+    if body.number is None and not auto_numbering:
         raise HTTPException(
-            status_code=409,
-            detail=f"Edition {body.number}/{body.year} ({body.type.value}) already exists",
+            status_code=422,
+            detail="Edition number is required when auto numbering is disabled",
         )
 
-    edition = Edition(
-        organization_id=user.organization_id,
-        number=body.number,
-        year=body.year,
-        type=body.type,
-        title=body.title.strip(),
-        subtitle=body.subtitle.strip() if body.subtitle else None,
-        publication_date=body.publication_date,
-        status=EditionStatus.DRAFT,
-        created_by=user.id,
-    )
-    db.add(edition)
-    await db.commit()
+    server_assigned = auto_numbering or body.number is None
+    if server_assigned:
+        number = await _next_edition_number(
+            db, user.organization_id, body.year, body.type
+        )
+    else:
+        number = body.number
+        existing = await db.execute(
+            select(Edition).where(
+                Edition.organization_id == user.organization_id,
+                Edition.year == body.year,
+                Edition.number == number,
+                Edition.type == body.type,
+            )
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(
+                status_code=409,
+                detail=f"Edition {number}/{body.year} ({body.type.value}) already exists",
+            )
+
+    def _resolve_title(final_number: int) -> str:
+        title = (body.title or "").strip()
+        if not title:
+            return _default_edition_title(final_number)
+        if (
+            server_assigned
+            and body.number is not None
+            and final_number != body.number
+            and re.fullmatch(rf"Diário Oficial - Edição 0*{body.number}", title)
+        ):
+            return _default_edition_title(final_number)
+        return title
+
+    edition = None
+    max_attempts = 3
+    for attempt in range(max_attempts):
+        edition = Edition(
+            organization_id=user.organization_id,
+            number=number,
+            year=body.year,
+            type=body.type,
+            title=_resolve_title(number),
+            subtitle=body.subtitle.strip() if body.subtitle else None,
+            publication_date=body.publication_date,
+            status=EditionStatus.DRAFT,
+            created_by=user.id,
+        )
+        db.add(edition)
+        try:
+            await db.commit()
+            break
+        except IntegrityError:
+            await db.rollback()
+            if not server_assigned or attempt == max_attempts - 1:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Edition {number}/{body.year} ({body.type.value}) already exists",
+                )
+            number = await _next_edition_number(
+                db, user.organization_id, body.year, body.type
+            )
     await db.refresh(edition)
 
     info = await capture_request_info(request)
@@ -141,6 +222,25 @@ async def create_edition(
         ip_address=info["ip_address"],
     )
     return await _edition_to_response(edition)
+
+
+@router.get("/editions/next-number", response_model=NextEditionNumberResponse)
+async def get_next_edition_number(
+    year: Optional[int] = None,
+    type: EditionType = EditionType.NORMAL,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    target_year = year or datetime.now(timezone.utc).year
+    next_number = await _next_edition_number(
+        db, user.organization_id, target_year, type
+    )
+    return NextEditionNumberResponse(
+        year=target_year,
+        type=type,
+        next_number=next_number,
+        auto_numbering=await _auto_numbering_enabled(db),
+    )
 
 
 @router.get("/editions", response_model=list[EditionListResponse])
@@ -183,7 +283,7 @@ async def get_edition(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     return await _edition_to_response(edition)
 
 
@@ -195,7 +295,7 @@ async def update_edition(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("DIAGRAMADOR", "ADMIN")),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     if not edition.can_edit():
         raise HTTPException(422, f"Cannot edit edition in status '{_status_value(edition.status)}'")
     if body.title is not None:
@@ -205,7 +305,7 @@ async def update_edition(
     if body.publication_date is not None:
         edition.publication_date = body.publication_date
     await db.commit()
-    await db.refresh(edition)
+    await db.refresh(edition, attribute_names=["updated_at"])
     return await _edition_to_response(edition)
 
 
@@ -218,7 +318,7 @@ async def list_items(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     return [
         EditionItemOut(
             id=i.id, matter_id=i.matter_id,
@@ -238,7 +338,7 @@ async def add_item(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("DIAGRAMADOR", "ADMIN")),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     if not EditionStatus.can_add_items(edition.status):
         raise HTTPException(422, f"Cannot add items to edition in status '{_status_value(edition.status)}'")
 
@@ -274,7 +374,7 @@ async def add_item(
     )
     db.add(item)
     await db.commit()
-    await db.refresh(edition)
+    await db.refresh(edition, attribute_names=["updated_at"])
 
     info = await capture_request_info(request)
     await log_audit_event(
@@ -284,6 +384,7 @@ async def add_item(
         description=f"Matter '{matter.title}' added to edition",
         ip_address=info["ip_address"],
     )
+    await db.refresh(edition, attribute_names=["updated_at"])
     return await _edition_to_response(edition)
 
 
@@ -294,7 +395,7 @@ async def reorder_items(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("DIAGRAMADOR", "ADMIN")),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     if not EditionStatus.can_add_items(edition.status):
         raise HTTPException(422, f"Cannot reorder items in status '{_status_value(edition.status)}'")
 
@@ -304,7 +405,6 @@ async def reorder_items(
             new_pos = next(i.position for i in body.items if i.id == item.id)
             item.position = new_pos
     await db.commit()
-    await db.refresh(edition)
 
     return [
         EditionItemOut(
@@ -325,7 +425,7 @@ async def remove_item(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("DIAGRAMADOR", "ADMIN")),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     if not EditionStatus.can_add_items(edition.status):
         raise HTTPException(422, f"Cannot remove items in status '{_status_value(edition.status)}'")
 
@@ -352,7 +452,7 @@ async def close_edition(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("DIAGRAMADOR", "ADMIN")),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     edition.change_status(EditionStatus.CLOSED)
     await db.commit()
 
@@ -365,6 +465,11 @@ async def close_edition(
         logging.getLogger("doe").warning(
             f"Failed to enqueue PDF generation for edition {edition_id}: {e}"
         )
+        raise HTTPException(
+            status_code=502,
+            detail="Edition closed but PDF generation could not be scheduled. "
+            "The PDF must be generated manually from the edition page.",
+        )
 
     info = await capture_request_info(request)
     await log_audit_event(
@@ -375,6 +480,10 @@ async def close_edition(
         extra_metadata={"from": "draft/reviewing/scheduled", "to": _status_value(edition.status)},
         ip_address=info["ip_address"],
     )
+    # updated_at (onupdate server-side) expira apos o UPDATE. Recarrega apenas
+    # essa coluna: um refresh completo re-carregaria items sem o matter aninhado
+    # e quebraria _edition_to_response com MissingGreenlet.
+    await db.refresh(edition, attribute_names=["updated_at"])
     return await _edition_to_response(edition)
 
 
@@ -385,7 +494,7 @@ async def reopen_edition(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("DIAGRAMADOR", "ADMIN")),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     if not EditionStatus.can_reopen(edition.status):
         raise HTTPException(422, f"Cannot reopen edition in status '{_status_value(edition.status)}'")
 
@@ -394,7 +503,7 @@ async def reopen_edition(
 
     edition.change_status(EditionStatus.DRAFT)
     await db.commit()
-    await db.refresh(edition)
+    await db.refresh(edition, attribute_names=["updated_at"])
 
     info = await capture_request_info(request)
     await log_audit_event(
@@ -405,6 +514,7 @@ async def reopen_edition(
         extra_metadata={"from": "closed", "to": "draft"},
         ip_address=info["ip_address"],
     )
+    await db.refresh(edition, attribute_names=["updated_at"])
     return await _edition_to_response(edition)
 
 
@@ -413,12 +523,12 @@ async def cancel_edition(
     edition_id: uuid.UUID,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("AUTOR", "DIAGRAMADOR", "ADMIN")),
+    user: User = Depends(require_roles("DIAGRAMADOR", "ADMIN")),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     edition.change_status(EditionStatus.CANCELLED)
     await db.commit()
-    await db.refresh(edition)
+    await db.refresh(edition, attribute_names=["updated_at"])
     info = await capture_request_info(request)
     await log_audit_event(
         db=db, action=AuditAction.EDITION_STATUS_CHANGED,
@@ -428,6 +538,7 @@ async def cancel_edition(
         extra_metadata={"to": "cancelled"},
         ip_address=info["ip_address"],
     )
+    await db.refresh(edition, attribute_names=["updated_at"])
     return await _edition_to_response(edition)
 
 
@@ -437,7 +548,7 @@ async def delete_edition(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("AUTOR", "ADMIN")),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     if edition.status == EditionStatus.PUBLISHED:
         raise HTTPException(409, "Cannot delete a published edition")
     await db.delete(edition)
@@ -450,7 +561,7 @@ async def generate_edition_pdf(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("DIAGRAMADOR", "ADMIN")),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     if edition.status not in (EditionStatus.CLOSED, EditionStatus.PDF_GENERATED):
         raise HTTPException(
             422,
@@ -469,7 +580,9 @@ async def generate_edition_pdf(
     organ_name = organization.name if organization else None
     pdf_layout = organization.pdf_layout if organization else "classico"
 
-    result = generate_edition_pdf_sync(
+    # WeasyPrint e pesado: roda em thread para nao bloquear o event loop.
+    result = await asyncio.to_thread(
+        generate_edition_pdf_sync,
         edition_id=str(edition_id),
         organ_name=organ_name,
         layout=pdf_layout,
@@ -492,7 +605,7 @@ async def sign_edition(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("ASSINADOR", "ADMIN")),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     if not EditionStatus.can_sign(edition.status):
         raise HTTPException(
             422, f"Edition must be PDF_GENERATED to sign, current: {_status_value(edition.status)}"
@@ -644,7 +757,7 @@ async def validate_edition_signature(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     if not edition.signatures or len(edition.signatures) == 0:
         raise HTTPException(404, "No signatures found for this edition")
 
@@ -688,7 +801,7 @@ async def publish_edition(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("PUBLICADOR", "ADMIN")),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     if edition.status == EditionStatus.PUBLISHED:
         return PublishResponse(
             edition_id=str(edition.id),
@@ -715,13 +828,16 @@ async def publish_edition(
         if not item.matter:
             continue
         matter = item.matter
-        if matter.status == MatterStatus.PUBLISHED:
+        # status vem do banco como str (coluna String); normaliza para o enum
+        # antes de chamar métodos de instância como can_transition_to.
+        matter_status = MatterStatus(matter.status)
+        if matter_status == MatterStatus.PUBLISHED:
             continue
-        if not matter.status.can_transition_to(MatterStatus.PUBLISHED):
+        if not matter_status.can_transition_to(MatterStatus.PUBLISHED):
             failed_matters.append({
                 "id": str(matter.id),
                 "title": matter.title or "Sem título",
-                "status": matter.status.value,
+                "status": matter_status.value,
             })
 
     if failed_matters:

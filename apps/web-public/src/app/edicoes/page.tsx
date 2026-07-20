@@ -5,38 +5,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { api, EditionSummary, PaginationMeta } from "@/lib/api";
 import { useOrg } from "@/lib/org-context";
-import { formatSummary } from "@/lib/summary";
-import ShareDialog from "@/components/ShareDialog";
-
-const TYPE_LABELS: Record<string, string> = {
-  normal: "ORDINÁRIA",
-  extra: "EXTRAORDINÁRIA",
-  suplementar: "SUPLEMENTAR",
-};
-
-const TYPE_STYLES: Record<string, string> = {
-  normal: "bg-secondary-container text-on-secondary-container",
-  extra: "bg-tertiary-fixed text-on-tertiary-fixed-variant",
-  suplementar: "bg-primary-container text-on-primary-container",
-};
-
-function formatDate(dateStr: string): string {
-  const d = new Date(dateStr + "T00:00:00");
-  return d.toLocaleDateString("pt-BR", {
-    weekday: "long",
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-}
-
-function formatShortDate(dateStr: string): string {
-  return new Date(dateStr + "T00:00:00").toLocaleDateString("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  });
-}
+import EditionCard from "@/components/EditionCard";
 
 export default function EditionsPage() {
   const { org } = useOrg();
@@ -93,78 +62,75 @@ export default function EditionsPage() {
   };
 
   return (
-    <main className="max-w-container-max mx-auto px-gutter py-stack-lg min-h-screen">
-      {/* Title Section */}
+    <main className="max-w-container-max mx-auto px-margin-mobile md:px-gutter py-stack-lg min-h-screen">
+      {/* Hero Section */}
       <section className="mb-stack-lg">
-        <h1 className="text-headline-lg font-headline-lg text-primary mb-4">
-          Edições Publicadas
+        <h1 className="font-display-lg text-headline-lg md:text-display-lg text-on-surface mb-2">
+          Edições do Diário Oficial
         </h1>
-        <p className="text-body-md font-body-md text-on-surface-variant max-w-2xl">
+        <p className="font-body-lg text-body-lg text-on-surface-variant max-w-2xl">
           Acesse o histórico completo de publicações oficiais, atos normativos e
-          decisões administrativas {org?.name ? `da(o) ${org.name}` : "do município"}.
+          decisões administrativas{" "}
+          {org?.name ? `da(o) ${org.name}` : "do município"} com total
+          transparência e segurança jurídica.
         </p>
       </section>
 
-      {/* Search & Filter Bar */}
-      <section className="bg-surface-container-lowest border border-outline-variant p-gutter rounded-xl shadow-sm mb-stack-md">
+      {/* Search Bar Section */}
+      <section className="mb-stack-lg">
         <form
           onSubmit={handleFilter}
-          className="flex flex-col md:flex-row gap-4 items-center"
+          className="bg-surface-container-lowest rounded-xl shadow-[0px_4px_20px_rgba(0,0,0,0.05)] p-2 flex flex-col md:flex-row items-center gap-2 border border-outline-variant"
         >
-          <div className="relative flex-grow w-full">
-            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant">
-              search
-            </span>
+          <div className="flex-grow flex items-center px-4 gap-3 w-full">
+            <span className="material-symbols-outlined text-outline">search</span>
             <input
-              className="w-full h-14 pl-12 pr-4 bg-surface-container-low border border-outline-variant rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all text-body-md outline-none"
+              className="w-full border-none focus:ring-0 bg-transparent py-4 font-body-md text-body-md text-on-surface outline-none"
               placeholder="Buscar por título ou palavra-chave..."
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <div className="w-full md:w-64">
-            <div className="relative">
-              <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none">
-                calendar_today
-              </span>
-              <select
-                className="w-full h-14 pl-12 pr-4 bg-surface-container-low border border-outline-variant rounded-lg focus:ring-2 focus:ring-primary focus:border-primary transition-all text-body-md appearance-none cursor-pointer outline-none"
-                value={year}
-                onChange={(e) => setYear(e.target.value)}
-              >
-                <option value="">Todos os anos</option>
-                {years.map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div className="h-8 w-px bg-outline-variant hidden md:block" />
+          <div className="flex items-center px-4 gap-3 w-full md:w-auto">
+            <span className="material-symbols-outlined text-outline">
+              calendar_month
+            </span>
+            <select
+              className="border-none focus:ring-0 bg-transparent py-4 pr-8 font-label-md text-label-md text-on-surface min-w-[140px] cursor-pointer outline-none"
+              value={year}
+              onChange={(e) => setYear(e.target.value)}
+            >
+              <option value="">Todos os anos</option>
+              {years.map((y) => (
+                <option key={y} value={y}>
+                  {y}
+                </option>
+              ))}
+            </select>
           </div>
           <button
             type="submit"
-            className="w-full md:w-auto px-8 h-14 bg-primary text-on-primary font-bold rounded-lg hover:opacity-90 active:scale-95 transition-all flex items-center justify-center gap-2"
+            className="w-full md:w-auto bg-primary-container text-on-primary px-10 py-4 rounded-lg font-label-md text-label-md hover:bg-opacity-90 active:scale-95 transition-all flex items-center justify-center gap-2"
           >
             Filtrar
           </button>
         </form>
       </section>
 
-      {/* Results Counter + Sort */}
+      {/* Results Counter & Sort */}
       <div className="flex justify-between items-center mb-stack-sm px-2">
-        <span className="text-label-md font-label-md text-on-surface-variant">
+        <span className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">
           Mostrando {editions.length} de{" "}
-          {pagination?.total != null ? pagination.total.toLocaleString("pt-BR") : "..."}{" "}
+          {pagination?.total != null
+            ? pagination.total.toLocaleString("pt-BR")
+            : "..."}{" "}
           edições
         </span>
-        <div className="flex items-center gap-2">
-          <span className="text-label-md font-label-md text-on-surface-variant">
-            Ordenar por:
-          </span>
-          <span className="text-label-md font-label-md text-primary">
-            Mais recentes
-          </span>
+        <div className="flex items-center gap-2 font-label-sm text-label-sm">
+          <span className="text-outline">Ordenar por:</span>
+          <span className="text-on-surface font-bold">Mais recentes</span>
         </div>
       </div>
 
@@ -185,93 +151,10 @@ export default function EditionsPage() {
         </div>
       ) : (
         <>
-          {/* Vertical Editions List */}
-          <div className="flex flex-col gap-stack-md">
+          {/* Edition Cards Grid */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
             {editions.map((edition) => (
-              <article
-                key={edition.id}
-                className="bg-surface-container-lowest border border-outline-variant rounded-xl shadow-sm p-6 flex flex-col md:flex-row gap-6 hover:border-primary transition-all duration-200"
-              >
-                <div className="flex flex-col md:w-1/4">
-                  <div
-                    className={`inline-flex px-3 py-1 rounded-full text-[10px] font-bold tracking-wider w-fit mb-3 ${
-                      TYPE_STYLES[edition.type] || TYPE_STYLES.normal
-                    }`}
-                  >
-                    {TYPE_LABELS[edition.type] || TYPE_LABELS.normal}
-                  </div>
-                  <time className="text-body-sm font-body-sm text-on-surface-variant mb-1">
-                    {formatDate(edition.publication_date)}
-                  </time>
-                  <h2 className="text-headline-sm font-headline-sm text-primary leading-tight">
-                    {edition.title}
-                  </h2>
-                </div>
-
-                <div className="flex-grow md:border-l md:border-outline-variant md:pl-8">
-                  <h3 className="flex items-center gap-2 text-label-md font-label-md text-on-surface-variant uppercase tracking-widest mb-3">
-                    <span className="h-px w-6 bg-secondary" />
-                    Súmula do Dia
-                  </h3>
-                  <ul className="space-y-2">
-                    <li className="rounded-lg border border-outline-variant/70 bg-surface-container-low/45 px-4 py-3 text-body-sm font-body-sm text-on-surface leading-7">
-                      {formatSummary(edition.daily_summary)}
-                    </li>
-                    <li className="flex gap-3 text-body-sm font-body-sm text-on-surface">
-                      <span className="material-symbols-outlined text-[18px] text-secondary">
-                        calendar_today
-                      </span>
-                      <span>
-                        Publicada em {formatShortDate(edition.publication_date)}.
-                      </span>
-                    </li>
-                    {edition.verification_code && (
-                      <li className="flex gap-3 text-body-sm font-body-sm text-on-surface">
-                        <span className="material-symbols-outlined text-[18px] text-secondary">
-                          verified
-                        </span>
-                        <span>
-                          Código de verificação:{" "}
-                          <code className="bg-surface-container px-1.5 py-0.5 rounded text-label-md font-mono">
-                            {edition.verification_code}
-                          </code>
-                        </span>
-                      </li>
-                    )}
-                  </ul>
-                </div>
-
-                <div className="flex md:flex-col gap-3 justify-end md:justify-center md:items-end">
-                  <Link
-                    href={`/edicoes/${edition.year}/${edition.number}`}
-                    className="bg-primary text-on-primary px-6 py-2.5 rounded-lg text-label-md font-label-md hover:opacity-90 active:scale-95 transition-all flex items-center gap-2"
-                  >
-                    <span className="material-symbols-outlined text-[20px]">
-                      visibility
-                    </span>
-                    Visualizar
-                  </Link>
-                  <div className="flex gap-2">
-                    {edition.pdf_url && (
-                      <a
-                        href={edition.pdf_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-2 border border-outline-variant rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-all"
-                        aria-label="Baixar PDF"
-                      >
-                        <span className="material-symbols-outlined">
-                          download
-                        </span>
-                      </a>
-                    )}
-                    <ShareDialog
-                      url={`${typeof window !== "undefined" ? window.location.origin : ""}/edicoes/${edition.year}/${edition.number}`}
-                      title={`Edição ${edition.number}/${edition.year} - Diário Oficial`}
-                    />
-                  </div>
-                </div>
-              </article>
+              <EditionCard key={edition.id} edition={edition} compact />
             ))}
           </div>
 
@@ -320,46 +203,61 @@ export default function EditionsPage() {
         </>
       )}
 
-      {/* Digital Signature Section */}
-      <aside className="bg-surface-container border-t border-outline-variant py-stack-lg mt-stack-lg">
-        <div className="max-w-container-max mx-auto px-gutter grid grid-cols-1 md:grid-cols-2 gap-12 items-center">
-          <div>
-            <h2 className="text-headline-md font-headline-md text-primary mb-4">
+      {/* Trust Section / Assinatura Digital */}
+      <section className="mt-stack-lg rounded-xl overflow-hidden bg-surface-container relative">
+        <div className="grid md:grid-cols-2 items-center">
+          <div className="p-stack-md lg:p-margin-desktop space-y-stack-sm relative z-10">
+            <h2 className="font-headline-lg text-headline-lg text-on-surface">
               Assinatura Digital de Confiança
             </h2>
-            <p className="text-body-md font-body-md text-on-surface-variant mb-6">
-              Todas as edições do Diário Oficial são assinadas digitalmente,
-              garantindo a autenticidade e integridade jurídica de cada documento
-              publicado.
+            <p className="font-body-md text-body-md text-on-surface-variant leading-relaxed">
+              Todas as edições do Diário Oficial são assinadas digitalmente
+              seguindo os padrões da ICP-Brasil, garantindo a autenticidade,
+              integridade e validade jurídica de cada documento publicado.
             </p>
-            <div className="flex gap-4">
+            <div className="flex flex-wrap gap-4 pt-4">
               <Link
                 href="/verificar"
-                className="flex items-center gap-2 bg-secondary-container px-4 py-2 rounded-lg"
+                className="inline-flex items-center gap-2 bg-secondary-container text-on-secondary-container px-4 py-2 rounded-full font-label-md text-label-md shadow-sm"
               >
                 <span
-                  className="material-symbols-outlined text-on-secondary-container"
+                  className="material-symbols-outlined"
                   style={{ fontVariationSettings: "'FILL' 1" }}
                 >
-                  verified_user
+                  verified
                 </span>
-                <span className="text-label-md font-label-md text-on-secondary-container">
-                  AUTENTICIDADE GARANTIDA
-                </span>
+                AUTENTICIDADE GARANTIDA
               </Link>
+              <span className="inline-flex items-center gap-2 border border-outline text-on-surface px-4 py-2 rounded-full font-label-md text-label-md">
+                <span className="material-symbols-outlined">lock</span>
+                CRIPTOGRAFIA ICP-BRASIL
+              </span>
             </div>
           </div>
-          <div className="rounded-xl overflow-hidden shadow-xl aspect-video relative group">
-            <Image
-              alt="Segurança jurídica"
-              fill
-              sizes="(max-width: 768px) 100vw, 50vw"
-              className="object-cover grayscale group-hover:grayscale-0 transition-all duration-700"
-              src="https://lh3.googleusercontent.com/aida-public/AB6AXuB17a1fxXJD2D-OsgQhGI42eFho94Py9-ndKjPfk-fYvuMkYXvu2ymhBCmXcgd-EFSDurMPaHEz4FiDDFJmnvWVClyDIJ2xMbsdLo44gIoONgnJHFB39jNczui3ek05Oh_ZWq8MHgT_V0uTryEkg3o03Ek3BZt2Jsm0Q5gbpoN_IoV8WTKwUDXpzAMcBeumIYlxS5W3xoBtYu9lLdFQ8bAj8Nb_0KcHzE_b78RPEAJjGI4jytVOE7bClMxt4Andma91w-4Ee0t9ZFKm"
-            />
+          <div className="p-stack-md lg:p-margin-desktop flex justify-center items-center">
+            <div className="relative w-full max-w-sm aspect-video bg-surface-container-lowest rounded-xl shadow-xl overflow-hidden border border-outline-variant transform lg:rotate-2 hover:rotate-0 transition-transform duration-500 motion-reduce:transform-none">
+              <Image
+                alt="Certificado digital com segurança jurídica"
+                fill
+                sizes="(max-width: 768px) 100vw, 384px"
+                className="object-cover opacity-80"
+                src="https://lh3.googleusercontent.com/aida-public/AB6AXuBPdg-JR4LN5VZO11R2aeV0G9OTI8tl76U9ByQ6WP86uXQl4doTAer3Xh8_0VMbK_yfNh-Mebk5t6YhI4BAQDpYf_nxb4kaHv0py-jy3Swue4ijv2NsUPO6Yqv7e5sNJKlqcGbpwzuhwCDh9CgOU7TDvWkds3KM09BFt3h3WUH7g-qDxKLklPMbPHLQEp4pbKjrXf1kkGYPA5nDpXSWdE9F4CLO-lp_zXwBWY-DKiQiJK3vFAaerGW5"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-surface-container-highest/60 to-transparent" />
+              <div className="absolute bottom-4 left-4 right-4 flex justify-between items-center text-on-surface">
+                <span className="font-label-sm text-label-sm font-bold">
+                  SEGURANÇA JURÍDICA
+                </span>
+                <span className="material-symbols-outlined">shield</span>
+              </div>
+            </div>
           </div>
         </div>
-      </aside>
+        {/* Detalhe atmosférico sutil */}
+        <div className="absolute top-0 right-0 p-8 opacity-10 pointer-events-none">
+          <span className="material-symbols-outlined text-9xl">gavel</span>
+        </div>
+      </section>
     </main>
   );
 }

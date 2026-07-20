@@ -144,6 +144,11 @@ body {
   page-break-inside: auto;
 }
 
+.matter + .matter {
+  page-break-before: always;
+  break-before: page;
+}
+
 .matter-landscape {
   page: landscape;
   border-left-color: #cc6600;
@@ -430,4 +435,192 @@ body {
   margin-top: 8pt;
   color: #566b8a;
   font-size: 8pt;
+}
+
+/* ============================================================
+   Diagramação automática (módulo gazette)
+   Classes semânticas aplicadas pelo interpretador de conteúdo.
+   ============================================================ */
+
+.matter-content .gazette-category {
+  display: block;
+  background: #d9d9d9;
+  font-size: 11pt;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+  padding: 3pt 6pt;
+  margin: 10pt 0 6pt;
+  page-break-after: avoid;
+  break-after: avoid;
+}
+
+.matter-content .gazette-document-title {
+  font-size: 11pt;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+  margin: 8pt 0 4pt;
+  page-break-after: avoid;
+  break-after: avoid;
+}
+
+.matter-content .gazette-document-subtitle {
+  font-size: 10.5pt;
+  font-weight: 700;
+  text-align: center;
+  margin: 2pt 0 6pt;
+  page-break-before: avoid;
+  page-break-after: avoid;
+  break-after: avoid;
+}
+
+.matter-content .gazette-summary {
+  font-weight: 700;
+  text-align: justify;
+  margin: 6pt 0;
+}
+
+.matter-content .gazette-preamble {
+  font-weight: 700;
+  text-align: justify;
+  margin: 6pt 0;
+}
+
+.matter-content .gazette-consideration {
+  text-align: justify;
+  text-indent: 1.25cm;
+  margin: 4pt 0;
+}
+
+.matter-content .gazette-command {
+  font-weight: 700;
+  text-align: center;
+  margin: 6pt 0;
+  page-break-after: avoid;
+}
+
+.matter-content .gazette-article {
+  text-align: justify;
+  text-indent: 1.25cm;
+  margin: 4pt 0;
+  orphans: 2;
+  widows: 2;
+}
+
+.matter-content .gazette-paragraph,
+.matter-content .gazette-sole-paragraph {
+  text-align: justify;
+  text-indent: 1.25cm;
+  margin: 4pt 0;
+}
+
+.matter-content .gazette-subsection {
+  text-align: justify;
+  margin: 3pt 0 3pt 1.25cm;
+}
+
+.matter-content .gazette-letter-item {
+  text-align: justify;
+  margin: 3pt 0 3pt 2cm;
+}
+
+.matter-content .gazette-numbered-item {
+  text-align: justify;
+  margin: 3pt 0 3pt 2.5cm;
+}
+
+.matter-content .gazette-body {
+  text-align: justify;
+  margin: 4pt 0;
+}
+
+.matter-content .gazette-field {
+  text-align: justify;
+  margin: 3pt 0;
+}
+
+.matter-content .gazette-field strong {
+  font-weight: 700;
+}
+
+.matter-content .gazette-company {
+  text-align: center;
+  margin: 6pt 0;
+  page-break-inside: avoid;
+}
+
+.matter-content .gazette-total-value {
+  text-align: right;
+  margin: 5pt 0;
+  page-break-before: avoid;
+}
+
+.matter-content table.gazette-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 6pt 0;
+  page-break-inside: auto;
+}
+
+.matter-content table.gazette-table thead {
+  display: table-header-group;
+}
+
+.matter-content table.gazette-table tr {
+  page-break-inside: avoid;
+  break-inside: avoid;
+}
+
+.matter-content table.gazette-table th,
+.matter-content table.gazette-table td {
+  border: 0.6pt solid #444;
+  padding: 2.5pt 4pt;
+  vertical-align: top;
+  font-size: 9pt;
+}
+
+.matter-content .gazette-closing {
+  text-align: center;
+  margin: 3pt 0;
+  page-break-inside: avoid;
+}
+
+.matter-content .gazette-location {
+  margin-top: 12pt;
+  page-break-after: avoid;
+}
+
+.matter-content .gazette-date {
+  page-break-before: avoid;
+}
+
+.matter-content .gazette-signature {
+  text-align: center;
+  margin: 2pt 0;
+  page-break-inside: avoid;
+}
+
+.matter-content .gazette-signature-name {
+  margin-top: 16pt;
+  page-break-after: avoid;
+  break-after: avoid;
+}
+
+.matter-content .gazette-signature-role {
+  page-break-before: avoid;
+  margin-bottom: 10pt;
+}
+
+.matter-content .gazette-annex-title {
+  font-weight: 700;
+  text-align: center;
+  margin: 10pt 0 4pt;
+  page-break-after: avoid;
+}
+
+.matter-content .gazette-annex-content,
+.matter-content .gazette-notice {
+  text-align: justify;
+  margin: 4pt 0;
 }

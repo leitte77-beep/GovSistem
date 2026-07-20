@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import clsx from "clsx";
 import { api } from "@/lib/api";
+import { waitForEditionPdf } from "@/lib/waitForEditionPdf";
 import type { Edition, EditionType, EditionItem, MatterListItem } from "@/types/edition";
 import StatusBadge from "@/components/Matter/StatusBadge";
 import EditionPreview from "./EditionPreview";
@@ -71,16 +72,23 @@ export default function EditionForm({ edition, isNew }: EditionFormProps) {
       setItems(edition.items);
       setStatus(edition.status);
     } else if (isNew) {
-      api.listEditions({ year: new Date().getFullYear() })
-        .then((existing) => {
-          const maxNum = existing.reduce((max, e) => Math.max(max, e.number), 0);
-          const nextNum = maxNum + 1;
-          setNumber(nextNum);
-          setTitle(`Diário Oficial - Edição ${String(nextNum).padStart(2, "0")}`);
+      api.getNextEditionNumber({ year: new Date().getFullYear(), type })
+        .then((res) => {
+          setNumber(res.next_number);
+          setTitle(`Diário Oficial - Edição ${String(res.next_number).padStart(2, "0")}`);
         })
-        .catch(() => {});
+        .catch(() => {
+          api.listEditions({ year: new Date().getFullYear() })
+            .then((existing) => {
+              const maxNum = existing.reduce((max, e) => Math.max(max, e.number), 0);
+              const nextNum = maxNum + 1;
+              setNumber(nextNum);
+              setTitle(`Diário Oficial - Edição ${String(nextNum).padStart(2, "0")}`);
+            })
+            .catch(() => {});
+        });
     }
-  }, [edition]);
+  }, [edition, type]);
 
   const errors: Record<string, string> = {};
   if (touched.pubDate && !pubDate) errors.pubDate = "Selecione a data de publicação";
@@ -126,6 +134,8 @@ export default function EditionForm({ edition, isNew }: EditionFormProps) {
         const e = await api.createEdition({ number, year, type, title, subtitle: subtitle || undefined, publication_date: pubDate });
         setEditionId(e.id);
         setStatus(e.status);
+        setNumber(e.number);
+        setTitle(e.title);
         toast.success("Edição criada com sucesso!");
         return e;
       } else if (editionId) {
@@ -254,6 +264,8 @@ export default function EditionForm({ edition, isNew }: EditionFormProps) {
     if (!id) return;
     setWorkflowRunning(true);
     setWorkflowMessage("Preparando assinatura digital...");
+    let signatureAttempted = false;
+    let workflowPhase: "preparing" | "signing" | "publishing" = "preparing";
     try {
       const payload = await signPayload();
 
@@ -266,18 +278,21 @@ export default function EditionForm({ edition, isNew }: EditionFormProps) {
       }
 
       if (currentStatus === "closed") {
-        setWorkflowMessage("Gerando PDF da edição...");
-        const generated = await api.generatePdf(id);
-        currentStatus = generated.status || "pdf_generated";
+        setWorkflowMessage("Aguardando a geração do PDF pelo servidor...");
+        const generated = await waitForEditionPdf(() => api.getEdition(id));
+        currentStatus = generated.status;
         setStatus(currentStatus);
       }
 
       setWorkflowMessage("Assinando PDF com certificado digital...");
+      workflowPhase = "signing";
+      signatureAttempted = true;
       await api.signEdition(id, payload);
       currentStatus = "signed";
       setStatus("signed");
 
       setWorkflowMessage("Publicando no portal público...");
+      workflowPhase = "publishing";
       const published = await api.publishEdition(id);
       setStatus(published.status);
       setShowSignModal(false);
@@ -286,6 +301,48 @@ export default function EditionForm({ edition, isNew }: EditionFormProps) {
       router.push("/editions");
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Erro ao assinar e publicar";
+      if (workflowPhase === "publishing") {
+        try {
+          const latest = await api.getEdition(id);
+          setStatus(latest.status);
+          if (latest.status === "published") {
+            setShowSignModal(false);
+            setPfxPassword("");
+            toast.success("Edição assinada e publicada com sucesso!");
+            router.push("/editions");
+            return;
+          }
+        } catch {
+          // Keep the locally confirmed signed status when reconciliation fails.
+        }
+        toast.error(
+          `A edição foi assinada, mas não foi possível publicá-la: ${message}. Tente publicar novamente.`,
+        );
+        setStep(3);
+        return;
+      }
+      if (!signatureAttempted) {
+        toast.error(message);
+        setStep(3);
+        return;
+      }
+
+      try {
+        const latest = await api.getEdition(id);
+        setStatus(latest.status);
+        if (latest.status === "signed" || latest.status === "published") {
+          toast(
+            latest.status === "published"
+              ? "A assinatura e a publicação foram confirmadas pelo servidor."
+              : "A assinatura foi confirmada pelo servidor. Tente publicar novamente.",
+          );
+          setStep(3);
+          return;
+        }
+      } catch {
+        // If status cannot be reconciled, retain the previous recovery path.
+      }
+
       toast.error(message);
       try {
         setWorkflowMessage("Assinatura recusada. Reabrindo edição...");

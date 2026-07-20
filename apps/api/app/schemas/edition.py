@@ -7,17 +7,17 @@ from app.models.enums import EditionStatus, EditionType
 
 
 class EditionCreate(BaseModel):
-    number: int
+    number: int | None = None
     year: int
     type: EditionType = EditionType.NORMAL
-    title: str
+    title: str | None = None
     subtitle: str | None = None
     publication_date: date
 
     @field_validator("number")
     @classmethod
-    def number_positive(cls, v: int) -> int:
-        if v < 1:
+    def number_positive(cls, v: int | None) -> int | None:
+        if v is not None and v < 1:
             raise ValueError("Number must be >= 1")
         return v
 
@@ -33,6 +33,13 @@ class EditionUpdate(BaseModel):
     title: str | None = None
     subtitle: str | None = None
     publication_date: date | None = None
+
+
+class NextEditionNumberResponse(BaseModel):
+    year: int
+    type: EditionType
+    next_number: int
+    auto_numbering: bool
 
 
 class EditionItemOut(BaseModel):

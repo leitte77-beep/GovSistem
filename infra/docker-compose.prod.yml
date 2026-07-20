@@ -129,6 +129,7 @@ services:
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
       CORS_ORIGINS: '["https://admin.govsistem.com.br","https://doe-admin.govsistem.com.br","https://diario.govsistem.com.br","https://govsistem.com.br","https://farol.govsistem.com.br"]'
       PUBLIC_URL: https://diario.govsistem.com.br
+      VERIFICATION_BASE_URL: https://govsistem.com.br/verificar
       PDF_API_BASE_URL: https://diario.govsistem.com.br
       DEBUG: "false"
       SECRET_KEY: ${SECRET_KEY}
@@ -160,7 +161,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1G
         reservations:
           memory: 256M
 

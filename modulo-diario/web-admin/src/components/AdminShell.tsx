@@ -8,15 +8,21 @@ import { api, SAAS_URL } from "@/lib/api";
 import { notifyError } from "@/lib/error-handler";
 import NotificationsPanel from "./NotificationsPanel";
 
-const NAV_ITEMS = [
+const NAV_ITEMS: {
+  label: string;
+  href: string;
+  icon: string;
+  external?: boolean;
+  adminOnly?: boolean;
+}[] = [
   { label: "Dashboard", href: "/", icon: "dashboard" },
   { label: "Matérias", href: "/matters", icon: "description" },
   { label: "Edições", href: "/editions", icon: "auto_stories" },
   { label: "Importar", href: "/importar", icon: "upload_file" },
   { label: "Operações", href: "/operacoes", icon: "settings_suggest" },
   { label: "Usuários", href: "/users", icon: "group" },
-  { label: "Configurações", href: "/settings", icon: "tune" },
-  { label: "Certificados", href: "/settings/certificates", icon: "verified_user" },
+  { label: "Configurações", href: "/settings", icon: "tune", adminOnly: true },
+  { label: "Certificados", href: "/settings/certificates", icon: "verified_user", adminOnly: true },
   { label: "Verificar PDF", href: "/verify", icon: "picture_as_pdf" },
   { label: "Voltar ao SaaS", href: SAAS_URL, icon: "arrow_back", external: true },
 ];
@@ -37,6 +43,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const [orgSelectorOpen, setOrgSelectorOpen] = useState(false);
 
   const isSuperAdmin = user?.roles.some((r) => r.name === "SUPER_ADMIN") ?? false;
+  const isAdmin = (user?.roles.some((r) => r.name === "ADMIN") ?? false) || isSuperAdmin;
 
   useEffect(() => {
     api.listOrganizations().then(setOrgs).catch((err) => notifyError("AdminShell.listOrganizations", err));
@@ -110,6 +117,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         {/* Nav */}
         <nav className="flex-1 mt-4 space-y-1 overflow-y-auto px-3">
           {NAV_ITEMS.map((item) => {
+            if (item.adminOnly && !isAdmin) return null;
             const isActive =
               item.href === "/"
                 ? pathname === "/"

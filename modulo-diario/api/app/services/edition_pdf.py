@@ -62,9 +62,12 @@ def _save_to_storage(filename: str, content: bytes) -> str:
 def generate_edition_pdf_sync(
     edition_id: str,
     organ_name: str | None = None,
-    verification_base_url: str = "http://localhost:7200/verificar",
+    verification_base_url: str | None = None,
     layout: str = "classico",
 ) -> dict:
+    if not verification_base_url:
+        verification_base_url = settings.VERIFICATION_BASE_URL
+
     db = get_sync_db()
 
     if layout not in AVAILABLE_LAYOUTS:

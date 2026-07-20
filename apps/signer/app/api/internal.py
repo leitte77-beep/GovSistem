@@ -29,7 +29,9 @@ def _verify_internal_api_key(x_internal_api_key: str = Header(...)) -> None:
     """Verify that the request comes from an authorized internal service."""
     expected = settings.INTERNAL_API_KEY.get_secret_value()
     if not expected:
-        return  # No key configured — allow in dev mode
+        if settings.LOG_LEVEL == "DEBUG":
+            return
+        raise HTTPException(status_code=500, detail="Internal API key not configured")
     if x_internal_api_key != expected:
         raise HTTPException(status_code=403, detail="Forbidden: invalid internal API key")
 

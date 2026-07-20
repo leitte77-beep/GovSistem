@@ -125,6 +125,30 @@ const TextFormat = Extension.create({
   },
 });
 
+// Preserva o atributo class nos nos principais para que as classes
+// semanticas gazette-* (diagramacao automatica) sobrevivam a edicao.
+const GazetteClasses = Extension.create({
+  name: "gazetteClasses",
+
+  addGlobalAttributes() {
+    return [
+      {
+        types: ["paragraph", "heading", "table", "tableRow", "tableCell", "tableHeader"],
+        attributes: {
+          class: {
+            default: null,
+            parseHTML: (element) => element.getAttribute("class") || null,
+            renderHTML: (attributes) => {
+              if (!attributes.class) return {};
+              return { class: attributes.class };
+            },
+          },
+        },
+      },
+    ];
+  },
+});
+
 const LinkMark = Mark.create({
   name: "link",
 
@@ -163,6 +187,7 @@ export const extensions: Extensions = [
   Underline,
   TextStyle,
   TextFormat,
+  GazetteClasses,
   LinkMark,
   Table.configure({ resizable: true }),
   TableRow,

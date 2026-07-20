@@ -1,6 +1,6 @@
 "use client";
 
-import { useEditor, EditorContent } from "@tiptap/react";
+import { useEditor, EditorContent, type Editor as TipTapEditor } from "@tiptap/react";
 import { DOMParser as ProseMirrorDOMParser } from "@tiptap/pm/model";
 import { useEffect, useRef, useState } from "react";
 import { extensions } from "./extensions";
@@ -10,10 +10,19 @@ import { autoformatHtml, plainTextToStructuredHtml } from "@/lib/contentAutoform
 import { api } from "@/lib/api";
 import HtmlPreview from "../Matter/HtmlPreview";
 
+export interface GazetteDetection {
+  title?: string;
+  summary?: string;
+  category?: string;
+  template?: string;
+  tocTitle?: string;
+}
+
 interface EditorProps {
   content: string;
   onChange: (html: string) => void;
   onCleanWarnings?: (warnings: string[]) => void;
+  onAutoDetect?: (detected: GazetteDetection) => void;
   aiContext?: {
     actType?: string;
     title?: string;
@@ -76,10 +85,60 @@ function normalizePastedTables(html: string): string {
   return doc.body.innerHTML;
 }
 
-export default function Editor({ content, onChange, onCleanWarnings, aiContext }: EditorProps) {
+export default function Editor({ content, onChange, onCleanWarnings, onAutoDetect, aiContext }: EditorProps) {
   const [showPreview, setShowPreview] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
+  const [gazetteBusy, setGazetteBusy] = useState(false);
   const isInternalUpdate = useRef(false);
+  const gazetteRequested = useRef(false);
+  const editorRef = useRef<TipTapEditor | null>(null);
+
+  const templateLabels: Record<string, string> = {
+    "normative-act": "Ato normativo",
+    "extract-fields": "Extrato em campos",
+    "procurement": "Processo de compras",
+    "admin-board": "Quadro administrativo",
+    "generic": "Genérico",
+  };
+
+  const runGazetteParse = async ({ contentText, contentHtml }: { contentText?: string; contentHtml?: string }) => {
+    setGazetteBusy(true);
+    try {
+      const result = await api.parseGazetteContent({
+        content_text: contentText || undefined,
+        content_html: contentHtml || undefined,
+        use_ai: true,
+      });
+      if (result.success && result.rendered_html) {
+        const current = editorRef.current;
+        if (current) {
+          isInternalUpdate.current = true;
+          current.commands.setContent(result.rendered_html, false);
+        }
+        onChange(result.rendered_html);
+        const summaryBlock = result.document.blocks.find((b) => b.type === "summary");
+        onAutoDetect?.({
+          title: result.document.title ?? undefined,
+          summary: summaryBlock
+            ? summaryBlock.original_text.replace(/^(S[ÚU]MULA|EMENTA)\s*:\s*/i, "").replace(/\n/g, " ")
+            : undefined,
+          category: result.document.category ?? undefined,
+          template: result.document.template,
+          tocTitle: result.toc.table_of_contents_title ?? undefined,
+        });
+        onCleanWarnings?.([
+          `Diagramação automática: ${templateLabels[result.document.template] ?? result.document.template}`,
+          ...result.warnings,
+        ]);
+      } else if (result.warnings.length > 0) {
+        onCleanWarnings?.(result.warnings);
+      }
+    } catch {
+      // Serviço indisponível: mantém o conteúdo colado sem diagramação.
+    } finally {
+      setGazetteBusy(false);
+    }
+  };
 
   const editor = useEditor({
     extensions,
@@ -99,6 +158,10 @@ export default function Editor({ content, onChange, onCleanWarnings, aiContext }
         if (!html && !text) return false;
 
         event.preventDefault();
+
+        // Editor praticamente vazio: a colagem representa o documento
+        // completo e dispara a diagramação automática (módulo gazette).
+        const editorWasEmpty = view.state.doc.textContent.trim().length < 20;
 
         const isOfficeHtml = /mso-|Mso|class="[^"]*Mso/i.test(html)
           || /<table[^>]*(?:xmlns|x:)/i.test(html);
@@ -123,6 +186,11 @@ export default function Editor({ content, onChange, onCleanWarnings, aiContext }
           onCleanWarnings?.(warnings);
         }
 
+        if (editorWasEmpty && (text.trim() || cleanHtml)) {
+          gazetteRequested.current = true;
+          void runGazetteParse({ contentText: text, contentHtml: cleanHtml });
+        }
+
         return true;
       },
     },
@@ -131,6 +199,10 @@ export default function Editor({ content, onChange, onCleanWarnings, aiContext }
       onChange(editor.getHTML());
     },
   });
+
+  useEffect(() => {
+    editorRef.current = editor;
+  }, [editor]);
 
   // Sync external content changes into editor (e.g. loading a different matter)
   // Skip sync when the update originated from inside the editor itself.
@@ -173,6 +245,13 @@ export default function Editor({ content, onChange, onCleanWarnings, aiContext }
     }
   };
 
+  const handleGazetteFormat = () => {
+    void runGazetteParse({
+      contentText: editor.getText({ blockSeparator: "\n" }),
+      contentHtml: editor.getHTML(),
+    });
+  };
+
   return (
     <div className="min-h-[400px]">
       <Toolbar
@@ -180,7 +259,9 @@ export default function Editor({ content, onChange, onCleanWarnings, aiContext }
         onPreview={() => setShowPreview(true)}
         onAutoFormat={handleAutoFormat}
         onAiFormat={handleAiFormat}
+        onGazetteFormat={handleGazetteFormat}
         aiBusy={aiBusy}
+        gazetteBusy={gazetteBusy}
       />
       <EditorContent editor={editor} />
       <HtmlPreview

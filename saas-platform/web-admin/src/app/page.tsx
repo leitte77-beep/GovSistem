@@ -131,7 +131,7 @@ export default function DashboardPage() {
                     <div className="flex justify-between items-start mb-4">
                       <h3 className="text-headline-sm text-[#001631]">{mod.name}</h3>
                       <div className="flex items-center gap-2">
-                        {(mod.slug === "chatgov" || mod.slug === "govsocial") && (
+                        {(mod.slug === "chatgov" || mod.slug === "govsocial" || mod.slug === "diario") && (
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); router.push(`/novidades/${mod.slug}`); }}

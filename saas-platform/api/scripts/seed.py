@@ -39,9 +39,9 @@ async def seed():
         module = await db.scalar(select(Module).where(Module.slug == "diario"))
         if not module:
             module = Module(
-                name="Diario Oficial",
+                name="Diário Oficial",
                 slug="diario",
-                description="Modulo de publicacao de diario oficial eletronico",
+                description="Módulo de publicação de diário oficial eletrônico",
                 base_url="http://localhost:9201",
                 api_url="http://localhost:9201/api/v1",
                 admin_url="http://localhost:9202",
@@ -72,9 +72,9 @@ async def seed():
         plan = await db.scalar(select(Plan).where(Plan.slug == "basico"))
         if not plan:
             plan = Plan(
-                name="Basico",
+                name="Básico",
                 slug="basico",
-                description="Plano basico gratuito",
+                description="Plano básico gratuito",
                 max_users=5,
                 max_storage_gb=1,
                 price_cents=0,

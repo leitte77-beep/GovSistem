@@ -1,10 +1,13 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { createPortal } from "react-dom";
 
 type ShareDialogProps = {
   url: string;
   title?: string;
+  buttonClassName?: string;
+  label?: string;
 };
 
 type ShareOption = {
@@ -73,7 +76,12 @@ const OPTIONS: ShareOption[] = [
   },
 ];
 
-export default function ShareDialog({ url, title }: ShareDialogProps) {
+export default function ShareDialog({
+  url,
+  title,
+  buttonClassName = "p-2 border border-outline-variant rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-all",
+  label,
+}: ShareDialogProps) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -95,67 +103,70 @@ export default function ShareDialog({ url, title }: ShareDialogProps) {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="p-2 border border-outline-variant rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-all"
+        className={buttonClassName}
         aria-label="Compartilhar"
       >
         <span className="material-symbols-outlined">share</span>
+        {label && <span className="font-label-md text-label-md">{label}</span>}
       </button>
 
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-sm bg-surface-container-lowest border border-outline-variant rounded-xl shadow-2xl p-5">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-headline-sm font-headline-sm text-primary">
-                Compartilhar
-              </h3>
-              <button
-                onClick={() => setOpen(false)}
-                className="p-1 text-on-surface-variant hover:text-primary rounded-full"
-                aria-label="Fechar"
-              >
-                <span className="material-symbols-outlined">close</span>
-              </button>
-            </div>
-
-            <div className="grid grid-cols-5 gap-3">
-              {OPTIONS.map((opt) => (
+      {open &&
+        createPortal(
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+            <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-2rem)] max-w-sm bg-surface-container-lowest border border-outline-variant rounded-xl shadow-2xl p-5">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-headline-sm font-headline-sm text-primary">
+                  Compartilhar
+                </h3>
                 <button
-                  key={opt.key}
-                  onClick={() => handleAction(opt)}
-                  className="flex flex-col items-center gap-2 p-3 rounded-xl hover:bg-surface-container-low transition-all group"
+                  onClick={() => setOpen(false)}
+                  className="p-1 text-on-surface-variant hover:text-primary rounded-full"
+                  aria-label="Fechar"
                 >
-                  <span
-                    className={`w-12 h-12 rounded-full flex items-center justify-center text-white text-lg ${opt.color} group-hover:scale-110 transition-transform`}
-                  >
-                    {opt.key === "x" ? (
-                      <span className="font-bold text-sm">X</span>
-                    ) : (
-                      <span className="material-symbols-outlined">{opt.icon}</span>
-                    )}
-                  </span>
-                  <span className="text-label-md font-label-md text-on-surface-variant text-center leading-tight">
-                    {opt.key === "copy" && copied ? "Copiado!" : opt.label}
-                  </span>
+                  <span className="material-symbols-outlined">close</span>
                 </button>
-              ))}
-            </div>
+              </div>
 
-            <div className="mt-4 p-3 bg-surface-container-low rounded-lg flex items-center gap-2">
-              <span className="material-symbols-outlined text-outline text-sm">link</span>
-              <span className="text-body-sm font-body-sm text-on-surface-variant truncate flex-1">
-                {url}
-              </span>
-              <button
-                onClick={() => handleAction(OPTIONS[4])}
-                className="text-label-md font-label-md text-primary hover:underline flex-shrink-0"
-              >
-                {copied ? "Copiado" : "Copiar"}
-              </button>
+              <div className="grid grid-cols-5 gap-3">
+                {OPTIONS.map((opt) => (
+                  <button
+                    key={opt.key}
+                    onClick={() => handleAction(opt)}
+                    className="flex flex-col items-center gap-2 p-3 rounded-xl hover:bg-surface-container-low transition-all group"
+                  >
+                    <span
+                      className={`w-12 h-12 rounded-full flex items-center justify-center text-white text-lg ${opt.color} group-hover:scale-110 transition-transform`}
+                    >
+                      {opt.key === "x" ? (
+                        <span className="font-bold text-sm">X</span>
+                      ) : (
+                        <span className="material-symbols-outlined">{opt.icon}</span>
+                      )}
+                    </span>
+                    <span className="text-label-md font-label-md text-on-surface-variant text-center leading-tight">
+                      {opt.key === "copy" && copied ? "Copiado!" : opt.label}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              <div className="mt-4 p-3 bg-surface-container-low rounded-lg flex items-center gap-2">
+                <span className="material-symbols-outlined text-outline text-sm">link</span>
+                <span className="text-body-sm font-body-sm text-on-surface-variant truncate flex-1">
+                  {url}
+                </span>
+                <button
+                  onClick={() => handleAction(OPTIONS[4])}
+                  className="text-label-md font-label-md text-primary hover:underline flex-shrink-0"
+                >
+                  {copied ? "Copiado" : "Copiar"}
+                </button>
+              </div>
             </div>
-          </div>
-        </>
-      )}
+          </>,
+          document.body,
+        )}
     </>
   );
 }

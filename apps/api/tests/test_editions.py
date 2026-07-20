@@ -18,8 +18,9 @@ def override_db_and_auth():
     """Override get_db and get_current_user for all tests."""
     mock_session = AsyncMock()
 
-    # Make refresh() populate id and timestamps for newly created objects
-    async def _refresh(obj):
+    # Make refresh() populate id and timestamps for newly created objects.
+    # Accepts attribute_names (usado nos endpoints para refresh cirurgico).
+    async def _refresh(obj, attribute_names=None):
         if not obj.id:
             obj.id = uuid.uuid4()
         if not obj.created_at:
@@ -112,17 +113,26 @@ def _make_signature(edition_id):
 # ── Create ────────────────────────────────────────────────────────────────────
 
 
+def _make_setting(key: str, value: str):
+    s = MagicMock()
+    s.key = key
+    s.value = value
+    return s
+
+
 @patch("app.api.v1.editions.log_audit_event", new_callable=AsyncMock)
 @patch("app.api.v1.editions.capture_request_info", return_value={"ip_address": "127.0.0.1", "user_agent": ""})
 @pytest.mark.anyio
 async def test_create_edition(mock_capture, mock_audit, client, override_db_and_auth):
     mock_db = override_db_and_auth
+    # 1) auto_numbering setting (not found -> defaults to True)
+    # 2) MAX(number) query -> 0
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = None
+    mock_result.scalar.return_value = 0
     mock_db.execute.return_value = mock_result
 
     payload = {
-        "number": 1,
         "year": 2026,
         "type": "normal",
         "title": "Edicao Teste",
@@ -133,6 +143,106 @@ async def test_create_edition(mock_capture, mock_audit, client, override_db_and_
     data = response.json()
     assert data["title"] == "Edicao Teste"
     assert data["status"] == "draft"
+    assert data["number"] == 1
+
+
+@patch("app.api.v1.editions.log_audit_event", new_callable=AsyncMock)
+@patch("app.api.v1.editions.capture_request_info", return_value={"ip_address": "127.0.0.1", "user_agent": ""})
+@pytest.mark.anyio
+async def test_create_edition_auto_number_ignores_client_number(
+    mock_capture, mock_audit, client, override_db_and_auth
+):
+    mock_db = override_db_and_auth
+    r_setting = MagicMock()
+    r_setting.scalar_one_or_none.return_value = _make_setting("edition.auto_numbering", "true")
+    r_max = MagicMock()
+    r_max.scalar.return_value = 41
+    mock_db.execute.side_effect = [r_setting, r_max]
+
+    payload = {
+        "number": 1,
+        "year": 2026,
+        "type": "normal",
+        "title": "Diário Oficial - Edição 01",
+        "publication_date": "2026-05-01",
+    }
+    response = await client.post("/api/v1/editions", json=payload)
+    assert response.status_code == 201
+    data = response.json()
+    assert data["number"] == 42
+    # default-pattern title is regenerated to match server-assigned number
+    assert data["title"] == "Diário Oficial - Edição 42"
+
+
+@patch("app.api.v1.editions.log_audit_event", new_callable=AsyncMock)
+@patch("app.api.v1.editions.capture_request_info", return_value={"ip_address": "127.0.0.1", "user_agent": ""})
+@pytest.mark.anyio
+async def test_create_edition_auto_number_generates_title(
+    mock_capture, mock_audit, client, override_db_and_auth
+):
+    mock_db = override_db_and_auth
+    r_setting = MagicMock()
+    r_setting.scalar_one_or_none.return_value = None
+    r_max = MagicMock()
+    r_max.scalar.return_value = 4
+    mock_db.execute.side_effect = [r_setting, r_max]
+
+    payload = {
+        "year": 2026,
+        "type": "normal",
+        "publication_date": "2026-05-01",
+    }
+    response = await client.post("/api/v1/editions", json=payload)
+    assert response.status_code == 201
+    data = response.json()
+    assert data["number"] == 5
+    assert data["title"] == "Diário Oficial - Edição 05"
+
+
+@patch("app.api.v1.editions.log_audit_event", new_callable=AsyncMock)
+@patch("app.api.v1.editions.capture_request_info", return_value={"ip_address": "127.0.0.1", "user_agent": ""})
+@pytest.mark.anyio
+async def test_create_edition_manual_number(mock_capture, mock_audit, client, override_db_and_auth):
+    mock_db = override_db_and_auth
+    r_setting = MagicMock()
+    r_setting.scalar_one_or_none.return_value = _make_setting("edition.auto_numbering", "false")
+    r_dup = MagicMock()
+    r_dup.scalar_one_or_none.return_value = None
+    mock_db.execute.side_effect = [r_setting, r_dup]
+
+    payload = {
+        "number": 99,
+        "year": 2026,
+        "type": "normal",
+        "title": "Edicao Manual",
+        "publication_date": "2026-05-01",
+    }
+    response = await client.post("/api/v1/editions", json=payload)
+    assert response.status_code == 201
+    data = response.json()
+    assert data["number"] == 99
+    assert data["title"] == "Edicao Manual"
+
+
+@patch("app.api.v1.editions.log_audit_event", new_callable=AsyncMock)
+@patch("app.api.v1.editions.capture_request_info", return_value={"ip_address": "127.0.0.1", "user_agent": ""})
+@pytest.mark.anyio
+async def test_create_edition_manual_number_required(
+    mock_capture, mock_audit, client, override_db_and_auth
+):
+    mock_db = override_db_and_auth
+    r_setting = MagicMock()
+    r_setting.scalar_one_or_none.return_value = _make_setting("edition.auto_numbering", "false")
+    mock_db.execute.side_effect = [r_setting]
+
+    payload = {
+        "year": 2026,
+        "type": "normal",
+        "title": "Sem Numero",
+        "publication_date": "2026-05-01",
+    }
+    response = await client.post("/api/v1/editions", json=payload)
+    assert response.status_code == 422
 
 
 @patch("app.api.v1.editions.log_audit_event", new_callable=AsyncMock)
@@ -140,10 +250,11 @@ async def test_create_edition(mock_capture, mock_audit, client, override_db_and_
 @pytest.mark.anyio
 async def test_create_edition_duplicate(mock_capture, mock_audit, client, override_db_and_auth):
     mock_db = override_db_and_auth
-    existing = _make_edition()
-    mock_result = MagicMock()
-    mock_result.scalar_one_or_none.return_value = existing
-    mock_db.execute.return_value = mock_result
+    r_setting = MagicMock()
+    r_setting.scalar_one_or_none.return_value = _make_setting("edition.auto_numbering", "false")
+    r_dup = MagicMock()
+    r_dup.scalar_one_or_none.return_value = _make_edition()
+    mock_db.execute.side_effect = [r_setting, r_dup]
 
     payload = {
         "number": 1,
@@ -155,6 +266,25 @@ async def test_create_edition_duplicate(mock_capture, mock_audit, client, overri
     response = await client.post("/api/v1/editions", json=payload)
     assert response.status_code == 409
 
+
+# ── Next Number ───────────────────────────────────────────────────────────────
+
+
+@pytest.mark.anyio
+async def test_get_next_edition_number(client, override_db_and_auth):
+    mock_db = override_db_and_auth
+    r_max = MagicMock()
+    r_max.scalar.return_value = 7
+    r_setting = MagicMock()
+    r_setting.scalar_one_or_none.return_value = None
+    mock_db.execute.side_effect = [r_max, r_setting]
+
+    response = await client.get("/api/v1/editions/next-number?year=2026&type=normal")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["next_number"] == 8
+    assert data["year"] == 2026
+    assert data["auto_numbering"] is True
 
 # ── List ──────────────────────────────────────────────────────────────────────
 

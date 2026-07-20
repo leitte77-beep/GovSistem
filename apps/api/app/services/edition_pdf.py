@@ -1,10 +1,14 @@
 """PDF generation for editions - single source of truth."""
 
+import fcntl
 import io
 import os
 import re
+import time
 import uuid
+from contextlib import contextmanager
 from pathlib import Path
+from typing import Iterator
 
 from jinja2 import Environment, FileSystemLoader
 from pypdf import PdfReader
@@ -28,6 +32,43 @@ MONTHS_PT_UPPER = [
     "JANEIRO", "FEVEREIRO", "MARCO", "ABRIL", "MAIO", "JUNHO",
     "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO",
 ]
+PDF_RENDER_LOCK_PATH = Path("/tmp/doe-edition-pdf-render.lock")
+PDF_RENDER_LOCK_TIMEOUT_SECONDS = 10 * 60
+
+
+@contextmanager
+def edition_pdf_render_lock(
+    lock_path: str | os.PathLike[str] = PDF_RENDER_LOCK_PATH,
+    *,
+    timeout_seconds: float | None = PDF_RENDER_LOCK_TIMEOUT_SECONDS,
+) -> Iterator[None]:
+    """Serialize the memory-heavy WeasyPrint passes across Gunicorn workers."""
+    lock_fd = os.open(os.fspath(lock_path), os.O_CREAT | os.O_RDWR, 0o600)
+    acquired = False
+    deadline = None if timeout_seconds is None else time.monotonic() + timeout_seconds
+
+    try:
+        while True:
+            try:
+                fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                acquired = True
+                break
+            except BlockingIOError:
+                if deadline is not None:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise TimeoutError(
+                            f"Timed out waiting for PDF render lock after {timeout_seconds}s"
+                        )
+                    time.sleep(min(0.05, remaining))
+                else:
+                    time.sleep(0.05)
+
+        yield
+    finally:
+        if acquired:
+            fcntl.flock(lock_fd, fcntl.LOCK_UN)
+        os.close(lock_fd)
 
 
 def _normalize_for_summary(value: str) -> str:
@@ -62,9 +103,12 @@ def _save_to_storage(filename: str, content: bytes) -> str:
 def generate_edition_pdf_sync(
     edition_id: str,
     organ_name: str | None = None,
-    verification_base_url: str = "http://localhost:7200/verificar",
+    verification_base_url: str | None = None,
     layout: str = "classico",
 ) -> dict:
+    if not verification_base_url:
+        verification_base_url = settings.VERIFICATION_BASE_URL
+
     db = get_sync_db()
 
     if layout not in AVAILABLE_LAYOUTS:
@@ -176,22 +220,25 @@ def generate_edition_pdf_sync(
 
         from weasyprint import CSS, HTML  # noqa: N811
 
-        # First pass — render without total page count
-        html_first = _render_html()
-        pdf_bytes = HTML(
-            string=html_first,
-            base_url=str(template_dir),
-        ).write_pdf(stylesheets=[CSS(filename=css_path)])
+        # Keep both passes atomic relative to other Gunicorn processes: each
+        # render can consume hundreds of MB while WeasyPrint lays out images.
+        with edition_pdf_render_lock():
+            # First pass — render without total page count
+            html_first = _render_html()
+            pdf_bytes = HTML(
+                string=html_first,
+                base_url=str(template_dir),
+            ).write_pdf(stylesheets=[CSS(filename=css_path)])
 
-        # Count total pages from the rendered PDF
-        total_pages = str(len(PdfReader(io.BytesIO(pdf_bytes)).pages))
+            # Count total pages from the rendered PDF
+            total_pages = str(len(PdfReader(io.BytesIO(pdf_bytes)).pages))
 
-        # Second pass — re-render with the actual page count
-        html_final = _render_html(total_pages=total_pages)
-        pdf_bytes = HTML(
-            string=html_final,
-            base_url=str(template_dir),
-        ).write_pdf(stylesheets=[CSS(filename=css_path)])
+            # Second pass — re-render with the actual page count
+            html_final = _render_html(total_pages=total_pages)
+            pdf_bytes = HTML(
+                string=html_final,
+                base_url=str(template_dir),
+            ).write_pdf(stylesheets=[CSS(filename=css_path)])
 
         pdf_hash = compute_hash(pdf_bytes)
         filename = f"edition_{edition.year}_{edition.number}_{uuid.uuid4().hex[:8]}.pdf"

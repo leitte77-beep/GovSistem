@@ -27,6 +27,13 @@ RUN addgroup -S appgroup && adduser -S appuser -G appgroup
 COPY --from=builder --chown=appuser:appgroup /app/public ./public
 COPY --from=builder --chown=appuser:appgroup /app/.next/standalone ./
 COPY --from=builder --chown=appuser:appgroup /app/.next/static ./.next/static
+# jsdom loads this non-JS asset at runtime, but Next's standalone tracer does
+# not copy it automatically.
+COPY --from=builder --chown=appuser:appgroup /app/node_modules/isomorphic-dompurify/node_modules/jsdom/lib/jsdom/browser/default-stylesheet.css ./browser/default-stylesheet.css
+# css-tree loads these JSON dictionaries through createRequire(), which is not
+# visible to Next's standalone tracer.
+COPY --from=builder --chown=appuser:appgroup /app/node_modules/css-tree/data ./node_modules/css-tree/data
+COPY --from=builder --chown=appuser:appgroup /app/node_modules/mdn-data/css ./node_modules/mdn-data/css
 
 USER appuser
 EXPOSE 3000

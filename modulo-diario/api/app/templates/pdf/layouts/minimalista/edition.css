@@ -139,6 +139,11 @@ body {
   page-break-inside: auto;
 }
 
+.matter + .matter {
+  page-break-before: always;
+  break-before: page;
+}
+
 .matter-landscape {
   page: landscape;
 }

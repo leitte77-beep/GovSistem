@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 
 from pydantic import BaseModel, Field
@@ -171,7 +172,7 @@ async def internal_generate_edition_pdf(
     db: AsyncSession = Depends(get_db),
     _: None = Depends(require_internal_key),
 ):
-    result = db.execute(
+    result = await db.execute(
         select(Edition)
         .where(Edition.id == edition_id)
         .options(selectinload(Edition.items).selectinload(EditionItem.matter))
@@ -180,16 +181,19 @@ async def internal_generate_edition_pdf(
     if edition is None:
         raise HTTPException(404, "Edition not found")
     if edition.status != EditionStatus.CLOSED:
+        # status vem do banco como str (coluna String, sem type decorator).
+        current = getattr(edition.status, "value", edition.status)
         raise HTTPException(
             422,
-            f"Edition must be CLOSED to generate PDF, current: {edition.status.value}",
+            f"Edition must be CLOSED to generate PDF, current: {current}",
         )
     if edition.pdf_path:
         raise HTTPException(409, "PDF already generated for this edition")
 
     from app.services.edition_pdf import generate_edition_pdf_sync
 
-    result = generate_edition_pdf_sync(edition_id=str(edition_id))
+    # WeasyPrint e pesado: roda em thread para nao bloquear o event loop.
+    result = await asyncio.to_thread(generate_edition_pdf_sync, edition_id=str(edition_id))
     edition.pdf_path = result["filename"]
     edition.pdf_hash = result["sha256"]
     edition.status = EditionStatus.PDF_GENERATED

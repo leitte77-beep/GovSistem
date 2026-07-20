@@ -36,9 +36,9 @@ TITLE_NUMBER_RE = re.compile(r"(?:^|\D)(\d+)(?:/\d+)?$")
 
 
 async def _get_matter_or_404(
-    matter_id: uuid.UUID, db: AsyncSession
+    matter_id: uuid.UUID, db: AsyncSession, user: User | None = None
 ) -> Matter:
-    result = await db.execute(
+    query = (
         select(Matter)
         .where(Matter.id == matter_id)
         .options(
@@ -49,6 +49,9 @@ async def _get_matter_or_404(
             selectinload(Matter.reviewer),
         )
     )
+    if user is not None:
+        query = query.where(Matter.organization_id == user.organization_id)
+    result = await db.execute(query)
     matter = result.scalar_one_or_none()
     if matter is None:
         raise HTTPException(status_code=404, detail="Matter not found")
@@ -57,9 +60,7 @@ async def _get_matter_or_404(
 
 def _own_matter_or_admin(matter: Matter, user: User) -> None:
     user_roles = {ur.role.name for ur in user.user_roles}
-    if "ADMIN" in user_roles:
-        return
-    if matter.author_id != user.id:
+    if "ADMIN" not in user_roles and matter.author_id != user.id:
         raise HTTPException(
             status_code=403, detail="You can only access your own matters"
         )
@@ -238,7 +239,7 @@ async def get_matter(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    matter = await _get_matter_or_404(matter_id, db)
+    matter = await _get_matter_or_404(matter_id, db, user)
     _own_matter_or_admin(matter, user)
     return await _matter_to_response(matter)
 
@@ -251,13 +252,15 @@ async def update_matter(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("AUTOR", "ADMIN")),
 ):
-    matter = await _get_matter_or_404(matter_id, db)
+    matter = await _get_matter_or_404(matter_id, db, user)
     _own_matter_or_admin(matter, user)
 
     if not matter.can_edit():
+        # status vem do banco como str (coluna String, sem type decorator).
+        current = getattr(matter.status, "value", matter.status)
         raise HTTPException(
             status_code=422,
-            detail=f"Cannot edit matter in status '{matter.status.value}'",
+            detail=f"Cannot edit matter in status '{current}'",
         )
 
     if body.title is not None:
@@ -312,7 +315,7 @@ async def submit_for_review(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("AUTOR", "REVISOR", "ADMIN")),
 ):
-    matter = await _get_matter_or_404(matter_id, db)
+    matter = await _get_matter_or_404(matter_id, db, user)
     _own_matter_or_admin(matter, user)
     matter.change_status(MatterStatus.REVIEW)
     await db.commit()
@@ -343,7 +346,7 @@ async def approve_matter(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("REVISOR", "ADMIN")),
 ):
-    matter = await _get_matter_or_404(matter_id, db)
+    matter = await _get_matter_or_404(matter_id, db, user)
     matter.change_status(MatterStatus.APPROVED)
     matter.reviewed_by = user.id
     await db.commit()
@@ -374,7 +377,7 @@ async def reject_matter(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("REVISOR", "ADMIN")),
 ):
-    matter = await _get_matter_or_404(matter_id, db)
+    matter = await _get_matter_or_404(matter_id, db, user)
     matter.change_status(MatterStatus.REJECTED)
     matter.reviewed_by = user.id
     await db.commit()
@@ -405,7 +408,7 @@ async def archive_matter(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("AUTOR", "REVISOR", "ADMIN")),
 ):
-    matter = await _get_matter_or_404(matter_id, db)
+    matter = await _get_matter_or_404(matter_id, db, user)
     matter.change_status(MatterStatus.ARCHIVED)
     await db.commit()
     await db.refresh(matter)
@@ -432,7 +435,7 @@ async def delete_matter(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("AUTOR", "ADMIN")),
 ):
-    matter = await _get_matter_or_404(matter_id, db)
+    matter = await _get_matter_or_404(matter_id, db, user)
     _own_matter_or_admin(matter, user)
 
     if matter.status not in (MatterStatus.DRAFT, MatterStatus.ARCHIVED):
@@ -475,7 +478,7 @@ async def upload_content_pdf(
     Each page of the PDF is converted to a PNG image and embedded via <img>
     tags in the matter's content_html.
     """
-    matter = await _get_matter_or_404(matter_id, db)
+    matter = await _get_matter_or_404(matter_id, db, user)
     _own_matter_or_admin(matter, user)
 
     if not matter.can_edit():
@@ -516,11 +519,22 @@ async def serve_matter_content_image(
     matter_id: uuid.UUID,
     filename: str,
 ):
-    """Serve a content image from a PDF converted matter."""
+    """Serve a content image from a PDF converted matter.
+
+    Unauthenticated by design: browsers load <img> tags without an
+    Authorization header, and matter_id is an unguessable UUID — same
+    trust model as the public edition PDF downloads.
+    """
     from pathlib import Path
     from app.core.config import settings
+    import re
 
-    filepath = Path(settings.UPLOAD_DIR).resolve() / "matter-content" / str(matter_id) / filename
+    if not re.fullmatch(r"[\w\-.]+", filename):
+        raise HTTPException(400, "Invalid filename")
+    base = Path(settings.UPLOAD_DIR).resolve()
+    filepath = (base / "matter-content" / str(matter_id) / filename).resolve()
+    if not str(filepath).startswith(str(base)):
+        raise HTTPException(403, "Path traversal denied")
     if not filepath.is_file():
         raise HTTPException(404, "Image not found")
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "png"
@@ -543,7 +557,7 @@ async def add_attachment(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("AUTOR", "ADMIN")),
 ):
-    matter = await _get_matter_or_404(matter_id, db)
+    matter = await _get_matter_or_404(matter_id, db, user)
     _own_matter_or_admin(matter, user)
 
     if not matter.can_edit():
@@ -629,7 +643,7 @@ async def remove_attachment(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("AUTOR", "ADMIN")),
 ):
-    matter = await _get_matter_or_404(matter_id, db)
+    matter = await _get_matter_or_404(matter_id, db, user)
     _own_matter_or_admin(matter, user)
 
     if not matter.can_edit():

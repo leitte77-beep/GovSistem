@@ -7,6 +7,7 @@ import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useOrg } from "@/lib/org-context";
 import { formatBrasiliaDateTime } from "@/lib/dates";
+import { sanitizeHtml } from "@/lib/sanitize";
 import ShareDialog from "@/components/ShareDialog";
 
 const WEEKDAYS = [
@@ -18,6 +19,11 @@ const MONTHS = [
   "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO",
 ];
 const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "/api/v1").replace(/\/api\/v1\/?$/, "/api/v1");
+const API_HOST = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/api\/v1\/?$/, "");
+
+function fixImageUrls(html: string): string {
+  return API_HOST ? html.replace(/http:\/\/api:8000/g, API_HOST) : html;
+}
 
 function formatHeaderDate(value: string) {
   const date = new Date(`${value}T12:00:00`);
@@ -311,7 +317,7 @@ export default function EditionDetailPage() {
                 <div className="space-y-6 text-body-md font-body-md leading-relaxed text-justify">
                   <div
                     className="prose max-w-none text-on-surface prose-p:my-3 prose-p:text-justify prose-p:text-body-md prose-p:leading-relaxed prose-strong:font-bold prose-headings:text-center prose-headings:uppercase"
-                    dangerouslySetInnerHTML={{ __html: item.matter?.content_html || "" }}
+                    dangerouslySetInnerHTML={{ __html: sanitizeHtml(fixImageUrls(item.matter?.content_html || "")) }}
                   />
                 </div>
               </div>

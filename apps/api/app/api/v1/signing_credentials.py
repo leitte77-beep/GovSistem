@@ -14,10 +14,7 @@ from app.models.signing_credential import SigningCredential
 from app.models.user import User
 from app.schemas.signing_credential import SigningCredentialOut
 
-router = APIRouter(
-    tags=["signing-credentials"],
-    dependencies=[Depends(require_roles("ADMIN"))],
-)
+router = APIRouter(tags=["signing-credentials"])
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +23,7 @@ logger = logging.getLogger(__name__)
 async def inspect_credential(
     password: str = Form(...),
     file: UploadFile = File(...),
+    _: User = Depends(require_roles("ADMIN")),
 ):
     """Inspect a PFX certificate without storing it. Returns certificate details."""
     pfx_bytes = await file.read()
@@ -92,7 +90,7 @@ async def inspect_credential(
 @router.get("/signing-credentials", response_model=list[SigningCredentialOut])
 async def list_credentials(
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ADMIN")),
+    user: User = Depends(require_roles("ASSINADOR", "ADMIN")),
 ):
     result = await db.execute(
         select(SigningCredential)
@@ -109,7 +107,7 @@ async def list_credentials(
 async def get_credential(
     credential_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_roles("ADMIN")),
+    _: User = Depends(require_roles("ASSINADOR", "ADMIN")),
 ):
     result = await db.execute(
         select(SigningCredential).where(
@@ -316,6 +314,7 @@ async def delete_credential(
 async def verify_pdf_signature(
     body: dict,
     db: AsyncSession = Depends(get_db),
+    _: User = Depends(require_roles("ADMIN")),
 ):
     """Verify a signed PDF using the internal signer service."""
     signed_pdf_base64 = body.get("signed_pdf_base64")

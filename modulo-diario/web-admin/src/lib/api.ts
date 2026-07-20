@@ -315,13 +315,23 @@ export const api = {
   },
 
   createEdition(data: {
-    number: number; year: number; type: string;
-    title: string; subtitle?: string; publication_date: string;
+    number?: number; year: number; type: string;
+    title?: string; subtitle?: string; publication_date: string;
   }) {
     return request<import("../types/edition").Edition>("/editions", {
       method: "POST",
       body: JSON.stringify(data),
     });
+  },
+
+  getNextEditionNumber(params?: { year?: number; type?: string }) {
+    const q = new URLSearchParams();
+    if (params?.year) q.set("year", String(params.year));
+    if (params?.type) q.set("type", params.type);
+    const qs = q.toString();
+    return request<{ year: number; type: string; next_number: number; auto_numbering: boolean }>(
+      `/editions/next-number${qs ? `?${qs}` : ""}`
+    );
   },
 
   updateEdition(id: string, data: Partial<{ title: string; subtitle: string; publication_date: string }>) {

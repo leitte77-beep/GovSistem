@@ -136,3 +136,138 @@ body {
   pointer-events: none;
   height: 0;
 }
+
+/* ============================================================
+   Diagramação automática (módulo gazette)
+   Visualização das classes semânticas no editor e no preview.
+   ============================================================ */
+
+.ProseMirror .gazette-category,
+.prose .gazette-category {
+  display: block;
+  background: #d9d9d9;
+  color: #1f2937;
+  font-size: 1em;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+  padding: 0.25em 0.5em;
+  margin: 0.75em 0 0.5em;
+}
+
+.ProseMirror .gazette-document-title,
+.prose .gazette-document-title {
+  font-size: 1em;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+  margin: 0.6em 0 0.3em;
+}
+
+.ProseMirror .gazette-document-subtitle,
+.prose .gazette-document-subtitle {
+  font-size: 1em;
+  font-weight: 700;
+  text-align: center;
+  margin: 0.2em 0 0.5em;
+}
+
+.ProseMirror .gazette-summary,
+.prose .gazette-summary,
+.ProseMirror .gazette-preamble,
+.prose .gazette-preamble {
+  font-weight: 700;
+  text-align: justify;
+}
+
+.ProseMirror .gazette-consideration,
+.prose .gazette-consideration,
+.ProseMirror .gazette-article,
+.prose .gazette-article,
+.ProseMirror .gazette-paragraph,
+.prose .gazette-paragraph,
+.ProseMirror .gazette-sole-paragraph,
+.prose .gazette-sole-paragraph {
+  text-align: justify;
+  text-indent: 2.5em;
+}
+
+.ProseMirror .gazette-command,
+.prose .gazette-command {
+  font-weight: 700;
+  text-align: center;
+}
+
+.ProseMirror .gazette-subsection,
+.prose .gazette-subsection {
+  text-align: justify;
+  margin-left: 2.5em;
+}
+
+.ProseMirror .gazette-letter-item,
+.prose .gazette-letter-item {
+  text-align: justify;
+  margin-left: 4em;
+}
+
+.ProseMirror .gazette-numbered-item,
+.prose .gazette-numbered-item {
+  text-align: justify;
+  margin-left: 5em;
+}
+
+.ProseMirror .gazette-body,
+.prose .gazette-body,
+.ProseMirror .gazette-field,
+.prose .gazette-field {
+  text-align: justify;
+}
+
+.ProseMirror .gazette-company,
+.prose .gazette-company {
+  text-align: center;
+}
+
+.ProseMirror .gazette-total-value,
+.prose .gazette-total-value {
+  text-align: right;
+}
+
+.ProseMirror .gazette-closing,
+.prose .gazette-closing,
+.ProseMirror .gazette-signature,
+.prose .gazette-signature {
+  text-align: center;
+  margin: 0.2em 0;
+}
+
+.ProseMirror .gazette-location,
+.prose .gazette-location {
+  margin-top: 1em;
+}
+
+.ProseMirror .gazette-signature-name,
+.prose .gazette-signature-name {
+  margin-top: 1.25em;
+}
+
+.ProseMirror table.gazette-table,
+.prose table.gazette-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.ProseMirror table.gazette-table th,
+.ProseMirror table.gazette-table td,
+.prose table.gazette-table th,
+.prose table.gazette-table td {
+  border: 1px solid #6b7280;
+  padding: 0.25em 0.4em;
+  vertical-align: top;
+}
+
+.ProseMirror .gazette-annex-title,
+.prose .gazette-annex-title {
+  font-weight: 700;
+  text-align: center;
+}

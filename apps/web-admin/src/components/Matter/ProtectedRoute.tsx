@@ -1,19 +1,18 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/auth-context";
+import { SAAS_URL } from "@/lib/api";
 import { Loader2 } from "lucide-react";
 
 export default function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
-  const router = useRouter();
 
   useEffect(() => {
     if (!loading && !user) {
-      router.push("/login");
+      window.location.replace(SAAS_URL);
     }
-  }, [loading, user, router]);
+  }, [loading, user]);
 
   if (loading) {
     return (

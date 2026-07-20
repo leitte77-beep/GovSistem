@@ -21,6 +21,9 @@ import type { SystemSetting } from "@/types/setting";
 
 const BASE_URL = "/api/v1";
 
+export const SAAS_URL =
+  process.env.NEXT_PUBLIC_SAAS_URL || "https://admin.govsistem.com.br";
+
 class AuthError extends Error {
   constructor() {
     super("Not authenticated");
@@ -137,6 +140,43 @@ export interface BackupFile {
   filename: string;
   size_bytes: number;
   created_at: string;
+}
+
+export interface GazetteBlock {
+  id: string;
+  type: string;
+  order: number;
+  original_text: string;
+  start_offset: number;
+  end_offset: number;
+  confidence: number;
+  source: string;
+  children: GazetteBlock[];
+  metadata: Record<string, unknown>;
+}
+
+export interface GazetteParseResult {
+  success: boolean;
+  document: {
+    document_type: string;
+    category: string | null;
+    title: string | null;
+    table_of_contents_title: string | null;
+    template: string;
+    confidence: number;
+    blocks: GazetteBlock[];
+    warnings: string[];
+  };
+  rendered_html: string | null;
+  toc: {
+    category: string | null;
+    document_title: string | null;
+    table_of_contents_title: string | null;
+    anchor_id: string | null;
+    order: number;
+  };
+  integrity: { ok: boolean; missing: string[]; added: string[]; messages: string[] };
+  warnings: string[];
 }
 
 export const api = {
@@ -277,6 +317,13 @@ export const api = {
     });
   },
 
+  parseGazetteContent(data: { content_text?: string; content_html?: string; use_ai?: boolean }) {
+    return request<GazetteParseResult>("/gazette/parse", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
   deleteAttachment(matterId: string, attachmentId: string) {
     return request<void>(`/matters/${matterId}/attachments/${attachmentId}`, {
       method: "DELETE",
@@ -314,13 +361,23 @@ export const api = {
   },
 
   createEdition(data: {
-    number: number; year: number; type: string;
-    title: string; subtitle?: string; publication_date: string;
+    number?: number; year: number; type: string;
+    title?: string; subtitle?: string; publication_date: string;
   }) {
     return request<import("../types/edition").Edition>("/editions", {
       method: "POST",
       body: JSON.stringify(data),
     });
+  },
+
+  getNextEditionNumber(params?: { year?: number; type?: string }) {
+    const q = new URLSearchParams();
+    if (params?.year) q.set("year", String(params.year));
+    if (params?.type) q.set("type", params.type);
+    const qs = q.toString();
+    return request<{ year: number; type: string; next_number: number; auto_numbering: boolean }>(
+      `/editions/next-number${qs ? `?${qs}` : ""}`
+    );
   },
 
   updateEdition(id: string, data: Partial<{ title: string; subtitle: string; publication_date: string }>) {

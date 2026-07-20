@@ -36,7 +36,9 @@ interface ToolbarProps {
   onPreview: () => void;
   onAutoFormat: () => void;
   onAiFormat: () => void;
+  onGazetteFormat?: () => void;
   aiBusy?: boolean;
+  gazetteBusy?: boolean;
 }
 
 const fontFamilies = [
@@ -56,7 +58,7 @@ const fontFamilies = [
 
 const fontSizes = ["10pt", "12pt", "14pt", "16pt", "18pt", "24pt", "32pt"];
 
-export default function Toolbar({ editor, onPreview, onAutoFormat, onAiFormat, aiBusy }: ToolbarProps) {
+export default function Toolbar({ editor, onPreview, onAutoFormat, onAiFormat, onGazetteFormat, aiBusy, gazetteBusy }: ToolbarProps) {
   const [clearConfirm, setClearConfirm] = useState(false);
   if (!editor) return null;
 
@@ -325,6 +327,11 @@ export default function Toolbar({ editor, onPreview, onAutoFormat, onAiFormat, a
         <Button onClick={onAiFormat} title="Autoformatar com IA" disabled={aiBusy}>
           <span className="material-symbols-outlined text-[17px]">{aiBusy ? "progress_activity" : "smart_toy"}</span>
         </Button>
+        {onGazetteFormat && (
+          <Button onClick={onGazetteFormat} title="Diagramação automática (identificar estrutura)" disabled={gazetteBusy}>
+            <span className="material-symbols-outlined text-[17px]">{gazetteBusy ? "progress_activity" : "auto_awesome"}</span>
+          </Button>
+        )}
       </div>
     </div>
   );
