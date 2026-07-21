@@ -21,16 +21,31 @@ _MANAGE = require_roles(RoleName.COORDENADOR_UNIDADE.value, RoleName.GESTOR_MUNI
 
 @router.get("/family/{family_id}")
 async def obter_ivs(family_id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant_id: uuid.UUID = Depends(get_tenant_id), user: User = Depends(_READ)):
+    from app.services.cache_service import cache_get, cache_set, CACHE_TTLS
+
+    cache_key = f"cache:ivs_family:{tenant_id}:{family_id}"
+    cached_result = await cache_get(cache_key)
+    if cached_result is not None:
+        return cached_result
+
     calc = (await db.execute(
         select(IvsCalculo).where(IvsCalculo.family_id == family_id, IvsCalculo.tenant_id == str(tenant_id)).order_by(IvsCalculo.data_calculo.desc()).limit(1)
     )).scalar_one_or_none()
-    if not calc: return {"pontuacao": None, "nivel": None, "calculado": False}
-    return {"id": str(calc.id), "pontuacao": calc.pontuacao, "nivel": calc.nivel, "automatico": calc.automatico, "data_calculo": calc.data_calculo.isoformat() if calc.data_calculo else None, "calculado": True}
+    if not calc:
+        empty = {"pontuacao": None, "nivel": None, "calculado": False}
+        await cache_set(cache_key, empty, CACHE_TTLS["listagem"])
+        return empty
+    result = {"id": str(calc.id), "pontuacao": calc.pontuacao, "nivel": calc.nivel, "automatico": calc.automatico, "data_calculo": calc.data_calculo.isoformat() if calc.data_calculo else None, "calculado": True}
+    await cache_set(cache_key, result, CACHE_TTLS["listagem"])
+    return result
 
 
 @router.post("/family/{family_id}/recalcular")
 async def recalcular_ivs(family_id: uuid.UUID, db: AsyncSession = Depends(get_db), tenant_id: uuid.UUID = Depends(get_tenant_id), user: User = Depends(_MANAGE)):
+    from app.services.cache_service import invalidate_cache
+
     calc = await calcular_ivs_familia(db, str(family_id), str(tenant_id))
+    await invalidate_cache(f"ivs_family:{tenant_id}:{family_id}")
     return {"id": str(calc.id), "pontuacao": calc.pontuacao, "nivel": calc.nivel, "automatico": calc.automatico}
 
 

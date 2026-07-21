@@ -17,9 +17,14 @@ export const textos = {
     encaminhamentos: "Encaminhamentos",
     rma: "RMA",
     vigilancia: "Vigilância",
+    vigilanciaAvancada: "Vigilância Avançada",
     estoque: "Estoque",
     habitacao: "Habitação",
+    financeiro: "Financeiro",
+    monitoramento: "Sala de Monitoramento",
+    buscaAtiva: "Busca Ativa",
     administracao: "Administração",
+    biometria: "Biometria",
   },
 
   acoes: {

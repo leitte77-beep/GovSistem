@@ -1,3 +1,4 @@
+from app.models.ai_config import AIConfig
 from app.models.acao_coletiva import (
     AcaoColetiva,
     EncontroFrequencia,
@@ -17,8 +18,14 @@ from app.models.autenticador import (
     ExportacaoExecucao,
     ExportadorDado,
 )
+from app.models.signing import (
+    AssinaturaDocumento,
+    DocumentoAssinatura,
+    SigningCredential,
+)
 from app.models.base import Base, SoftDeleteMixin, TenantMixin, TimestampMixin
 from app.models.beneficio import ConcessaoBeneficio, EstoqueUnidade, LimiteBeneficio
+from app.models.busca_ativa import BuscaAtiva, PessoaAbordada
 from app.models.case_file import CaseFile
 from app.models.case_file_attachment import CaseFileAttachment
 from app.models.domain import (
@@ -69,6 +76,7 @@ from app.models.domain_tables import (
     VulnerabilidadeTipo,
 )
 from app.models.encaminhamento import Encaminhamento
+from app.models.facial_recognition import FacialRecognition
 from app.models.enums import (
     AcaoColetivaTipo,
     AcaoStatus,
@@ -118,6 +126,7 @@ from app.models.habitacional import (
 )
 from app.models.importacao import ImportJob, ImportLog
 from app.models.notificacao import FiltroSalvo, Notificacao
+from app.models.notification_config import NotificationChannelConfig
 from app.models.organization import Organization
 from app.models.person import Person
 from app.models.person_family_membership import PersonFamilyMembership
@@ -155,8 +164,10 @@ from app.models.socioeconomico import (
 from app.models.unit import Unit
 from app.models.user import User
 from app.models.user_role import UserRole
+from app.models.repasse import GastoFinanceiro, RepasseFinanceiro
 
 __all__ = [
+    "AIConfig",
     "Base",
     "TimestampMixin",
     "SoftDeleteMixin",
@@ -167,6 +178,7 @@ __all__ = [
     "Acompanhamento",
     "AcompanhamentoSituacao",
     "AcompanhamentoTipo",
+    "AssinaturaDocumento",
     "AcaoPlano",
     "Appointment",
     "AppointmentStatus",
@@ -176,6 +188,7 @@ __all__ = [
     "AuditAction",
     "AvaliacaoPlano",
     "BenefitCategory",
+    "BuscaAtiva",
     "CaseFileStatus",
     "ConcessaoBeneficio",
     "ConcessaoStatus",
@@ -185,11 +198,11 @@ __all__ = [
     "DadosRua",
     "DemandaHabitacional",
     "DespesaFamiliar",
+    "DocumentoAssinatura",
     "DocumentoAutenticavel",
     "DocumentoHabitacional",
     "DomainSource",
     "DadosDomicilio",
-    "DocumentoAutenticavel",
     "Encaminhamento",
     "EncaminhamentoStatus",
     "EncaminhamentoTipo",
@@ -199,6 +212,7 @@ __all__ = [
     "ExportacaoExecucao",
     "ExportadorDado",
     "ExternalShortcut",
+    "FacialRecognition",
     "FaixaEtaria",
     "FaixaRenda",
     "FiltroSalvo",
@@ -211,8 +225,10 @@ __all__ = [
     "MembershipStatus",
     "MotivoDesligamento",
     "Notificacao",
+    "NotificationChannelConfig",
     "Parentesco",
     "Periodicidade",
+    "PessoaAbordada",
     "ProtecaoNivel",
     "ReferralArea",
     "RegistroFrequencia",
@@ -220,10 +236,13 @@ __all__ = [
     "RetentionPolicy",
     "RmaAjuste",
     "RmaFechamento",
+    "RepasseFinanceiro",
+    "GastoFinanceiro",
     "RoleName",
     "SibecData",
     "SiconData",
     "Sexo",
+    "SigningCredential",
     "StatusAcaoColetiva",
     "StatusInscricao",
     "StatusRecepcao",

@@ -1,9 +1,4 @@
-"""Geocodificação de endereços de famílias (fila assíncrona).
-
-FASE 2: enfileira apenas. A implementação real (ViaCEP + provider de geocode) e
-o worker Celery entram nas fases de integração; aqui isolamos atrás desta
-interface para não acoplar o cadastro ao provedor.
-"""
+"""Geocodificação de endereços de famílias via Celery + Nominatim."""
 
 import logging
 import uuid
@@ -12,11 +7,12 @@ logger = logging.getLogger("govsocial.geocode")
 
 
 async def enqueue_family_geocode(tenant_id: uuid.UUID, family_id: uuid.UUID) -> None:
-    """Marca a família para geocodificação assíncrona.
-
-    Stub: registra a intenção. Será substituído por task Celery
-    (geocode_family.delay(...)) sem alterar os chamadores.
-    """
-    logger.info(
-        "geocode enqueued tenant=%s family=%s", tenant_id, family_id
-    )
+    """Dispara geocodificação assíncrona via Celery."""
+    try:
+        from app.tasks import geocode_family
+        geocode_family.delay(str(tenant_id), str(family_id))
+        logger.info("geocode enqueued tenant=%s family=%s", tenant_id, family_id)
+    except Exception:
+        logger.exception(
+            "geocode enqueue failed tenant=%s family=%s", tenant_id, family_id
+        )

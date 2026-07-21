@@ -335,6 +335,13 @@ export function iniciarGateway(httpServer, wa, storage) {
     },
     pingTimeout: 60000,
     pingInterval: 25000,
+    // Payload de mídia vai em base64 (~+33%) dentro do evento; o limite de
+    // negócio é 16 MB (ver MAX_MIDIA_BYTES no frontend), então o buffer do
+    // transporte precisa cobrir 16 MB * 4/3 + folga do envelope JSON. O
+    // default do socket.io (1 MB) derrubava a conexão em silêncio — sem
+    // nenhum log — para qualquer arquivo acima de ~750 KB, e o cliente só via
+    // isso como timeout do ack 30s depois.
+    maxHttpBufferSize: 24 * 1024 * 1024,
   });
 
   io.use(async (socket, next) => {

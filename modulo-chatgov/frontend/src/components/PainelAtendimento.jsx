@@ -365,7 +365,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
         reader.readAsDataURL(audioBlob);
       });
       const mime = audioBlob.type || 'audio/webm';
-      socket.timeout(30000).emit('mensagem:enviar', {
+      socket.timeout(90000).emit('mensagem:enviar', {
         convId: conversa.id,
         jid: conversa.wa_jid,
         texto: caption?.trim() || undefined,
@@ -627,7 +627,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
     try {
       const dataUrl = await encodeFileBase64(file);
       const mediaBase64 = String(dataUrl).split(',')[1];
-      socket.timeout(30000).emit('mensagem:enviar', {
+      socket.timeout(90000).emit('mensagem:enviar', {
         convId: conversa.id,
         jid: conversa.wa_jid,
         texto: legenda?.trim() || texto.trim() || undefined,

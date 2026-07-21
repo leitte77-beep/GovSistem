@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from "react";
-import { MapContainer, TileLayer, Marker, Popup, useMap } from "react-leaflet";
-import L from "leaflet";
+import { useEffect, useMemo, useState, useCallback } from "react";
+import { MapContainer, TileLayer, Marker, Popup, CircleMarker, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import { Maximize2, Minimize2, Layers } from "lucide-react";
 import { http } from "@/nucleo/http/clienteHttp";
 import { useUnidadeAtual } from "@/contextos/UnidadeAtualProvider";
+import { Skeleton } from "@/ui/Skeleton";
+import { EstadoErro } from "@/ui/EstadoErro";
 
 interface MapDataPoint {
   lat: number;
@@ -23,15 +24,42 @@ interface MapFilters {
   programa_social?: string;
 }
 
-function HeatmapLayer({ pontos }: { pontos: [number, number, number][] }) {
-  const map = useMap();
-  useEffect(() => {
-    if (pontos.length === 0) return;
-    const heat = (L as any).heatLayer(pontos, { radius: 25, blur: 15, maxZoom: 17, max: 1.0 });
-    heat.addTo(map);
-    return () => { map.removeLayer(heat); };
-  }, [map, pontos]);
-  return null;
+const VULNERABILIDADE_CORES: Record<string, string> = {
+  ALTA: "#dc2626",
+  MEDIA: "#f59e0b",
+  BAIXA: "#22c55e",
+};
+
+function HeatmapLayer({ pontos, visivel }: { pontos: MapDataPoint[]; visivel: boolean }) {
+  if (!visivel || pontos.length === 0) return null;
+  return (
+    <>
+      {pontos.map((p, i) => {
+        const cor = p.nivel_vulnerabilidade
+          ? VULNERABILIDADE_CORES[p.nivel_vulnerabilidade] || "#3b82f6"
+          : "#3b82f6";
+        return (
+          <CircleMarker
+            key={`heat-${p.id}-${i}`}
+            center={[p.lat, p.lng]}
+            radius={12}
+            pathOptions={{ color: cor, fillColor: cor, fillOpacity: 0.35, weight: 0 }}
+          >
+            <Popup>
+              <div className="text-sm">
+                <strong>{p.label}</strong>
+                {p.nivel_vulnerabilidade && (
+                  <span className="ml-1 text-xs" style={{ color: cor }}>
+                    ({p.nivel_vulnerabilidade})
+                  </span>
+                )}
+              </div>
+            </Popup>
+          </CircleMarker>
+        );
+      })}
+    </>
+  );
 }
 
 function FullScreenToggle() {
@@ -46,6 +74,16 @@ function FullScreenToggle() {
   );
 }
 
+function LegendaVulnerabilidade() {
+  return (
+    <div className="absolute top-3 left-3 z-[1000] bg-white rounded shadow-md p-2 text-xs space-y-1" style={{ zIndex: 1000 }}>
+      <div className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full" style={{ background: VULNERABILIDADE_CORES.ALTA }} /> Alta</div>
+      <div className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full" style={{ background: VULNERABILIDADE_CORES.MEDIA }} /> Média</div>
+      <div className="flex items-center gap-1"><span className="inline-block w-3 h-3 rounded-full" style={{ background: VULNERABILIDADE_CORES.BAIXA }} /> Baixa</div>
+    </div>
+  );
+}
+
 export default function MapaTematicoLeaflet() {
   const { unidadeAtual } = useUnidadeAtual();
   const [pontos, setPontos] = useState<MapDataPoint[]>([]);
@@ -53,19 +91,37 @@ export default function MapaTematicoLeaflet() {
   const [satelite, setSatelite] = useState(false);
   const [filtros, setFiltros] = useState<MapFilters>({});
   const [fullScreen, setFullScreen] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const carregar = useCallback(async () => {
+    setLoading(true);
+    setErro(null);
+    try {
+      const data = await http.get<MapDataPoint[]>("/dashboard/map-data");
+      setPontos(data);
+    } catch {
+      setErro("Não foi possível carregar os dados do mapa.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
-    http.get<MapDataPoint[]>("/dashboard/map-data").then(setPontos).catch(() => {});
-  }, [unidadeAtual?.id, filtros]);
+    carregar();
+  }, [carregar, unidadeAtual?.id, filtros]);
 
-  const heatPontos: [number, number, number][] = useMemo(() =>
-    pontos.map((p) => [p.lat, p.lng, 0.5] as [number, number, number]), [pontos]);
-
-  const centro: [number, number] = pontos.length > 0
-    ? [pontos.reduce((s, p) => s + p.lat, 0) / pontos.length, pontos.reduce((s, p) => s + p.lng, 0) / pontos.length]
-    : [-15.7801, -47.9292];
+  const centro: [number, number] = useMemo(() =>
+    pontos.length > 0
+      ? [pontos.reduce((s, p) => s + p.lat, 0) / pontos.length, pontos.reduce((s, p) => s + p.lng, 0) / pontos.length]
+      : [-15.7801, -47.9292],
+  [pontos]);
 
   const marcadores = useMemo(() => pontos.filter((p) => p.tipo === "unidade" || p.tipo === "equipamento"), [pontos]);
+  const familiasGeolocalizadas = useMemo(() => pontos.filter((p) => p.tipo === "familia"), [pontos]);
+
+  if (loading) return <Skeleton variante="cartao" className="h-[500px]" />;
+  if (erro) return <EstadoErro problema={{ type: "about:blank", title: "Erro ao carregar mapa", status: 500, detail: erro }} aoTentarNovamente={carregar} />;
 
   return (
     <div className={`relative ${fullScreen ? "fixed inset-0 z-50" : "h-[500px]"}`}>
@@ -76,7 +132,7 @@ export default function MapaTematicoLeaflet() {
             ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
             : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"}
         />
-        {camada === "calor" && <HeatmapLayer pontos={heatPontos} />}
+        <HeatmapLayer pontos={familiasGeolocalizadas} visivel={camada === "calor"} />
         {camada === "pontos" && marcadores.map((m) => (
           <Marker key={m.id} position={[m.lat, m.lng]}>
             <Popup>{m.label}</Popup>
@@ -84,6 +140,7 @@ export default function MapaTematicoLeaflet() {
         ))}
         <FullScreenToggle />
       </MapContainer>
+      {camada === "calor" && <LegendaVulnerabilidade />}
       <div className="absolute bottom-3 left-3 z-[1000] flex gap-2" style={{ zIndex: 1000 }}>
         <button onClick={() => setCamada(camada === "pontos" ? "calor" : "pontos")}
           className="rounded bg-white px-3 py-1.5 text-sm shadow-md hover:bg-gray-100 flex items-center gap-1">

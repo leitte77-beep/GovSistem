@@ -16,6 +16,7 @@ from app.schemas.dashboard import (
     TerritoryItem,
     TimeSeriesItem,
 )
+from app.services.cache_service import cached
 from app.services.dashboard import (
     get_activity,
     get_benefits_report,
@@ -35,6 +36,9 @@ _READ = require_roles(
     RoleName.ADMIN.value,
 )
 
+_cached_overview = cached(prefix="dashboard_overview", ttl_type="dashboard", skip_args=("db",))(get_overview)
+_cached_time_series = cached(prefix="dashboard_timeseries", ttl_type="dashboard", skip_args=("db",))(get_time_series)
+
 
 @router.get("/dashboard/overview", response_model=DashboardOverviewOut)
 async def dashboard_overview(
@@ -42,7 +46,7 @@ async def dashboard_overview(
     tenant_id: uuid.UUID = Depends(get_tenant_id),
     user: User = Depends(_READ),
 ):
-    return await get_overview(db, tenant_id)
+    return await _cached_overview(db, tenant_id)
 
 
 @router.get("/dashboard/time-series", response_model=list[TimeSeriesItem])
@@ -52,7 +56,7 @@ async def dashboard_time_series(
     tenant_id: uuid.UUID = Depends(get_tenant_id),
     user: User = Depends(_READ),
 ):
-    return await get_time_series(db, tenant_id, meses)
+    return await _cached_time_series(db, tenant_id, meses)
 
 
 @router.get("/dashboard/by-territory", response_model=list[TerritoryItem])

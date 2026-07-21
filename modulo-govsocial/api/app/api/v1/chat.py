@@ -81,7 +81,7 @@ manager = ConnectionManager()
 
 
 def _extract_token(ws: WebSocket) -> Optional[str]:
-    """Extrai JWT do header Authorization ou subprotocolo (nunca query string)."""
+    """Extrai JWT do header Authorization, subprotocolo ou query string."""
     auth = ws.headers.get("authorization") or ws.headers.get("sec-websocket-protocol")
     if auth:
         for part in (p.strip() for p in auth.split(",")):
@@ -89,6 +89,10 @@ def _extract_token(ws: WebSocket) -> Optional[str]:
                 return part[7:].strip()
             if "." in part and part.count(".") == 2:
                 return part
+
+    token = ws.query_params.get("token")
+    if token:
+        return token
     return None
 
 

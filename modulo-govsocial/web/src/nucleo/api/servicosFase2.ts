@@ -1,6 +1,8 @@
 /** Hooks e serviços adicionais — Fase 2. */
 import { useQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { http } from "@/nucleo/http/clienteHttp";
+import { lerAccessToken } from "@/nucleo/auth/tokenStorage";
 
 // ─── DOMICÍLIO ──────────────────────────────────────
 
@@ -66,12 +68,17 @@ export function useVulnerabilidades(familyId: string) {
 
 // ─── QUESTIONÁRIOS ─────────────────────────────────
 
-export interface QuestionarioOut { id: string; nome: string; descricao: string | null; questoes: { id: string; enunciado: string; tipo: string; obrigatorio: boolean; opcoes: any }[]; }
+export interface QuestaoItem { id: string; enunciado: string; tipo: string; obrigatorio: boolean; opcoes: any; ordem?: number; }
+export interface QuestionarioOut { id: string; nome: string; descricao: string | null; created_at: string; questoes: QuestaoItem[]; }
+export interface RespostaDetalhe { id: string; questionario_id: string; questionario_nome: string; data_preenchimento: string; respostas: { questao_id: string; enunciado: string; valor: string | null }[]; }
+
 export const servicoQuestionarios = {
   listar: () => http.get<QuestionarioOut[]>("/questionarios"),
+  obter: (id: string) => http.get<QuestionarioOut>(`/questionarios/${id}`),
   criar: (corpo: any) => http.post<QuestionarioOut>("/questionarios", corpo),
+  atualizar: (id: string, corpo: any) => http.patch<QuestionarioOut>(`/questionarios/${id}`, corpo),
   responder: (familyId: string, corpo: any) => http.post(`/families/${familyId}/questionarios/responder`, corpo),
-  historico: (familyId: string) => http.get<any[]>(`/families/${familyId}/questionarios`),
+  historico: (familyId: string) => http.get<RespostaDetalhe[]>(`/families/${familyId}/questionarios`),
 };
 
 export function useQuestionarios() {
@@ -184,3 +191,210 @@ export const servicoFamiliaRapida = {
   criar: (corpo: { nome_responsavel: string; cpf_responsavel?: string; nis_responsavel?: string; bairro: string; membros: { nome: string; parentesco: string }[] }) =>
     http.post("/families/quick", corpo),
 };
+
+// ─── CADÚNICO CONSULTA ─────────────────────────────
+
+export interface CadUnicoPessoa {
+  id: string;
+  nome_civil: string;
+  nome_social: string | null;
+  data_nascimento: string | null;
+  sexo: string;
+  mae: string | null;
+}
+
+export interface CadUnicoFamilia {
+  id: string;
+  codigo: number;
+  responsavel_nome: string | null;
+  faixa_renda: string | null;
+  beneficiaria_pbf: boolean;
+  possui_bpc: boolean;
+  no_cadunico: boolean;
+  cadunico_atualizado_em: string | null;
+  parentesco: string | null;
+  endereco: {
+    logradouro: string | null;
+    numero: string | null;
+    bairro: string | null;
+    cep: string | null;
+    municipio: string | null;
+    uf: string | null;
+  } | null;
+}
+
+export interface CadUnicoConsultaResult {
+  fonte: string;
+  encontrado: boolean;
+  pessoa: CadUnicoPessoa;
+  familia: CadUnicoFamilia | null;
+}
+
+export const servicoCadUnico = {
+  consultarPorCPF: (cpf: string) =>
+    http.get<CadUnicoConsultaResult>(`/cadunico/consulta/cpf?cpf=${cpf.replace(/\D/g, "")}`),
+  consultarPorNIS: (nis: string) =>
+    http.get<CadUnicoConsultaResult>(`/cadunico/consulta/nis?nis=${nis.replace(/\D/g, "")}`),
+};
+
+// ─── CHAT INTERNO ──────────────────────────────────
+
+export interface ChatMessageIn {
+  type: "message" | "presence" | "typing";
+  user_id: string;
+  user_name: string;
+  text?: string;
+  status?: string;
+  timestamp: string;
+}
+
+export interface MensagemChat {
+  id: string;
+  userId: string;
+  userName: string;
+  text: string;
+  timestamp: string;
+}
+
+export interface SalaChat {
+  id: string;
+  nome: string;
+}
+
+function buildWsUrl(tenantId: string, token: string): string {
+  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const host = window.location.host;
+  return `${proto}//${host}/ws/chat/${tenantId}?token=${encodeURIComponent(token)}`;
+}
+
+export function useChat(tenantId: string | null, userId: string | null, userName: string | null) {
+  const [conectado, setConectado] = useState(false);
+  const [mensagens, setMensagens] = useState<MensagemChat[]>([]);
+  const [digitando, setDigitando] = useState<string | null>(null);
+  const [online, setOnline] = useState<string[]>([]);
+  const [aberto, setAberto] = useState(false);
+  const [naoLidas, setNaoLidas] = useState(0);
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const reconectarRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tentativasRef = useRef(0);
+  const abertoRef = useRef(false);
+  const naoLidasRef = useRef(0);
+  const digitandoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  abertoRef.current = aberto;
+
+  const conectar = useCallback(() => {
+    const token = lerAccessToken();
+    if (!token || !tenantId || !userId) return;
+    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+
+    const ws = new WebSocket(buildWsUrl(tenantId, token));
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      setConectado(true);
+      tentativasRef.current = 0;
+    };
+
+    ws.onclose = () => {
+      setConectado(false);
+      wsRef.current = null;
+      agendarReconexao();
+    };
+
+    ws.onerror = () => {
+      ws.close();
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data: ChatMessageIn = JSON.parse(event.data);
+        if (data.type === "message" && data.text) {
+          const msg: MensagemChat = {
+            id: crypto.randomUUID(),
+            userId: data.user_id,
+            userName: data.user_name,
+            text: data.text,
+            timestamp: data.timestamp,
+          };
+          setMensagens((prev) => [...prev, msg]);
+          if (!abertoRef.current && data.user_id !== userId) {
+            naoLidasRef.current += 1;
+            setNaoLidas(naoLidasRef.current);
+          }
+        } else if (data.type === "presence") {
+          setOnline((prev) => {
+            if (data.status === "online" && data.user_id && !prev.includes(data.user_id)) {
+              return [...prev, data.user_id];
+            }
+            if (data.status === "offline" && data.user_id) {
+              return prev.filter((id) => id !== data.user_id);
+            }
+            return prev;
+          });
+        } else if (data.type === "typing" && data.user_id !== userId) {
+          setDigitando(data.user_name);
+          if (digitandoTimerRef.current) clearTimeout(digitandoTimerRef.current);
+          digitandoTimerRef.current = setTimeout(() => setDigitando(null), 3000);
+        }
+      } catch {
+        /* mensagem malformada */
+      }
+    };
+  }, [tenantId, userId]);
+
+  const agendarReconexao = useCallback(() => {
+    if (reconectarRef.current) clearTimeout(reconectarRef.current);
+    const atraso = Math.min(1000 * 2 ** tentativasRef.current, 30_000);
+    tentativasRef.current += 1;
+    reconectarRef.current = setTimeout(() => {
+      conectar();
+    }, atraso);
+  }, [conectar]);
+
+  useEffect(() => {
+    if (!tenantId || !userId) return;
+    conectar();
+    return () => {
+      if (reconectarRef.current) clearTimeout(reconectarRef.current);
+      wsRef.current?.close();
+      wsRef.current = null;
+    };
+  }, [tenantId, userId, conectar]);
+
+  const enviarMensagem = useCallback((texto: string) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN || !texto.trim() || !userId || !userName) return;
+    ws.send(JSON.stringify({ type: "message", text: texto.trim() }));
+  }, [userId, userName]);
+
+  const enviarDigitando = useCallback(() => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    ws.send(JSON.stringify({ type: "typing" }));
+  }, []);
+
+  const abrirChat = useCallback(() => {
+    setAberto(true);
+    naoLidasRef.current = 0;
+    setNaoLidas(0);
+  }, []);
+
+  const fecharChat = useCallback(() => {
+    setAberto(false);
+  }, []);
+
+  return {
+    conectado,
+    mensagens,
+    digitando,
+    online,
+    aberto,
+    naoLidas,
+    enviarMensagem,
+    enviarDigitando,
+    abrirChat,
+    fecharChat,
+  };
+}

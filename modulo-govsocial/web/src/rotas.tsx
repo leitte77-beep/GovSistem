@@ -33,6 +33,7 @@ const RendaFamiliar = lazy(() => import("@/paginas/renda/RendaFamiliar"));
 const CentralNotificacoes = lazy(() => import("@/paginas/notificacoes/CentralNotificacoes"));
 const HabitacaoPainel = lazy(() => import("@/paginas/habitacao/HabitacaoPainel"));
 const QuestionarioLista = lazy(() => import("@/paginas/questionarios/QuestionarioLista"));
+const EditorQuestionario = lazy(() => import("@/paginas/questionarios/EditorQuestionario"));
 const ImportarDados = lazy(() => import("@/paginas/importacao/ImportarDados"));
 const CadastroRapido = lazy(() => import("@/paginas/familias/CadastroRapido"));
 const ExportadorDados = lazy(() => import("@/paginas/exportador/ExportadorDados"));
@@ -46,7 +47,16 @@ const RelatoriosPainel = lazy(() => import("@/paginas/relatorios/RelatoriosPaine
 const ConstrutorRelatorio = lazy(() => import("@/paginas/relatorios/ConstrutorRelatorio"));
 const MapaTematicoLeaflet = lazy(() => import("@/paginas/vigilancia/MapaTematicoLeaflet"));
 const EstoquePainel = lazy(() => import("@/paginas/estoque/EstoquePainel"));
+const FinanceiroPainel = lazy(() => import("@/paginas/financeiro/FinanceiroPainel"));
+const VigilanciaAvancada = lazy(() => import("@/paginas/vigilancia/VigilanciaAvancada"));
 const NaoEncontrada = lazy(() => import("@/paginas/NaoEncontrada"));
+const PortalCidadao = lazy(() => import("@/paginas/cidadao/PortalCidadao"));
+const PanicMonitor = lazy(() => import("@/paginas/panicbutton/PanicMonitor"));
+const PanicButton = lazy(() => import("@/paginas/panicbutton/PanicButton"));
+const SalaMonitoramento = lazy(() => import("@/paginas/monitoramento/SalaMonitoramento"));
+const PortalTransparencia = lazy(() => import("@/paginas/transparencia/PortalTransparencia"));
+const BuscaAtivaPainel = lazy(() => import("@/paginas/buscaativa/BuscaAtivaPainel"));
+const ReconhecimentoFacial = lazy(() => import("@/paginas/biometria/ReconhecimentoFacial"));
 
 function Carregando() {
   return (
@@ -63,6 +73,12 @@ function Pagina({ children }: { children: ReactNode }) {
 export function Rotas() {
   return (
     <Routes>
+      {/* Portal do Cidadão — acesso público sem autenticação */}
+      <Route path="/cidadao" element={<Pagina><PortalCidadao /></Pagina>} />
+
+      {/* Portal da Transparência — acesso público sem autenticação */}
+      <Route path="/transparencia/:slug" element={<Pagina><PortalTransparencia /></Pagina>} />
+
       {/* Rotas de impressão A4 — fora da shell (§ layout de impressão). */}
       <Route path="/imprimir" element={<LayoutImpressao />}>
         <Route
@@ -291,6 +307,36 @@ export function Rotas() {
           }
         />
         <Route
+          path="/vigilancia/avancada"
+          element={
+            <Pagina>
+              <GuardRota exige="vigilancia.ver">
+                <VigilanciaAvancada />
+              </GuardRota>
+            </Pagina>
+          }
+        />
+        <Route
+          path="/busca-ativa"
+          element={
+            <Pagina>
+              <GuardRota exige="vigilancia.ver">
+                <BuscaAtivaPainel />
+              </GuardRota>
+            </Pagina>
+          }
+        />
+        <Route
+          path="/biometria"
+          element={
+            <Pagina>
+              <GuardRota exige="biometria.gerir">
+                <ReconhecimentoFacial />
+              </GuardRota>
+            </Pagina>
+          }
+        />
+        <Route
           path="/administracao"
           element={
             <Pagina>
@@ -318,6 +364,26 @@ export function Rotas() {
             <Pagina>
               <GuardRota exige="questionario.gerir">
                 <QuestionarioLista />
+              </GuardRota>
+            </Pagina>
+          }
+        />
+        <Route
+          path="/questionarios/novo/editar"
+          element={
+            <Pagina>
+              <GuardRota exige="questionario.gerir">
+                <EditorQuestionario />
+              </GuardRota>
+            </Pagina>
+          }
+        />
+        <Route
+          path="/questionarios/:id/editar"
+          element={
+            <Pagina>
+              <GuardRota exige="questionario.gerir">
+                <EditorQuestionario />
               </GuardRota>
             </Pagina>
           }
@@ -455,6 +521,46 @@ export function Rotas() {
             <Pagina>
               <GuardRota exige="estoque.gerir">
                 <EstoquePainel />
+              </GuardRota>
+            </Pagina>
+          }
+        />
+        <Route
+          path="/financeiro"
+          element={
+            <Pagina>
+              <GuardRota exige="financeiro.gerir">
+                <FinanceiroPainel />
+              </GuardRota>
+            </Pagina>
+          }
+        />
+        <Route
+          path="/panic-button"
+          element={
+            <Pagina>
+              <GuardRota exige="panico.monitorar">
+                <PanicMonitor />
+              </GuardRota>
+            </Pagina>
+          }
+        />
+        <Route
+          path="/panic-button/app"
+          element={
+            <Pagina>
+              <GuardRota exige="panico.atender">
+                <PanicButton />
+              </GuardRota>
+            </Pagina>
+          }
+        />
+        <Route
+          path="/monitoramento"
+          element={
+            <Pagina>
+              <GuardRota exige="vigilancia.ver">
+                <SalaMonitoramento />
               </GuardRota>
             </Pagina>
           }

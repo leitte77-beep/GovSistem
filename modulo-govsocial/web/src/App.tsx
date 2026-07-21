@@ -6,6 +6,7 @@ import { CarregadorUnidades } from "@/contextos/CarregadorUnidades";
 import { SincronizacaoProvider } from "@/nucleo/offline/SincronizacaoProvider";
 import { TenantTemaProvider } from "@/tema/TenantTemaProvider";
 import { DensidadeProvider } from "@/tema/densidade";
+import { ThemeProvider } from "@/tema/ThemeProvider";
 import { ProvedorToast } from "@/ui/Toast";
 import { Rotas } from "@/rotas";
 import { useOrganizationConfig } from "@/nucleo/api/hooks";
@@ -30,20 +31,22 @@ function TemaDoTenant({ children }: { children: React.ReactNode }) {
 export function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <DensidadeProvider>
-        <TemaDoTenant>
-          <BrowserRouter basename={BASENAME}>
-            <SessaoProvider>
-              <CarregadorUnidades>
-                <SincronizacaoProvider>
-                  <Rotas />
-                </SincronizacaoProvider>
-              </CarregadorUnidades>
-            </SessaoProvider>
-          </BrowserRouter>
-          <ProvedorToast />
-        </TemaDoTenant>
-      </DensidadeProvider>
+      <ThemeProvider>
+        <DensidadeProvider>
+          <TemaDoTenant>
+            <BrowserRouter basename={BASENAME}>
+              <SessaoProvider>
+                <CarregadorUnidades>
+                  <SincronizacaoProvider>
+                    <Rotas />
+                  </SincronizacaoProvider>
+                </CarregadorUnidades>
+              </SessaoProvider>
+            </BrowserRouter>
+            <ProvedorToast />
+          </TemaDoTenant>
+        </DensidadeProvider>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

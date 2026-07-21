@@ -9,6 +9,8 @@ import { servicoEncaminhamentos } from "@/nucleo/api/encaminhamentos";
 import { servicoRma } from "@/nucleo/api/rma";
 import { servicoDashboard } from "@/nucleo/api/dashboard";
 import { servicoAdmin } from "@/nucleo/api/admin";
+import { servicoVigilanciaAvancada } from "@/nucleo/api/vigilanciaAvancada";
+import { servicoPanicButton } from "@/nucleo/api/panicButton";
 
 /**
  * Hooks de dados da Fase 2. staleTime curto: dados cadastrais mudam pouco
@@ -305,6 +307,66 @@ export function useOrganizationConfig() {
     staleTime: 30 * 60_000,
   });
 }
+
+// ── Vigilância Avançada ──────────────────────────────────────
+export function useVigilanciaIndicadoresTerritorio(mes: number, ano: number) {
+  return useQuery({
+    queryKey: ["vigilancia", "indicadores-territorio", mes, ano],
+    queryFn: () => servicoVigilanciaAvancada.indicadoresTerritorio(mes, ano),
+    staleTime: 60_000,
+  });
+}
+
+export function useVigilanciaTendencias(meses = 12) {
+  return useQuery({
+    queryKey: ["vigilancia", "tendencias", meses],
+    queryFn: () => servicoVigilanciaAvancada.tendencias(meses),
+    staleTime: 60_000,
+  });
+}
+
+export function useVigilanciaMapaCalor(tipo: "vulnerabilidade" | "densidade" = "vulnerabilidade") {
+  return useQuery({
+    queryKey: ["vigilancia", "mapa-calor", tipo],
+    queryFn: () => servicoVigilanciaAvancada.mapaCalor(tipo),
+    staleTime: 60_000,
+  });
+}
+
+export function useVigilanciaPerfilPopulacional() {
+  return useQuery({
+    queryKey: ["vigilancia", "perfil-populacional"],
+    queryFn: () => servicoVigilanciaAvancada.perfilPopulacional(),
+    staleTime: 120_000,
+  });
+}
+
+export function useVigilanciaAnomalias() {
+  return useQuery({
+    queryKey: ["vigilancia", "anomalias"],
+    queryFn: () => servicoVigilanciaAvancada.anomalias(),
+    staleTime: 60_000,
+  });
+}
+
+// ── Botão do Pânico (Lei Maria da Penha) ──────────────────────────
+export function usePanicButtonAtivos() {
+  return useQuery({
+    queryKey: ["panic-button", "active"],
+    queryFn: () => servicoPanicButton.listarAtivos(),
+    refetchInterval: 10_000,
+    staleTime: 5_000,
+  });
+}
+
+export function usePanicButtonHistorico(limit = 100, offset = 0) {
+  return useQuery({
+    queryKey: ["panic-button", "history", limit, offset],
+    queryFn: () => servicoPanicButton.historico(limit, offset),
+    staleTime: 20_000,
+  });
+}
+
 
 export function useImportacoes() {
   return useQuery({

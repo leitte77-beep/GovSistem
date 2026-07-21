@@ -27,6 +27,7 @@ from app.schemas.people import (
     UpdateMemberRequest,
 )
 from app.services.audit import record_audit
+from app.services.cache_service import cached, invalidate_cache
 from app.services.geocode import enqueue_family_geocode
 from app.services.people import merge_families, next_family_codigo
 
@@ -191,6 +192,13 @@ async def listar_familias(
     tenant_id: uuid.UUID = Depends(get_tenant_id),
     user: User = Depends(_READ),
 ):
+    from app.services.cache_service import cache_get, cache_set, CACHE_TTLS
+
+    cache_key = f"cache:families_list:{tenant_id}:{search}:{territorio}:{skip}:{limit}"
+    cached_result = await cache_get(cache_key)
+    if cached_result is not None:
+        return cached_result
+
     query = (
         select(Family)
         .outerjoin(Person, Person.id == Family.responsavel_id)
@@ -235,7 +243,7 @@ async def listar_familias(
             )
     query = query.order_by(Family.codigo).offset(skip).limit(limit)
     fams = (await db.execute(query)).scalars().all()
-    return [
+    result = [
         {
             "id": f.id,
             "codigo": f.codigo,
@@ -249,6 +257,8 @@ async def listar_familias(
         }
         for f in fams
     ]
+    await cache_set(cache_key, result, CACHE_TTLS["listagem"])
+    return result
 
 
 @router.post("", response_model=FamilyOut, status_code=201)
@@ -283,6 +293,9 @@ async def criar_familia(
     await db.commit()
     if fam.geocode_status == "PENDENTE":
         await enqueue_family_geocode(tenant_id, fam.id)
+    await invalidate_cache("families_list")
+    await invalidate_cache("dashboard_overview")
+    await invalidate_cache("dashboard_timeseries")
     fam = await _load_family(db, tenant_id, fam.id)
     return _to_out(fam)
 
@@ -374,6 +387,9 @@ async def atualizar_familia(
     await db.commit()
     if fam.geocode_status == "PENDENTE" and _ADDRESS_FIELDS & set(changes.keys()):
         await enqueue_family_geocode(tenant_id, fam.id)
+    await invalidate_cache("families_list")
+    await invalidate_cache("dashboard_overview")
+    await invalidate_cache("dashboard_timeseries")
     fam = await _load_family(db, tenant_id, fam.id)
     return _to_out(fam)
 
@@ -398,6 +414,9 @@ async def excluir_familia(
         client_info=get_client_info(request),
     )
     await db.commit()
+    await invalidate_cache("families_list")
+    await invalidate_cache("dashboard_overview")
+    await invalidate_cache("dashboard_timeseries")
     return None
 
 

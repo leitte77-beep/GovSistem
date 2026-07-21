@@ -16,6 +16,8 @@ export { EstadoVazio } from "./EstadoVazio";
 export { EstadoErro } from "./EstadoErro";
 export { EstadoSemPermissao } from "./EstadoSemPermissao";
 export { BarraOffline } from "./BarraOffline";
+export { ChatButton } from "./ChatButton";
+export { ChatDrawer } from "./ChatDrawer";
 export { Cadeado } from "./Cadeado";
 export { Brasao } from "./Brasao";
 export { CampoCPF } from "./CampoCPF";

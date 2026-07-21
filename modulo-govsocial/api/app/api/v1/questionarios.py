@@ -65,7 +65,10 @@ class QuestionarioOut(BaseModel):
     descricao: str | None
     service_type_code: str | None
     ativo: bool
+    created_at: str
     questoes: list[QuestaoOut]
+
+    model_config = {"from_attributes": True}
 
 
 class RespostaValor(BaseModel):
@@ -142,6 +145,76 @@ async def criar_questionario(
             obrigatorio=qt.obrigatorio,
             opcoes=qt.opcoes,
         ))
+
+    await db.commit()
+    await db.refresh(q)
+    return q
+
+
+class QuestionarioUpdate(BaseModel):
+    nome: str | None = None
+    descricao: str | None = None
+    questoes: list[QuestaoCreate] | None = None
+
+
+@router.get("/questionarios/{q_id}", response_model=QuestionarioOut)
+async def obter_questionario(
+    q_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_tenant_id),
+    user: User = Depends(_READ),
+):
+    from sqlalchemy.orm import selectinload
+
+    q = (
+        await db.execute(
+            select(Questionario)
+            .where(Questionario.id == q_id, Questionario.tenant_id == tenant_id)
+            .options(selectinload(Questionario.questoes))
+        )
+    ).unique().scalar_one_or_none()
+    if not q:
+        raise HTTPException(status_code=404, detail="Questionário não encontrado")
+    return q
+
+
+@router.patch("/questionarios/{q_id}", response_model=QuestionarioOut)
+async def atualizar_questionario(
+    q_id: uuid.UUID,
+    payload: QuestionarioUpdate,
+    db: AsyncSession = Depends(get_db),
+    tenant_id: uuid.UUID = Depends(get_tenant_id),
+    user: User = Depends(_MANAGE),
+):
+    from sqlalchemy.orm import selectinload
+
+    q = (
+        await db.execute(
+            select(Questionario)
+            .where(Questionario.id == q_id, Questionario.tenant_id == tenant_id)
+            .options(selectinload(Questionario.questoes))
+        )
+    ).unique().scalar_one_or_none()
+    if not q:
+        raise HTTPException(status_code=404, detail="Questionário não encontrado")
+
+    if payload.nome is not None:
+        q.nome = payload.nome
+    if payload.descricao is not None:
+        q.descricao = payload.descricao
+
+    if payload.questoes is not None:
+        for existing in q.questoes:
+            await db.delete(existing)
+        for i, qt in enumerate(payload.questoes):
+            db.add(Questao(
+                questionario_id=q.id,
+                ordem=qt.ordem or i,
+                enunciado=qt.enunciado,
+                tipo=qt.tipo,
+                obrigatorio=qt.obrigatorio,
+                opcoes=qt.opcoes,
+            ))
 
     await db.commit()
     await db.refresh(q)

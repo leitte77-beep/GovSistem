@@ -1,3 +1,9 @@
+from app.schemas.ai import (
+    AIConfigCreate,
+    AIConfigOut,
+    GenerateRequest,
+    GenerateResponse,
+)
 from app.schemas.acoes_coletivas import (
     AcaoColetivaCreate,
     AcaoColetivaOut,
@@ -144,6 +150,10 @@ from app.schemas.schemas import (
 )
 
 __all__ = [
+    "AIConfigCreate",
+    "AIConfigOut",
+    "GenerateRequest",
+    "GenerateResponse",
     "AcaoColetivaCreate",
     "AcaoColetivaOut",
     "AcaoColetivaUpdate",

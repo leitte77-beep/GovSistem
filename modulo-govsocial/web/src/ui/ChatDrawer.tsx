@@ -1,210 +1,263 @@
 import { useEffect, useRef, useState, useCallback } from "react";
-import { MessageCircle, X, Send } from "lucide-react";
-import { lerAccessToken } from "@/nucleo/auth/tokenStorage";
-import { decodificarClaims } from "@/nucleo/auth/jwt";
-import { useSessao } from "@/nucleo/auth/SessaoProvider";
+import { X, Send, Users, Loader2 } from "lucide-react";
+import clsx from "clsx";
+import { usePrenderFoco } from "./usePrenderFoco";
+import type { MensagemChat, SalaChat } from "@/nucleo/api/servicosFase2";
 
-interface ChatMessage {
-  type: "message" | "presence" | "typing";
-  user_id: string;
-  user_name: string;
-  text?: string;
-  status?: string;
-  timestamp: string;
+export type ChatDrawerProps = {
+  aberto: boolean;
+  aoFechar: () => void;
+  conectado: boolean;
+  mensagens: MensagemChat[];
+  digitando: string | null;
+  online: string[];
+  userId: string;
+  salas: SalaChat[];
+  salaAtiva: string;
+  aoMudarSala: (salaId: string) => void;
+  aoEnviar: (texto: string) => void;
+  aoDigitar: () => void;
+};
+
+function AvatarNome({ nome }: { nome: string }) {
+  const inicial = (nome?.[0] ?? "?").toUpperCase();
+  return (
+    <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-white">
+      {inicial}
+    </div>
+  );
 }
 
-interface MensagemExibida {
-  id: string;
-  user_id: string;
-  user_name: string;
-  text: string;
-  timestamp: string;
-  local?: boolean;
+function formatarHora(iso: string): string {
+  try {
+    return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "";
+  }
 }
 
-function buildWsUrl(tenantId: string, token: string): string {
-  const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const host = window.location.host;
-  return `${proto}//${host}/ws/chat/${tenantId}?token=${encodeURIComponent(token)}`;
-}
-
-export function ChatDrawer() {
-  const { usuario } = useSessao();
-  const [aberto, setAberto] = useState(false);
-  const [conectado, setConectado] = useState(false);
-  const [mensagens, setMensagens] = useState<MensagemExibida[]>([]);
-  const [digitando, setDigitando] = useState<string | null>(null);
+export function ChatDrawer({
+  aberto,
+  aoFechar,
+  conectado,
+  mensagens,
+  digitando,
+  online,
+  userId,
+  salas,
+  salaAtiva,
+  aoMudarSala,
+  aoEnviar,
+  aoDigitar,
+}: ChatDrawerProps) {
+  const ref = usePrenderFoco(aberto, aoFechar);
   const [texto, setTexto] = useState("");
-  const [usuariosOnline, setUsuariosOnline] = useState<string[]>([]);
-  const wsRef = useRef<WebSocket | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const unreadRef = useRef(0);
-  const [unread, setUnread] = useState(0);
-
-  const conectar = useCallback(() => {
-    const token = lerAccessToken();
-    if (!token) return;
-    const claims = decodificarClaims(token);
-    const tenantId = claims?.organization_id;
-    if (!tenantId || !usuario?.id) return;
-
-    const ws = new WebSocket(buildWsUrl(tenantId, token));
-    wsRef.current = ws;
-
-    ws.onopen = () => setConectado(true);
-    ws.onclose = () => setConectado(false);
-
-    ws.onmessage = (event) => {
-      try {
-        const data: ChatMessage = JSON.parse(event.data);
-        if (data.type === "message" && data.text) {
-          const msg: MensagemExibida = {
-            id: crypto.randomUUID(),
-            user_id: data.user_id,
-            user_name: data.user_name,
-            text: data.text,
-            timestamp: data.timestamp,
-          };
-          setMensagens((prev) => [...prev, msg]);
-          if (!aberto) {
-            unreadRef.current += 1;
-            setUnread(unreadRef.current);
-          }
-        } else if (data.type === "presence") {
-          setUsuariosOnline((prev) => {
-            if (data.status === "online" && !prev.includes(data.user_id)) {
-              return [...prev, data.user_id];
-            }
-            if (data.status === "offline") {
-              return prev.filter((id) => id !== data.user_id);
-            }
-            return prev;
-          });
-        } else if (data.type === "typing" && data.user_id !== usuario?.id) {
-          setDigitando(data.user_name);
-          setTimeout(() => setDigitando(null), 3000);
-        }
-      } catch {}
-    };
-
-    return () => ws.close();
-  }, [usuario?.id, aberto]);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const digitandoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const cleanup = conectar();
-    const interval = setInterval(() => {
-      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-        const c = conectar();
-        return c;
-      }
-    }, 30_000);
-    return () => {
-      cleanup?.();
-      clearInterval(interval);
-      wsRef.current?.close();
-    };
-  }, [conectar]);
-
-  useEffect(() => {
-    if (aberto) {
-      unreadRef.current = 0;
-      setUnread(0);
-      containerRef.current?.scrollTo({ top: containerRef.current.scrollHeight });
+    if (aberto && inputRef.current) {
+      inputRef.current.focus();
     }
-  }, [aberto, mensagens.length]);
+  }, [aberto]);
 
-  function enviar() {
-    if (!texto.trim() || !wsRef.current) return;
-    const msg: MensagemExibida = {
-      id: crypto.randomUUID(),
-      user_id: usuario?.id ?? "",
-      user_name: usuario?.name ?? "",
-      text: texto.trim(),
-      timestamp: new Date().toISOString(),
-      local: true,
-    };
-    wsRef.current.send(JSON.stringify({ type: "message", text: texto.trim() }));
-    setMensagens((prev) => [...prev, msg]);
+  useEffect(() => {
+    if (containerRef.current) {
+      containerRef.current.scrollTo({ top: containerRef.current.scrollHeight, behavior: "smooth" });
+    }
+  }, [mensagens, digitando]);
+
+  const enviar = useCallback(() => {
+    if (!texto.trim()) return;
+    aoEnviar(texto);
     setTexto("");
-  }
+  }, [texto, aoEnviar]);
 
-  function onKeyDown(e: React.KeyboardEvent) {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      enviar();
-    }
-  }
+  const aoTeclar = useCallback(
+    (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        enviar();
+      }
+    },
+    [enviar],
+  );
+
+  const aoDigitarLocal = useCallback(() => {
+    aoDigitar();
+    if (digitandoTimerRef.current) clearTimeout(digitandoTimerRef.current);
+    digitandoTimerRef.current = setTimeout(() => {}, 2000);
+  }, [aoDigitar]);
+
+  if (!aberto) return null;
 
   return (
-    <>
+    <div className="fixed inset-0 z-50" role="presentation">
       <button
-        onClick={() => setAberto(true)}
-        className="relative rounded p-2 hover:bg-white/10 focus-visible:outline-focus"
-        aria-label={aberto ? "Fechar chat" : "Abrir chat"}
-        title="Chat"
-      >
-        <MessageCircle aria-hidden className="h-5 w-5" />
-        {unread > 0 && (
-          <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-0.5 text-[10px] font-bold text-white">
-            {unread > 99 ? "99+" : unread}
-          </span>
-        )}
-      </button>
+        type="button"
+        className="absolute inset-0 bg-ink/30 backdrop-blur-sm"
+        aria-label="Fechar chat"
+        onClick={aoFechar}
+        tabIndex={-1}
+      />
 
-      {aberto && (
-        <div className="fixed bottom-0 right-4 z-40 flex h-[500px] w-[360px] flex-col rounded-t-cartao border border-ink-soft/15 bg-surface shadow-elevado">
-          <div className="flex items-center justify-between border-b border-ink-soft/15 px-4 py-2">
-            <div className="flex items-center gap-2">
-              <h3 className="text-sm font-semibold">Chat</h3>
-              <span className={`h-2 w-2 rounded-full ${conectado ? "bg-green-500" : "bg-red-500"}`} title={conectado ? "Conectado" : "Desconectado"} />
-            </div>
-            <div className="flex items-center gap-2">
-              {usuariosOnline.length > 0 && (
-                <span className="text-xs text-ink-soft">{usuariosOnline.length} online</span>
+      <div
+        ref={ref}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Chat interno"
+        className="absolute bottom-0 right-0 flex h-full w-full flex-col bg-surface shadow-xl ring-1 ring-ink-soft/10 md:bottom-0 md:right-0 md:top-0 md:h-full md:w-[400px] md:border-l md:border-ink-soft/15"
+      >
+        {/* Cabeçalho */}
+        <div className="flex items-center justify-between border-b border-ink-soft/15 px-4 py-3">
+          <div className="flex items-center gap-3">
+            <h2 className="text-sm font-semibold text-ink">Chat Interno</h2>
+            <span
+              className={clsx("h-2 w-2 rounded-full", conectado ? "bg-green-500" : "bg-red-500")}
+              title={conectado ? "Conectado" : "Desconectado"}
+            />
+            {online.length > 0 && (
+              <span className="flex items-center gap-1 text-[11px] text-ink-soft">
+                <Users aria-hidden className="h-3 w-3" />
+                {online.length}
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={aoFechar}
+            className="rounded p-1 text-ink-soft hover:bg-ink-soft/10 hover:text-ink focus-visible:outline-focus"
+            aria-label="Fechar chat"
+          >
+            <X aria-hidden className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Corpo: salas + mensagens */}
+        <div className="flex flex-1 overflow-hidden">
+          {/* Lista de salas */}
+          <div className="w-[130px] shrink-0 overflow-y-auto border-r border-ink-soft/10 bg-surface-container-low p-2">
+            {salas.map((sala) => (
+              <button
+                key={sala.id}
+                onClick={() => aoMudarSala(sala.id)}
+                className={clsx(
+                  "w-full rounded-lg px-3 py-2 text-left text-xs transition-colors",
+                  sala.id === salaAtiva
+                    ? "bg-primary text-white font-semibold"
+                    : "text-ink-soft hover:bg-surface-container hover:text-ink",
+                )}
+              >
+                # {sala.nome}
+              </button>
+            ))}
+          </div>
+
+          {/* Área de mensagens */}
+          <div className="flex flex-1 flex-col min-w-0">
+            <div
+              ref={containerRef}
+              className="flex-1 overflow-y-auto px-4 py-3 space-y-3"
+            >
+              {mensagens.length === 0 && conectado && (
+                <div className="pt-8 text-center text-sm text-ink-soft">
+                  Nenhuma mensagem ainda. Seja o primeiro a falar!
+                </div>
               )}
-              <button onClick={() => setAberto(false)} className="rounded p-1 hover:bg-ink-soft/10">
-                <X className="h-4 w-4" />
+
+              {!conectado && (
+                <div className="flex items-center justify-center gap-2 py-4 text-sm text-ink-soft">
+                  <Loader2 aria-hidden className="h-4 w-4 animate-spin" />
+                  Reconectando…
+                </div>
+              )}
+
+              {mensagens.map((m, idx) => {
+                const ehPropria = m.userId === userId;
+                const mostrarAvatar =
+                  idx === 0 || mensagens[idx - 1].userId !== m.userId;
+
+                return (
+                  <div
+                    key={m.id}
+                    className={clsx("flex gap-2", ehPropria && "flex-row-reverse")}
+                  >
+                    {!ehPropria && (
+                      <div className="pt-1">
+                        {mostrarAvatar && <AvatarNome nome={m.userName} />}
+                      </div>
+                    )}
+                    <div
+                      className={clsx(
+                        "flex max-w-[80%] flex-col",
+                        ehPropria ? "items-end" : "items-start",
+                      )}
+                    >
+                      {!ehPropria && mostrarAvatar && (
+                        <span className="mb-0.5 ml-1 text-[10px] font-semibold text-ink-soft">
+                          {m.userName}
+                        </span>
+                      )}
+                      <div
+                        className={clsx(
+                          "rounded-xl px-3 py-2 text-sm leading-relaxed",
+                          ehPropria
+                            ? "rounded-br-md bg-primary text-white"
+                            : "rounded-bl-md bg-surface-container-high text-ink",
+                        )}
+                      >
+                        {m.text}
+                      </div>
+                      <span className="mt-0.5 text-[10px] text-ink-soft/60">
+                        {formatarHora(m.timestamp)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {digitando && (
+                <div className="flex items-center gap-2 pl-9">
+                  <span className="flex gap-1">
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-soft/50 [animation-delay:0ms]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-soft/50 [animation-delay:150ms]" />
+                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-ink-soft/50 [animation-delay:300ms]" />
+                  </span>
+                  <span className="text-[11px] italic text-ink-soft">
+                    {digitando} está digitando…
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Input */}
+            <div className="flex items-end gap-2 border-t border-ink-soft/15 px-3 py-3">
+              <textarea
+                ref={inputRef}
+                value={texto}
+                onChange={(e) => {
+                  setTexto(e.target.value);
+                  aoDigitarLocal();
+                }}
+                onKeyDown={aoTeclar}
+                placeholder="Digite sua mensagem…"
+                rows={1}
+                maxLength={5000}
+                className="flex-1 resize-none rounded-xl border border-ink-soft/15 bg-surface-container-low px-3 py-2 text-sm text-ink placeholder:text-ink-soft/50 focus:border-primary/40 focus:outline-none focus:ring-1 focus:ring-primary/30"
+              />
+              <button
+                onClick={enviar}
+                disabled={!texto.trim() || !conectado}
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary text-white transition-colors hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-focus"
+                aria-label="Enviar mensagem"
+              >
+                <Send aria-hidden className="h-4 w-4" />
               </button>
             </div>
           </div>
-
-          <div ref={containerRef} className="flex-1 overflow-y-auto px-4 py-2 space-y-2">
-            {mensagens.map((m) => (
-              <div key={m.id} className={`flex flex-col ${m.user_id === usuario?.id ? "items-end" : "items-start"}`}>
-                {m.user_id !== usuario?.id && (
-                  <span className="text-[10px] text-ink-soft ml-1 mb-0.5">{m.user_name}</span>
-                )}
-                <div className={`max-w-[85%] rounded-lg px-3 py-1.5 text-sm ${
-                  m.user_id === usuario?.id ? "bg-primary text-white" : "bg-paper text-ink"
-                }`}>
-                  {m.text}
-                </div>
-                <span className="text-[10px] text-ink-soft/60 mt-0.5">
-                  {new Date(m.timestamp).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
-                </span>
-              </div>
-            ))}
-            {digitando && (
-              <div className="text-xs text-ink-soft italic">{digitando} está digitando…</div>
-            )}
-            {!conectado && (
-              <div className="text-center text-xs text-ink-soft py-4">Reconectando…</div>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2 border-t border-ink-soft/15 px-3 py-2">
-            <input value={texto} onChange={(e) => setTexto(e.target.value)} onKeyDown={onKeyDown}
-              placeholder="Digite sua mensagem…"
-              className="flex-1 rounded-input border border-ink-soft/20 bg-surface px-3 py-1.5 text-sm"
-              maxLength={1000}
-            />
-            <button onClick={enviar} disabled={!texto.trim()}
-              className="rounded-input bg-primary p-2 text-white hover:brightness-110 disabled:opacity-40">
-              <Send className="h-4 w-4" />
-            </button>
-          </div>
         </div>
-      )}
-    </>
+      </div>
+    </div>
   );
 }
