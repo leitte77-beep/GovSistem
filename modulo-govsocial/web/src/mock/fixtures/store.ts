@@ -126,6 +126,28 @@ export function encontrarDuplicatas(nome: string, nascimento: string | null) {
     }));
 }
 
+export function listarPessoas() {
+  return pessoas.map((p) => {
+    const f = familias.find((fa) =>
+      fa.membros.some((m) => m.person_id === p.id && m.status === "ATIVO"),
+    );
+    const membro = f?.membros.find((m) => m.person_id === p.id && m.status === "ATIVO");
+    return {
+      id: p.id,
+      nome_exibicao: p.nome_exibicao,
+      nome_civil: p.nome_civil,
+      cpf_mascarado: mascararCpf(p.cpf),
+      nis_mascarado: mascararNis(p.nis),
+      data_nascimento: p.data_nascimento,
+      is_falecido: false,
+      family_id: f?.id ?? null,
+      familia_codigo: f?.codigo ?? null,
+      familia_nome: f?.responsavel_nome ?? null,
+      is_responsavel: membro?.is_responsavel ?? false,
+    };
+  });
+}
+
 export function cpfOuNisEmUso(cpf: string | null, nis: string | null): "cpf" | "nis" | null {
   if (cpf && pessoas.some((p) => p.cpf === cpf)) return "cpf";
   if (nis && pessoas.some((p) => p.nis === nis)) return "nis";

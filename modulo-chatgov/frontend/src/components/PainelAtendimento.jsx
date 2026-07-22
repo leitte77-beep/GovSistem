@@ -120,6 +120,32 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
   const souDono = conversa?.operador_id && conversa.operador_id === opId;
   const semDono = conversa && !conversa.operador_id;
 
+  // Fecha dropdowns ao clicar fora ou pressionar Esc
+  const fecharDropdowns = useCallback(() => {
+    setShowMenuMais(false);
+    setShowTemplates(false);
+    setShowEtiquetas(false);
+    setShowEncaminhar(false);
+    setShowEmojis(false);
+  }, []);
+
+  useEffect(() => {
+    if (!showMenuMais && !showTemplates && !showEtiquetas && !showEncaminhar && !showEmojis) return;
+    const onClickFora = (e) => {
+      if (!e.target.closest('[role="menu"], .cg-enc-menu')) fecharDropdowns();
+    };
+    const onEsc = (e) => { if (e.key === 'Escape') fecharDropdowns(); };
+    const onScroll = () => fecharDropdowns();
+    document.addEventListener('click', onClickFora, true);
+    document.addEventListener('keydown', onEsc);
+    window.addEventListener('scroll', onScroll, true);
+    return () => {
+      document.removeEventListener('click', onClickFora, true);
+      document.removeEventListener('keydown', onEsc);
+      window.removeEventListener('scroll', onScroll, true);
+    };
+  }, [showMenuMais, showTemplates, showEtiquetas, showEncaminhar, showEmojis, fecharDropdowns]);
+
   useEffect(() => { setConversaStatus(conversa?.status); }, [conversa?.id, conversa?.status]);
   const podeGerir = souDono || ehGestor;
   const transfParaMim = transferencia && transferencia.para_operador_id === opId;
@@ -815,9 +841,11 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
   };
 
   if (!conversa) {
+    const op = auth?.operador;
     return React.createElement(EstadoVazio, {
       title: 'Central de Atendimento',
       subtitle: 'Selecione uma conversa à esquerda ou inicie uma nova para começar.',
+      nome: op?.nome || '',
     });
   }
 
@@ -827,7 +855,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
   // Item do menu de ações (bottom-sheet) usado no celular/tablet.
   const acaoSheetItem = (Icone, label, onClick, cor) => React.createElement('button', {
     key: label, onClick,
-    style: { display: 'flex', alignItems: 'center', gap: 16, width: '100%', padding: '14px 20px', border: 'none', background: 'transparent', color: cor || T.text, cursor: 'pointer', fontSize: 15, fontWeight: 500, textAlign: 'left' },
+    style: { display: 'flex', alignItems: 'center', gap: 16, width: '100%', padding: '14px 20px', minHeight: 44, border: 'none', background: 'transparent', color: cor || T.text, cursor: 'pointer', fontSize: 15, fontWeight: 500, textAlign: 'left' },
   }, React.createElement(Icone, { size: 20, style: { flexShrink: 0 } }), label);
 
   return React.createElement('div', {
@@ -847,7 +875,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
     ),
     // Header - WhatsApp style header bar
     React.createElement('div', {
-      style: { display: 'flex', alignItems: 'center', padding: ehCompacto ? '8px 10px' : '10px 20px', background: T.surface, gap: ehCompacto ? 8 : 12, flexShrink: 0, borderBottom: `1px solid #d1d7db`, minHeight: 56 },
+      style: { display: 'flex', alignItems: 'center', padding: ehCompacto ? '8px 10px' : '10px 20px', background: T.surface, gap: ehCompacto ? 8 : 12, flexShrink: 0, borderBottom: `1px solid ${T.border}`, minHeight: 56, minWidth: 0 },
     },
       // Voltar (apenas no celular, onde a lista some ao abrir a conversa)
       onVoltar && ehMobile && React.createElement('button', {
@@ -855,50 +883,111 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
         style: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, flexShrink: 0, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'transparent', color: T.text },
       }, React.createElement(ArrowLeft, { size: 22 })),
       React.createElement(Avatar, { nome, url: conversa.contato_avatar_url, tamanho: ehCompacto ? 38 : 42, isNumber }),
-      React.createElement('div', {
-        style: { flex: 1, minWidth: 0, cursor: 'pointer' },
-        onClick: () => {
-          setNomeEdit(conversa.contato_nome || conversa.contato_telefone || '');
-          setEditandoNome(true);
-        },
-        title: 'Clique para editar o nome do contato',
-      },
-        editandoNome
-          ? React.createElement('div', { style: { display: 'flex', gap: 4, alignItems: 'center' } },
-              React.createElement('input', {
-                value: nomeEdit,
-                onChange: (e) => setNomeEdit(e.target.value),
-                onKeyDown: (e) => {
-                  if (e.key === 'Enter') salvarNomeContato();
-                  if (e.key === 'Escape') setEditandoNome(false);
-                },
-                onBlur: () => setEditandoNome(false),
-                autoFocus: true,
-                style: { fontSize: 14, fontWeight: 700, padding: '4px 8px', border: '2px solid ' + T.primary, borderRadius: T.radiusSm, color: T.text, background: T.surface, outline: 'none', width: '100%' },
-              }),
+      // Mobile ≤400px: header em 2 linhas com truncamento
+      ehMobile
+        ? React.createElement('div', { style: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 } },
+            // Linha 1: NOME + ✎ editar + ⋮
+            React.createElement('div', {
+              style: { display: 'flex', alignItems: 'center', gap: 4, minWidth: 0 },
+            },
+              editandoNome
+                ? React.createElement(React.Fragment, null,
+                    React.createElement('input', {
+                      value: nomeEdit,
+                      onChange: (e) => setNomeEdit(e.target.value),
+                      onKeyDown: (e) => {
+                        if (e.key === 'Enter') salvarNomeContato();
+                        if (e.key === 'Escape') setEditandoNome(false);
+                      },
+                      onBlur: () => setEditandoNome(false),
+                      autoFocus: true,
+                      style: { fontSize: 14, fontWeight: 700, padding: '4px 8px', border: '2px solid ' + T.primary, borderRadius: T.radiusSm, color: T.text, background: T.surface, outline: 'none', flex: 1, minWidth: 0 },
+                    }),
+                    React.createElement('button', {
+                      onMouseDown: (e) => { e.preventDefault(); salvarNomeContato(); },
+                      style: { ...acaoBtn, padding: '4px 8px', fontSize: 11, minHeight: 32 },
+                    }, 'Salvar'),
+                  )
+                : React.createElement('span', {
+                    className: 'cg-hdr-name',
+                    onClick: () => { setNomeEdit(conversa.contato_nome || conversa.contato_telefone || ''); setEditandoNome(true); },
+                    title: 'Clique para editar o nome do contato',
+                    style: { fontSize: 15, fontWeight: 700, color: T.text, cursor: 'pointer', flex: 1, minWidth: 0 },
+                  }, nome,
+                    React.createElement('span', { style: { fontSize: 10, color: T.textMuted, marginLeft: 4, fontWeight: 400 } }, '✎ editar'),
+                  ),
               React.createElement('button', {
-                onMouseDown: (e) => { e.preventDefault(); salvarNomeContato(); },
-                style: { ...acaoBtn, padding: '4px 8px', fontSize: 11 },
-              }, 'Salvar'),
-            )
-          : React.createElement('div', { style: { fontSize: 15, fontWeight: 700, color: T.text } },
-              nome,
-              React.createElement('span', { style: { fontSize: 10, color: T.textMuted, marginLeft: 6, fontWeight: 400 } }, '✎ editar'),
+                onClick: () => setShowAcoes(true), 'aria-label': 'Ações da conversa', title: 'Ações',
+                style: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, flexShrink: 0, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'transparent', color: T.textSecondary },
+              }, React.createElement(MoreVertical, { size: 20 })),
             ),
-        React.createElement('div', { style: { fontSize: 12, color: T.textMuted, display: 'flex', alignItems: 'center', gap: 6 } },
-          React.createElement('span', null, conversa.contato_telefone || ''),
-          (conversa.protocolo_numero || conversa.protocolo) && React.createElement('span', {
-            title: 'Protocolo do atendimento',
-            style: { display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 7px', borderRadius: 999, background: T.primarySoft, color: T.primary, fontWeight: 700, fontSize: 11, fontVariantNumeric: 'tabular-nums' },
-          }, '#', conversa.protocolo_numero || conversa.protocolo),
-          conversa.departamento_nome && React.createElement(DeptBadge, { nome: conversa.departamento_nome, cor: conversa.departamento_cor }),
-        ),
-      ),
-      // Celular/tablet: todas as ações colapsam num único menu "⋮"
-      ehCompacto && React.createElement('button', {
-        onClick: () => setShowAcoes(true), 'aria-label': 'Ações da conversa', title: 'Ações',
-        style: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 38, height: 38, flexShrink: 0, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'transparent', color: T.textSecondary },
-      }, React.createElement(MoreVertical, { size: 22 })),
+            // Linha 2: telefone · #protocolo + tag (chip truncado)
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 } },
+              React.createElement('span', {
+                className: 'cg-hdr-truncate',
+                style: { fontSize: 12, color: T.textMuted, flex: 1, minWidth: 0 },
+              },
+                React.createElement('span', { className: 'cg-hdr-phone' }, conversa.contato_telefone || ''),
+                (conversa.protocolo_numero || conversa.protocolo) && React.createElement(React.Fragment, null,
+                  React.createElement('span', { className: 'cg-hdr-phone' }, ' \u00b7 '),
+                  React.createElement('span', {
+                    title: 'Protocolo do atendimento',
+                    style: { display: 'inline', padding: '1px 6px', borderRadius: 999, background: T.primarySoft, color: T.primary, fontWeight: 700, fontSize: 10, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' },
+                  }, '#', conversa.protocolo_numero || conversa.protocolo),
+                ),
+              ),
+              conversa.departamento_nome && React.createElement('span', {
+                className: 'cg-hdr-truncate',
+                style: { fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 999, background: `${conversa.departamento_cor || T.primary}22`, color: conversa.departamento_cor || T.primary, maxWidth: '40%', flexShrink: 0 },
+              }, conversa.departamento_nome),
+            ),
+          )
+        : React.createElement(React.Fragment, null,
+            React.createElement('div', {
+              style: { flex: 1, minWidth: 0, cursor: 'pointer' },
+              onClick: () => {
+                setNomeEdit(conversa.contato_nome || conversa.contato_telefone || '');
+                setEditandoNome(true);
+              },
+              title: 'Clique para editar o nome do contato',
+            },
+              editandoNome
+                ? React.createElement('div', { style: { display: 'flex', gap: 4, alignItems: 'center' } },
+                    React.createElement('input', {
+                      value: nomeEdit,
+                      onChange: (e) => setNomeEdit(e.target.value),
+                      onKeyDown: (e) => {
+                        if (e.key === 'Enter') salvarNomeContato();
+                        if (e.key === 'Escape') setEditandoNome(false);
+                      },
+                      onBlur: () => setEditandoNome(false),
+                      autoFocus: true,
+                      style: { fontSize: 14, fontWeight: 700, padding: '4px 8px', border: '2px solid ' + T.primary, borderRadius: T.radiusSm, color: T.text, background: T.surface, outline: 'none', width: '100%' },
+                    }),
+                    React.createElement('button', {
+                      onMouseDown: (e) => { e.preventDefault(); salvarNomeContato(); },
+                      style: { ...acaoBtn, padding: '4px 8px', fontSize: 11 },
+                    }, 'Salvar'),
+                  )
+                : React.createElement('div', { style: { fontSize: 15, fontWeight: 700, color: T.text, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
+                    nome,
+                    React.createElement('span', { style: { fontSize: 10, color: T.textMuted, marginLeft: 6, fontWeight: 400 } }, '\u270E editar'),
+                  ),
+              React.createElement('div', { style: { fontSize: 12, color: T.textMuted, display: 'flex', alignItems: 'center', gap: 6, minWidth: 0, overflow: 'hidden' } },
+                React.createElement('span', { style: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, conversa.contato_telefone || ''),
+                (conversa.protocolo_numero || conversa.protocolo) && React.createElement('span', {
+                  title: 'Protocolo do atendimento',
+                  style: { display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 7px', borderRadius: 999, background: T.primarySoft, color: T.primary, fontWeight: 700, fontSize: 11, fontVariantNumeric: 'tabular-nums' },
+                }, '#', conversa.protocolo_numero || conversa.protocolo),
+                conversa.departamento_nome && React.createElement(DeptBadge, { nome: conversa.departamento_nome, cor: conversa.departamento_cor }),
+              ),
+            ),
+            // Celular/tablet: todas as ações colapsam num único menu "⋮"
+            ehCompacto && React.createElement('button', {
+              onClick: () => setShowAcoes(true), 'aria-label': 'Ações da conversa', title: 'Ações',
+              style: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 38, height: 38, flexShrink: 0, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'transparent', color: T.textSecondary },
+            }, React.createElement(MoreVertical, { size: 22 })),
+          ),
       // Desktop: barra completa de ações inline
       !ehCompacto && React.createElement(React.Fragment, null,
       // Assumir conversa (sem dono)
@@ -1091,8 +1180,8 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
         'aria-label': 'Mensagens da conversa',
         style: {
           flex: 1, overflowY: 'auto', padding: ehMobile ? '12px 10px' : '20px 24px',
-          backgroundColor: '#f0f2f5',
-          backgroundImage: 'radial-gradient(#d1d7db 0.5px, transparent 0.5px)',
+          backgroundColor: T.bg,
+          backgroundImage: `radial-gradient(${T.borderStrong} 0.5px, transparent 0.5px)`,
           backgroundSize: '20px 20px',
         },
       },
@@ -1283,7 +1372,8 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
     }, erroEnvio),
     React.createElement('form', {
       onSubmit: enviar,
-      style: { position: 'relative', display: 'flex', alignItems: 'flex-end', padding: ehMobile ? '8px 8px' : '10px 16px', background: T.surface, gap: ehMobile ? 6 : 10, flexShrink: 0, borderTop: `1px solid ${T.border}` },
+      className: 'composer',
+      style: { position: 'relative', background: T.surface, flexShrink: 0, borderTop: `1px solid ${T.border}` },
     },
       // Picker de emojis rápidos
       showEmojis && React.createElement('div', {
@@ -1295,7 +1385,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
           style: { fontSize: 20, background: 'transparent', border: 'none', cursor: 'pointer', padding: 4, lineHeight: 1 },
         }, e))),
       React.createElement('button', {
-        type: 'button', onClick: () => setShowEmojis(!showEmojis), 'aria-label': 'Inserir emoji',
+        type: 'button', onClick: () => setShowEmojis(!showEmojis), 'aria-label': 'Inserir emoji', className: 'icon-btn icon-emoji',
         style: iconBtn,
       }, React.createElement(Smile, { size: 22, color: showEmojis ? T.primary : T.textMuted })),
       React.createElement('input', {
@@ -1322,15 +1412,15 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
         },
       }),
       React.createElement('button', {
-        type: 'button', onClick: () => fileRef.current?.click(), 'aria-label': 'Anexar arquivo', disabled: anexando,
+        type: 'button', onClick: () => fileRef.current?.click(), 'aria-label': 'Anexar arquivo', disabled: anexando, className: 'icon-btn',
         style: iconBtn,
       }, anexando
         ? React.createElement(Loader2, { size: 22, color: T.textMuted, className: 'spin' })
         : React.createElement(Paperclip, { size: 22, color: T.textMuted })),
-      React.createElement('div', { style: { flex: 1, position: 'relative' } },
+      React.createElement('div', { className: 'composer-textarea', style: { flex: 1, position: 'relative', minWidth: 0 } },
         React.createElement('textarea', {
           ref: inputRef, value: texto, onChange: (e) => setTexto(e.target.value),
-          placeholder: gravando ? 'Gravando áudio...' : previewArquivo ? 'Digite uma legenda e pressione Enter para enviar...' : audioBlob ? 'Adicione uma legenda (opcional)...' : 'Digite (Enter envia, Shift+Enter quebra linha, Ctrl+V cola arquivo)',
+          placeholder: gravando ? 'Gravando áudio...' : previewArquivo ? 'Digite uma legenda e pressione Enter para enviar...' : audioBlob ? 'Adicione uma legenda (opcional)...' : 'Digite sua mensagem…',
           rows: 1,
           'aria-label': 'Mensagem',
           maxLength: 4000,
@@ -1340,7 +1430,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(e); }
             else if (e.key === 'Escape' && respondendoA) { setRespondendoA(null); }
           },
-          style: { width: '100%', resize: 'none', maxHeight: 120, minHeight: 22, boxSizing: 'border-box', background: T.surfaceMuted, border: `1px solid ${T.border}`, borderRadius: 22, padding: '11px 52px 11px 16px', color: T.text, fontSize: 14, outline: 'none', fontFamily: 'inherit', lineHeight: '20px', opacity: gravando ? 0.5 : 1 },
+          style: { width: '100%', boxSizing: 'border-box', background: T.surfaceMuted, border: `1px solid ${T.border}`, borderRadius: 22, paddingRight: 40, color: T.text, outline: 'none', fontFamily: 'inherit', opacity: gravando ? 0.5 : 1 },
         }),
         texto.length > 0 && React.createElement('span', {
           style: { position: 'absolute', right: 12, bottom: 6, fontSize: 10, color: texto.length > 3800 ? T.danger : T.textMuted },
@@ -1354,7 +1444,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
         title: gravando ? 'Parar' : 'Gravar áudio (máx. 2 min)',
         disabled: anexando,
         style: {
-          width: 44, height: 44, flexShrink: 0, borderRadius: '50%', border: 'none',
+          width: 40, height: 40, flexShrink: 0, borderRadius: '50%', border: 'none',
           cursor: anexando ? 'not-allowed' : 'pointer',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           background: gravando ? T.danger : (anexando ? T.surfaceMuted : T.primarySoft),
@@ -1371,7 +1461,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
         disabled: enviando || anexando || gravando || (!texto.trim() && !audioBlob),
         'aria-label': 'Enviar mensagem',
         title: connected ? 'Enviar' : 'Conectando...',
-        style: { width: 44, height: 44, flexShrink: 0, borderRadius: '50%', border: 'none', cursor: enviando || (!texto.trim() && !audioBlob) ? 'default' : 'pointer', background: (texto.trim() || audioBlob) && !enviando && !gravando ? T.primary : T.surfaceMuted, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+        style: { width: 40, height: 40, flexShrink: 0, borderRadius: '50%', border: 'none', cursor: enviando || (!texto.trim() && !audioBlob) ? 'default' : 'pointer', background: (texto.trim() || audioBlob) && !enviando && !gravando ? T.primary : T.surfaceMuted, display: 'flex', alignItems: 'center', justifyContent: 'center' },
       }, enviando
         ? React.createElement(Loader2, { size: 20, color: '#fff', className: 'spin' })
         : React.createElement(Send, { size: 20, color: (texto.trim() || audioBlob) && !enviando && !gravando ? '#fff' : T.textMuted })),
@@ -1535,20 +1625,22 @@ function ConfirmModal({ titulo, texto, confirmarLabel = 'Confirmar', cancelarLab
   );
 }
 
-function RelogioCalendario() {
+function RelogioCalendario({ nome }) {
   const [hora, setHora] = React.useState(new Date());
   React.useEffect(() => {
     const timer = setInterval(() => setHora(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
   const saudacao = hora.getHours() < 12 ? 'Bom dia' : hora.getHours() < 18 ? 'Boa tarde' : 'Boa noite';
+  const primeiroNome = nome ? nome.trim().split(' ')[0] : '';
+  const saudacaoTexto = primeiroNome ? `${saudacao}, ${primeiroNome}!` : `${saudacao}!`;
   const diaSemana = ['Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira', 'Sábado'][hora.getDay()];
   const meses = ['Janeiro', 'Fevereiro', 'Março', 'Abril', 'Maio', 'Junho', 'Julho', 'Agosto', 'Setembro', 'Outubro', 'Novembro', 'Dezembro'];
   const dataStr = `${diaSemana}, ${hora.getDate()} de ${meses[hora.getMonth()]} de ${hora.getFullYear()}`;
   const horaStr = hora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
   return React.createElement('div', { style: { textAlign: 'center', marginBottom: 24 } },
-    React.createElement('p', { style: { fontSize: 18, fontWeight: 700, color: T.primary, marginBottom: 8 } }, saudacao + '!'),
+    React.createElement('p', { style: { fontSize: 18, fontWeight: 700, color: T.primary, marginBottom: 8 } }, saudacaoTexto),
     React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 6 } },
       React.createElement('span', { className: 'material-symbols-outlined', style: { fontSize: 20, color: T.textSecondary } }, 'schedule'),
       React.createElement('span', { style: { fontSize: 26, fontWeight: 700, color: T.text, fontVariantNumeric: 'tabular-nums', letterSpacing: 1 } }, horaStr),
@@ -1560,7 +1652,7 @@ function RelogioCalendario() {
   );
 }
 
-function EstadoVazio({ title, subtitle }) {
+function EstadoVazio({ title, subtitle, nome }) {
   return React.createElement('div', {
     style: {
       flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden',
@@ -1570,10 +1662,10 @@ function EstadoVazio({ title, subtitle }) {
       style: {
         height: 64, width: '100%', display: 'flex', alignItems: 'center',
         padding: '0 24px',
-        background: 'rgba(255,255,255,0.8)',
+        background: T.surface,
         backdropFilter: 'blur(12px)',
         WebkitBackdropFilter: 'blur(12px)',
-        borderBottom: '1px solid #d1d7db',
+        borderBottom: `1px solid ${T.border}`,
         flexShrink: 0,
       },
     },
@@ -1585,8 +1677,8 @@ function EstadoVazio({ title, subtitle }) {
       style: {
         flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
         position: 'relative',
-        backgroundColor: T.bg,
-        backgroundImage: 'radial-gradient(#d1d7db 0.5px, transparent 0.5px)',
+         backgroundColor: T.bg,
+        backgroundImage: `radial-gradient(${T.borderStrong} 0.5px, transparent 0.5px)`,
         backgroundSize: '20px 20px',
       },
     },
@@ -1630,7 +1722,7 @@ function EstadoVazio({ title, subtitle }) {
               position: 'absolute', bottom: -4, right: -4,
               background: '#fff', padding: 8, borderRadius: '50%',
               boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
-              border: '1px solid #d1d7db',
+              border: `1px solid ${T.border}`,
             },
           },
             React.createElement('span', {
@@ -1642,7 +1734,7 @@ function EstadoVazio({ title, subtitle }) {
         React.createElement('h2', {
           style: { fontSize: 28, fontWeight: 800, color: T.text, marginBottom: 16, letterSpacing: -0.5 },
         }, 'GovSistem Web'),
-        React.createElement(RelogioCalendario),
+        React.createElement(RelogioCalendario, { nome }),
         React.createElement('p', {
           style: { fontSize: 14, color: T.textSecondary, lineHeight: '22px', marginBottom: 40, maxWidth: 380, margin: '0 auto 40px' },
         }, 'Selecione um atendimento na lista ao lado para iniciar uma conversa. Você pode alternar entre departamentos clicando no nome do setor no topo da barra lateral.'),
@@ -1650,7 +1742,7 @@ function EstadoVazio({ title, subtitle }) {
           style: { fontSize: 13, color: T.textMuted, lineHeight: '20px', maxWidth: 340, margin: '0 auto 24px' },
         }, 'Atalho: use Ctrl + K para buscar conversas rapidamente pelo nome ou número do cidadão.'),
         React.createElement('div', {
-          style: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: T.textMuted, opacity: 0.6 },
+          style: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: T.textSecondary },
         },
           React.createElement('span', {
             className: 'material-symbols-outlined',
@@ -1663,8 +1755,8 @@ function EstadoVazio({ title, subtitle }) {
   );
 }
 
-const acaoBtn = { display: 'flex', alignItems: 'center', gap: 5, background: T.surface, border: `1px solid ${T.borderStrong}`, color: T.textSecondary, fontSize: 12.5, fontWeight: 600, padding: '7px 12px', borderRadius: T.radiusSm, cursor: 'pointer', whiteSpace: 'nowrap' };
-const iconBtn = { background: 'transparent', border: 'none', cursor: 'pointer', padding: 4, display: 'flex' };
+const acaoBtn = { display: 'flex', alignItems: 'center', gap: 5, background: T.surface, border: `1px solid ${T.borderStrong}`, color: T.textSecondary, fontSize: 12.5, fontWeight: 600, padding: '9px 14px', borderRadius: T.radiusSm, cursor: 'pointer', whiteSpace: 'nowrap', minHeight: 44 };
+const iconBtn = { background: 'transparent', border: 'none', cursor: 'pointer', display: 'grid', placeItems: 'center' };
 
 // Painel deslizante de baixo (estilo WhatsApp mobile) para os menus de ação.
 function BottomSheet({ titulo, onClose, children }) {
@@ -1689,7 +1781,7 @@ function BottomSheet({ titulo, onClose, children }) {
     ),
   );
 }
-const dropdown = { position: 'absolute', top: '100%', right: 0, background: T.surface, borderRadius: T.radius, boxShadow: T.shadowMd, border: `1px solid ${T.border}`, zIndex: 100, minWidth: 230, overflow: 'hidden', marginTop: 6 };
+const dropdown = { position: 'absolute', top: '100%', right: 0, background: T.surface, borderRadius: T.radius, boxShadow: '0 8px 24px rgba(0,0,0,.18)', border: `1px solid ${T.border}`, zIndex: 9999, minWidth: 230, overflow: 'hidden', marginTop: 6 };
 const dropdownItem = { display: 'flex', alignItems: 'center', gap: 9, width: '100%', padding: '10px 14px', border: 'none', background: 'transparent', color: T.text, cursor: 'pointer', fontSize: 13.5, textAlign: 'left' };
 
 // Estilos + animações do menu Encaminhar (hover real e cascata exigem CSS, não dá com inline)

@@ -87,6 +87,8 @@ CREATE TABLE IF NOT EXISTS conversas (
 );
 CREATE INDEX IF NOT EXISTS idx_conv_status ON conversas(tenant_id, status);
 CREATE INDEX IF NOT EXISTS idx_conv_dep    ON conversas(departamento_id);
+-- Índice composto para o painel operacional: SLA (conversas abertas aguardando resposta)
+CREATE INDEX IF NOT EXISTS idx_conv_operacional ON conversas(tenant_id, status, departamento_id);
 
 CREATE TABLE IF NOT EXISTS mensagens (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),

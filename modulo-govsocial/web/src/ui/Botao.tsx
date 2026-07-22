@@ -2,7 +2,7 @@ import { forwardRef, useState, type ButtonHTMLAttributes, type ReactNode } from 
 import clsx from "clsx";
 import { Loader2 } from "lucide-react";
 
-type Variante = "primario" | "secundario" | "perigo" | "texto";
+type Variante = "primario" | "secundario" | "tertiario" | "perigo" | "texto";
 type Tamanho = "md" | "sm";
 
 export type BotaoProps = ButtonHTMLAttributes<HTMLButtonElement> & {
@@ -20,6 +20,8 @@ const VARIANTES: Record<Variante, string> = {
     "bg-primary text-white hover:brightness-110 disabled:opacity-60 border border-transparent",
   secundario:
     "bg-surface text-ink border border-ink-soft/30 hover:border-primary hover:text-primary disabled:opacity-60",
+  tertiario:
+    "bg-transparent text-ink-soft hover:text-primary hover:bg-primary-soft/50 disabled:opacity-60 border border-transparent",
   perigo:
     "bg-danger text-white hover:brightness-110 disabled:opacity-60 border border-transparent",
   texto: "bg-transparent text-primary hover:underline disabled:opacity-60 border border-transparent",

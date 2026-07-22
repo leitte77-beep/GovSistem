@@ -42,6 +42,20 @@ export class ErroApi extends Error {
   }
 }
 
+/** Type guard para ErroApi. Use ao invés de `(error as ErroApi).problema`. */
+export function isErroApi(erro: unknown): erro is ErroApi {
+  return erro instanceof Error && erro.name === "ErroApi";
+}
+
+/** Extrai ProblemDetails seguro, com fallback para erros desconhecidos. */
+export function extrairProblema(erro: unknown): ProblemDetails {
+  if (isErroApi(erro)) return erro.problema;
+  if (erro instanceof Error) {
+    return { type: "about:blank", title: erro.message, status: 0 };
+  }
+  return { type: "about:blank", title: "Erro inesperado", status: 0 };
+}
+
 /** Deriva a mensagem exibível. Nunca inclui dado pessoal (§1.4). */
 export function mensagemAmigavel(problema: ProblemDetails): string {
   if (problema.type && POR_TIPO[problema.type]) return POR_TIPO[problema.type];

@@ -34,8 +34,8 @@ export function ShellModulo() {
   const [salaAtiva, setSalaAtiva] = useState("geral");
 
   const mensagensFiltradas = useMemo(
-    () => mensagens.filter(() => salaAtiva === "geral"),
-    [mensagens, salaAtiva],
+    () => mensagens,
+    [mensagens],
   );
 
   return (

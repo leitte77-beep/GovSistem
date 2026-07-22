@@ -62,5 +62,54 @@ export type DashboardActivityItem = {
   entidade: string;
   data: string;
   acao: string;
+  // TODO(backend): preencher nos eventos de auditoria para permitir frases
+  // completas ("consultou a família {nome}") sem depender de `descricao` livre.
+  nome?: string | null;
+  competencia?: string | null;
   ator?: string | null;
+};
+
+// ── KPICard ──────────────────────────────────────────────────────
+export type KPIDelta = {
+  direction: "up" | "down" | "flat";
+  percent?: number;
+  label: string;
+};
+
+export type KPICardProps = {
+  label: string;
+  value: number | string;
+  hint?: string;
+  delta?: KPIDelta;
+  sparkline?: number[];
+  accent?: boolean;
+  to?: string;
+  loading?: boolean;
+  error?: boolean;
+  /** KILL-SWITCH: quando false, NADA é renderizado no canto superior direito (sem traço, ícone, svg, nada). Padrão: true. */
+  showDecoration?: boolean;
+};
+
+// ── Recomendações ─────────────────────────────────────────────────
+export type RecommendationSeverity = "alerta" | "atencao" | "info";
+
+export type Recommendation = {
+  id: string;
+  severity: RecommendationSeverity;
+  title: string;
+  detail?: string;
+  ctaLabel: string;
+  to: string;
+  icon: string;
+};
+
+export type RecommendationScope = {
+  rmaFechado: boolean;
+  diasAteFimDoMes: number;
+  mesAtual: string;
+  nisPendentes: number;
+  semAtendimento90d: number;
+  agendamentosHoje: number;
+  aniversariantesSemana: number;
+  encaminhamentosPrazo: number;
 };

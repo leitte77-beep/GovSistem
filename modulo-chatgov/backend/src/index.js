@@ -1002,6 +1002,184 @@ app.use('/api', rateLimiter);
     }
   });
 
+  // ===== Painel Operacional (KPIs, SLA, volume por setor) =====
+  app.get('/api/conversas/operacional', async (req, res) => {
+    try {
+      const op = req.operador;
+      const { departamento_id } = req.query;
+      const gestor = ehGestor(op);
+
+      // Clausula de visibilidade para queries agregadas.
+      // Para gestores: sem restricao alem do tenant.
+      // Para operadores: ve apenas o que o filtroVisibilidadeSql permite.
+      const params = [op.tenantId];
+      let idx = 2;
+
+      const visibilidadeWhere = gestor
+        ? ''
+        : ` AND ${filtroVisibilidadeSql('c', `$${idx++}`)}`;
+      if (!gestor) params.push(op.id);
+
+      let deptFilter = '';
+      if (departamento_id) {
+        deptFilter = ` AND c.departamento_id = $${idx++}::uuid`;
+        params.push(departamento_id);
+      }
+
+      // ---- KPIs ----
+      // na_fila: conversas com status='fila'
+      const filaQuery = `SELECT COUNT(*)::int FROM conversas c WHERE c.tenant_id = $1 AND c.status = 'fila'${visibilidadeWhere}${deptFilter}`;
+      const filaParams = [...params];
+
+      // em_andamento: conversas com status='aberta' (agente respondeu e aguarda cidadao, ou em andamento)
+      const andamentoQuery = `SELECT COUNT(*)::int FROM conversas c WHERE c.tenant_id = $1 AND c.status = 'aberta'${visibilidadeWhere}${deptFilter}`;
+      const andamentoParams = [...params];
+
+      // concluidos_hoje: resolvidas no dia corrente (fuso do tenant -- usamos o servidor por enquanto)
+      const hojeParams = [...params];
+      const concluidosQuery = `SELECT COUNT(*)::int FROM conversas c
+        WHERE c.tenant_id = $1
+        AND c.status = 'resolvida'
+        AND c.ultima_mensagem_em >= (CURRENT_DATE AT TIME ZONE 'America/Sao_Paulo')::timestamptz
+        AND c.ultima_mensagem_em < ((CURRENT_DATE + 1) AT TIME ZONE 'America/Sao_Paulo')::timestamptz
+        ${visibilidadeWhere}${deptFilter}`;
+
+      // nao_lidas: soma de c.nao_lidas das conversas visiveis
+      const naoLidasQuery = `SELECT COALESCE(SUM(c.nao_lidas), 0)::int FROM conversas c WHERE c.tenant_id = $1 AND c.nao_lidas > 0${visibilidadeWhere}${deptFilter}`;
+      const naoLidasParams = [...params];
+
+      // tma_primeira_resposta: tempo medio (seg) entre mensagem de entrada e primeira saida do agente HOJE.
+      // Usa LATERAL para buscar a primeira resposta em uma única subquery, evitando 3 correlated subqueries.
+      const tmaQuery = `
+        WITH entradas_hoje AS (
+          SELECT m.conversa_id, m.criado_em AS entrada_em
+          FROM mensagens m
+          JOIN conversas c ON c.id = m.conversa_id AND c.tenant_id = $1
+          WHERE m.tenant_id = $1
+            AND m.direcao = 'entrada'
+            AND m.operador_id IS NULL
+            AND m.criado_em >= (CURRENT_DATE AT TIME ZONE 'America/Sao_Paulo')::timestamptz
+            AND m.criado_em < ((CURRENT_DATE + 1) AT TIME ZONE 'America/Sao_Paulo')::timestamptz
+            ${visibilidadeWhere}${deptFilter}
+        )
+        SELECT COALESCE(AVG(
+          EXTRACT(EPOCH FROM (r.resposta_em - e.entrada_em))
+        ), 0)::float AS tma_seg
+        FROM entradas_hoje e
+        CROSS JOIN LATERAL (
+          SELECT MIN(m2.criado_em) AS resposta_em
+          FROM mensagens m2
+          WHERE m2.conversa_id = e.conversa_id
+            AND m2.tenant_id = $1
+            AND m2.direcao = 'saida'
+            AND m2.operador_id IS NOT NULL
+            AND m2.criado_em > e.entrada_em
+        ) r
+        WHERE r.resposta_em IS NOT NULL`;
+
+      // ---- SLA: top conversas aguardando resposta do agente ----
+      // Regra correta:
+      // 1. Conversa aberta (fila | aberta)
+      // 2. A ULTIMA mensagem de qualquer autor deve ser do CIDADÃO (direcao='entrada')
+      // 3. espera = now - timestamp dessa ultima mensagem
+      // 4. Ordenado decrescente por espera; top N
+      // Usamos DISTINCT ON + window para pegar a ultima mensagem de cada conversa.
+      const slaLimit = parseInt(req.query.sla_limite, 10) || 5;
+      const slaAbandonoSeg = parseInt(req.query.sla_abandono_seg, 10) || (7 * 24 * 3600);
+      const slaQuery = `
+        WITH ultima_msg AS (
+          SELECT DISTINCT ON (m.conversa_id)
+            m.conversa_id,
+            m.direcao,
+            m.operador_id,
+            m.criado_em
+          FROM mensagens m
+          WHERE m.tenant_id = $1
+          ORDER BY m.conversa_id, m.criado_em DESC
+        )
+        SELECT c.id, um.criado_em AS ultima_mensagem_cidadao_em,
+               co.nome AS contato_nome, co.telefone AS contato_telefone,
+               d.nome AS departamento_nome, d.cor AS departamento_cor,
+               EXTRACT(EPOCH FROM (NOW() - um.criado_em))::int AS espera_segundos
+        FROM conversas c
+        JOIN contatos co ON co.id = c.contato_id
+        JOIN ultima_msg um ON um.conversa_id = c.id
+        LEFT JOIN departamentos d ON d.id = c.departamento_id
+        WHERE c.tenant_id = $1
+          AND c.status IN ('fila', 'aberta')
+          AND um.direcao = 'entrada'
+          AND um.operador_id IS NULL
+          ${visibilidadeWhere}${deptFilter}
+          AND EXTRACT(EPOCH FROM (NOW() - um.criado_em)) <= $${idx++}
+        ORDER BY um.criado_em ASC
+        LIMIT $${idx++}`;
+      const slaParams = [...params, slaAbandonoSeg, slaLimit];
+
+      // Contagem de abandonadas (espera > teto, sem visibilidade no ranking)
+      const abandonadasQuery = `
+        WITH ultima_msg AS (
+          SELECT DISTINCT ON (m.conversa_id)
+            m.conversa_id, m.direcao, m.operador_id, m.criado_em
+          FROM mensagens m
+          WHERE m.tenant_id = $1
+          ORDER BY m.conversa_id, m.criado_em DESC
+        )
+        SELECT COUNT(*)::int FROM conversas c
+        JOIN ultima_msg um ON um.conversa_id = c.id
+        WHERE c.tenant_id = $1
+          AND c.status IN ('fila', 'aberta')
+          AND um.direcao = 'entrada'
+          AND um.operador_id IS NULL
+          ${visibilidadeWhere}${deptFilter}
+          AND EXTRACT(EPOCH FROM (NOW() - um.criado_em)) > $${idx++}`;
+      const abandonadasParams = [...params, slaAbandonoSeg];
+
+      // ---- Volume por setor (abertas agora, sem janela, bate com KPIs) ----
+      // LEFT JOIN inclui conversas sem departamento (agrupadas como "Sem setor").
+      const volumeQuery = `
+        SELECT COALESCE(d.id::text, 'sem-setor') AS departamento_id,
+               COALESCE(d.nome, 'Sem setor') AS departamento_nome,
+               COALESCE(d.cor, '#6B7280') AS departamento_cor,
+               COUNT(c.id)::int AS total
+        FROM conversas c
+        LEFT JOIN departamentos d ON d.id = c.departamento_id AND d.ativo = true
+        WHERE c.tenant_id = $1
+          AND c.status IN ('fila', 'aberta')
+          ${visibilidadeWhere}
+        GROUP BY d.id, d.nome, d.cor
+        ORDER BY total DESC`;
+      const volumeParams = [op.tenantId];
+      if (!gestor) volumeParams.push(op.id);
+
+      const [naFila, emAndamento, concluidosHoje, naoLidas, tma, sla, abandonadas, volume] = await Promise.all([
+        db.one(filaQuery, filaParams).then(r => r.count).catch(() => 0),
+        db.one(andamentoQuery, andamentoParams).then(r => r.count).catch(() => 0),
+        db.one(concluidosQuery, hojeParams).then(r => r.count).catch(() => 0),
+        db.one(naoLidasQuery, naoLidasParams).then(r => r.sum || 0).catch(() => 0),
+        db.one(tmaQuery, params).then(r => Math.round(r.tma_seg || 0)).catch(() => 0),
+        db.manyOrNone(slaQuery, slaParams).catch(() => []),
+        db.one(abandonadasQuery, abandonadasParams).then(r => r.count).catch(() => 0),
+        db.manyOrNone(volumeQuery, volumeParams).catch(() => []),
+      ]);
+
+      res.json({
+        kpis: {
+          na_fila: naFila,
+          em_atendimento: emAndamento,
+          concluidos_hoje: concluidosHoje,
+          tma_primeira_resposta_seg: tma,
+          nao_lidas: naoLidas,
+        },
+        sla,
+        abandonadas,
+        volume_por_setor: volume,
+      });
+    } catch (err) {
+      console.error('[API] operacional error:', err.message);
+      res.status(500).json({ erro: 'Erro ao buscar dados operacionais' });
+    }
+  });
+
   // ===== Agenda de Contatos =====
   app.get('/api/contatos', async (req, res) => {
     try {

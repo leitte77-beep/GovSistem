@@ -1,4 +1,5 @@
 import { useId, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import clsx from "clsx";
 import { X } from "lucide-react";
 import { usePrenderFoco } from "./usePrenderFoco";
@@ -15,20 +16,17 @@ export type ModalProps = {
 
 const LARGURA = { sm: "max-w-sm", md: "max-w-lg", lg: "max-w-2xl" };
 
-export function Modal({
-  aberto,
+function ConteudoModal({
   aoFechar,
   titulo,
   descricao,
   tamanho = "md",
   children,
   rodape,
-}: ModalProps) {
-  const ref = usePrenderFoco(aberto, aoFechar);
+}: Omit<ModalProps, "aberto">) {
+  const ref = usePrenderFoco(true, aoFechar);
   const tituloId = useId();
   const descId = useId();
-
-  if (!aberto) return null;
 
   return (
     <div
@@ -49,11 +47,11 @@ export function Modal({
         aria-labelledby={tituloId}
         aria-describedby={descricao ? descId : undefined}
         className={clsx(
-          "relative z-10 w-full rounded-2xl bg-white shadow-xl ring-1 ring-black/5 border border-black/5",
+          "relative z-10 flex max-h-[calc(100vh-2rem)] w-full flex-col rounded-2xl bg-white shadow-xl ring-1 ring-black/5 border border-black/5",
           LARGURA[tamanho],
         )}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-ink-soft/15 p-4">
+        <div className="flex items-start justify-between gap-4 border-b border-ink-soft/15 p-4 shrink-0">
           <div>
             <h2 id={tituloId} className="text-lg">
               {titulo}
@@ -73,11 +71,16 @@ export function Modal({
             <X aria-hidden className="h-5 w-5" />
           </button>
         </div>
-        <div className="p-4">{children}</div>
+        <div className="overflow-y-auto p-4">{children}</div>
         {rodape && (
-          <div className="flex justify-end gap-2 border-t border-ink-soft/15 p-4">{rodape}</div>
+          <div className="flex justify-end gap-2 border-t border-ink-soft/15 p-4 shrink-0">{rodape}</div>
         )}
       </div>
     </div>
   );
+}
+
+export function Modal({ aberto, ...props }: ModalProps) {
+  if (!aberto) return null;
+  return createPortal(<ConteudoModal {...props} />, document.body);
 }

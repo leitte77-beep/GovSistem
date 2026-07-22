@@ -5,7 +5,6 @@ from sqlalchemy import String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.types import JSON
-from sqlalchemy.types import JSON
 
 from app.models.base import Base, TimestampMixin
 

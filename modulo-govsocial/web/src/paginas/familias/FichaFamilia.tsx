@@ -1,5 +1,5 @@
-import { useCallback, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useNavigate, useParams, Link } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueries, useQueryClient } from "@tanstack/react-query";
@@ -145,9 +145,9 @@ export default function FichaFamilia() {
       conteudo: (
         <div className="space-y-3">
           <div className="flex justify-end">
-            <a href={`/assistencia-social/beneficios?familia=${familia.id}`}>
+            <Link to={`/beneficios?familia=${familia.id}`}>
               <Chip cor="beneficio">Conceder benefício →</Chip>
-            </a>
+            </Link>
           </div>
           <AbaBeneficios familyId={familia.id} />
         </div>
@@ -210,7 +210,7 @@ export default function FichaFamilia() {
           onClick={() => navigate(`/familias/${familia.id}/atendimento`)}
           aria-label="Registrar atendimento"
           title="Registrar atendimento"
-          className="nao-imprimir fixed bottom-8 right-8 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-on-primary shadow-2xl transition-transform hover:scale-110"
+          className="nao-imprimir fixed bottom-24 right-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-primary text-on-primary shadow-2xl transition-transform hover:scale-110"
         >
           <span aria-hidden="true" className="material-symbols-outlined !text-[28px]">
             add
@@ -318,7 +318,7 @@ function AbaTrilha({ familyId, lotacoes }: { familyId: string; lotacoes: string[
 function AbaBeneficios({ familyId }: { familyId: string }) {
   const tiposQ = useTiposBeneficio();
   const concessoesQ = useConcessoesDaFamilia(familyId);
-  useMemo(() => {
+  useEffect(() => {
     if (tiposQ.data) registrarTiposBeneficio(tiposQ.data);
   }, [tiposQ.data]);
   return (

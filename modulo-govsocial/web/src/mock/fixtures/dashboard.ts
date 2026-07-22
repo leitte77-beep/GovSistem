@@ -5,6 +5,7 @@ import type {
   MapItem,
   TerritoryItem,
   TimeSeriesItem,
+  RecommendationScope,
 } from "@/tipos/dashboard";
 
 /**
@@ -102,4 +103,41 @@ export const DASHBOARD_INDICADORES: IndicatorsOut = {
     { faixa: "MEIO_A_UM_SM", total: 402 },
     { faixa: "ACIMA_UM_SM", total: 231 },
   ],
+};
+
+/** Escopo de recomendações mock (dados plausíveis de tenant ativo). */
+export const MOCK_RECOMMENDATION_SCOPE: RecommendationScope = {
+  rmaFechado: false,
+  diasAteFimDoMes: 9,
+  mesAtual: "jul/2026",
+  nisPendentes: 3,
+  semAtendimento90d: 7,
+  agendamentosHoje: 4,
+  aniversariantesSemana: 2,
+  encaminhamentosPrazo: 1,
+};
+
+/** Escopo zerado para teste de fallback. */
+export const MOCK_RECOMMENDATION_SCOPE_ZERADO: RecommendationScope = {
+  rmaFechado: true,
+  diasAteFimDoMes: 20,
+  mesAtual: "jul/2026",
+  nisPendentes: 0,
+  semAtendimento90d: 0,
+  agendamentosHoje: 0,
+  aniversariantesSemana: 0,
+  encaminhamentosPrazo: 0,
+};
+
+/**
+ * Mock da série temporal mensal para sparklines dos KPIs.
+ * Cada array de 6 posições representa os últimos 6 meses.
+ */
+export const MOCK_KPI_SPARKLINES = {
+  atendimentos: [280, 310, 295, 342, 328, 310],
+  acompanhamentos: [115, 120, 118, 128, 130, 125],
+  familias: [1800, 1825, 1845, 1850, 1865, 1876],
+  beneficios: [85, 92, 78, 97, 88, 82],
+  encaminhamentos: [8, 12, 9, 11, 15, 7],
+  scfv: [200, 205, 210, 208, 212, 214],
 };

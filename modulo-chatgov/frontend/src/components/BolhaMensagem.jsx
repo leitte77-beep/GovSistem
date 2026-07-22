@@ -158,6 +158,7 @@ export function BolhaMensagem({ msg, isMe, agrupada, opId, operadores, onContext
       },
     },
       React.createElement('div', {
+        className: 'cg-bolha',
         onContextMenu: (e) => { e.preventDefault(); onContextMenu?.(e, msg); },
         onDoubleClick: (e) => onContextMenu?.(e, msg),
         'aria-label': `${msg.remetente_nome || 'Operador'} disse: ${msg.conteudo || tipo}`,
@@ -165,7 +166,7 @@ export function BolhaMensagem({ msg, isMe, agrupada, opId, operadores, onContext
           background: isMe ? '#DCF8C6' : '#FFFFFF',
           color: T.text, padding: '6px 9px 4px 9px',
           borderRadius: isMe ? '12px 4px 12px 12px' : '4px 12px 12px 12px',
-          maxWidth: '100%', boxShadow: '0 1px 2px rgba(16,26,42,0.08)', position: 'relative',
+          boxShadow: '0 1px 2px rgba(16,26,42,0.08)', position: 'relative',
           cursor: 'context-menu',
         },
       },

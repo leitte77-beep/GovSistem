@@ -218,7 +218,7 @@ export function PaginaProtocolos({ breakpoint }) {
   };
 
   const conteudo = React.createElement('div', {
-    style: { flex: 1, minWidth: 0, height: '100%', overflowY: 'auto', background: T.bg, padding: ehMobile ? 14 : 20 },
+    style: { flex: 1, minWidth: 0, height: '100%', overflowY: 'auto', overflowX: 'hidden', background: T.bg, padding: ehMobile ? 14 : 20 },
   },
     // Cabeçalho
     React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 } },
@@ -262,21 +262,23 @@ export function PaginaProtocolos({ breakpoint }) {
           React.createElement(FileText, { size: 40, style: { color: T.borderStrong, marginBottom: 12 } }),
           React.createElement('div', null, 'Nenhum protocolo encontrado.'),
         )
-      : React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
+      : React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8, maxWidth: '100%' } },
           lista.map((p) => React.createElement('button', {
             key: p.id,
             onClick: () => setSelecionado(p.numero),
             style: {
-              display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left', width: '100%',
+              display: 'flex', alignItems: 'flex-start', gap: 12, textAlign: 'left', width: '100%',
               padding: '12px 14px', borderRadius: T.radius, cursor: 'pointer',
               background: selecionado === p.numero ? T.primarySoft : T.surface,
               border: `1px solid ${selecionado === p.numero ? T.primary : T.border}`,
+              flexWrap: 'wrap', minWidth: 0, boxSizing: 'border-box',
             },
           },
             React.createElement('div', { style: { flex: 1, minWidth: 0 } },
               React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
                 React.createElement('span', { style: { fontSize: 14, fontWeight: 700, color: T.text, fontVariantNumeric: 'tabular-nums' } }, p.numero),
                 React.createElement(Badge, { status: p.status }),
+                React.createElement('span', { style: { fontSize: 10.5, color: T.textMuted, flexShrink: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, formatarData(p.aberto_em)),
               ),
               React.createElement('div', { style: { fontSize: 13, color: T.textSecondary, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
                 (p.contato_nome || p.contato_telefone || 'Cidadão'),
@@ -284,7 +286,6 @@ export function PaginaProtocolos({ breakpoint }) {
                 p.assunto ? ` · ${p.assunto}` : '',
               ),
             ),
-            React.createElement('div', { style: { fontSize: 11.5, color: T.textMuted, flexShrink: 0, textAlign: 'right' } }, formatarData(p.aberto_em)),
           )),
         ),
   );

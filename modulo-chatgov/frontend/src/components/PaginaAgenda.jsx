@@ -255,7 +255,7 @@ export function PaginaAgenda({ onSendMessage, breakpoint }) {
             onClick: (e) => iniciarEdicao(e, c),
             style: sf.actionBtnIcon,
             title: 'Editar nome',
-          }, React.createElement(Edit3, { size: 15, color: T.textMuted })),
+          }, React.createElement(Edit3, { size: 15, color: T.textSecondary })),
           excluindoId === c.id
             ? React.createElement('div', { style: { display: 'flex', gap: 2 } },
                 React.createElement('button', {
@@ -271,7 +271,7 @@ export function PaginaAgenda({ onSendMessage, breakpoint }) {
                 onClick: (e) => confirmarExclusao(e, c.id),
                 style: sf.actionBtnIcon,
                 title: 'Excluir',
-              }, React.createElement(Trash2, { size: 15, color: T.textMuted })),
+              }, React.createElement(Trash2, { size: 15, color: T.textSecondary })),
         ),
       ),
       /* footer */
@@ -325,10 +325,10 @@ export function PaginaAgenda({ onSendMessage, breakpoint }) {
                 React.createElement(MessageCircle, { size: 14 }),
               ),
               React.createElement('button', { onClick: (e) => iniciarEdicao(e, c), style: sf.actionBtnIcon },
-                React.createElement(Edit3, { size: 14, color: T.textMuted }),
+                React.createElement(Edit3, { size: 14, color: T.textSecondary }),
               ),
               React.createElement('button', { onClick: (e) => confirmarExclusao(e, c.id), style: sf.actionBtnIcon },
-                React.createElement(Trash2, { size: 14, color: T.textMuted }),
+                React.createElement(Trash2, { size: 14, color: T.textSecondary }),
               ),
             ),
       ),
@@ -338,7 +338,7 @@ export function PaginaAgenda({ onSendMessage, breakpoint }) {
 
 /* ──────── STYLES ──────── */
 const sf = {
-  container: { flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', height: '100%', background: '#f0f2f5', overflow: 'hidden' },
+  container: { flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', height: '100%', background: T.bg, overflow: 'hidden' },
 
   header: { padding: '14px 28px', background: T.surface, borderBottom: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
   headerMobile: { padding: '16px 16px 12px', flexDirection: 'column', alignItems: 'stretch', gap: 12 },
@@ -388,7 +388,7 @@ const sf = {
     minHeight: 170,
     border: `2px dashed ${T.border}`,
     borderRadius: T.radiusLg,
-    background: '#fafbfc',
+    background: T.surfaceAlt,
     display: 'flex',
     flexDirection: 'column',
     alignItems: 'center',
@@ -436,7 +436,7 @@ const sf = {
     display: 'flex', alignItems: 'center', justifyContent: 'center',
   },
   actionBtnIcon: {
-    width: 30, height: 30,
+    width: 44, height: 44,
     background: 'transparent', border: 'none',
     cursor: 'pointer',
     display: 'flex', alignItems: 'center', justifyContent: 'center',

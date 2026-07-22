@@ -10,6 +10,7 @@ import {
   criarFamilia,
   criarPessoa,
   encontrarDuplicatas,
+  listarPessoas,
   obterFamilia,
   obterPessoa,
 } from "./fixtures/store";
@@ -78,6 +79,7 @@ import {
   DASHBOARD_OVERVIEW,
   DASHBOARD_SERIE,
   DASHBOARD_TERRITORIOS,
+  MOCK_RECOMMENDATION_SCOPE,
 } from "./fixtures/dashboard";
 import {
   executarEtapa,
@@ -439,6 +441,18 @@ export const handlers = [
     },
   ),
 
+  // Listagem de pessoas (para a aba "Pessoas" sem busca).
+  http.get(`${BASE}/persons`, async ({ request }) => {
+    await delay(140);
+    const q = new URL(request.url).searchParams.get("search") ?? "";
+    const todas = listarPessoas();
+    if (!q) return HttpResponse.json(todas);
+    const t = q.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+    return HttpResponse.json(todas.filter((p) =>
+      p.nome_exibicao.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().includes(t),
+    ));
+  }),
+
   // Detalhe de pessoa (para resolver nomes na chamada de frequência).
   http.get(`${BASE}/persons/:id`, async ({ params }) => {
     await delay(100);
@@ -702,6 +716,27 @@ export const handlers = [
   http.get(`${BASE}/dashboard/indicators`, async () => {
     await delay(160);
     return HttpResponse.json(DASHBOARD_INDICADORES);
+  }),
+
+  // TODO(backend): GET /dashboard/recommendation-scope
+  http.get(`${BASE}/dashboard/recommendation-scope`, async () => {
+    await delay(120);
+    return HttpResponse.json(MOCK_RECOMMENDATION_SCOPE);
+  }),
+
+  http.get(`${BASE}/dashboard/activity`, async ({ request }) => {
+    await delay(140);
+    const limit = Number(new URL(request.url).searchParams.get("limit") ?? "10");
+    const pool = [
+      { id: "act-1", texto: "Atendimento registrado", descricao: "Presencial — CRAS Norte", categoria: "atendimento", entidade: "atendimento", data: new Date(Date.now() - 2 * 3600000).toISOString(), acao: "registrado", ator: "Maria Técnica" },
+      { id: "act-2", texto: "Família cadastrada", descricao: "Cadastro completo com NIS validado", categoria: "cadastro", entidade: "familia", data: new Date(Date.now() - 5 * 3600000).toISOString(), acao: "criado", ator: "Carlos Assistente" },
+      { id: "act-3", texto: "Benefício concedido", descricao: "Cesta básica — família Silva", categoria: "beneficio", entidade: "beneficio", data: new Date(Date.now() - 8 * 3600000).toISOString(), acao: "concedido", ator: "Ana Coordenadora" },
+      { id: "act-4", texto: "RMA conferido", descricao: "Competência jun/2026 — CRAS Sul", categoria: "rma", entidade: "rma_fechamento", data: new Date(Date.now() - 24 * 3600000).toISOString(), acao: "consultado", ator: "Pedro Gestor" },
+      { id: "act-5", texto: "Encaminhamento aceito", descricao: "CREAS → CRAS Norte", categoria: "encaminhamento", entidade: "encaminhamento", data: new Date(Date.now() - 48 * 3600000).toISOString(), acao: "aceito", ator: null },
+      { id: "act-6", texto: "Encontro SCFV registrado", descricao: "Grupo de convivência — 12 presentes", categoria: "scfv", entidade: "grupo", data: new Date(Date.now() - 72 * 3600000).toISOString(), acao: "realizado", ator: "Lucia Educadora" },
+      { id: "act-7", texto: "Prontuário atualizado", descricao: "Evolução registrada — família Santos", categoria: "prontuario", entidade: "prontuario", data: new Date(Date.now() - 96 * 3600000).toISOString(), acao: "atualizado", ator: "Maria Técnica" },
+    ];
+    return HttpResponse.json(pool.slice(0, limit));
   }),
 
   // ── Administração / onboarding (Fase 9, §4.10) ─────────────────

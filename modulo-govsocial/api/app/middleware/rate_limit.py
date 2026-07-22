@@ -58,6 +58,8 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         return True
 
     async def dispatch(self, request: Request, call_next):
+        if request.scope.get("type") == "websocket":
+            return await call_next(request)
         forwarded = request.headers.get("x-forwarded-for")
         client_ip = forwarded.split(",")[0].strip() if forwarded else (
             request.client.host if request.client else "unknown"

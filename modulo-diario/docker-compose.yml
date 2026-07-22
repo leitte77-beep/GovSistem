@@ -89,6 +89,8 @@ services:
       SIGNER_URL: http://signer:8100
       SECRET_KEY: ${SECRET_KEY:-change-me-in-dev}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-in-dev}
+      SAAS_JWT_SECRET: ${SAAS_JWT_SECRET:-}
+      SAAS_INTERNAL_API_KEY: ${SAAS_INTERNAL_API_KEY:-}
       CORS_ORIGINS: '["http://localhost:9202","http://localhost:9200","https://farol.govsistem.com.br"]'
       ENVIRONMENT: ${ENVIRONMENT:-development}
     ports:

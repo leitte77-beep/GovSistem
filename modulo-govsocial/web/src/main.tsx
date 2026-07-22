@@ -44,4 +44,13 @@ async function iniciar() {
   );
 }
 
-void iniciar();
+void iniciar().catch((erro) => {
+  console.error("Falha ao iniciar aplicação:", erro);
+  const raiz = document.getElementById("root");
+  if (raiz) {
+    raiz.innerHTML = `
+      <div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;color:#555">
+        <p>Não foi possível iniciar o sistema. Recarregue a página ou entre em contato com o suporte.</p>
+      </div>`;
+  }
+});

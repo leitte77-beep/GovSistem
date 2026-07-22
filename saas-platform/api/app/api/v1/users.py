@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_client_info, get_current_platform_admin, get_current_user
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.roles import MODULE_ROLE_CATALOG, is_valid_grant
+from app.core.roles import MODULE_ROLE_CATALOG, is_valid_grant, normalize_grant_role
 from app.core.security import hash_password
 from app.models.audit_event import AuditEvent
 from app.models.module import Module
@@ -170,6 +170,8 @@ async def _sync_user_to_modules(user: User, db: AsyncSession) -> None:
         "chatgov": settings.CHATGOV_MODULE_INTERNAL_API_URL,
         "diario": settings.DIARIO_MODULE_INTERNAL_API_URL,
         "govavalia": settings.GOVAVALIA_MODULE_INTERNAL_API_URL,
+        "govsocial": settings.GOVSOCIAL_MODULE_INTERNAL_API_URL,
+        "govtask": settings.GOVTASK_MODULE_INTERNAL_API_URL,
     }
 
     for module_slug in module_slugs:
@@ -659,7 +661,10 @@ async def set_user_grants(
     await db.flush()  # apply deletes before inserts to avoid unique-key clash
 
     for module_slug, role_names in body.grants.items():
-        for role_name in dict.fromkeys(role_names):  # dedupe, keep order
+        normalized = dict.fromkeys(
+            normalize_grant_role(module_slug, r) for r in role_names
+        )
+        for role_name in normalized:
             db.add(
                 UserModuleGrant(
                     user_id=user_id,

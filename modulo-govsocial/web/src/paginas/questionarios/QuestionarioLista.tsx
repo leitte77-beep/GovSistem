@@ -78,11 +78,11 @@ export default function QuestionarioLista() {
                         <Pencil className="w-3.5 h-3.5" /> Editar
                       </button>
                       <button
-                        onClick={() => navigate(`/questionarios/${q.id}/respostas`)}
-                        className="flex items-center gap-1 text-xs text-ink-soft hover:text-ink px-2 py-1 transition-colors"
-                        title="Visualizar respostas"
+                        disabled
+                        className="flex items-center gap-1 text-xs text-ink-soft/40 px-2 py-1 cursor-not-allowed"
+                        title="Visualização de respostas em breve"
                       >
-                        <Eye className="w-3.5 h-3.5" /> Respostas
+                        <Eye className="w-3.5 h-3.5" /> Em breve
                       </button>
                     </div>
                   </td>

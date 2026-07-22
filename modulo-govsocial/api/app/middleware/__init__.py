@@ -12,6 +12,8 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
     """Correlaciona requests por request-id e loga sem dado pessoal."""
 
     async def dispatch(self, request: Request, call_next):
+        if request.scope.get("type") == "websocket":
+            return await call_next(request)
         request_id = request.headers.get("x-request-id") or str(uuid.uuid4())
         start = time.perf_counter()
         response = await call_next(request)
@@ -30,6 +32,8 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
 
 class SecurityHeadersMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
+        if request.scope.get("type") == "websocket":
+            return await call_next(request)
         response = await call_next(request)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("X-Frame-Options", "DENY")

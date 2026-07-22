@@ -6,12 +6,23 @@
 <meta content="width=device-width, initial-scale=1.0" name="viewport"/>
 <title>Central de Atendimento | GovSistem</title>
 <link href="/icone-notificacao.svg" rel="icon" type="image/svg+xml"/>
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
-<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
-<script id="tailwind-config">
-        tailwind.config = {
-            darkMode: "class",
+<script>
+  // Anti-FOUC: aplica tema salvo ANTES do primeiro paint
+  (function(){
+    var t; try { t = localStorage.getItem('chatgov_theme'); } catch(e) {}
+    if (!t) {
+      t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      try { localStorage.setItem('chatgov_theme', t); } catch(e) {}
+    }
+    var d = document.documentElement;
+    d.setAttribute('data-theme', t);
+    d.classList.toggle('dark', t === 'dark');
+    d.style.colorScheme = t;
+  })();
+</script>
+<script>
+        tailwind = { config: {
+            darkMode: ['class', '[data-theme="dark"]'],
             theme: {
                 extend: {
                     "colors": {
@@ -46,8 +57,11 @@
                     }
                 },
             },
-        }
+        } }
     </script>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <style>
         .material-symbols-outlined {
             font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
@@ -66,9 +80,13 @@
            100dvh acompanha a área realmente visível e evita cortar o chat. */
         html, body, #root { height: 100vh; height: 100dvh; }
         #root { flex: 1; min-width: 0; overflow: hidden; }
+        body { transition: background-color 0.3s ease, color 0.3s ease; }
+        /* Transição suave para troca de tema em todos os elementos */
+        *, *::before, *::after { transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease; }
         ::-webkit-scrollbar { width: 8px; height: 8px; }
-        ::-webkit-scrollbar-thumb { background: #D5DBE5; border-radius: 8px; }
-        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-track { background: var(--sb-track, transparent); }
+        ::-webkit-scrollbar-thumb { background: var(--sb-thumb, #D5DBE5); border-radius: 8px; }
+        * { scrollbar-color: var(--sb-thumb, #D5DBE5) var(--sb-track, transparent); }
         @keyframes spin { to { transform: rotate(360deg); } }
         .spin { animation: spin 0.8s linear infinite; }
         @keyframes skeletonPulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.45; } }
@@ -84,13 +102,60 @@
         @keyframes cgBolhaIn { from { opacity: 0; transform: translateY(8px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
         .cg-bolha { animation: cgBolhaIn 0.22s cubic-bezier(0.2,0.7,0.3,1) both; }
 
-        /* dark */
-        .dark .chat-pattern { background-color: #0f1117; background-image: radial-gradient(#2d3143 0.5px, transparent 0.5px); }
-        .dark body { background-color: #0f1117; }
-        .dark .cg-conv-item:hover { background: #1e2130; }
-        .dark .cg-conv-item.ativa { background: rgba(59, 130, 246, 0.12); }
-        .dark .cg-conv-item.ativa:hover { background: rgba(59, 130, 246, 0.18); }
-        .dark ::-webkit-scrollbar-thumb { background: #3f4355; }
+        /* Tema ─ scrollbar nativa via color-scheme + CSS vars */
+        :root {
+          color-scheme: light;
+          --sb-thumb: #D5DBE5; --sb-track: transparent;
+        }
+        :root[data-theme="dark"] {
+          color-scheme: dark;
+          --sb-thumb: #3F4355; --sb-track: #1A1D23;
+        }
+
+        /* dark ─ unificado sob [data-theme="dark"] */
+        [data-theme="dark"] .chat-pattern { background-color: #0D1117; background-image: radial-gradient(#2A2D35 0.5px, transparent 0.5px); }
+        [data-theme="dark"] body { background-color: #0D1117; color: #F3F4F6; }
+        [data-theme="dark"] .cg-conv-item:hover { background: #2A2D35; }
+        [data-theme="dark"] .cg-conv-item.ativa { background: rgba(37, 99, 235, 0.12); }
+        [data-theme="dark"] .cg-conv-item.ativa:hover { background: rgba(37, 99, 235, 0.18); }
+
+        /* Composer */
+        .composer { display: flex; align-items: flex-end; gap: .375rem; padding: .5rem; min-width: 0; }
+        .composer .icon-btn { flex: 0 0 auto; width: 40px; height: 40px; display: grid; place-items: center; }
+        .composer .composer-textarea { flex: 1 1 auto; min-width: 0; }
+        .composer textarea {
+          flex: 1 1 auto; min-width: 0; width: 100%;
+          resize: none;
+          min-height: 40px; max-height: 120px;
+          line-height: 1.25rem;
+          padding: .5rem .75rem;
+          font-size: 16px;
+          overflow-y: auto;
+          scrollbar-width: none;
+        }
+        .composer textarea::-webkit-scrollbar { display: none; }
+        .composer textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        @media (max-width: 480px) {
+          .composer .icon-emoji { display: none; }
+        }
+
+        /* Bubbles ─ evita transbordo no tablet */
+        .cg-bolha { max-width: 85%; overflow-wrap: anywhere; word-break: break-word; }
+
+        /* Header truncation helpers ─ tablet/dektop */
+        .cg-hdr-truncate { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .cg-hdr-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        /* Bottom nav mobile ─ 360px */
+        @media (max-width: 360px) {
+          .bnav-label-full { display: none; }
+          .bnav-label-short { display: inline; white-space: nowrap; }
+        }
+        .bnav-label-short { display: none; }
+
+        /* Header mobile ─ hide phone at 360px */
+        @media (max-width: 360px) {
+          .cg-hdr-phone { display: none; }
+        }
     </style>
 </head>
 <body class="bg-background text-on-background antialiased flex overflow-hidden h-screen">

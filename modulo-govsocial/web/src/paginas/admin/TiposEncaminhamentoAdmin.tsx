@@ -149,7 +149,7 @@ export default function TiposEncaminhamentoAdmin() {
       )}
 
       {(criando || editando) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setCriando(false); setEditando(null); }}>
+        <button type="button" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 cursor-pointer" onClick={() => { setCriando(false); setEditando(null); }}>
           <div className="w-full max-w-lg rounded-cartao bg-surface p-6 shadow-elevado max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <h2 className="mb-4 text-lg font-semibold">
               {editando ? "Editar tipo de encaminhamento" : "Novo tipo de encaminhamento"}
@@ -167,7 +167,7 @@ export default function TiposEncaminhamentoAdmin() {
               salvando={criarMut.isPending || editarMut.isPending}
             />
           </div>
-        </div>
+        </button>
       )}
     </div>
   );

@@ -1,7 +1,7 @@
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, String, UniqueConstraint
+from sqlalchemy import ForeignKey, Index, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -24,6 +24,7 @@ class UserModuleGrant(Base, TimestampMixin):
         UniqueConstraint(
             "user_id", "module_slug", "role_name", name="uq_user_module_role"
         ),
+        Index("ix_grants_user_module", "user_id", "module_slug"),
     )
 
     user_id: Mapped[uuid.UUID] = mapped_column(
@@ -33,6 +34,6 @@ class UserModuleGrant(Base, TimestampMixin):
         index=True,
     )
     module_slug: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
-    role_name: Mapped[str] = mapped_column(String(50), nullable=False)
+    role_name: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
 
     user: Mapped["User"] = relationship("User", back_populates="module_grants")

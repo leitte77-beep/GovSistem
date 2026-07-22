@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_platform_admin
 from app.core.database import get_db
-from app.models.approval import ApprovalDecision, ApprovalRequest, ApprovalStep, ApprovalWorkflow
+from app.models.approval import ApprovalDecision, ApprovalRequest, ApprovalWorkflow
 from app.models.audit_event import AuditEvent
 from app.models.user import User
 

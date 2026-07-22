@@ -24,6 +24,7 @@ export function SeletorUnidade() {
         onChange={(e) => definirUnidade(e.target.value)}
         className="min-h-[40px] rounded-xl border border-outline-variant bg-surface-container-low/50 px-3 py-2 text-ink font-medium focus-visible:outline-focus"
       >
+        {!unidadeAtual && <option value="" disabled>Selecione uma unidade</option>}
         {unidades.map((u) => (
           <option key={u.id} value={u.id} className="text-ink">
             {u.nome}

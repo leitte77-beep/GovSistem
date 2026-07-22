@@ -66,3 +66,5 @@ class DashboardActivityItem(BaseModel):
     data: datetime
     acao: str
     ator: str | None = None
+    nome: str | None = None
+    competencia: str | None = None

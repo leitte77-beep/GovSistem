@@ -7,6 +7,7 @@ import type {
   TerritoryItem,
   TimeSeriesItem,
   DashboardActivityItem,
+  RecommendationScope,
 } from "@/tipos/dashboard";
 
 /**
@@ -35,4 +36,8 @@ export const servicoDashboard = {
 
   activity: (limit = 10) =>
     http.get<DashboardActivityItem[]>(`/dashboard/activity?limit=${limit}`),
+
+  /** TODO(backend): endpoint /dashboard/recommendation-scope */
+  recommendationScope: () =>
+    http.get<RecommendationScope>("/dashboard/recommendation-scope"),
 };

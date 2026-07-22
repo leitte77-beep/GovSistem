@@ -321,6 +321,71 @@ async def get_my_access_log(
     return list(result.scalars().all())
 
 
+async def _build_org_payload(org_id: uuid.UUID, db: AsyncSession) -> dict | None:
+    org_result = await db.execute(
+        select(Organization).where(Organization.id == org_id)
+    )
+    org = org_result.scalar_one_or_none()
+    if not org:
+        return None
+    return {
+        "organization_id": str(org.id),
+        "name": org.name,
+        "slug": org.slug,
+        "cnpj": org.cnpj,
+        "description": org.description,
+        "logo_url": org.logo_url,
+        "public_url": org.public_url,
+        "is_active": org.is_active,
+    }
+
+
+async def _sync_to_module(
+    module_slug: str,
+    api_url: str,
+    user: User,
+    org_id: uuid.UUID,
+    roles: list[str],
+    db: AsyncSession,
+) -> tuple[uuid.UUID, uuid.UUID]:
+    """Sync user and organization to an external module. Returns (module_user_id, module_org_id)."""
+    org_payload = await _build_org_payload(org_id, db) if org_id else None
+    user_payload = {
+        "user_id": str(user.id),
+        "organization_id": str(org_id),
+        "name": user.name,
+        "email": user.email,
+        "is_active": user.is_active,
+        "roles": roles,
+    }
+    new_user_id = user.id
+    new_org_id = org_id
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            headers = {"X-Internal-Key": settings.INTERNAL_API_KEY.get_secret_value()}
+            if org_payload:
+                org_res = await client.post(
+                    f"{api_url}/internal/sync-organization",
+                    json=org_payload,
+                    headers=headers,
+                )
+                org_res.raise_for_status()
+                new_org_id = uuid.UUID(org_res.json()["organization_id"])
+                user_payload["organization_id"] = str(new_org_id)
+            user_res = await client.post(
+                f"{api_url}/internal/sync-user",
+                json=user_payload,
+                headers=headers,
+            )
+            user_res.raise_for_status()
+            new_user_id = uuid.UUID(user_res.json()["user_id"])
+    except Exception as e:
+        logger.warning("Failed to sync with %s module: %s", module_slug, e)
+
+    return new_user_id, new_org_id
+
+
 @router.post("/module-access", response_model=ModuleTokenResponse)
 async def get_module_access(
     body: ModuleAccessRequest,
@@ -366,16 +431,16 @@ async def get_module_access(
     if user.organization_id:
         roles.append("ORG_MEMBER")
 
-    # Granular per-module roles granted to this user ("quem pode o quê").
-    # These are forwarded verbatim so the module can enforce fine-grained
-    # access (e.g. diário: AUTOR + DIAGRAMADOR but not ASSINADOR/PUBLICADOR).
     grant_result = await db.execute(
         select(UserModuleGrant.role_name).where(
             UserModuleGrant.user_id == user.id,
             UserModuleGrant.module_slug == module.slug,
         )
     )
-    module_grant_roles = [r for (r,) in grant_result.all()]
+    from app.core.roles import normalize_grant_role
+    module_grant_roles = [
+        normalize_grant_role(module.slug, r) for (r,) in grant_result.all()
+    ]
     roles = list(dict.fromkeys(roles + module_grant_roles))
 
     org_id = user.organization_id
@@ -394,8 +459,7 @@ async def get_module_access(
             detail="No organization assigned to this user",
         )
 
-    # SSO session timestamps are stored as TIMESTAMP WITHOUT TIME ZONE today.
-    expires_at = datetime.utcnow() + timedelta(
+    expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(
         minutes=settings.MODULE_TOKEN_EXPIRE_MINUTES
     )
 
@@ -427,255 +491,19 @@ async def get_module_access(
     module_user_id = user.id
     module_org_id = org_id
 
-    if module.slug == "diario" and settings.DIARIO_MODULE_INTERNAL_API_URL:
-        org_payload = None
-        if org_id:
-            org_result = await db.execute(
-                select(Organization).where(Organization.id == org_id)
-            )
-            org = org_result.scalar_one_or_none()
-            if org:
-                org_payload = {
-                    "organization_id": str(org.id),
-                    "name": org.name,
-                    "slug": org.slug,
-                    "cnpj": org.cnpj,
-                    "description": org.description,
-                    "logo_url": org.logo_url,
-                    "public_url": org.public_url,
-                    "is_active": org.is_active,
-                }
-
-        user_payload = {
-            "user_id": str(user.id),
-            "organization_id": str(org_id),
-            "name": user.name,
-            "email": user.email,
-            "is_active": user.is_active,
-            "roles": roles,
+    if module.slug and settings.INTERNAL_API_KEY.get_secret_value():
+        module_configs = {
+            "diario": settings.DIARIO_MODULE_INTERNAL_API_URL,
+            "chatgov": settings.CHATGOV_MODULE_INTERNAL_API_URL,
+            "govtask": settings.GOVTASK_MODULE_INTERNAL_API_URL,
+            "govavalia": settings.GOVAVALIA_MODULE_INTERNAL_API_URL,
+            "govsocial": settings.GOVSOCIAL_MODULE_INTERNAL_API_URL,
         }
-
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                headers = {"X-Internal-Key": settings.INTERNAL_API_KEY.get_secret_value()}
-                if org_payload:
-                    org_res = await client.post(
-                        f"{settings.DIARIO_MODULE_INTERNAL_API_URL}/internal/sync-organization",
-                        json=org_payload,
-                        headers=headers,
-                    )
-                    org_res.raise_for_status()
-                    module_org_id = uuid.UUID(org_res.json()["organization_id"])
-                    user_payload["organization_id"] = str(module_org_id)
-                user_res = await client.post(
-                    f"{settings.DIARIO_MODULE_INTERNAL_API_URL}/internal/sync-user",
-                    json=user_payload,
-                    headers=headers,
-                )
-                user_res.raise_for_status()
-                module_user_id = uuid.UUID(user_res.json()["user_id"])
-        except Exception as e:
-            logger.warning("Failed to sync with diario module: %s", e)
-
-    if module.slug == "chatgov" and settings.CHATGOV_MODULE_INTERNAL_API_URL:
-        user_payload = {
-            "user_id": str(user.id),
-            "organization_id": str(org_id),
-            "name": user.name,
-            "email": user.email,
-            "is_active": user.is_active,
-            "roles": roles,
-        }
-
-        sync_org_payload = None
-        if org_id:
-            org_result = await db.execute(
-                select(Organization).where(Organization.id == org_id)
+        api_url = module_configs.get(module.slug)
+        if api_url:
+            module_user_id, module_org_id = await _sync_to_module(
+                module.slug, api_url, user, org_id, roles, db
             )
-            org = org_result.scalar_one_or_none()
-            if org:
-                sync_org_payload = {
-                    "organization_id": str(org.id),
-                    "name": org.name,
-                    "slug": org.slug,
-                    "cnpj": org.cnpj,
-                    "description": org.description,
-                    "logo_url": org.logo_url,
-                    "public_url": org.public_url,
-                    "is_active": org.is_active,
-                }
-
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                headers = {"X-Internal-Key": settings.INTERNAL_API_KEY.get_secret_value()}
-                if sync_org_payload:
-                    org_res = await client.post(
-                        f"{settings.CHATGOV_MODULE_INTERNAL_API_URL}/internal/sync-organization",
-                        json=sync_org_payload,
-                        headers=headers,
-                    )
-                    org_res.raise_for_status()
-                    module_org_id = uuid.UUID(org_res.json()["organization_id"])
-                    user_payload["organization_id"] = str(module_org_id)
-                user_res = await client.post(
-                    f"{settings.CHATGOV_MODULE_INTERNAL_API_URL}/internal/sync-user",
-                    json=user_payload,
-                    headers=headers,
-                )
-                user_res.raise_for_status()
-                module_user_id = uuid.UUID(user_res.json()["user_id"])
-        except Exception as e:
-            logger.warning("Failed to sync with chatgov module: %s", e)
-
-    if module.slug == "govtask" and settings.GOVTASK_MODULE_INTERNAL_API_URL:
-        user_payload = {
-            "user_id": str(user.id),
-            "organization_id": str(org_id),
-            "name": user.name,
-            "email": user.email,
-            "is_active": user.is_active,
-            "roles": roles,
-        }
-
-        sync_org_payload = None
-        if org_id:
-            org_result = await db.execute(
-                select(Organization).where(Organization.id == org_id)
-            )
-            org = org_result.scalar_one_or_none()
-            if org:
-                sync_org_payload = {
-                    "organization_id": str(org.id),
-                    "name": org.name,
-                    "slug": org.slug,
-                    "cnpj": org.cnpj,
-                    "description": org.description,
-                    "logo_url": org.logo_url,
-                    "public_url": org.public_url,
-                    "is_active": org.is_active,
-                }
-
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                headers = {"X-Internal-Key": settings.INTERNAL_API_KEY.get_secret_value()}
-                if sync_org_payload:
-                    org_res = await client.post(
-                        f"{settings.GOVTASK_MODULE_INTERNAL_API_URL}/internal/sync-organization",
-                        json=sync_org_payload,
-                        headers=headers,
-                    )
-                    org_res.raise_for_status()
-                    module_org_id = uuid.UUID(org_res.json()["organization_id"])
-                    user_payload["organization_id"] = str(module_org_id)
-                user_res = await client.post(
-                    f"{settings.GOVTASK_MODULE_INTERNAL_API_URL}/internal/sync-user",
-                    json=user_payload,
-                    headers=headers,
-                )
-                user_res.raise_for_status()
-                module_user_id = uuid.UUID(user_res.json()["user_id"])
-        except Exception as e:
-            logger.warning("Failed to sync with govtask module: %s", e)
-
-    if module.slug == "govavalia" and settings.GOVAVALIA_MODULE_INTERNAL_API_URL:
-        user_payload = {
-            "user_id": str(user.id),
-            "organization_id": str(org_id),
-            "name": user.name,
-            "email": user.email,
-            "is_active": user.is_active,
-            "roles": roles,
-        }
-
-        sync_org_payload = None
-        if org_id:
-            org_result = await db.execute(
-                select(Organization).where(Organization.id == org_id)
-            )
-            org = org_result.scalar_one_or_none()
-            if org:
-                sync_org_payload = {
-                    "organization_id": str(org.id),
-                    "name": org.name,
-                    "slug": org.slug,
-                    "cnpj": org.cnpj,
-                    "description": org.description,
-                    "logo_url": org.logo_url,
-                    "public_url": org.public_url,
-                    "is_active": org.is_active,
-                }
-
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                headers = {"X-Internal-Key": settings.INTERNAL_API_KEY.get_secret_value()}
-                if sync_org_payload:
-                    org_res = await client.post(
-                        f"{settings.GOVAVALIA_MODULE_INTERNAL_API_URL}/internal/sync-organization",
-                        json=sync_org_payload,
-                        headers=headers,
-                    )
-                    org_res.raise_for_status()
-                    module_org_id = uuid.UUID(org_res.json()["organization_id"])
-                    user_payload["organization_id"] = str(module_org_id)
-                user_res = await client.post(
-                    f"{settings.GOVAVALIA_MODULE_INTERNAL_API_URL}/internal/sync-user",
-                    json=user_payload,
-                    headers=headers,
-                )
-                user_res.raise_for_status()
-                module_user_id = uuid.UUID(user_res.json()["user_id"])
-        except Exception as e:
-            logger.warning("Failed to sync with govavalia module: %s", e)
-
-    if module.slug == "govsocial" and settings.GOVSOCIAL_MODULE_INTERNAL_API_URL:
-        user_payload = {
-            "user_id": str(user.id),
-            "organization_id": str(org_id),
-            "name": user.name,
-            "email": user.email,
-            "is_active": user.is_active,
-            "roles": roles,
-        }
-
-        sync_org_payload = None
-        if org_id:
-            org_result = await db.execute(
-                select(Organization).where(Organization.id == org_id)
-            )
-            org = org_result.scalar_one_or_none()
-            if org:
-                sync_org_payload = {
-                    "organization_id": str(org.id),
-                    "name": org.name,
-                    "slug": org.slug,
-                    "cnpj": org.cnpj,
-                    "description": org.description,
-                    "logo_url": org.logo_url,
-                    "public_url": org.public_url,
-                    "is_active": org.is_active,
-                }
-
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                headers = {"X-Internal-Key": settings.INTERNAL_API_KEY.get_secret_value()}
-                if sync_org_payload:
-                    org_res = await client.post(
-                        f"{settings.GOVSOCIAL_MODULE_INTERNAL_API_URL}/internal/sync-organization",
-                        json=sync_org_payload,
-                        headers=headers,
-                    )
-                    org_res.raise_for_status()
-                    module_org_id = uuid.UUID(org_res.json()["organization_id"])
-                    user_payload["organization_id"] = str(module_org_id)
-                user_res = await client.post(
-                    f"{settings.GOVSOCIAL_MODULE_INTERNAL_API_URL}/internal/sync-user",
-                    json=user_payload,
-                    headers=headers,
-                )
-                user_res.raise_for_status()
-                module_user_id = uuid.UUID(user_res.json()["user_id"])
-        except Exception as e:
-            logger.warning("Failed to sync with govsocial module: %s", e)
 
     module_token = create_module_token(
         user_id=module_user_id,

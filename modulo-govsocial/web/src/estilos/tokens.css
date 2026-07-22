@@ -19,7 +19,10 @@
 
   /* Tinta */
   --ga-ink: #1a1c1e;
-  --ga-ink-soft: #777585;
+  --ga-ink-soft: #59576E;
+
+  /* Busca */
+  --ga-search-highlight: rgba(68, 65, 196, 0.18);
 
   /* Primária */
   --ga-primary: #4441c4;
@@ -128,7 +131,9 @@
   --ga-surface-tint: #c2c1ff;
 
   --ga-ink: #e3e2e6;
-  --ga-ink-soft: #a5a3b5;
+  --ga-ink-soft: #b8b5cc;
+
+  --ga-search-highlight: rgba(194, 193, 255, 0.18);
 
   --ga-primary: #c2c1ff;
   --ga-primary-soft: rgba(194, 193, 255, 0.12);

@@ -162,15 +162,15 @@ export function MediaPreview({ msg, isMe, onOpenLightbox }) {
     'aria-label': `Abrir documento: ${nomeArq}`,
     style: {
       display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
-      background: isMe ? 'rgba(255,255,255,0.6)' : T.surface,
-      borderRadius: 8, border: `1px solid ${T.border}`,
-      textDecoration: 'none', color: T.text, fontSize: 13,
+      background: isMe ? (T.bubbleMediaBg || 'rgba(255,255,255,0.6)') : T.surface,
+      borderRadius: 10, border: `1px solid ${T.border}`,
+      textDecoration: 'none', color: isMe ? (T.bubbleMediaText || T.text) : T.text, fontSize: 13,
     },
   },
     React.createElement('span', { style: { fontSize: 22 } }, iconeArquivo(mediaMime)),
     React.createElement('div', { style: { flex: 1, minWidth: 0 } },
-      React.createElement('div', { style: { fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, nomeArq),
-      React.createElement('div', { style: { fontSize: 11, color: T.textMuted } }, formatoArquivo(mediaMime)),
+      React.createElement('div', { style: { fontWeight: 600, fontSize: 13, color: isMe && T.bubbleMediaText ? T.bubbleMediaText : T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, nomeArq),
+      React.createElement('div', { style: { fontSize: 11, color: isMe ? (T.bubbleMediaMeta || T.textMuted) : T.textMuted } }, formatoArquivo(mediaMime)),
     ),
   );
 }

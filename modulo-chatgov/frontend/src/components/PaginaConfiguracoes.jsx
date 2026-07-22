@@ -54,6 +54,9 @@ export function PaginaConfiguracoes({ onOpenQR, breakpoint }) {
           overflowY: 'hidden',
           maxWidth: '100%',
           WebkitOverflowScrolling: 'touch',
+          paddingLeft: 16,
+          paddingRight: 16,
+          scrollPaddingInline: 16,
         },
       },
         ABAS.map((a) =>

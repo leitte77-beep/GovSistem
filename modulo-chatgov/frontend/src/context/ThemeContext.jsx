@@ -3,6 +3,14 @@ import { T, _setThemeMode, _getThemeMode } from '../theme';
 
 var ThemeContext = createContext(null);
 
+function applyTheme(isDark) {
+  var html = document.documentElement;
+  var theme = isDark ? 'dark' : 'light';
+  html.setAttribute('data-theme', theme);
+  html.classList.toggle('dark', isDark);
+  html.style.colorScheme = theme;
+}
+
 export function ThemeProvider(_ref) {
   var children = _ref.children;
 
@@ -10,21 +18,25 @@ export function ThemeProvider(_ref) {
   var isDark = _useState[0];
   var setIsDark = _useState[1];
 
+  // No mount: aplica tema que veio do anti-FOUC / localStorage
   useEffect(function () {
-    var html = document.documentElement;
-    if (isDark) {
-      html.classList.add('dark');
-      html.classList.remove('light');
-    } else {
-      html.classList.add('light');
-      html.classList.remove('dark');
-    }
+    applyTheme(isDark);
     _setThemeMode(isDark);
-  }, [isDark]);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // No clique: atualiza _isDark ANTES do render, depois aplica no DOM
   var toggle = useCallback(function () {
-    setIsDark(function (v) { return !v; });
+    setIsDark(function (v) {
+      var next = !v;
+      _setThemeMode(next);  // atualiza módulo → T.* retorna paleta certa no próximo render
+      return next;
+    });
+    // applyTheme roda no useEffect abaixo (isDark já mudou)
   }, []);
+
+  useEffect(function () {
+    applyTheme(isDark);
+  }, [isDark]);
 
   return React.createElement(ThemeContext.Provider, {
     value: { isDark: isDark, toggle: toggle, theme: T }

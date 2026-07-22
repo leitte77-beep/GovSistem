@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Link } from "react-router-dom";
 import { useSessao } from "@/nucleo/auth/SessaoProvider";
 import { useUnidadeAtual } from "@/contextos/UnidadeAtualProvider";
@@ -7,12 +8,20 @@ import {
   useFilaDoDia,
   useOnboardingStatus,
   useDashboardActivity,
+  useRecommendationScope,
+  useDashboardSerie,
 } from "@/nucleo/api/hooks";
 import type { DashboardActivityItem } from "@/tipos/dashboard";
 import { EstadoVazio } from "@/ui/EstadoVazio";
 import { EstadoErro } from "@/ui/EstadoErro";
 import { Skeleton } from "@/ui/Skeleton";
+import { KPICard } from "@/ui/KPICard";
+import { ActivityItem } from "@/ui/ActivityItem";
+import { SpeedDial } from "@/ui/SpeedDial";
+import { getRecommendations } from "@/nucleo/recomendacoes/recomendacoes";
+import { agora, dataPorExtensoCurta, competenciaAtual } from "@/nucleo/datas";
 import { ErroApi } from "@/nucleo/http/problemDetails";
+import { textos } from "@/i18n/textos";
 
 // ── Onboarding ────────────────────────────────────────────────────
 const ROTULO_ETAPA: Record<string, string> = {
@@ -118,12 +127,31 @@ function CartaoOnboarding() {
 // ── KPIs ───────────────────────────────────────────────────────────
 function PainelKpis() {
   const { data, isLoading, isError, error, refetch } = useDashboardOverview();
+  const { data: serieData } = useDashboardSerie(6);
+
+  const sparklines = useMemo(() => {
+    if (!serieData || serieData.length < 2) return null;
+    return {
+      atendimentos: serieData.map((s) => s.atendimentos),
+      beneficios: serieData.map((s) => s.beneficios),
+    };
+  }, [serieData]);
+
+  // KILL-SWITCH: só permite decoração no canto direito se há série com variação
+  const hasAtendSeries =
+    Array.isArray(sparklines?.atendimentos) &&
+    sparklines!.atendimentos.length >= 2 &&
+    Math.max(...sparklines!.atendimentos) !== Math.min(...sparklines!.atendimentos);
+  const hasBenefSeries =
+    Array.isArray(sparklines?.beneficios) &&
+    sparklines!.beneficios.length >= 2 &&
+    Math.max(...sparklines!.beneficios) !== Math.min(...sparklines!.beneficios);
 
   if (isLoading)
     return (
       <div className="col-span-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
         {Array.from({ length: 6 }).map((_, i) => (
-          <Skeleton key={i} variante="cartao" />
+          <KPICard key={i} label="" value={0} loading />
         ))}
       </div>
     );
@@ -137,142 +165,107 @@ function PainelKpis() {
       </div>
     );
 
+  const zeroAtend = data.atendimentos_mes === 0;
+  const zeroAcomp = data.acompanhamentos_ativos === 0;
+  const zeroFam = data.familias_cadastradas === 0;
+  const zeroBenef = data.beneficios_concedidos_mes === 0;
+  const zeroEnc = data.encaminhamentos_pendentes === 0;
+  const zeroScfv = data.inscritos_scfv === 0;
+
   return (
     <div className="col-span-12 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-6">
-      <CartaoKpi
-        rotulo="Atendimentos"
-        valor={data.atendimentos_mes}
-        icone="assignment_turned_in"
-        cor="primary"
+      <KPICard
+        label={textos.kpi.atendimentos}
+        value={data.atendimentos_mes}
+        hint={zeroAtend ? textos.kpi.zeroAtendimentos : undefined}
+        sparkline={sparklines?.atendimentos}
+        showDecoration={hasAtendSeries}
+        accent
+        to="/atendimentos"
       />
-      <CartaoKpi
-        rotulo="Acompanhamentos"
-        valor={data.acompanhamentos_ativos}
-        icone="partner_exchange"
-        cor="secondary"
+      <KPICard
+        label={textos.kpi.acompanhamentos}
+        value={data.acompanhamentos_ativos}
+        hint={zeroAcomp ? textos.kpi.zeroAcompanhamentos : undefined}
       />
-      <CartaoKpi
-        rotulo="Famílias cadastradas"
-        valor={data.familias_cadastradas}
-        icone="family_restroom"
-        cor="primary"
-        para="/familias"
+      <KPICard
+        label={textos.kpi.familiasCadastradas}
+        value={data.familias_cadastradas}
+        hint={zeroFam ? textos.kpi.zeroFamilias : undefined}
+        to="/familias"
       />
-      <CartaoKpi
-        rotulo="Benefícios / mês"
-        valor={data.beneficios_concedidos_mes}
-        icone="request_quote"
-        cor="secondary"
-        para="/beneficios"
+      <KPICard
+        label={textos.kpi.beneficiosMes}
+        value={data.beneficios_concedidos_mes}
+        hint={zeroBenef ? textos.kpi.zeroBeneficios : undefined}
+        sparkline={sparklines?.beneficios}
+        showDecoration={hasBenefSeries}
+        to="/beneficios"
       />
-      <CartaoKpi
-        rotulo="Encaminhamentos"
-        valor={data.encaminhamentos_pendentes}
-        icone="forward_to_inbox"
-        cor="primary"
-        para="/encaminhamentos"
-        destaque={data.encaminhamentos_pendentes > 0}
+      <KPICard
+        label={textos.kpi.encaminhamentos}
+        value={data.encaminhamentos_pendentes}
+        hint={zeroEnc ? textos.kpi.zeroEncaminhamentos : undefined}
+        accent={data.encaminhamentos_pendentes > 0}
+        to="/encaminhamentos"
       />
-      <CartaoKpi
-        rotulo="Inscritos SCFV"
-        valor={data.inscritos_scfv}
-        detalhe={`${data.grupos_ativos} grupos ativos`}
-        icone="groups"
-        cor="secondary"
-        para="/grupos"
+      <KPICard
+        label={textos.kpi.inscritosSCFV}
+        value={data.inscritos_scfv}
+        hint={zeroScfv ? textos.kpi.zeroInscritos : undefined}
+        to="/grupos"
       />
     </div>
   );
 }
 
-function CartaoKpi({
-  rotulo,
-  valor,
-  detalhe,
-  icone,
-  cor,
-  para,
-  destaque,
-}: {
-  rotulo: string;
-  valor: number;
-  detalhe?: string;
-  icone: string;
-  cor: "primary" | "secondary";
-  para?: string;
-  destaque?: boolean;
-}) {
-  const corBg = cor === "primary" ? "bg-primary/5" : "bg-secondary/5";
-  const corTexto = cor === "primary" ? "text-primary" : "text-secondary";
-  const corHover = cor === "primary" ? "group-hover:bg-primary group-hover:text-on-primary" : "group-hover:bg-secondary group-hover:text-on-primary";
+// ── Recomendações ──────────────────────────────────────────────────
 
-  const conteudo = (
-    <>
-      <div className="flex justify-between items-start mb-6">
-        <div
-          className={`w-12 h-12 rounded-xl ${corBg} flex items-center justify-center ${corTexto} ${corHover} transition-all`}
-        >
-          <span className="material-symbols-outlined !text-[24px]">{icone}</span>
-        </div>
-        <div className="w-12 h-6 flex items-end gap-0.5 opacity-20 group-hover:opacity-100 transition-opacity">
-          {[30, 60, 40, 80].map((h, i) => (
-            <div
-              key={i}
-              className={`w-full rounded-t-sm ${i === 3 ? (cor === "primary" ? "bg-primary" : "bg-secondary") : (cor === "primary" ? "bg-primary/40" : "bg-secondary/40")}`}
-              style={{ height: `${h}%` }}
-            />
-          ))}
-        </div>
-      </div>
-      <p className="font-label-sm text-outline mb-1">{rotulo}</p>
-      <div className="flex items-baseline gap-2">
-        <span className={`font-titulo text-2xl tabular-nums ${destaque ? "text-amber" : "text-ink"}`}>
-          {valor}
-        </span>
-      </div>
-      {detalhe && (
-        <span className="text-[11px] text-ink-soft font-bold uppercase block mt-1 tracking-wide">{detalhe}</span>
-      )}
-    </>
-  );
+const ICONE_RECOMENDACAO: Record<string, string> = {
+  alerta: "warning",
+  atencao: "error",
+  info: "info",
+};
 
-  const classes =
-    "glass-card rounded-2xl p-6 hover:translate-y-[-4px] transition-all duration-300 group block";
+const COR_RECOMENDACAO: Record<string, string> = {
+  alerta: "bg-amber/10 text-amber",
+  atencao: "bg-primary-soft text-primary",
+  info: "bg-surface-container-high text-ink-soft",
+};
 
-  if (para) {
-    return (
-      <Link to={para} className={classes}>
-        {conteudo}
-      </Link>
-    );
-  }
-
-  return <div className={classes}>{conteudo}</div>;
-}
-
-// ── Atalhos ────────────────────────────────────────────────────────
-function Atalhos() {
+export function Recomendacoes() {
   const podeCadastrar = usePermissao("familia.cadastrar");
   const podeConceder = usePermissao("beneficio.conceder");
   const podeEncaminhar = usePermissao("encaminhamento.criar");
   const podeVigilancia = usePermissao("vigilancia.ver");
   const podeAdmin = usePermissao("administracao.gerir");
 
-  const itens: { rotulo: string; descricao: string; para: string; icone: string }[] = [
-    { rotulo: "Buscar famílias", descricao: "Localizar registros e NIS", para: "/familias", icone: "person_search" },
-  ];
-  if (podeCadastrar)
-    itens.push({ rotulo: "Novo cadastro", descricao: "Registrar nova família", para: "/familias/nova", icone: "person_add" });
-  if (podeConceder)
-    itens.push({ rotulo: "Benefício", descricao: "Conceder auxílio eventual", para: "/beneficios", icone: "card_giftcard" });
-  if (podeEncaminhar)
-    itens.push({ rotulo: "Encaminhar", descricao: "Enviar para rede socioassistencial", para: "/encaminhamentos", icone: "move_item" });
-  if (podeVigilancia)
-    itens.push({ rotulo: "Estatísticas", descricao: "Analisar indicadores locais", para: "/vigilancia", icone: "monitoring" });
-  if (podeAdmin)
-    itens.push({ rotulo: "Configurações", descricao: "Ajustar parâmetros do sistema", para: "/administracao", icone: "settings_accessibility" });
+  const { data: scope, isLoading, isError } = useRecommendationScope();
 
-  if (itens.length === 1 && !podeCadastrar && !podeConceder && !podeEncaminhar && !podeVigilancia && !podeAdmin) return null;
+  const recomendacoes = useMemo(
+    () => (scope && !isError ? getRecommendations(scope) : null),
+    [scope, isError],
+  );
+
+  // Estados, em prioridade: (1) loading; (2) erro no serviço → fallback estático
+  // (degradação graciosa); (3) serviço ok com ≥1 regra → cards; (4) serviço ok
+  // com 0 regras → "tudo em dia" + 2 atalhos mínimos.
+  const estado: "erro" | "com-regras" | "vazio" =
+    isError || !recomendacoes
+      ? "erro"
+      : recomendacoes.length > 0
+        ? "com-regras"
+        : "vazio";
+
+  const rotuloSecao = estado === "erro" ? textos.dashboard.acoesRapidas : textos.dashboard.recomendacoes;
+
+  if (isLoading) {
+    return (
+      <section className="col-span-12 lg:col-span-8 glass-card rounded-2xl p-lg premium-shadow">
+        <Skeleton variante="tabela" linhas={3} />
+      </section>
+    );
+  }
 
   return (
     <section className="col-span-12 lg:col-span-8 glass-card rounded-2xl p-lg premium-shadow">
@@ -282,177 +275,204 @@ function Atalhos() {
             className="material-symbols-outlined !text-[18px]"
             style={{ fontVariationSettings: "'FILL' 1" }}
           >
-            bolt
+            {estado === "erro" ? "bolt" : "lightbulb"}
           </span>
         </div>
-        <h3 className="font-titulo text-title-md text-ink">Ações Recomendadas</h3>
+        <h3 className="font-titulo text-title-md text-ink">{rotuloSecao}</h3>
       </div>
+
+      {estado === "erro" && (
+        <FallbackAcoes
+          podeCadastrar={podeCadastrar}
+          podeConceder={podeConceder}
+          podeEncaminhar={podeEncaminhar}
+          podeVigilancia={podeVigilancia}
+          podeAdmin={podeAdmin}
+        />
+      )}
+
+      {estado === "vazio" && (
+        <div>
+          <EstadoVazio
+            titulo={textos.dashboard.tudoEmDia}
+            descricao={textos.dashboard.tudoEmDiaDescricao}
+          />
+          <div className="grid grid-cols-2 gap-4 mt-lg">
+            <Link
+              to="/familias"
+              className="flex items-center gap-3 p-4 rounded-xl border border-outline-variant/30 hover:border-primary/40 hover:bg-surface-container-lowest transition-all focus-visible:outline-focus"
+            >
+              <span className="material-symbols-outlined text-secondary !text-[20px]">person_search</span>
+              <span className="font-label-md text-ink">{textos.acoes.buscarFamilias}</span>
+            </Link>
+            {podeCadastrar && (
+              <Link
+                to="/familias/nova"
+                className="flex items-center gap-3 p-4 rounded-xl border border-outline-variant/30 hover:border-primary/40 hover:bg-surface-container-lowest transition-all focus-visible:outline-focus"
+              >
+                <span className="material-symbols-outlined text-secondary !text-[20px]">person_add</span>
+                <span className="font-label-md text-ink">{textos.acoes.novoCadastro}</span>
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
+
+      {estado === "com-regras" && recomendacoes && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {recomendacoes.slice(0, 6).map((rec) => (
+            <Link
+              key={rec.id}
+              to={rec.to}
+              className="flex items-start gap-4 p-4 rounded-xl border border-outline-variant/30 hover:border-primary/40 hover:bg-surface-container-lowest transition-all group text-left focus-visible:outline-focus"
+              aria-label={`${rec.title}. ${rec.ctaLabel}`}
+            >
+              <div
+                className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${COR_RECOMENDACAO[rec.severity] ?? COR_RECOMENDACAO.info}`}
+              >
+                <span className="material-symbols-outlined !text-[20px]">
+                  {ICONE_RECOMENDACAO[rec.severity] ?? "circle"}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-label-md text-ink group-hover:text-primary transition-colors leading-snug">
+                  {rec.title}
+                </p>
+                {rec.detail && (
+                  <p className="text-xs text-ink-soft mt-1 line-clamp-2">{rec.detail}</p>
+                )}
+                <span className="inline-flex items-center gap-1 mt-2 text-xs font-semibold text-primary group-hover:underline">
+                  {rec.ctaLabel}
+                  <span className="material-symbols-outlined !text-[14px]">arrow_forward</span>
+                </span>
+              </div>
+            </Link>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function FallbackAcoes({
+  podeCadastrar,
+  podeConceder,
+  podeEncaminhar,
+  podeVigilancia,
+  podeAdmin,
+}: {
+  podeCadastrar: boolean;
+  podeConceder: boolean;
+  podeEncaminhar: boolean;
+  podeVigilancia: boolean;
+  podeAdmin: boolean;
+}) {
+  const itens: { rotulo: string; descricao: string; para: string; icone: string }[] = [];
+  itens.push({ rotulo: textos.acoes.buscarFamilias, descricao: "Localizar registros e NIS", para: "/familias", icone: "person_search" });
+  if (podeCadastrar)
+    itens.push({ rotulo: textos.acoes.novoCadastro, descricao: "Registrar nova família", para: "/familias/nova", icone: "person_add" });
+  if (podeConceder)
+    itens.push({ rotulo: textos.acoes.beneficio, descricao: "Conceder auxílio eventual", para: "/beneficios", icone: "card_giftcard" });
+  if (podeEncaminhar)
+    itens.push({ rotulo: textos.acoes.encaminhar, descricao: "Enviar para rede socioassistencial", para: "/encaminhamentos", icone: "move_item" });
+  if (podeVigilancia)
+    itens.push({ rotulo: textos.acoes.estatisticas, descricao: "Analisar indicadores locais", para: "/vigilancia", icone: "monitoring" });
+  if (podeAdmin)
+    itens.push({ rotulo: textos.acoes.configuracoes, descricao: "Ajustar parâmetros do sistema", para: "/administracao", icone: "settings_accessibility" });
+
+  return (
+    <>
+      {itens.length === 0 && (
+        <EstadoVazio
+          titulo={textos.dashboard.tudoEmDia}
+          descricao="Use a busca global para localizar registros rapidamente."
+        />
+      )}
       <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
         {itens.map((item) => (
           <Link
             key={item.para}
             to={item.para}
-            className="flex flex-col items-start p-6 rounded-2xl border border-outline-variant/30 hover:border-primary/40 hover:bg-white hover:shadow-xl hover:shadow-primary/5 transition-all group text-left"
+            className="flex flex-col items-start p-6 rounded-2xl border border-outline-variant/30 hover:border-primary/40 hover:bg-surface-container-lowest hover:shadow-xl hover:shadow-primary/5 transition-all group text-left focus-visible:outline-focus"
           >
             <div className="w-12 h-12 rounded-xl bg-surface-container-low flex items-center justify-center text-secondary group-hover:bg-primary group-hover:text-on-primary group-hover:scale-110 transition-all mb-4">
               <span className="material-symbols-outlined !text-[24px]">{item.icone}</span>
             </div>
             <span className="font-label-md text-ink mb-1">{item.rotulo}</span>
-            <span className="text-[11px] text-outline">{item.descricao}</span>
+            <span className="text-[11px] text-ink-soft">{item.descricao}</span>
           </Link>
         ))}
       </div>
-    </section>
+    </>
   );
 }
 
 // ── Atividade do Sistema ───────────────────────────────────────────
-function formatarTempo(dataStr: string): string {
-  const data = new Date(dataStr);
-  const agora = new Date();
-  const diffMs = agora.getTime() - data.getTime();
-  const diffMin = Math.floor(diffMs / 60000);
-  const diffHoras = Math.floor(diffMs / 3600000);
-  const diffDias = Math.floor(diffMs / 86400000);
-
-  if (diffMin < 1) return "Agora mesmo";
-  if (diffMin < 60) return `Há ${diffMin} min`;
-  if (diffHoras < 24) return `Há ${diffHoras}h`;
-  if (diffDias === 1) return "Ontem";
-  if (diffDias < 7) return `Há ${diffDias} dias`;
-  if (diffDias < 30) return `Há ${Math.floor(diffDias / 7)} semanas`;
-  return `Há ${Math.floor(diffDias / 30)} meses`;
-}
-
-const ICONE_POR_CATEGORIA: Record<string, string> = {
-  config: "settings",
-  acesso: "login",
-  cadastro: "person_add",
-  atendimento: "support_agent",
-  beneficio: "volunteer_activism",
-  encaminhamento: "forward",
-  scfv: "groups",
-  prontuario: "folder_open",
-  unidade: "apartment",
-  profissional: "badge",
-  rma: "description",
-  importacao: "upload_file",
-  geral: "circle",
-};
-
-const COR_POR_CATEGORIA: Record<string, string> = {
-  config: "bg-amber-100 text-amber-700",
-  acesso: "bg-sky-100 text-sky-700",
-  cadastro: "bg-emerald-100 text-emerald-700",
-  atendimento: "bg-blue-100 text-blue-700",
-  beneficio: "bg-violet-100 text-violet-700",
-  encaminhamento: "bg-rose-100 text-rose-700",
-  scfv: "bg-teal-100 text-teal-700",
-  prontuario: "bg-amber-100 text-amber-700",
-  unidade: "bg-indigo-100 text-indigo-700",
-  profissional: "bg-cyan-100 text-cyan-700",
-  rma: "bg-slate-100 text-slate-700",
-  importacao: "bg-orange-100 text-orange-700",
-  geral: "bg-surface-container-high text-outline",
-};
-
 function CartaoAtividade() {
   const { data, isLoading, isError } = useDashboardActivity(10);
 
   return (
-    <section className="col-span-12 lg:col-span-4 glass-card rounded-2xl p-lg premium-shadow bg-white flex flex-col">
+    <section className="col-span-12 lg:col-span-4 glass-card rounded-2xl p-lg premium-shadow bg-surface-container-lowest flex flex-col">
       <div className="flex items-center justify-between mb-lg">
         <h3 className="font-titulo text-title-md text-ink">Atividade do Sistema</h3>
       </div>
 
-      <div className="flex-1">
+      <div className="flex-1 overflow-y-auto max-h-[480px] pr-1 space-y-8">
         {isLoading ? (
-          <Skeleton variante="tabela" linhas={4} />
+          <Skeleton variante="trilha" linhas={4} />
         ) : isError || !data || data.length === 0 ? (
           <div className="space-y-8">
-            <div className="flex gap-4 items-start relative group">
-              <div className="absolute left-[11px] top-8 bottom-[-24px] w-[2px] bg-surface-container-high" />
+            <div className="flex gap-4 items-start">
               <div className="w-6 h-6 rounded-full bg-primary/20 border-4 border-white z-10 shadow-sm flex items-center justify-center shrink-0">
                 <div className="w-1.5 h-1.5 rounded-full bg-primary" />
               </div>
               <div className="flex-1">
-                <p className="font-label-md text-ink leading-tight">Configuração inicial processada</p>
-                <p className="text-[12px] text-outline mt-1 flex items-center gap-1.5">
-                  <span className="material-symbols-outlined !text-[12px]">schedule</span> Recentemente
+                <p className="font-label-md text-ink leading-tight">Sistema iniciado</p>
+                <p className="text-[12px] text-ink-soft mt-1 flex items-center gap-1.5">
+                  <span className="material-symbols-outlined !text-[12px]">schedule</span>
+                  Recentemente
                 </p>
               </div>
             </div>
-            <div className="flex gap-4 items-start relative group">
+            <div className="flex gap-4 items-start">
               <div className="w-6 h-6 rounded-full bg-surface-container-high border-4 border-white z-10 flex items-center justify-center shrink-0" />
               <div className="flex-1 pt-0.5">
-                <p className="font-body-md text-outline italic">Nenhum evento recente registrado.</p>
+                <p className="font-body-md text-ink-soft italic">{textos.dashboard.atividadeVazia}</p>
               </div>
             </div>
           </div>
         ) : (
-          <div className="space-y-8">
-            {data.map((item: DashboardActivityItem, i: number) => {
-              const isPrimeiro = i === 0;
-              const isUltimo = i === data.length - 1;
-              const corBadge = COR_POR_CATEGORIA[item.categoria] ?? COR_POR_CATEGORIA.geral;
-              const icone = ICONE_POR_CATEGORIA[item.categoria] ?? ICONE_POR_CATEGORIA.geral;
-              return (
-                <div key={item.id} className="flex gap-4 items-start relative group">
-                  {!isUltimo && (
-                    <div className="absolute left-[11px] top-8 bottom-[-24px] w-[2px] bg-surface-container-high" />
-                  )}
-                  <div
-                    className={`w-6 h-6 rounded-full border-4 border-white z-10 shadow-sm flex items-center justify-center shrink-0 ${
-                      isPrimeiro ? corBadge : "bg-surface-container-high"
-                    }`}
-                  >
-                    {isPrimeiro ? (
-                      <span className="material-symbols-outlined !text-[14px]">{icone}</span>
-                    ) : (
-                      <div className="w-1.5 h-1.5 rounded-full bg-outline" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-label-md text-ink leading-tight">{item.texto}</p>
-                    <p className="text-[13px] text-ink-soft mt-0.5 leading-snug">{item.descricao}</p>
-                    <p className="text-[12px] text-outline mt-1 flex items-center gap-1.5">
-                      <span className="material-symbols-outlined !text-[12px]">schedule</span>
-                      {formatarTempo(item.data)}
-                      {item.ator && (
-                        <>
-                          <span className="text-outline/40 mx-0.5">·</span>
-                          {item.ator}
-                        </>
-                      )}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {data && data.length === 0 && (
-          <div className="mt-xl text-center px-md py-lg rounded-2xl bg-surface-container-lowest/50 border border-dashed border-outline-variant/50">
-            <div className="w-20 h-20 rounded-full bg-primary/5 flex items-center justify-center mx-auto mb-4 border border-primary/5">
-              <span className="material-symbols-outlined text-primary !text-[40px] opacity-30">history_edu</span>
-            </div>
-            <p className="font-label-md text-ink mb-1">Primeiros passos</p>
-            <p className="font-body-sm text-outline px-4">
-              Os registros de atendimentos e concessões aparecerão cronologicamente aqui.
-            </p>
-          </div>
+          data.map((item: DashboardActivityItem, i: number) => (
+            <ActivityItem
+              key={item.id}
+              item={item}
+              isLast={i === data.length - 1}
+            />
+          ))
         )}
       </div>
+
+      {data && data.length > 0 && (
+        <div className="mt-lg pt-md border-t border-surface-container-high">
+          <Link
+            to="/notificacoes"
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+          >
+            {textos.dashboard.verAtividadeCompleta}
+            <span className="material-symbols-outlined !text-[14px]">arrow_forward</span>
+          </Link>
+        </div>
+      )}
     </section>
   );
 }
 
 // ── Saudação (baseada no horário) ─────────────────────────────────
 function saudacaoPorHorario(nome: string): string {
-  const hora = new Date().getHours();
-  const prefixo = hora < 6 ? "Boa noite" : hora < 12 ? "Bom dia" : hora < 18 ? "Boa tarde" : "Boa noite";
-  return `${prefixo}, ${nome}`;
+  const hora = agora().getHours();
+  const prefixo = hora < 6 ? textos.dashboard.saudacao.boaNoite : hora < 12 ? textos.dashboard.saudacao.bomDia : hora < 18 ? textos.dashboard.saudacao.boaTarde : textos.dashboard.saudacao.boaNoite;
+  const data = dataPorExtensoCurta();
+  return `${prefixo}, ${nome} — ${data}`;
 }
 
 // ── Dashboard Principal ────────────────────────────────────────────
@@ -462,37 +482,36 @@ export default function InicioPorPerfil() {
   const podeVerIndicadores = usePermissao("vigilancia.ver");
   const podeConfigurar = usePermissao("administracao.gerir");
   const podeConferirRma = usePermissao("rma.conferir");
+  const podeAtendimento = usePermissao("atendimento.registrar");
+  const podeCadastrar = usePermissao("familia.cadastrar");
+  const podeEncaminhar = usePermissao("encaminhamento.criar");
+  const podeConceder = usePermissao("beneficio.conceder");
 
   const nomeUsuario = usuario?.name?.split(" ")[0] ?? "Usuário";
+  const competencia = competenciaAtual();
 
   return (
-    <div className="space-y-lg">
+    <div className="space-y-lg pb-28">
       <div className="flex justify-between items-end">
         <div>
           <h2 className="font-titulo text-headline-xl text-ink tracking-tight mb-2">
             {saudacaoPorHorario(nomeUsuario)}
           </h2>
-          <p className="font-body-lg text-body-lg text-tertiary">
-            Seu painel de controle centralizado — Bem-vindo ao{" "}
-            <span className="font-semibold text-ink">GovSocial</span>.
+          <p className="font-body-lg text-body-lg text-ink-soft">
+            {textos.dashboard.escopo.replace("{unidade}", unidadeAtual?.nome ?? "—")}
+            {" · "}
+            {textos.dashboard.competencia.replace("{mes}", competencia.split("/")[0]).replace("{ano}", competencia.split("/")[1])}
           </p>
         </div>
         <div className="flex gap-3">
           {podeConferirRma && (
             <Link
               to="/rma"
-              className="px-6 py-3 rounded-xl border border-outline-variant bg-white font-label-md text-label-md text-secondary hover:bg-surface-container-low transition-all"
+              className="inline-flex items-center justify-center gap-2 rounded-input font-corpo font-semibold transition-[filter,border-color,color] focus-visible:outline-focus text-sm px-3 min-h-[36px] bg-surface text-ink border border-ink-soft/30 hover:border-primary hover:text-primary"
             >
-              Relatório Mensal
+              {textos.acoes.relatorioMensal}
             </Link>
           )}
-          <Link
-            to="/atendimentos"
-            className="px-6 py-3 rounded-xl gradient-primary shadow-lg shadow-primary/25 font-label-md text-label-md text-on-primary flex items-center gap-2 hover:scale-[1.02] active:scale-[0.98] transition-all"
-          >
-            <span className="material-symbols-outlined !text-[20px]">add</span>
-            Novo Atendimento
-          </Link>
         </div>
       </div>
 
@@ -501,7 +520,7 @@ export default function InicioPorPerfil() {
 
         {podeVerIndicadores && <PainelKpis />}
 
-        <Atalhos />
+        <Recomendacoes />
         <CartaoAtividade />
 
         {unidadeAtual && (
@@ -518,18 +537,39 @@ export default function InicioPorPerfil() {
         )}
       </div>
 
-      {/* FAB */}
-      <Link
-        to="/atendimentos"
-        className="nao-imprimir fixed bottom-10 right-10 w-16 h-16 gradient-primary text-on-primary rounded-2xl shadow-2xl shadow-primary/40 flex items-center justify-center hover:scale-110 active:scale-95 transition-all duration-300 z-[60] group"
-        aria-label="Acesso rápido"
-        title="Novo atendimento"
-      >
-        <span className="material-symbols-outlined !text-[32px]">add</span>
-        <span className="absolute right-20 bg-ink text-white text-[11px] px-3 py-1.5 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap pointer-events-none">
-          Novo Atendimento
-        </span>
-      </Link>
+      {/* SpeedDial */}
+      <SpeedDial
+        actions={[
+          {
+            id: "atendimento",
+            label: textos.acoes.novoAtendimento,
+            icon: "support_agent",
+            to: "/atendimentos",
+            permission: podeAtendimento,
+          },
+          {
+            id: "familia",
+            label: textos.acoes.cadastrarFamilia,
+            icon: "person_add",
+            to: "/familias/nova",
+            permission: podeCadastrar,
+          },
+          {
+            id: "encaminhamento",
+            label: textos.acoes.encaminhar,
+            icon: "move_item",
+            to: "/encaminhamentos/novo",
+            permission: podeEncaminhar,
+          },
+          {
+            id: "beneficio",
+            label: textos.acoes.concederBeneficio,
+            icon: "card_giftcard",
+            to: "/beneficios",
+            permission: podeConceder,
+          },
+        ]}
+      />
     </div>
   );
 }
@@ -551,9 +591,9 @@ function FilaDoDia({ unitId }: { unitId: string }) {
         </div>
         <Link
           to="/agenda"
-          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:brightness-110 transition-all"
+          className="inline-flex items-center gap-1.5 rounded-input bg-primary px-4 py-2 text-sm font-semibold text-white hover:brightness-110 transition-all focus-visible:outline-focus"
         >
-          Abrir fila
+          {textos.acoes.abrirFila}
           <span className="material-symbols-outlined text-base">arrow_forward</span>
         </Link>
       </div>
@@ -566,10 +606,15 @@ function FilaDoDia({ unitId }: { unitId: string }) {
           aoTentarNovamente={() => void refetch()}
         />
       ) : data.length === 0 ? (
-        <EstadoVazio
-          titulo="Ninguém na fila agora"
-          descricao="Os check-ins da recepção e os agendamentos de hoje aparecem aqui."
-        />
+        <div className="flex items-center gap-4 py-3">
+          <div className="w-10 h-10 rounded-full bg-primary/5 flex items-center justify-center shrink-0">
+            <span className="material-symbols-outlined text-primary/50 !text-[20px]">check_circle</span>
+          </div>
+          <div>
+            <p className="font-label-md text-ink">{textos.dashboard.filaVaziaTitulo}</p>
+            <p className="text-xs text-ink-soft">{textos.dashboard.filaVaziaDescricao}</p>
+          </div>
+        </div>
       ) : (
         (() => {
           const aguardando = data.filter((a) => a.status === "AGUARDANDO").length;
@@ -578,15 +623,15 @@ function FilaDoDia({ unitId }: { unitId: string }) {
             <div className="flex flex-wrap gap-8">
               <div>
                 <p className="text-2xl font-bold tabular-nums text-ink">{data.length}</p>
-                <p className="text-xs text-ink-soft">na fila hoje</p>
+                <p className="text-xs text-ink-soft">{textos.dashboard.naFilaHoje}</p>
               </div>
               <div>
-                <p className="text-2xl font-bold tabular-nums text-amber-600">{aguardando}</p>
-                <p className="text-xs text-ink-soft">aguardando</p>
+                <p className="text-2xl font-bold tabular-nums text-amber">{aguardando}</p>
+                <p className="text-xs text-ink-soft">{textos.dashboard.aguardando}</p>
               </div>
               <div>
                 <p className="text-2xl font-bold tabular-nums text-ink">{emAtendimento}</p>
-                <p className="text-xs text-ink-soft">em atendimento</p>
+                <p className="text-xs text-ink-soft">{textos.dashboard.emAtendimento}</p>
               </div>
             </div>
           );

@@ -472,7 +472,7 @@ services:
     build:
       context: ../modulo-govsocial/api
       dockerfile: Dockerfile
-    <<: [*restart-policy]
+    <<: [*restart-policy, *security-hardening]
     logging: *default-logging
     environment:
       POSTGRES_HOST: postgres
@@ -494,6 +494,8 @@ services:
       FIELD_ENCRYPTION_KEY: ${GOVSOCIAL_FIELD_ENCRYPTION_KEY:-}
     volumes:
       - govsocial_uploads:/app/uploads
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128M
     depends_on:
       postgres:
         condition: service_healthy
@@ -520,11 +522,22 @@ services:
     build:
       context: ../modulo-govsocial/web
       dockerfile: Dockerfile
-    <<: [*restart-policy]
+    <<: [*restart-policy, *security-hardening]
+    # nginx precisa dessas capabilities mínimas para trocar de usuário e
+    # ajustar dono dos diretórios de cache no /var/cache/nginx (tmpfs) no
+    # startup, mesmo com read_only + cap_drop: ALL do security-hardening.
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
     logging: *default-logging
     depends_on:
       govsocial-api:
         condition: service_healthy
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32M
+      - /var/cache/nginx:rw,noexec,nosuid,size=64M
+      - /var/run:rw,noexec,nosuid,size=1M
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:80"]
       interval: 30s

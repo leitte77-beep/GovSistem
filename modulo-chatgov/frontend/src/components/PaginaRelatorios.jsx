@@ -223,12 +223,14 @@ function mediaMovel(dados, janela) {
 
 // ─────────── COMPONENTES INTERNOS ───────────
 
-function CartaoKPI({ titulo, valor, sub, cor, icone, delta, deltaPositivo }) {
+function CartaoKPI({ titulo, valor, sub, cor, icone, delta, deltaPositivo, snap }) {
   const Icone = icone;
   return React.createElement('div', {
     style: {
       background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radius,
-      padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0,
+      padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 144,
+      flex: snap ? '0 0 144px' : undefined,
+      scrollSnapAlign: snap ? 'start' : undefined,
     },
   },
     React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 } },
@@ -415,13 +417,13 @@ function BarrasVerticais({ dados, mostrarLabelCada, linhaTendencia, onHover }) {
         React.createElement('div', {
           style: {
             width: '70%', height: `${(d.value / max) * 100}%`, minHeight: d.value > 0 ? 3 : 0,
-            background: d.destaque ? T.primary : T.primarySoft, borderRadius: '3px 3px 0 0', transition: 'height 0.3s', cursor: 'pointer',
+            background: d.destaque ? T.primary : (T.chartBar || T.primarySoft), borderRadius: '3px 3px 0 0', transition: 'height 0.3s', cursor: 'pointer',
           },
           onMouseEnter: (e) => onHover && onHover({ texto: `${d.label}: ${d.value}`, x: e.clientX, y: e.clientY }),
           onMouseLeave: () => onHover && onHover(null),
         }),
         React.createElement('span', {
-          style: { fontSize: 9, color: T.textMuted, whiteSpace: 'nowrap' },
+          style: { fontSize: 9, color: T.textSecondary, whiteSpace: 'nowrap' },
         }, (i % cada === 0) ? d.label : ''),
       )),
     ),
@@ -813,7 +815,7 @@ export function PaginaRelatorios() {
   return React.createElement('div', {
     id: 'relatorios-root',
     ref: containerRef,
-    style: { flex: 1, height: '100%', overflowY: 'auto', background: T.bg, padding: 20, position: 'relative' },
+    style: { flex: 1, height: '100%', overflowY: 'auto', overflowX: 'hidden', background: T.bg, padding: 20, position: 'relative' },
   },
     React.createElement('style', null, ESTILO_IMPRESSAO),
     React.createElement('style', null, `
@@ -866,7 +868,7 @@ export function PaginaRelatorios() {
       ),
 
       // Painel de filtros
-      React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 } },
+      React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, overflowX: 'auto', paddingBottom: 4, WebkitOverflowScrolling: 'touch', maskImage: 'linear-gradient(to right, #000 90%, transparent)', WebkitMaskImage: 'linear-gradient(to right, #000 90%, transparent)', paddingRight: 20 } },
         // Períodos rápidos
         ...PERIODOS_RAPIDOS.map((p) =>
           React.createElement('button', {
@@ -941,12 +943,12 @@ export function PaginaRelatorios() {
     ),
 
     // ═══════════════ TABS ═══════════════
-    React.createElement('div', { style: { display: 'flex', gap: 4, marginBottom: 18 } },
-      React.createElement('button', { onClick: () => setAbaAtiva('geral'), style: tabEstilo(abaAtiva === 'geral') },
+    React.createElement('div', { style: { display: 'flex', gap: 4, marginBottom: 18, overflowX: 'auto', scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', maskImage: 'linear-gradient(to right, #000 92%, transparent)', WebkitMaskImage: 'linear-gradient(to right, #000 92%, transparent)', paddingRight: 20 } },
+      React.createElement('button', { onClick: () => setAbaAtiva('geral'), style: { ...tabEstilo(abaAtiva === 'geral'), scrollSnapAlign: 'start', flexShrink: 0 } },
         React.createElement(LayoutDashboard, { size: 14 }), 'Visão Geral'),
-      React.createElement('button', { onClick: () => { setAbaAtiva('nps'); if (!npsDetalhado) carregarNPS(); }, style: tabEstilo(abaAtiva === 'nps') },
+      React.createElement('button', { onClick: () => { setAbaAtiva('nps'); if (!npsDetalhado) carregarNPS(); }, style: { ...tabEstilo(abaAtiva === 'nps'), scrollSnapAlign: 'start', flexShrink: 0 } },
         React.createElement(ThumbsUp, { size: 14 }), 'NPS'),
-      React.createElement('button', { onClick: () => { setAbaAtiva('sla'); if (!sla) carregarSLA(); }, style: tabEstilo(abaAtiva === 'sla') },
+      React.createElement('button', { onClick: () => { setAbaAtiva('sla'); if (!sla) carregarSLA(); }, style: { ...tabEstilo(abaAtiva === 'sla'), scrollSnapAlign: 'start', flexShrink: 0 } },
         React.createElement(Clock, { size: 14 }), 'SLA'),
     ),
 
@@ -961,52 +963,62 @@ export function PaginaRelatorios() {
       // ── KPIs ──
       carregandoMetricas && !dados
         ? React.createElement('div', {
-            style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 18 },
+            className: 'kpi-grid',
+            style: { display: 'flex', gap: 12, marginBottom: 18, overflowX: 'auto', paddingBottom: 8, scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', maskImage: 'linear-gradient(to right, #000 92%, transparent)', WebkitMaskImage: 'linear-gradient(to right, #000 92%, transparent)', minHeight: 98, paddingRight: 16 },
           },
             ...Array.from({ length: 8 }).map((_, i) =>
-              React.createElement(Skeleton, { key: i, altura: 80 })),
+              React.createElement('div', { key: i, style: { flex: '0 0 144px', scrollSnapAlign: 'start' } },
+                React.createElement(Skeleton, { key: i, altura: 80 }))),
           )
         : dados && React.createElement('div', {
-            style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 18 },
+            style: { display: 'flex', gap: 12, marginBottom: 18, overflowX: 'auto', paddingBottom: 8, scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', maskImage: 'linear-gradient(to right, #000 92%, transparent)', WebkitMaskImage: 'linear-gradient(to right, #000 92%, transparent)', minHeight: 98, paddingRight: 16 },
           },
             React.createElement(CartaoKPI, {
               titulo: 'Conversas', valor: r.criadas ?? 0,
               icone: MessageCircle, cor: T.primary,
               delta: temComparacao?.delta_criadas,
               deltaPositivo: (temComparacao?.delta_criadas || 0) >= 0,
+              snap: true,
             }),
             React.createElement(CartaoKPI, {
               titulo: 'Mensagens recebidas', valor: r.recebidas ?? 0,
               icone: TrendingUp,
               delta: temComparacao?.delta_recebidas,
               deltaPositivo: (temComparacao?.delta_recebidas || 0) >= 0,
+              snap: true,
             }),
             React.createElement(CartaoKPI, {
               titulo: 'Mensagens enviadas', valor: r.enviadas ?? 0,
               icone: BarChart3,
               delta: temComparacao?.delta_enviadas,
               deltaPositivo: (temComparacao?.delta_enviadas || 0) >= 0,
+              snap: true,
             }),
             React.createElement(CartaoKPI, {
               titulo: 'Tempo 1ª resposta', valor: formatarSeg(r.tempo_primeira_resposta_seg),
               icone: Timer, cor: T.primary,
+              snap: true,
             }),
             React.createElement(CartaoKPI, {
               titulo: 'Taxa de resolução', valor: `${r.taxa_resolucao ?? 0}%`,
               sub: `${r.resolvidas_periodo ?? 0} resolvidas`, icone: CheckCircle2, cor: T.success,
+              snap: true,
             }),
             React.createElement(CartaoKPI, {
               titulo: 'Ativas agora', valor: r.em_aberto ?? 0,
               icone: Users,
+              snap: true,
             }),
             React.createElement(CartaoKPI, {
               titulo: 'Na fila', valor: r.na_fila ?? 0,
               icone: AlertTriangle, cor: (r.na_fila || 0) > 0 ? T.warning : T.text,
+              snap: true,
             }),
             nps && React.createElement(CartaoKPI, {
               titulo: 'NPS', valor: nps.total_respondidos > 0 ? nps.nps : '—',
               sub: `${nps.total_respondidos || 0} respostas`,
               icone: ThumbsUp, cor: T.primary,
+              snap: true,
             }),
           ),
 
@@ -1028,7 +1040,7 @@ export function PaginaRelatorios() {
         ),
 
         // ── Grid: setor + status donut ──
-        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 18, marginBottom: 18 } },
+        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))', gap: 18, marginBottom: 18 } },
           React.createElement(Secao, { titulo: 'Conversas por setor' },
             React.createElement(BarrasHorizontais, {
               dados: (dados.por_setor || []).map((s, i) => ({ label: s.nome, value: s.total, cor: CORES_DEPT[i % CORES_DEPT.length] })),
@@ -1041,7 +1053,7 @@ export function PaginaRelatorios() {
         ),
 
         // ── Grid: heatmap + ranking ──
-        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 18, marginBottom: 18 } },
+        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))', gap: 18, marginBottom: 18 } },
           React.createElement(Secao, { titulo: 'Mapa de calor — Horário de pico' },
             React.createElement(HeatmapGrid, { dadosHora: horas }),
           ),
@@ -1134,7 +1146,7 @@ export function PaginaRelatorios() {
             ),
 
             // NPS por setor e por atendente
-            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 18 } },
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))', gap: 18 } },
                 React.createElement(Secao, { titulo: 'NPS por Setor' },
                   React.createElement(BarrasHorizontais, {
                     corPadrao: T.primary,

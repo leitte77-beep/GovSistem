@@ -39,7 +39,7 @@ export function ItemCanal({ canal, ativo, opId, onClick, naoLidas, onDelete }) {
       display: 'flex', padding: '12px 12px', cursor: 'pointer', alignItems: 'center', gap: 12,
       transition: 'background 0.12s', background: ativo ? T.primarySoft : 'transparent',
       borderRadius: T.radiusSm, marginBottom: 1, position: 'relative',
-      borderBottom: ativo ? 'none' : `1px solid #f0f2f5`,
+      borderBottom: ativo ? 'none' : `1px solid ${T.border}`,
     },
   },
     React.createElement(Avatar, { nome, tamanho: 46, tipo: canal.tipo, online: outroMembro?.online }),

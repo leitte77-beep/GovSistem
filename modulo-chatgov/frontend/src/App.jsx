@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from './context/AuthContext';
 import { SocketProvider } from './context/SocketContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { ChatGov } from './ChatGov';
+import { T } from './theme';
 
 function LoginScreen() {
   return React.createElement('div', {
@@ -14,7 +15,7 @@ function LoginScreen() {
       flexDirection: 'column',
       alignItems: 'center',
       justifyContent: 'center',
-      background: '#f0f2f5',
+      background: T.bg,
       fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
       gap: 24,
       overflowX: 'hidden',
@@ -27,28 +28,28 @@ function LoginScreen() {
         style: { width: 76, height: 76, borderRadius: 22, background: 'linear-gradient(135deg, #2563EB 0%, #4F46E5 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 12px 30px rgba(37,99,235,0.4)' },
       }, React.createElement(ShieldCheck, { size: 40, color: '#fff' })),
       React.createElement('h1', {
-        style: { fontSize: 30, fontWeight: 800, color: '#191c1e', letterSpacing: -0.5 },
+        style: { fontSize: 30, fontWeight: 800, color: T.text, letterSpacing: -0.5 },
       }, 'ChatGov'),
       React.createElement('p', {
-        style: { fontSize: 14, color: '#54656f' },
+        style: { fontSize: 14, color: T.textSecondary },
       }, 'Atendimento e comunica\u00e7\u00e3o para o setor p\u00fablico'),
     ),
     React.createElement('div', {
       style: {
-        background: '#FFFFFF',
+        background: T.surface,
         padding: 32,
         borderRadius: 16,
         width: 'min(360px, calc(100vw - 32px))',
         textAlign: 'center',
         boxShadow: '0 12px 40px rgba(16,26,42,0.10)',
-        border: '1px solid #d1d7db',
+        border: `1px solid ${T.border}`,
       },
     },
       React.createElement('p', {
-        style: { fontSize: 14, color: '#54656f', margin: 0 },
+        style: { fontSize: 14, color: T.textSecondary, margin: 0 },
       }, 'Acesse o ChatGov atrav\u00e9s do painel GovSistem.'),
       React.createElement('p', {
-        style: { fontSize: 12, color: '#8696a0', marginTop: 8 },
+        style: { fontSize: 12, color: T.textMuted, marginTop: 8 },
       }, 'Fa\u00e7a login na plataforma e abra o m\u00f3dulo ChatGov.'),
     ),
   );

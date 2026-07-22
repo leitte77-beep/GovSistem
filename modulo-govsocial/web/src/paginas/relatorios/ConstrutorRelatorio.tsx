@@ -150,7 +150,7 @@ export default function ConstrutorRelatorio() {
       </div>
 
       {visualizando && dadosVisualizacao && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setVisualizando(false)}>
+        <button type="button" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 cursor-pointer" onClick={() => setVisualizando(false)}>
           <div className="w-full max-w-5xl max-h-[90vh] overflow-auto rounded-cartao bg-white p-6 shadow-elevado" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-semibold">{nome}</h2>
@@ -161,7 +161,7 @@ export default function ConstrutorRelatorio() {
               <tbody>{dadosVisualizacao.dados.slice(0, 500).map((d: any, i: number) => <tr key={i} className="border-b border-ink-soft/10">{dadosVisualizacao.colunas.map((c: any) => <td key={c.campo} className="px-3 py-1.5">{d[c.campo]}</td>)}</tr>)}</tbody>
             </table>
           </div>
-        </div>
+        </button>
       )}
     </div>
   );

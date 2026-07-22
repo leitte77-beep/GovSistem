@@ -44,6 +44,9 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(Exception)
     async def catch_all_exception_handler(request: Request, exc: Exception):
+        import logging
+        _logger = logging.getLogger("saas")
+        _logger.error("Unhandled exception: %s", exc, exc_info=True)
         origin = request.headers.get("origin", "")
         headers = {}
         if origin in settings.CORS_ORIGINS:
@@ -51,7 +54,7 @@ def create_app() -> FastAPI:
             headers["Access-Control-Allow-Credentials"] = "true"
         return JSONResponse(
             status_code=500,
-            content={"detail": str(exc) if settings.DEBUG else "Internal server error"},
+            content={"detail": "Internal server error"},
             headers=headers,
         )
 
@@ -59,7 +62,33 @@ def create_app() -> FastAPI:
 
     @app.get("/api/v1/health")
     async def health():
-        return {"status": "ok", "service": "govsistem"}
+        import logging as _logging
+        _log = _logging.getLogger("saas.health")
+        modules_status = {}
+        module_checks: dict[str, tuple[str, str]] = {
+            "diario": (settings.DIARIO_MODULE_INTERNAL_API_URL, "/api/v1/health"),
+            "chatgov": (settings.CHATGOV_MODULE_INTERNAL_API_URL, "/api/health"),
+            "govtask": (settings.GOVTASK_MODULE_INTERNAL_API_URL, "/api/govtask/health"),
+            "govsocial": (settings.GOVSOCIAL_MODULE_INTERNAL_API_URL, "/api/govsocial/health"),
+            "govavalia": (settings.GOVAVALIA_MODULE_INTERNAL_API_URL, "/avalia/health"),
+        }
+        for name, (base_url, health_path) in module_checks.items():
+            if not base_url:
+                continue
+            try:
+                import httpx
+                async with httpx.AsyncClient(timeout=5) as client:
+                    resp = await client.get(f"{base_url}{health_path}")
+                modules_status[name] = "ok" if resp.status_code == 200 else "degraded"
+            except Exception:
+                modules_status[name] = "unreachable"
+                _log.warning("Module %s health check failed", name)
+
+        return {
+            "status": "ok",
+            "service": "govsistem",
+            "modules": modules_status,
+        }
 
     @app.on_event("shutdown")
     async def shutdown():

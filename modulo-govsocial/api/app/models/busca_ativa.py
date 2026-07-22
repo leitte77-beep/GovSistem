@@ -13,7 +13,8 @@ from sqlalchemy import (
     Text,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.types import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, SoftDeleteMixin, TimestampMixin
@@ -46,12 +47,12 @@ class BuscaAtiva(Base, TimestampMixin, SoftDeleteMixin):
     local_referencia: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     latitude: Mapped[Optional[float]] = mapped_column(nullable=True)
     longitude: Mapped[Optional[float]] = mapped_column(nullable=True)
-    equipe_nomes: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    equipe_nomes: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
     pessoas_abordadas: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     pessoas_aceitaram_acolhimento: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     pessoas_encaminhadas: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
     observacoes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    fotos_urls: Mapped[Optional[list]] = mapped_column(JSONB, nullable=True)
+    fotos_urls: Mapped[Optional[list]] = mapped_column(JSON, nullable=True)
 
     profissional: Mapped[Optional["Professional"]] = relationship("Professional")
     pessoas: Mapped[List["PessoaAbordada"]] = relationship(

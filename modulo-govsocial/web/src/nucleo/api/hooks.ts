@@ -291,6 +291,14 @@ export function useDashboardActivity(limit = 10) {
   });
 }
 
+export function useRecommendationScope() {
+  return useQuery({
+    queryKey: ["dashboard", "recommendation-scope"],
+    queryFn: () => servicoDashboard.recommendationScope(),
+    staleTime: 30_000,
+  });
+}
+
 // ── Administração / onboarding (Fase 9, §4.10) ───────────────────
 export function useOnboardingStatus() {
   return useQuery({

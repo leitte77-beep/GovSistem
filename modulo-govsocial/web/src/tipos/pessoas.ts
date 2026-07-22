@@ -18,6 +18,8 @@ export type UnifiedSearchItem = {
   nome_exibicao: string;
   cpf_mascarado: string | null;
   nis_mascarado: string | null;
+  cpf?: string | null;
+  nis?: string | null;
   data_nascimento: string | null;
   familias: FamiliaResumoBusca[];
 };
@@ -35,8 +37,14 @@ export type PersonListItem = {
   nome_civil: string;
   cpf_mascarado: string | null;
   nis_mascarado: string | null;
+  cpf?: string | null;
+  nis?: string | null;
   data_nascimento: string | null;
   is_falecido: boolean;
+  family_id?: string | null;
+  familia_codigo?: number | null;
+  familia_nome?: string | null;
+  is_responsavel?: boolean;
 };
 
 export type PersonOut = {

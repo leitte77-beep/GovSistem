@@ -20,7 +20,7 @@ import {
   useDashboardOverview,
   useDashboardSerie,
 } from "@/nucleo/api/hooks";
-import type { ErroApi } from "@/nucleo/http/problemDetails";
+import { extrairProblema } from "@/nucleo/http/problemDetails";
 import { CartaoIndicador } from "./CartaoIndicador";
 import { GraficoBarras } from "./GraficoBarras";
 import { GraficoDonut } from "./GraficoDonut";
@@ -84,7 +84,7 @@ export default function DashboardGestor() {
         <Skeleton variante="tabela" linhas={2} />
       ) : overviewQ.isError ? (
         <EstadoErro
-          problema={(overviewQ.error as ErroApi).problema}
+          problema={extrairProblema(overviewQ.error)}
           aoTentarNovamente={() => overviewQ.refetch()}
         />
       ) : overviewQ.data ? (
@@ -119,6 +119,11 @@ export default function DashboardGestor() {
       <div className="grid gap-4 lg:grid-cols-2">
         {serieQ.isLoading ? (
           <Skeleton variante="cartao" />
+        ) : serieQ.isError ? (
+          <EstadoErro
+            problema={extrairProblema(serieQ.error)}
+            aoTentarNovamente={() => serieQ.refetch()}
+          />
         ) : serieQ.data ? (
           <GraficoBarras
             titulo="Atendimentos nos últimos 12 meses"
@@ -128,6 +133,11 @@ export default function DashboardGestor() {
 
         {beneficiosQ.isLoading ? (
           <Skeleton variante="cartao" />
+        ) : beneficiosQ.isError ? (
+          <EstadoErro
+            problema={extrairProblema(beneficiosQ.error)}
+            aoTentarNovamente={() => beneficiosQ.refetch()}
+          />
         ) : beneficiosQ.data ? (
           <GraficoDonut
             titulo="Benefícios concedidos por tipo"
@@ -140,12 +150,22 @@ export default function DashboardGestor() {
       <div className="grid gap-4 lg:grid-cols-2">
         {mapaQ.isLoading ? (
           <Skeleton variante="cartao" />
+        ) : mapaQ.isError ? (
+          <EstadoErro
+            problema={extrairProblema(mapaQ.error)}
+            aoTentarNovamente={() => mapaQ.refetch()}
+          />
         ) : mapaQ.data ? (
           <MapaTerritorial itens={mapaQ.data} podePinos={podePinos} />
         ) : null}
 
         {indicadoresQ.isLoading ? (
           <Skeleton variante="cartao" />
+        ) : indicadoresQ.isError ? (
+          <EstadoErro
+            problema={extrairProblema(indicadoresQ.error)}
+            aoTentarNovamente={() => indicadoresQ.refetch()}
+          />
         ) : indicadoresQ.data ? (
           <div className="space-y-4">
             <section

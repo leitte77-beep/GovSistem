@@ -468,6 +468,20 @@ export async function solicitarExclusaoLGPD(body) {
   return jsonReq('/api/lgpd/exclusao', 'POST', body);
 }
 
+// ===== Painel Operacional =====
+
+export async function fetchOperacional({ departamentoId, signal } = {}) {
+  const params = new URLSearchParams();
+  if (departamentoId) params.set('departamento_id', departamentoId);
+  const qs = params.toString();
+  const res = await fetch(`/api/conversas/operacional${qs ? '?' + qs : ''}`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+    signal,
+  });
+  if (!res.ok) throw new Error('Erro ao carregar dados operacionais');
+  return res.json();
+}
+
 // ===== Dashboard =====
 
 export async function fetchDashboard() {

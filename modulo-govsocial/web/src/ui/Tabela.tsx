@@ -76,6 +76,14 @@ export function Tabela<T>({
     }
   }
 
+  function aoTeclarCabecalho(e: React.KeyboardEvent, chave: string, ordenavel: boolean | undefined) {
+    if (!ordenavel) return;
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      aoClicarCabecalho(chave, ordenavel);
+    }
+  }
+
   return (
     <div className="overflow-x-auto rounded-cartao border border-ink-soft/15 bg-surface shadow-um">
       <table className="w-full border-collapse text-sm">
@@ -95,7 +103,11 @@ export function Tabela<T>({
                     ALINHA[c.alinhamento ?? "esquerda"],
                   )}
                   onClick={() => aoClicarCabecalho(c.chave, c.ordenavel)}
+                  onKeyDown={(e) => aoTeclarCabecalho(e, c.chave, c.ordenavel)}
+                  tabIndex={c.ordenavel ? 0 : undefined}
+                  role={c.ordenavel ? "columnheader button" : "columnheader"}
                   aria-sort={direcao === "asc" ? "ascending" : direcao === "desc" ? "descending" : undefined}
+                  aria-label={c.ordenavel ? `${c.titulo} — clique para ordenar` : undefined}
                 >
                   <span className="inline-flex items-center gap-1">
                     {c.titulo}

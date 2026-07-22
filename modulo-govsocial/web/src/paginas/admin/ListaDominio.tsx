@@ -68,7 +68,7 @@ export default function ListaDominio() {
         vazio={<span className="text-ink-soft">Nenhum registro cadastrado.</span>} />
 
       {(novo || editando) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setNovo(false); setEditando(null); }}>
+        <button type="button" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 cursor-pointer" onClick={() => { setNovo(false); setEditando(null); }}>
           <div className="w-full max-w-sm rounded-cartao bg-surface p-6 shadow-elevado" onClick={(e) => e.stopPropagation()}>
             <h3 className="mb-3 text-lg font-semibold">{editando ? "Editar" : "Novo registro"}</h3>
             <input className="w-full rounded-input border border-ink-soft/20 bg-surface px-3 py-2 text-sm" value={editando ? editando.descricao : valor}
@@ -79,7 +79,7 @@ export default function ListaDominio() {
               <button onClick={() => { const v = editando ? editando.descricao : valor; if (editando) atualizar.mutate({ id: editando.id, descricao: v }); else criar.mutate(v); }} className="rounded-input bg-primary px-3 py-1.5 text-sm font-semibold text-white">Salvar</button>
             </div>
           </div>
-        </div>
+        </button>
       )}
     </div>
   );

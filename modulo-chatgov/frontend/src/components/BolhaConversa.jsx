@@ -91,11 +91,10 @@ export function BolhaConversa({ msg, podeExcluir, onExcluir, onResponder, onReag
       React.createElement('div', {
         className: 'cg-bolha',
         style: {
-          background: entrada ? T.surface : '#d9fdd3',
+          background: entrada ? T.surface : T.bubbleOut,
           color: T.text,
           padding: '6px 8px 4px 8px',
           borderRadius: entrada ? '0px 8px 8px 8px' : '8px 0px 8px 8px',
-          maxWidth: '100%',
           position: 'relative',
           boxShadow: '0 1px 1px rgba(17,27,33,0.06)',
         },
@@ -104,21 +103,25 @@ export function BolhaConversa({ msg, podeExcluir, onExcluir, onResponder, onReag
           style: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 },
         },
           React.createElement('span', {
-            style: { fontSize: 12, fontWeight: 600, color: T.primary },
+            style: { fontSize: 12, fontWeight: 600, color: T.bubbleOutAuthor || T.primary },
           }, msg.operador_nome),
           (msg.operador_departamentos || []).slice(0, 2).map((d) =>
             React.createElement('span', {
               key: d.nome,
-              style: { fontSize: 10, fontWeight: 600, padding: '1px 6px', borderRadius: 8, background: `${d.cor}22`, color: d.cor },
+              style: { fontSize: 10, fontWeight: 600, padding: '1px 7px', borderRadius: 999, background: T.bubbleOutTagBg || `${d.cor}22`, color: d.cor, filter: T.bubbleOutTagBg !== 'transparent' ? 'brightness(1.6) saturate(1.15)' : undefined },
             }, d.nome)),
         ),
         // Preview da mensagem citada (responder).
         (respondida || msg.respondendo_a) && React.createElement('div', {
-          style: { borderLeft: `3px solid ${T.primary}`, background: 'rgba(0,0,0,0.05)', borderRadius: 4, padding: '3px 8px', marginBottom: 4, maxWidth: 260 },
+          style: {
+            borderLeft: entrada ? `3px solid ${T.primary}` : `3px solid ${T.bubbleOutReplyBorder || T.primary}`,
+            background: entrada ? 'rgba(0,0,0,0.05)' : (T.bubbleOutReplyBg || 'rgba(0,0,0,0.05)'),
+            borderRadius: 4, padding: '3px 8px', marginBottom: 4, maxWidth: 260,
+          },
         },
           React.createElement('div', { style: { fontSize: 11, fontWeight: 600, color: T.primary } },
             respondida ? (respondida.direcao === 'saida' ? (respondida.operador_nome || 'Operador') : (nomeContato || 'Cidadão')) : 'Mensagem'),
-          React.createElement('div', { style: { fontSize: 12.5, color: T.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
+          React.createElement('div', { style: { fontSize: 12.5, color: entrada ? T.textMuted : (T.bubbleOutReplyText || T.textMuted), overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
             respondida ? (respondida.conteudo || `[${respondida.tipo || 'mídia'}]`) : '↩'),
         ),
         hasMedia && React.createElement('div', { style: { marginBottom: msg.conteudo ? 4 : 0 } },
@@ -138,7 +141,7 @@ export function BolhaConversa({ msg, podeExcluir, onExcluir, onResponder, onReag
           },
         },
           React.createElement('span', {
-            style: { fontSize: 10.5, color: T.textMuted, lineHeight: '15px' },
+            style: { fontSize: 10.5, color: entrada ? T.textMuted : (T.bubbleOutMeta || T.textMuted), lineHeight: '15px' },
           }, formatarHora(msg.criado_em)),
           !entrada && React.createElement(Tick, { status: msg.status }),
         ),

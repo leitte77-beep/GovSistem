@@ -5,10 +5,11 @@ export function Chip({ label, ativo, onClick, cor, badge }) {
   return React.createElement('button', {
     onClick,
     style: {
-      background: ativo ? T.primary : '#e9edef',
+      background: ativo ? T.primary : T.surfaceMuted,
       color: ativo ? '#fff' : T.textSecondary,
       border: 'none',
-      padding: '6px 14px',
+      padding: '8px 16px',
+      minHeight: 44,
       borderRadius: 20,
       fontSize: 13,
       fontWeight: ativo ? 600 : 500,

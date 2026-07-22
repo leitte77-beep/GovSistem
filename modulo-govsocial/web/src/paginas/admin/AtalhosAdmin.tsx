@@ -72,7 +72,7 @@ export default function AtalhosAdmin() {
       />
 
       {formulario && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setFormulario(null)}>
+        <button type="button" className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 cursor-pointer" onClick={() => setFormulario(null)}>
           <div className="w-full max-w-md rounded-cartao bg-surface p-6 shadow-elevado" onClick={(e) => e.stopPropagation()}>
             <h2 className="mb-4 text-lg font-semibold">{formulario.id ? "Editar atalho" : "Novo atalho"}</h2>
             <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); }}>
@@ -108,7 +108,7 @@ export default function AtalhosAdmin() {
               </div>
             </form>
           </div>
-        </div>
+        </button>
       )}
     </div>
   );

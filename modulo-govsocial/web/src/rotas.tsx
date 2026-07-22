@@ -4,6 +4,7 @@ import { ShellModulo } from "@/layout/ShellModulo";
 import { LayoutImpressao } from "@/layout/LayoutImpressao";
 import { GuardRota } from "@/layout/GuardRota";
 import { Skeleton } from "@/ui/Skeleton";
+import { ErrorBoundary } from "@/ui/ErrorBoundary";
 
 // Code-splitting por rota (§12): cada página é um chunk sob demanda.
 const InicioPorPerfil = lazy(() => import("@/paginas/inicio/InicioPorPerfil"));
@@ -60,14 +61,19 @@ const ReconhecimentoFacial = lazy(() => import("@/paginas/biometria/Reconhecimen
 
 function Carregando() {
   return (
-    <div className="p-6">
+    <div className="p-6" role="status" aria-label="Carregando página">
       <Skeleton variante="cartao" />
+      <span className="apenas-leitor">Carregando página…</span>
     </div>
   );
 }
 
 function Pagina({ children }: { children: ReactNode }) {
-  return <Suspense fallback={<Carregando />}>{children}</Suspense>;
+  return (
+    <ErrorBoundary>
+      <Suspense fallback={<Carregando />}>{children}</Suspense>
+    </ErrorBoundary>
+  );
 }
 
 export function Rotas() {

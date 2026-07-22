@@ -165,20 +165,20 @@ export function ColunaEsquerda({
     style: {
       width: larguraPainel, minWidth: ehMobile ? 0 : larguraPainel, height: '100%',
       background: T.surface, display: 'flex', flexDirection: 'column',
-      borderRight: ehMobile ? 'none' : '1px solid #d1d7db', zIndex: 40, flexShrink: 0,
+      borderRight: ehMobile ? 'none' : `1px solid ${T.border}`, zIndex: 40, flexShrink: 0,
     },
   },
     React.createElement('div', {
       style: {
         height: 64, padding: '0 16px',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        background: '#e9edef',
+        background: T.surfaceMuted,
       },
     },
       React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12 } },
         React.createElement('div', {
           style: {
-            width: 40, height: 40, borderRadius: '50%', background: '#d1d7db', overflow: 'hidden', flexShrink: 0,
+            width: 40, height: 40, borderRadius: '50%', background: T.borderStrong, overflow: 'hidden', flexShrink: 0,
           },
         },
           React.createElement('img', {
@@ -223,12 +223,12 @@ export function ColunaEsquerda({
             React.createElement('div', {
               style: {
                 position: 'absolute', top: '100%', right: 0, marginTop: 4,
-                minWidth: 200, background: '#fff', border: '1px solid #d1d7db',
+                minWidth: 200, background: T.surface, border: `1px solid ${T.border}`,
                 borderRadius: 10, boxShadow: '0 4px 16px rgba(0,0,0,0.12)',
                 zIndex: 999, overflow: 'hidden', padding: '4px 0',
               },
             },
-              React.createElement('div', { style: { padding: '8px 14px', borderBottom: '1px solid #eef2f6' } },
+              React.createElement('div', { style: { padding: '8px 14px', borderBottom: `1px solid ${T.border}` } },
                 React.createElement('p', {
                   style: { fontSize: 13, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
                 }, perfil?.nome || op?.nome || ''),
@@ -257,29 +257,29 @@ export function ColunaEsquerda({
     ehAtend && React.createElement('div', {
       style: {
         padding: '8px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        background: T.whatsappGreenSoft, borderBottom: '1px solid #d1d7db',
+        background: T.whatsappStatusBg, borderBottom: `1px solid ${T.border}`,
       },
     },
       React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, cursor: isAdmin ? 'pointer' : 'default' }, onClick: isAdmin ? onOpenQR : undefined },
         React.createElement('span', {
           className: 'material-symbols-outlined',
-          style: { fontSize: 18, color: T.whatsappGreen, fontVariationSettings: "'FILL' 1" },
+          style: { fontSize: 18, color: T.whatsappStatusIcon, fontVariationSettings: "'FILL' 1" },
         }, 'check_circle'),
-        React.createElement('span', { style: { fontSize: 12, fontWeight: 500, color: isAdmin && !conectado ? T.danger : '#004a1c' } },
+        React.createElement('span', { style: { fontSize: 12, fontWeight: 500, color: isAdmin && !conectado ? T.danger : T.whatsappStatusText } },
           conectado
             ? `WhatsApp conectado \u2022 ${waStatus.numero || ''}`
             : isAdmin ? 'WhatsApp desconectado \u2014 toque para conectar' : 'WhatsApp desconectado'),
       ),
       isAdmin && React.createElement('button', {
         onClick: onOpenQR,
-        style: { fontSize: 11, fontWeight: 700, color: T.primary, background: 'transparent', border: 'none', cursor: 'pointer', textDecoration: 'underline' },
+        style: { fontSize: 11, fontWeight: 700, color: T.accentBlueLight || T.primary, background: 'transparent', border: 'none', cursor: 'pointer', textDecoration: 'underline' },
       }, 'ALTERAR'),
     ),
 
     // Banner de falha de conexão do WhatsApp (esgotou reconexões).
     ehAtend && waErro && React.createElement('div', {
       role: 'alert',
-      style: { padding: '8px 16px', background: T.dangerSoft, color: T.danger, fontSize: 12, fontWeight: 600, borderBottom: '1px solid #d1d7db', display: 'flex', alignItems: 'center', gap: 8 },
+      style: { padding: '8px 16px', background: T.dangerSoft, color: T.danger, fontSize: 12, fontWeight: 600, borderBottom: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', gap: 8 },
     },
       React.createElement('span', { className: 'material-symbols-outlined', style: { fontSize: 16 } }, 'error'),
       React.createElement('span', { style: { flex: 1 } }, waErro),
@@ -299,14 +299,14 @@ export function ColunaEsquerda({
           value: busca, onChange: (e) => setBusca(e.target.value),
           placeholder: 'Pesquisar ou come\u00e7ar uma nova conversa',
           style: {
-            width: '100%', background: '#e9edef', border: 'none', borderRadius: 8,
+            width: '100%',         background: T.surfaceMuted, border: 'none', borderRadius: 8,
             padding: '10px 12px 10px 44px', color: T.text, fontSize: 14, outline: 'none',
             boxSizing: 'border-box',
           },
         }),
       ),
 
-      React.createElement('div', { style: { display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 } },
+      React.createElement('div', { style: { display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4, paddingRight: 16, maskImage: 'linear-gradient(to right, #000 92%, transparent)', WebkitMaskImage: 'linear-gradient(to right, #000 92%, transparent)', scrollSnapType: 'x mandatory' } },
         React.createElement(Chip, { label: 'Tudo', ativo: filtro === 'todas', onClick: () => setFiltro('todas') }),
         React.createElement(Chip, { label: 'Minhas', ativo: filtro === 'minhas', onClick: () => setFiltro('minhas') }),
         React.createElement(Chip, { label: 'N\u00e3o lidas', ativo: filtro === 'naolidas', onClick: () => setFiltro('naolidas'), badge: countNaoLidas }),
@@ -322,7 +322,7 @@ export function ColunaEsquerda({
     ),
 
     // List
-    React.createElement('div', { style: { flex: 1, overflowY: 'auto', padding: '4px 8px 8px' } },
+    React.createElement('div', { style: { flex: 1, overflowY: 'auto', padding: `4px 8px ${ehMobile ? '80px' : '8px'}` } },
       ehAtend
         ? (carregando && conversas.length === 0
             ? React.createElement(SkeletonLista, null)
@@ -364,7 +364,7 @@ export function ColunaEsquerda({
               style: {
                 flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                 padding: '10px 12px', borderRadius: T.radius, border: 'none', cursor: 'pointer',
-                background: T.primary, color: '#fff', fontSize: 13, fontWeight: 600,
+                background: T.primary, color: '#fff', fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
               },
             }, React.createElement(Plus, { size: 16 }), 'Nova Mensagem'),
             React.createElement('button', {
@@ -372,7 +372,7 @@ export function ColunaEsquerda({
               style: {
                 flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                 padding: '10px 12px', borderRadius: T.radius, border: 'none', cursor: 'pointer',
-                background: T.surfaceMuted, color: T.text, fontSize: 13, fontWeight: 600,
+                background: T.surfaceMuted, color: T.text, fontSize: 13, fontWeight: 600, whiteSpace: 'nowrap',
               },
             }, React.createElement(Users, { size: 16 }), 'Novo grupo'),
           ),

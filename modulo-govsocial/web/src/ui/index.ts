@@ -15,6 +15,7 @@ export { Skeleton } from "./Skeleton";
 export { EstadoVazio } from "./EstadoVazio";
 export { EstadoErro } from "./EstadoErro";
 export { EstadoSemPermissao } from "./EstadoSemPermissao";
+export { ErrorBoundary } from "./ErrorBoundary";
 export { BarraOffline } from "./BarraOffline";
 export { ChatButton } from "./ChatButton";
 export { ChatDrawer } from "./ChatDrawer";

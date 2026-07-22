@@ -11,6 +11,7 @@ from app.models.audit_trail import AuditTrail
 from app.models.beneficio import ConcessaoBeneficio
 from app.models.encaminhamento import Encaminhamento
 from app.models.family import Family
+from app.models.user import User
 
 
 def _dt(d: date) -> datetime:
@@ -341,6 +342,38 @@ ACAO_ROTULO: dict[str, str] = {
     "MERGE": "unificado",
 }
 
+# Códigos crus (chaves curtas em pt-BR) enviados ao frontend nos campos
+# `entidade`/`acao` do feed de atividade. O frontend é o dono da tradução
+# final para frase (ver mapeadorAtividade.ts) — o backend NÃO deve mais
+# pré-traduzir esses dois campos para um rótulo humano (isso quebrava o
+# lookup de chave completa `entidade.acao` no mapper e fazia cair no
+# fallback cru). `texto`/`descricao` continuam sendo rótulos humanos, usados
+# só como fallback de último caso.
+ENTIDADE_CODIGO: dict[str, str] = {
+    "family": "familia",
+    "person": "pessoa",
+    "attendance": "atendimento",
+    "benefit_concession": "beneficio",
+    "encaminhamento": "encaminhamento",
+    "acao_coletiva": "grupo",
+    "case_file": "prontuario",
+    "unit": "unidade",
+    "professional": "profissional",
+    "rma": "rma_fechamento",
+    "import_job": "importacao",
+    "domain_national_seed": "config",
+    "onboarding_wizard": "config",
+}
+
+ACAO_CODIGO: dict[str, str] = {
+    "CREATE": "criado",
+    "UPDATE": "atualizado",
+    "DELETE": "removido",
+    "READ": "consultado",
+    "SEED": "criado",
+    "MERGE": "atualizado",
+}
+
 _ONBOARDING_STEP_LABELS: dict[str, str] = {
     "units": "Unidades cadastradas",
     "territories": "Territórios configurados",
@@ -376,7 +409,7 @@ def _texto_atividade(
             return entidade, desc, "cadastro"
         if action == "UPDATE":
             return entidade, "Dados atualizados", "cadastro"
-        return entidade, acao, "cadastro"
+        return entidade, "", "cadastro"
 
     if entity == "person":
         if action == "CREATE":
@@ -385,7 +418,7 @@ def _texto_atividade(
             return entidade, desc, "cadastro"
         if action == "UPDATE":
             return entidade, "Dados atualizados", "cadastro"
-        return entidade, acao, "cadastro"
+        return entidade, "", "cadastro"
 
     if entity == "attendance":
         if action == "CREATE":
@@ -397,7 +430,7 @@ def _texto_atividade(
             return entidade, "Registro atualizado", "atendimento"
         if action == "READ":
             return entidade, "Evolução consultada", "atendimento"
-        return entidade, acao, "atendimento"
+        return entidade, "", "atendimento"
 
     if entity == "benefit_concession":
         if action == "CREATE":
@@ -409,7 +442,7 @@ def _texto_atividade(
             return entidade, status.replace("_", " ").title(), "beneficio"
         if action == "UPDATE":
             return entidade, "Dados atualizados", "beneficio"
-        return entidade, acao, "beneficio"
+        return entidade, "", "beneficio"
 
     if entity == "encaminhamento":
         if action == "CREATE":
@@ -419,7 +452,7 @@ def _texto_atividade(
         status = diff.get("novo_status", "")
         if status:
             return entidade, status.replace("_", " ").title(), "encaminhamento"
-        return entidade, acao, "encaminhamento"
+        return entidade, "", "encaminhamento"
 
     if entity == "acao_coletiva":
         if action == "CREATE":
@@ -428,7 +461,7 @@ def _texto_atividade(
             return entidade, desc, "scfv"
         if action == "UPDATE":
             return entidade, "Dados atualizados", "scfv"
-        return entidade, acao, "scfv"
+        return entidade, "", "scfv"
 
     if entity == "case_file":
         if action == "CREATE":
@@ -437,21 +470,21 @@ def _texto_atividade(
             return entidade, desc, "prontuario"
         if action == "UPDATE":
             return entidade, "Registro atualizado", "prontuario"
-        return entidade, acao, "prontuario"
+        return entidade, "", "prontuario"
 
     if entity == "unit":
         if action == "CREATE":
             nome = diff.get("nome", "") or ""
             desc = nome if nome else "Nova unidade"
             return entidade, desc, "unidade"
-        return entidade, acao, "unidade"
+        return entidade, "", "unidade"
 
     if entity == "professional":
         if action == "CREATE":
             nome = diff.get("nome", "") or ""
             desc = nome if nome else "Novo profissional"
             return entidade, desc, "profissional"
-        return entidade, acao, "profissional"
+        return entidade, "", "profissional"
 
     if entity == "rma":
         if action == "CREATE":
@@ -463,14 +496,14 @@ def _texto_atividade(
         status = diff.get("novo_status", "")
         if status:
             return entidade, status.replace("_", " ").title(), "rma"
-        return entidade, acao, "rma"
+        return entidade, "", "rma"
 
     if entity == "import_job":
         if action == "CREATE":
             tipo = diff.get("tipo", "") or "Importação"
             desc = f"{tipo} iniciada"
             return entidade, desc, "importacao"
-        return entidade, acao, "importacao"
+        return entidade, "", "importacao"
 
     if entity == "domain_national_seed":
         return entidade, "Tabelas de domínio inicializadas", "config"
@@ -483,7 +516,7 @@ def _texto_atividade(
         return "Usuário", "entrou no sistema", "acesso"
     if action == "SEED":
         return entidade, f"{acao}s", "config"
-    return entidade, acao, "geral"
+    return entidade, "", "geral"
 
 
 async def get_activity(db: AsyncSession, tenant_id: uuid.UUID, limit: int = 10) -> list[dict]:
@@ -496,21 +529,36 @@ async def get_activity(db: AsyncSession, tenant_id: uuid.UUID, limit: int = 10) 
         )
     ).scalars().all()
 
+    # `ator` precisa ser o NOME de quem praticou a ação, nunca o cargo
+    # (actor_role) — carrega os nomes em lote pra não fazer 1 query por linha.
+    actor_ids = {r.actor_user_id for r in rows if r.actor_user_id}
+    nomes_por_id: dict[uuid.UUID, str] = {}
+    if actor_ids:
+        usuarios = (
+            await db.execute(select(User.id, User.name).where(User.id.in_(actor_ids)))
+        ).all()
+        nomes_por_id = {u.id: u.name for u in usuarios}
+
     resultados: list[dict] = []
     for r in rows:
         texto, descricao, categoria = _texto_atividade(
             r.entity, r.entity_id, r.action, r.diff_summary
         )
+        diff = r.diff_summary or {}
 
         resultados.append({
             "id": r.id,
             "texto": texto,
             "descricao": descricao,
             "categoria": categoria,
-            "entidade": ENTIDADE_ROTULO.get(r.entity, r.entity),
-            "acao": ACAO_ROTULO.get(r.action, r.action),
+            # Códigos crus (não pré-traduzidos) — o frontend traduz para frase
+            # via mapeadorAtividade.ts, usando a chave completa `entidade.acao`.
+            "entidade": ENTIDADE_CODIGO.get(r.entity, r.entity),
+            "acao": ACAO_CODIGO.get(r.action, r.action.lower()),
             "data": r.occurred_at,
-            "ator": r.actor_role,
+            "ator": nomes_por_id.get(r.actor_user_id) if r.actor_user_id else None,
+            "nome": diff.get("nome") or diff.get("codigo"),
+            "competencia": f"{diff['mes']}/{diff['ano']}" if diff.get("mes") and diff.get("ano") else None,
         })
 
     return resultados

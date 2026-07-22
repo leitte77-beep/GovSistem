@@ -9,9 +9,12 @@ import { EstadoErro } from "@/ui/EstadoErro";
 import { Skeleton } from "@/ui/Skeleton";
 import { Chip } from "@/ui/Chip";
 import { BarraOffline } from "@/ui/BarraOffline";
+import { SpeedDial } from "@/ui/SpeedDial";
+import { RevelarCampo } from "@/ui/RevelarCampo";
 import { usePermissoes } from "@/nucleo/permissoes/usePermissao";
 import { useEstadoConexao } from "@/nucleo/offline/estadoConexao";
 import { idade } from "@/nucleo/datas";
+import { textos } from "@/i18n/textos";
 import type { ErroApi } from "@/nucleo/http/problemDetails";
 import type { UnifiedSearchItem, FamilyListItem } from "@/tipos/pessoas";
 
@@ -61,10 +64,13 @@ export default function ResultadosBusca() {
   }
 
   const podeCadastrar = tem("familia.cadastrar");
+  const podeAtendimento = tem("atendimento.registrar");
+  const podeEncaminhar = tem("encaminhamento.criar");
+  const podeConceder = tem("beneficio.conceder");
 
   if (!termo.trim()) {
     return (
-      <div className="space-y-8">
+      <div className="space-y-8 pb-28">
         <CabecalhoPagina
           titulo="Famílias cadastradas"
           subtitulo="Gerencie e visualize os dados das famílias assistidas"
@@ -110,15 +116,38 @@ export default function ResultadosBusca() {
         />
 
         {podeCadastrar && (
-          <Link
-            to="/familias/nova"
-            className="fixed bottom-lg right-lg w-14 h-14 gradient-primary text-white rounded-2xl shadow-lg shadow-primary/40 flex items-center justify-center hover:scale-110 transition-transform active:scale-95 z-50"
-            aria-label="Cadastrar nova família"
-          >
-            <span className="material-symbols-outlined !text-3xl" aria-hidden="true">
-              add
-            </span>
-          </Link>
+          <SpeedDial
+            actions={[
+              {
+                id: "atendimento",
+                label: textos.acoes.novoAtendimento,
+                icon: "support_agent",
+                to: "/atendimentos",
+                permission: podeAtendimento,
+              },
+              {
+                id: "familia",
+                label: textos.acoes.cadastrarFamilia,
+                icon: "person_add",
+                to: "/familias/nova",
+                permission: podeCadastrar,
+              },
+              {
+                id: "encaminhamento",
+                label: textos.acoes.encaminhar,
+                icon: "move_item",
+                to: "/encaminhamentos/novo",
+                permission: podeEncaminhar,
+              },
+              {
+                id: "beneficio",
+                label: textos.acoes.concederBeneficio,
+                icon: "card_giftcard",
+                to: "/beneficios",
+                permission: podeConceder,
+              },
+            ]}
+          />
         )}
       </div>
     );
@@ -126,9 +155,18 @@ export default function ResultadosBusca() {
 
   return (
     <section aria-labelledby="titulo-resultados" className="space-y-4">
+      <nav className="mb-2">
+        <Link
+          to="/familias"
+          className="inline-flex items-center gap-1.5 text-sm text-ink-soft hover:text-primary transition-colors focus-visible:outline-focus"
+        >
+          <span className="material-symbols-outlined !text-[18px]">arrow_back</span>
+          {textos.familias.voltarParaFamilias}
+        </Link>
+      </nav>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 id="titulo-resultados" className="text-xl">
-          Resultados para "{termo}"
+          {textos.busca.resultadosPara} "{termo}"
         </h1>
         {podeCadastrar && (
           <Link to="/familias/nova">
@@ -216,8 +254,24 @@ function GrupoPessoas({ pessoas, termo }: { pessoas: UnifiedSearchItem[]; termo:
                   <DestaqueTermo texto={p.nome_exibicao} termo={termo} />
                 </span>
                 <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-ink-soft">
-                  {p.cpf_mascarado && <span className="fonte-mono">{p.cpf_mascarado}</span>}
-                  {p.nis_mascarado && <span className="fonte-mono">NIS {p.nis_mascarado}</span>}
+                  {p.cpf_mascarado && (
+                    <RevelarCampo
+                      valor={p.cpf_mascarado}
+                      valorCompleto={p.cpf ?? undefined}
+                      campo="cpf"
+                      entityId={p.person_id}
+                      entityType="pessoa"
+                    />
+                  )}
+                  {p.nis_mascarado && (
+                    <RevelarCampo
+                      valor={`NIS ${p.nis_mascarado}`}
+                      valorCompleto={p.nis ? `NIS ${p.nis}` : undefined}
+                      campo="nis"
+                      entityId={p.person_id}
+                      entityType="pessoa"
+                    />
+                  )}
                   {anos !== null && <span>{anos} anos</span>}
                   {p.familias.length > 0 && (
                     <Chip cor="neutro">
@@ -251,7 +305,7 @@ function GrupoFamilias({
           Famílias <span className="text-sm text-ink-soft">(0)</span>
         </h2>
         <p className="rounded-cartao border border-dashed border-ink-soft/25 p-4 text-sm text-ink-soft">
-          As pessoas encontradas ainda não têm família vinculada ativa.
+          {textos.familias.pessoaSemFamilia}
         </p>
       </div>
     );
@@ -285,11 +339,11 @@ function GrupoFamilias({
 }
 
 const ROTULO_FAIXA: Record<string, string> = {
-  EXTREMA_POBREZA: "Extrema pobreza",
-  POBREZA: "Pobreza",
-  BAIXA_RENDA: "Baixa renda",
-  ACIMA_MEIO_SM: "Acima de ½ SM",
-  NAO_INFORMADO: "Não informado",
+  EXTREMA_POBREZA: "Faixa: Extrema pobreza",
+  POBREZA: "Faixa: Pobreza",
+  BAIXA_RENDA: "Faixa: Baixa renda",
+  ACIMA_MEIO_SM: "Faixa: Acima de ½ SM",
+  NAO_INFORMADO: "Faixa: Não informado",
 };
 
 const COR_FAIXA: Record<string, string> = {
@@ -341,9 +395,9 @@ function ListagemFamilias({
             family_restroom
           </span>
         </div>
-        <p className="font-label-md text-ink mb-1">Nenhuma família cadastrada ainda</p>
+        <p className="font-label-md text-ink mb-1">{textos.familias.nenhumaCadastrada}</p>
         <p className="text-sm text-outline max-w-sm mx-auto">
-          Use a busca acima ou o botão "Nova Família" para adicionar o primeiro registro.
+          {textos.familias.nenhumaCadastradaDica}
         </p>
       </div>
     );
@@ -365,24 +419,31 @@ function ListagemFamilias({
             <div className="flex-1 min-w-0 space-y-2">
               <div className="flex items-center gap-3 flex-wrap">
                 <h3 className="text-base font-bold text-ink group-hover:text-primary transition-colors truncate">
-                  {f.responsavel_nome ?? "Sem responsável"}
+                  {f.responsavel_nome ?? textos.familias.semResponsavel}
                 </h3>
                 <div className="flex items-center gap-2">
                   {f.beneficiaria_pbf && (
-                    <span className="inline-flex px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-bold rounded uppercase tracking-wider">
+                    <span
+                      className="inline-flex px-2 py-0.5 bg-primary/10 text-primary text-[10px] font-bold rounded uppercase tracking-wider"
+                      title={textos.familias.programaPBF}
+                      aria-label={textos.familias.programaPBF}
+                    >
                       PBF
                     </span>
                   )}
                   {f.faixa_renda && (
-                    <span className={[
-                      "inline-flex px-2 py-0.5 text-[10px] font-bold rounded uppercase tracking-wider",
-                      COR_FAIXA[f.faixa_renda] ?? "bg-surface-container-high text-outline",
-                    ].join(" ")}>
+                    <span
+                      title={ROTULO_FAIXA[f.faixa_renda] ?? f.faixa_renda}
+                      className={[
+                        "inline-flex px-2 py-0.5 text-[10px] font-bold rounded uppercase tracking-wider",
+                        COR_FAIXA[f.faixa_renda] ?? "bg-surface-container-high text-outline",
+                      ].join(" ")}
+                    >
                       {ROTULO_FAIXA[f.faixa_renda] ?? f.faixa_renda}
                     </span>
                   )}
                   <span className="text-[11px] font-bold text-outline/60 tabular-nums">
-                    #{f.codigo}
+                    {textos.familias.nFamilia.replace("{codigo}", String(f.codigo))}
                   </span>
                 </div>
               </div>
@@ -391,7 +452,7 @@ function ListagemFamilias({
                 {f.territorio && (
                   <span className="inline-flex items-center gap-1.5">
                     <span className="material-symbols-outlined !text-[16px] opacity-60">location_on</span>
-                    <span>{f.territorio}</span>
+                    <span>{textos.familias.unidadeTerritorio.replace("{territorio}", f.territorio)}</span>
                   </span>
                 )}
                 {f.nis_responsavel_mascarado && (
@@ -447,9 +508,9 @@ function ListagemPessoas() {
         <div className="w-20 h-20 rounded-full bg-primary/5 flex items-center justify-center mx-auto mb-5 border border-primary/5">
           <span className="material-symbols-outlined text-primary !text-[40px] opacity-30">person</span>
         </div>
-        <p className="font-label-md text-ink mb-1">Nenhuma pessoa cadastrada</p>
+        <p className="font-label-md text-ink mb-1">{textos.familias.nenhumaPessoa}</p>
         <p className="text-sm text-outline max-w-sm mx-auto">
-          Cadastre pessoas através da composição familiar ou use a busca acima.
+          {textos.familias.cadastrePessoas}
         </p>
       </div>
     );
@@ -457,45 +518,74 @@ function ListagemPessoas() {
 
   return (
     <div className="space-y-3">
-      {pessoas.map((p) => (
-        <Link
-          key={p.id}
-          to={`/familias?q=${encodeURIComponent(p.nome_exibicao)}`}
-          className="block bg-white rounded-xl border border-surface-container-low p-5 shadow-sm hover:shadow-md hover:border-primary/20 transition-all group"
-        >
-          <div className="flex items-start gap-4">
-            <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
-              <span className="material-symbols-outlined !text-[24px]">person</span>
-            </div>
-            <div className="flex-1 min-w-0 space-y-1">
-              <h3 className="text-base font-bold text-ink group-hover:text-primary transition-colors">
-                {p.nome_exibicao}
-              </h3>
-              <div className="flex items-center gap-4 text-sm text-secondary flex-wrap">
-                {p.cpf_mascarado && (
-                  <span className="fonte-mono text-xs">{p.cpf_mascarado}</span>
-                )}
-                {p.nis_mascarado && (
-                  <span className="fonte-mono text-xs">NIS {p.nis_mascarado}</span>
-                )}
-                {p.data_nascimento && (
-                  <span className="text-xs">
-                    {new Date(p.data_nascimento).toLocaleDateString("pt-BR")}
-                  </span>
-                )}
-                {p.is_falecido && (
-                  <span className="text-[10px] text-error font-bold">Falecido(a)</span>
+      {pessoas.map((p) => {
+        const temFamilia = p.family_id && p.familia_codigo;
+        const destino = temFamilia
+          ? `/familias/${p.family_id}`
+          : `/familias?q=${encodeURIComponent(p.nome_exibicao)}`;
+        return (
+          <Link
+            key={p.id}
+            to={destino}
+            className="block bg-white rounded-xl border border-surface-container-low p-5 shadow-sm hover:shadow-md hover:border-primary/20 transition-all group"
+          >
+            <div className="flex items-start gap-4">
+              <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0">
+                <span className="material-symbols-outlined !text-[24px]">person</span>
+              </div>
+              <div className="flex-1 min-w-0 space-y-1">
+                <h3 className="text-base font-bold text-ink group-hover:text-primary transition-colors">
+                  {p.nome_exibicao}
+                </h3>
+                <div className="flex items-center gap-4 text-sm text-secondary flex-wrap">
+                  {p.cpf_mascarado && (
+                    <RevelarCampo
+                      valor={p.cpf_mascarado}
+                      valorCompleto={p.cpf ?? undefined}
+                      campo="cpf"
+                      entityId={p.id}
+                      entityType="pessoa"
+                    />
+                  )}
+                  {p.nis_mascarado && (
+                    <RevelarCampo
+                      valor={`NIS ${p.nis_mascarado}`}
+                      valorCompleto={p.nis ? `NIS ${p.nis}` : undefined}
+                      campo="nis"
+                      entityId={p.id}
+                      entityType="pessoa"
+                    />
+                  )}
+                  {p.data_nascimento && (
+                    <span className="text-xs">
+                      {new Date(p.data_nascimento).toLocaleDateString("pt-BR")}
+                    </span>
+                  )}
+                  {p.is_falecido && (
+                    <span className="text-[10px] text-error font-bold">Falecido(a)</span>
+                  )}
+                </div>
+                {temFamilia && (
+                  <div className="flex items-center gap-2 text-xs text-ink-soft mt-1">
+                    <span>
+                      {textos.familias.nFamilia.replace("{codigo}", String(p.familia_codigo))}
+                      {p.familia_nome ? ` · ${p.familia_nome}` : ""}
+                    </span>
+                    {p.is_responsavel && (
+                      <Chip cor="primario">{textos.familias.responsavel}</Chip>
+                    )}
+                  </div>
                 )}
               </div>
+              <div className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-surface-container-high text-outline transition-colors shrink-0">
+                <span className="material-symbols-outlined !text-[20px] group-hover:text-primary transition-colors">
+                  chevron_right
+                </span>
+              </div>
             </div>
-            <div className="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-surface-container-high text-outline transition-colors shrink-0">
-              <span className="material-symbols-outlined !text-[20px] group-hover:text-primary transition-colors">
-                chevron_right
-              </span>
-            </div>
-          </div>
-        </Link>
-      ))}
+          </Link>
+        );
+      })}
     </div>
   );
 }

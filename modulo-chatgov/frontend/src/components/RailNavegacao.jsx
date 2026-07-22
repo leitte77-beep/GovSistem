@@ -80,14 +80,16 @@ function BotaoRail({ view, ativo, onClick, badge, somenteIcone }) {
 function BotaoRailMobile({ view, ativo, onClick, badge }) {
   const iconName = NAV_ICONS[view];
   const label = NAV_LABELS[view];
+  const shortLabel = label === 'Atendimento' ? 'Atend.' : label;
   const filled = ativo;
 
   return React.createElement('button', {
     onClick: () => onClick(view),
     title: label,
+    className: 'bnav-item',
     style: {
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      gap: 2, padding: '6px 4px 4px', minWidth: 0, flex: 1,
+      gap: 1, padding: '4px 2px 2px', minWidth: 0, flex: 1,
       borderRadius: 10,
       background: 'transparent',
       color: filled ? T.primary : T.railText,
@@ -107,12 +109,21 @@ function BotaoRailMobile({ view, ativo, onClick, badge }) {
       },
     }, iconName),
     React.createElement('span', {
+      className: 'bnav-label-full',
       style: {
-        fontSize: 10,
+        fontSize: 9,
         whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
         maxWidth: '100%',
       },
     }, label),
+    React.createElement('span', {
+      className: 'bnav-label-short',
+      style: {
+        fontSize: 9,
+        whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+        maxWidth: '100%',
+      },
+    }, shortLabel),
     badge > 0 && React.createElement('span', {
       style: {
         position: 'absolute', top: 0, right: 4,
@@ -147,7 +158,7 @@ export function RailNavegacao({ view, onChange, isAdmin, verRelatorios, notifCou
         minHeight: 62,
         background: T.railBg,
         display: 'flex', alignItems: 'center', justifyContent: 'space-around',
-        borderTop: '1px solid #d1d7db',
+        borderTop: `1px solid ${T.border}`,
         padding: '4px 8px calc(4px + env(safe-area-inset-bottom, 0px))',
         boxShadow: '0 -2px 8px rgba(0,0,0,0.08)',
       },
@@ -219,7 +230,7 @@ export function RailNavegacao({ view, onChange, isAdmin, verRelatorios, notifCou
       background: T.railBg,
       display: 'flex', flexDirection: 'column', alignItems: 'stretch',
       padding: somenteIcone ? '16px 8px' : '16px 12px',
-      borderRight: '1px solid #d1d7db',
+      borderRight: `1px solid ${T.border}`,
       zIndex: 50, flexShrink: 0,
     },
   },
@@ -307,7 +318,7 @@ export function RailNavegacao({ view, onChange, isAdmin, verRelatorios, notifCou
           style: {
             width: 32, height: 18,
             borderRadius: 9,
-            background: isDark ? T.primary : '#d1d7db',
+            background: isDark ? T.primary : T.borderStrong,
             position: 'relative',
             transition: 'background 0.25s',
             flexShrink: 0,
@@ -351,7 +362,7 @@ export function RailNavegacao({ view, onChange, isAdmin, verRelatorios, notifCou
             color: T.primary,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontWeight: 700, fontSize: 13,
-            border: '1px solid #d1d7db',
+            border: `1px solid ${T.borderStrong}`,
             overflow: 'hidden',
           },
         },

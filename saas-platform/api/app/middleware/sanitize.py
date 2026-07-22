@@ -12,6 +12,9 @@ logger = logging.getLogger("saas.middleware.sanitize")
 SENSITIVE_PATHS = [
     "/api/v1/webhooks/",
     "/api/v1/auth/",
+    "/api/v1/users/",
+    "/api/v1/organizations/",
+    "/api/v1/modules/",
 ]
 
 

@@ -215,13 +215,15 @@ export function ChatGov() {
               recarregar,
               breakpoint,
             }),
-            view === 'atendimento'
-              ? React.createElement(PainelAtendimento, {
-                  conversa: conversaAtiva,
-                  onConversaUpdated: handleConversaUpdated,
-                  breakpoint,
-                })
-              : React.createElement(PainelChatInternoAvancado, { canal: canalAtivo, breakpoint }),
+            React.createElement('div', { style: { flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' } },
+              view === 'atendimento'
+                ? React.createElement(PainelAtendimento, {
+                    conversa: conversaAtiva,
+                    onConversaUpdated: handleConversaUpdated,
+                    breakpoint,
+                  })
+                : React.createElement(PainelChatInternoAvancado, { canal: canalAtivo, breakpoint }),
+            ),
           ),
 
     showQR && React.createElement(TelaQR, { onClose: () => setShowQR(false) }),

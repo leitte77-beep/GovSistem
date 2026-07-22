@@ -122,11 +122,11 @@ async def get_dashboard_stats(
 
     last_publication_ago = await _get_last_publication()
 
-    now_naive = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     online_count = await db.scalar(
         select(func.count(SsoSession.id)).where(
             SsoSession.is_active.is_(True),
-            SsoSession.expires_at > now_naive,
+            SsoSession.expires_at > now,
         )
     )
 

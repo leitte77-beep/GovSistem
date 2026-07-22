@@ -6,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.acompanhamento import Acompanhamento
 from app.models.attendance import Attendance
+from app.models.audit_trail import AuditTrail
 from app.models.case_file import CaseFile
 from app.models.family import Family
 
@@ -146,3 +147,103 @@ class TestDashboard:
             headers=world["auth"]("vigilancia"),
         )
         assert resp.status_code == 200
+
+    async def test_activity_ator_e_nome_do_usuario_nao_o_role(
+        self, client: AsyncClient, world: dict, db_session: AsyncSession
+    ):
+        """FIX 2: `ator` no feed de atividade deve ser o NOME de quem agiu
+        (ex.: "User a_tecnico_superior"), nunca o cargo cru ("ADMIN"/role)."""
+        gestor = world["users"][("A", "gestor_municipal")]
+        db_session.add(AuditTrail(
+            tenant_id=world["org_a"].id,
+            actor_user_id=gestor.id,
+            actor_role="gestor_municipal",
+            action="READ",
+            entity="family",
+            entity_id=str(world["family_a"].id),
+        ))
+        await db_session.commit()
+
+        resp = await client.get(
+            f"{PREFIX}/dashboard/activity",
+            headers=world["auth"]("gestor_municipal"),
+        )
+        assert resp.status_code == 200
+        item = resp.json()[0]
+        assert item["ator"] == gestor.name
+        assert item["ator"] != "gestor_municipal"
+        assert item["ator"] != "ADMIN"
+
+    async def test_activity_entidade_e_acao_sao_codigos_crus_sem_traducao(
+        self, client: AsyncClient, world: dict, db_session: AsyncSession
+    ):
+        """FIX 2: `entidade`/`acao` devem chegar como código cru em pt-BR
+        (ex.: "familia"/"consultado"), não como rótulo já traduzido
+        ("Família"/"consultado" com caixa/acentuação que quebra o mapper do
+        frontend) — é o frontend quem monta a frase final."""
+        gestor = world["users"][("A", "gestor_municipal")]
+        db_session.add(AuditTrail(
+            tenant_id=world["org_a"].id,
+            actor_user_id=gestor.id,
+            actor_role="gestor_municipal",
+            action="READ",
+            entity="family",
+            entity_id=str(world["family_a"].id),
+        ))
+        await db_session.commit()
+
+        resp = await client.get(
+            f"{PREFIX}/dashboard/activity",
+            headers=world["auth"]("gestor_municipal"),
+        )
+        item = resp.json()[0]
+        assert item["entidade"] == "familia"
+        assert item["acao"] == "consultado"
+
+    async def test_activity_descricao_nao_deixa_palavra_crua_pendurada(
+        self, client: AsyncClient, world: dict, db_session: AsyncSession
+    ):
+        """FIX 2 (erro C): quando não há detalhe estruturado (sem diff, ex.
+        numa consulta/READ), `descricao` deve vir vazia — nunca repetir a
+        ação crua ("consultado") como se fosse um sujeito solto."""
+        gestor = world["users"][("A", "gestor_municipal")]
+        for entity in ["family", "person", "rma", "encaminhamento"]:
+            db_session.add(AuditTrail(
+                tenant_id=world["org_a"].id,
+                actor_user_id=gestor.id,
+                actor_role="gestor_municipal",
+                action="READ",
+                entity=entity,
+                entity_id="x",
+            ))
+        await db_session.commit()
+
+        resp = await client.get(
+            f"{PREFIX}/dashboard/activity?limit=10",
+            headers=world["auth"]("gestor_municipal"),
+        )
+        for item in resp.json():
+            assert item["descricao"] != "consultado"
+            assert item["descricao"].strip() != item["acao"]
+
+    async def test_activity_sem_actor_user_id_vira_ator_nulo(
+        self, client: AsyncClient, world: dict, db_session: AsyncSession
+    ):
+        """Evento de sistema (sem actor_user_id) não deve inventar um nome
+        nem vazar o role; o frontend decide mostrar "Sistema"."""
+        db_session.add(AuditTrail(
+            tenant_id=world["org_a"].id,
+            actor_user_id=None,
+            actor_role=None,
+            action="SEED",
+            entity="domain_national_seed",
+            entity_id=None,
+        ))
+        await db_session.commit()
+
+        resp = await client.get(
+            f"{PREFIX}/dashboard/activity",
+            headers=world["auth"]("gestor_municipal"),
+        )
+        item = resp.json()[0]
+        assert item["ator"] is None

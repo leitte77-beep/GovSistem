@@ -78,7 +78,7 @@ services:
       CHATGOV_MODULE_ADMIN_URL: https://chatgov.govsistem.com.br
       GOVTASK_MODULE_INTERNAL_API_URL: http://host.docker.internal:8101/api/govtask
       GOVTASK_MODULE_ADMIN_URL: https://govtask.govsistem.com.br
-      GOVSOCIAL_MODULE_INTERNAL_API_URL: http://host.docker.internal:8202/api/govsocial/v1
+      GOVSOCIAL_MODULE_INTERNAL_API_URL: http://host.docker.internal:8202
       GOVSOCIAL_MODULE_ADMIN_URL: https://govsocial.govsistem.com.br
       SMTP_HOST: ${SMTP_HOST:-smtp.hostinger.com}
       SMTP_PORT: ${SMTP_PORT:-465}

@@ -112,7 +112,7 @@ export function Sidebar() {
           return (
             <div key={s.titulo}>
               {precisaSeparador(idx) && <div className="pt-4" />}
-              <p className="px-md pb-2 pt-2 text-[11px] font-bold text-outline/60 uppercase tracking-widest">
+              <p className="px-md pb-2 pt-2 text-[11px] font-bold text-ink-soft uppercase tracking-widest">
                 {s.titulo}
               </p>
               {s.itens.map((item) => {

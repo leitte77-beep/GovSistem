@@ -102,7 +102,7 @@ async def chat_websocket(ws: WebSocket, tenant_id: str):
 
     origin = ws.headers.get("origin", "")
     if origin and origin not in settings.CORS_ORIGINS:
-        await ws.close(code=4003, reason="Origin não permitido")
+        await ws.close(code=4003, reason=f"Origin '{origin}' nao permitido")
         return
 
     token = _extract_token(ws)
@@ -115,17 +115,20 @@ async def chat_websocket(ws: WebSocket, tenant_id: str):
             token, settings.SECRET_KEY.get_secret_value(),
             algorithms=[settings.ALGORITHM],
         )
-        if settings.SAAS_JWT_SECRET.get_secret_value():
+    except Exception:
+        saas_secret = settings.SAAS_JWT_SECRET.get_secret_value()
+        if saas_secret:
             try:
                 payload = jwt.decode(
-                    token, settings.SAAS_JWT_SECRET.get_secret_value(),
+                    token, saas_secret,
                     algorithms=[settings.ALGORITHM],
                 )
             except Exception:
-                pass
-    except Exception:
-        await ws.close(code=4001, reason="Token inválido")
-        return
+                await ws.close(code=4001, reason="Token inválido")
+                return
+        else:
+            await ws.close(code=4001, reason="Token inválido")
+            return
 
     user_id = payload.get("sub")
     user_name = payload.get("name", user_id)

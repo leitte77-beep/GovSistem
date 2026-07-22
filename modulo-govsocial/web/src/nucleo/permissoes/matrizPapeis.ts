@@ -27,6 +27,7 @@ export type Capacidade =
   | "questionario.gerir"
   | "habitacao.gerir"
   | "exportador.gerir"
+  | "pii:reveal"
   | "ivs.visualizar" | "ivs.alterar" | "estoque.gerir" | "financeiro.gerir" | "teleatendimento.realizar" | "panico.monitorar" | "panico.atender" | "biometria.gerir";
 
 export type ItemMenu =
@@ -76,6 +77,7 @@ const CAPACIDADES: Record<Papel, Capacidade[]> = {
     "panico.monitorar",
     "panico.atender",
     "biometria.gerir",
+    "pii:reveal",
   ],
   suporte_govassist: ["administracao.gerir", "auditoria.ler", "panico.monitorar"],
   gestor_municipal: [
@@ -96,6 +98,7 @@ const CAPACIDADES: Record<Papel, Capacidade[]> = {
     "panico.monitorar",
     "panico.atender",
     "biometria.gerir",
+    "pii:reveal",
   ],
   coordenador_unidade: [
     "familia.ler",

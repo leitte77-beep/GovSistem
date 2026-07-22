@@ -78,6 +78,9 @@ class Settings(BaseSettings):
     SIGNER_URL: str = "http://signer:8100"
     INTERNAL_API_KEY: SecretStr = SecretStr("")
 
+    SAAS_JWT_SECRET: SecretStr = SecretStr("")
+    SAAS_INTERNAL_API_KEY: SecretStr = SecretStr("")
+
     CLAMAV_HOST: str = ""
     CLAMAV_PORT: int = 3310
 

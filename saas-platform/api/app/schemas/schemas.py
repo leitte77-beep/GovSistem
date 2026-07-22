@@ -60,6 +60,14 @@ class ModuleAccessRequest(BaseModel):
     module_slug: str
     redirect_url: Optional[str] = None
 
+    @field_validator("module_slug")
+    @classmethod
+    def validate_module_slug(cls, v: str) -> str:
+        allowed = {"diario", "financeiro", "chatgov", "govtask", "govsocial", "govavalia", "govouve"}
+        if v not in allowed:
+            raise ValueError(f"Unknown module: {v}")
+        return v
+
 
 class ModuleTokenResponse(BaseModel):
     module_token: str

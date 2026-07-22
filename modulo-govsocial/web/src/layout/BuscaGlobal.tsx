@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { Search, UserRound, Loader2 } from "lucide-react";
+import { useNavigate, useSearchParams } from "react-router-dom";
+import { Search, UserRound, Loader2, X } from "lucide-react";
 import { useDebounce } from "@/nucleo/useDebounce";
 import { useBuscaUnificada } from "@/nucleo/api/hooks";
 import { DestaqueTermo } from "@/ui/DestaqueTermo";
@@ -15,7 +15,8 @@ import type { UnifiedSearchItem } from "@/tipos/pessoas";
  */
 export function BuscaGlobal({ inputRef }: { inputRef?: React.RefObject<HTMLInputElement> }) {
   const navigate = useNavigate();
-  const [termo, setTermo] = useState("");
+  const [searchParams] = useSearchParams();
+  const [termo, setTermo] = useState(() => searchParams.get("q") ?? "");
   const [aberto, setAberto] = useState(false);
   const [ativo, setAtivo] = useState(-1);
   const debounced = useDebounce(termo, 300);
@@ -63,6 +64,12 @@ export function BuscaGlobal({ inputRef }: { inputRef?: React.RefObject<HTMLInput
     if (!termo.trim()) return;
     setAberto(false);
     navigate(`/familias?q=${encodeURIComponent(termo.trim())}`);
+  }
+
+  function limpar() {
+    setTermo("");
+    setAberto(false);
+    navigate("/familias");
   }
 
   function selecionar(item: Item) {
@@ -123,7 +130,7 @@ export function BuscaGlobal({ inputRef }: { inputRef?: React.RefObject<HTMLInput
         }}
         onFocus={() => setAberto(true)}
         onKeyDown={aoTeclar}
-        className="min-h-[44px] w-full bg-surface-container-low/50 border border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-3 pl-12 pr-16 text-ink placeholder:text-outline/40 transition-all font-body-md text-body-md outline-none"
+        className="min-h-[44px] w-full bg-surface-container-low/50 border border-transparent focus:border-primary/20 focus:bg-white rounded-2xl py-3 pl-12 pr-20 text-ink placeholder:text-outline/40 transition-all font-body-md text-body-md outline-none"
       />
       {isFetching ? (
         <Loader2
@@ -131,9 +138,21 @@ export function BuscaGlobal({ inputRef }: { inputRef?: React.RefObject<HTMLInput
           className="absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-ink-soft"
         />
       ) : (
-        <kbd className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 opacity-40 pointer-events-none">
-          <span className="text-[10px] font-bold border border-outline/30 rounded px-1.5 py-0.5">{textos.busca.atalho}</span>
-        </kbd>
+        <>
+          {termo && (
+            <button
+              type="button"
+              aria-label={textos.busca.limpar}
+              onClick={limpar}
+              className="absolute right-10 top-1/2 -translate-y-1/2 p-1 rounded-md text-outline/60 hover:text-ink hover:bg-surface-container-low transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+          <kbd className="absolute right-4 top-1/2 -translate-y-1/2 flex items-center gap-1.5 opacity-40 pointer-events-none">
+            <span className="text-[10px] font-bold border border-outline/30 rounded px-1.5 py-0.5">{textos.busca.atalho}</span>
+          </kbd>
+        </>
       )}
 
       {mostrarLista && (

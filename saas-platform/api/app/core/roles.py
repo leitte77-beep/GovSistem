@@ -17,7 +17,7 @@ MODULE_ROLE_CATALOG: dict[str, list[dict]] = {
         {"name": "ASSINADOR", "label": "Assinador — assina digitalmente edições"},
         {"name": "PUBLICADOR", "label": "Publicador — publica edições"},
         {"name": "AUDITOR", "label": "Auditor — somente leitura de logs"},
-        {"name": "ADMIN", "label": "Administrador do módulo"},
+        {"name": "DIARIO_ADMIN", "label": "Administrador do módulo"},
     ],
     "financeiro": [
         {"name": "FINANCEIRO_ADMIN", "label": "Administrador financeiro"},
@@ -29,14 +29,14 @@ MODULE_ROLE_CATALOG: dict[str, list[dict]] = {
         {"name": "CHATGOV_USER", "label": "Atendente"},
     ],
     "govtask": [
-        {"name": "ADMIN", "label": "Administrador do GovTask"},
+        {"name": "GOVTASK_ADMIN", "label": "Administrador do GovTask"},
         {"name": "ASSESSOR", "label": "Assessor — orquestra convênios, etapas e tarefas"},
         {"name": "ENGENHEIRO_TECNICO", "label": "Engenheiro / Técnico"},
         {"name": "COMPRAS_LICITACAO", "label": "Compras e Licitação"},
         {"name": "GESTOR", "label": "Gestor / Prefeito — somente leitura"},
     ],
     "govsocial": [
-        {"name": "ADMIN", "label": "Administrador do GovSocial"},
+        {"name": "GOVSOCIAL_ADMIN", "label": "Administrador do GovSocial"},
         {"name": "gestor_municipal", "label": "Gestor municipal — dashboards, RMA consolidado, configurações"},
         {"name": "coordenador_unidade", "label": "Coordenador de unidade — gestão e fechamento do RMA da unidade"},
         {"name": "tecnico_superior", "label": "Técnico de nível superior — prontuário completo da unidade"},
@@ -47,10 +47,28 @@ MODULE_ROLE_CATALOG: dict[str, list[dict]] = {
     ],
 }
 
+# Legacy role names mapped to current canonical names.
+# Allows old grants (e.g. "ADMIN") to be accepted while normalizing to the
+# new prefixed name (e.g. "DIARIO_ADMIN") at write time.
+LEGACY_ROLE_MAP: dict[str, dict[str, str]] = {
+    "diario": {"ADMIN": "DIARIO_ADMIN"},
+    "govtask": {"ADMIN": "GOVTASK_ADMIN"},
+    "govsocial": {"ADMIN": "GOVSOCIAL_ADMIN"},
+}
+
 
 def valid_role_names(module_slug: str) -> set[str]:
     return {r["name"] for r in MODULE_ROLE_CATALOG.get(module_slug, [])}
 
 
 def is_valid_grant(module_slug: str, role_name: str) -> bool:
-    return role_name in valid_role_names(module_slug)
+    if role_name in valid_role_names(module_slug):
+        return True
+    legacy = LEGACY_ROLE_MAP.get(module_slug, {})
+    return role_name in legacy
+
+
+def normalize_grant_role(module_slug: str, role_name: str) -> str:
+    """Convert legacy role names to current canonical names."""
+    legacy = LEGACY_ROLE_MAP.get(module_slug, {})
+    return legacy.get(role_name, role_name)

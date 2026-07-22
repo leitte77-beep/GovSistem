@@ -21,7 +21,7 @@ export function ItemConversa({ conversa, ativa, opId, onClick }) {
       gap: 12,
       borderRadius: T.radiusSm,
       marginBottom: 1,
-      borderBottom: ativa ? 'none' : `1px solid #f0f2f5`,
+      borderBottom: ativa ? 'none' : `1px solid ${T.border}`,
       // Faixa à esquerda destacando conversas atribuídas a mim.
       borderLeft: minha ? `3px solid ${T.primary}` : '3px solid transparent',
       opacity: conversa.status === 'arquivada' ? 0.6 : 1,
@@ -35,10 +35,10 @@ export function ItemConversa({ conversa, ativa, opId, onClick }) {
         style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 },
       },
         React.createElement('span', {
-          style: { fontSize: 15, fontWeight: 600, color: T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+          style: { flex: 1, minWidth: 0, fontSize: 15, fontWeight: 600, color: T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
         }, nome),
         React.createElement('div', {
-          style: { display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 },
+          style: { display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, marginLeft: 8 },
         },
           minha && React.createElement('span', {
             title: 'Atribuída a você',

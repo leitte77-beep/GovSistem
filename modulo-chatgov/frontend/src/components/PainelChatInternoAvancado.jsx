@@ -733,10 +733,10 @@ export function PainelChatInternoAvancado({ canal, breakpoint, onVoltar }) {
 
   if (!canal) {
     return React.createElement('div', {
-      style: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#f0f2f5', backgroundImage: 'radial-gradient(#d1d7db 0.5px, transparent 0.5px)', backgroundSize: '20px 20px' },
+      style: { flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: T.bg, backgroundImage: `radial-gradient(${T.borderStrong} 0.5px, transparent 0.5px)`, backgroundSize: '20px 20px' },
     },
       React.createElement('div', { style: { textAlign: 'center' } },
-        React.createElement('span', { className: 'material-symbols-outlined', style: { fontSize: 64, display: 'block', marginBottom: 16, color: '#d1d7db', fontVariationSettings: "'FILL' 0" } }, 'forum'),
+        React.createElement('span', { className: 'material-symbols-outlined', style: { fontSize: 64, display: 'block', marginBottom: 16, color: T.borderStrong, fontVariationSettings: "'FILL' 0" } }, 'forum'),
         React.createElement('p', { style: { fontSize: 14, color: T.textMuted } }, 'Selecione um canal para conversar'),
       ),
     );
@@ -761,7 +761,7 @@ export function PainelChatInternoAvancado({ canal, breakpoint, onVoltar }) {
       React.createElement('div', { style: { background: '#2563EB', color: '#fff', padding: '10px 20px', borderRadius: 8, fontSize: 14, fontWeight: 600 } }, 'Solte o arquivo aqui'),
     ),
 
-    React.createElement('div', { style: { display: 'flex', alignItems: 'center', padding: ehMobile ? '8px 10px' : '10px 16px', background: T.surface, gap: ehMobile ? 8 : 10, flexShrink: 0, borderBottom: '1px solid #d1d7db', minHeight: 56 } },
+    React.createElement('div', { style: { display: 'flex', alignItems: 'center', padding: ehMobile ? '8px 10px' : '10px 16px', background: T.surface, gap: ehMobile ? 8 : 10, flexShrink: 0, borderBottom: `1px solid ${T.border}`, minHeight: 56 } },
       onVoltar && ehMobile && React.createElement('button', {
         onClick: onVoltar, 'aria-label': 'Voltar', title: 'Voltar',
         style: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, flexShrink: 0, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'transparent', color: T.text },
@@ -812,7 +812,7 @@ export function PainelChatInternoAvancado({ canal, breakpoint, onVoltar }) {
         placeholder: 'Buscar mensagens...',
         style: { flex: 1, border: 'none', outline: 'none', fontSize: 13, background: T.surfaceMuted, borderRadius: 8, padding: '6px 10px', color: T.text },
       }),
-      buscaCarregando && React.createElement('div', { style: { width: 16, height: 16, border: '2px solid #d1d7db', borderTopColor: T.primary, borderRadius: '50%', animation: 'spin 0.6s linear infinite' } }),
+      buscaCarregando && React.createElement('div', { style: { width: 16, height: 16, border: `2px solid ${T.borderStrong}`, borderTopColor: T.primary, borderRadius: '50%', animation: 'spin 0.6s linear infinite' } }),
       buscaQuery && React.createElement('span', { style: { fontSize: 12, color: T.textMuted, flexShrink: 0 } }, `${buscaResultados.length} resultado(s)`),
       React.createElement('button', {
         onClick: () => { setModoBusca(false); setBuscaQuery(''); setBuscaResultados([]); },
@@ -860,7 +860,7 @@ export function PainelChatInternoAvancado({ canal, breakpoint, onVoltar }) {
 
     React.createElement('div', {
       ref: areaMensagensRef, onScroll: onScrollArea, role: 'log', 'aria-live': 'polite', 'aria-label': 'Mensagens do canal',
-      style: { flex: 1, overflowY: 'auto', padding: ehMobile ? '12px 10px' : '12px 16px', position: 'relative', backgroundColor: '#f0f2f5', backgroundImage: 'radial-gradient(#d1d7db 0.5px, transparent 0.5px)', backgroundSize: '20px 20px' },
+      style: { flex: 1, overflowY: 'auto', padding: ehMobile ? '12px 10px' : '12px 16px', position: 'relative', backgroundColor: T.bg, backgroundImage: `radial-gradient(${T.borderStrong} 0.5px, transparent 0.5px)`, backgroundSize: '20px 20px' },
     },
       carregandoMais && React.createElement('div', { style: { textAlign: 'center', padding: 8, color: T.textMuted, fontSize: 12 } }, 'Carregando...'),
       !carregandoMais && temMaisAntigas && React.createElement('button', { onClick: carregarMaisAntigas, style: { display: 'block', margin: '0 auto 8px', background: 'transparent', border: 'none', color: T.primary, fontSize: 12, cursor: 'pointer' } }, 'Carregar mensagens anteriores'),
@@ -964,11 +964,12 @@ export function PainelChatInternoAvancado({ canal, breakpoint, onVoltar }) {
 
     React.createElement('form', {
       onSubmit: enviar,
-      style: { display: 'flex', alignItems: 'flex-end', padding: ehMobile ? '8px 8px' : '10px 14px', background: T.surface, gap: ehMobile ? 6 : 8, flexShrink: 0, borderTop: `1px solid ${T.border}` },
+      className: 'composer',
+      style: { background: T.surface, flexShrink: 0, borderTop: `1px solid ${T.border}` },
     },
-      React.createElement('button', { type: 'button', onClick: handleFilePick, disabled: uploading || gravando, 'aria-label': 'Anexar arquivo', style: { background: 'none', border: 'none', cursor: uploading || gravando ? 'not-allowed' : 'pointer', padding: 4, display: 'flex' } },
+      React.createElement('button', { type: 'button', onClick: handleFilePick, disabled: uploading || gravando, 'aria-label': 'Anexar arquivo', className: 'icon-btn', style: { background: 'none', border: 'none', cursor: uploading || gravando ? 'not-allowed' : 'pointer', display: 'grid', placeItems: 'center' } },
         React.createElement(Paperclip, { size: 20, color: uploading || gravando ? T.textMuted : T.primary })),
-      React.createElement('button', { type: 'button', onClick: () => { setShowEnquete(true); setEnquetePergunta(''); setEnqueteOpcoes(['', '']); }, disabled: gravando, 'aria-label': 'Criar enquete', style: { background: 'none', border: 'none', cursor: gravando ? 'not-allowed' : 'pointer', padding: 4, display: 'flex' } },
+      React.createElement('button', { type: 'button', onClick: () => { setShowEnquete(true); setEnquetePergunta(''); setEnqueteOpcoes(['', '']); }, disabled: gravando, 'aria-label': 'Criar enquete', className: 'icon-btn', style: { background: 'none', border: 'none', cursor: gravando ? 'not-allowed' : 'pointer', display: 'grid', placeItems: 'center' } },
         React.createElement(BarChart2, { size: 20, color: gravando ? T.textMuted : T.primary })),
 
       // Modal de criação de enquete
@@ -1026,7 +1027,7 @@ export function PainelChatInternoAvancado({ canal, breakpoint, onVoltar }) {
         value: texto, onChange: handleTextoChange, onKeyDown: handleTeclaInput,
         placeholder: editando ? 'Editar mensagem...' : respondendoA ? 'Responder...' : anexoPreview ? 'Adicione uma legenda...' : gravando ? 'Gravando áudio...' : audioBlob ? 'Adicione uma legenda (opcional)...' : 'Digite uma mensagem (use @ para mencionar)',
         'aria-label': 'Caixa de mensagem', rows: 1, disabled: gravando,
-        style: { flex: 1, background: T.surfaceMuted, border: `1px solid ${T.border}`, borderRadius: 20, padding: '8px 14px', color: T.text, fontSize: 14, outline: 'none', resize: 'none', fontFamily: 'inherit', maxHeight: 100, opacity: gravando ? 0.5 : 1 },
+        style: { flex: 1, background: T.surfaceMuted, border: `1px solid ${T.border}`, borderRadius: 20, color: T.text, outline: 'none', fontFamily: 'inherit', opacity: gravando ? 0.5 : 1 },
       }),
       // Bot\u00e3o de microfone (vira stop durante grava\u00e7\u00e3o)
       !audioBlob && React.createElement('button', {
@@ -1043,7 +1044,7 @@ export function PainelChatInternoAvancado({ canal, breakpoint, onVoltar }) {
         type: 'submit',
         disabled: (!texto.trim() && !anexoPreview && !audioBlob) || uploading || gravando,
         'aria-label': 'Enviar mensagem',
-        style: { width: 38, height: 38, borderRadius: '50%', border: 'none', cursor: ((texto.trim() || anexoPreview || audioBlob) && !uploading && !gravando) ? 'pointer' : 'not-allowed', background: ((texto.trim() || anexoPreview || audioBlob) && !uploading && !gravando) ? T.primary : T.surfaceMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+        style: { width: 40, height: 40, borderRadius: '50%', border: 'none', cursor: ((texto.trim() || anexoPreview || audioBlob) && !uploading && !gravando) ? 'pointer' : 'not-allowed', background: ((texto.trim() || anexoPreview || audioBlob) && !uploading && !gravando) ? T.primary : T.surfaceMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
       }, React.createElement(Send, { size: 18, color: ((texto.trim() || anexoPreview || audioBlob) && !uploading && !gravando) ? '#fff' : T.textMuted })),
     ),
 
