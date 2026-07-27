@@ -112,20 +112,21 @@ services:
   web-admin:
     build:
       context: ./web-admin
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.prod
+      args:
+        SAAS_API_INTERNAL_URL: http://api:8000
     logging: *default-logging
     environment:
-      NODE_ENV: development
-      NEXT_PUBLIC_API_URL: http://localhost:9009/api/v1
-      SAAS_API_INTERNAL_URL: http://api:8000
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
       NEXT_TELEMETRY_DISABLED: "1"
+      SAAS_API_INTERNAL_URL: http://api:8000
     ports:
       - "9002:3000"
     depends_on:
       api:
         condition: service_healthy
-    volumes:
-      - ./web-admin:/app
     networks:
       - saas-network
     restart: unless-stopped
