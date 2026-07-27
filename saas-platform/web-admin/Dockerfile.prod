@@ -8,10 +8,14 @@ COPY package.json package-lock.json* ./
 RUN npm ci
 
 FROM base AS builder
+# Rewrites do Next sao resolvidos em BUILD time no output standalone,
+# entao o destino do proxy /api precisa estar definido aqui, nao so em runtime.
+ARG SAAS_API_INTERNAL_URL=http://api:8000
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV SAAS_API_INTERNAL_URL=$SAAS_API_INTERNAL_URL
 RUN npm run build
 
 FROM base AS runner

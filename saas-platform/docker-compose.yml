@@ -64,6 +64,8 @@ services:
     build:
       context: ./web-admin
       dockerfile: Dockerfile.prod
+      args:
+        SAAS_API_INTERNAL_URL: http://api:8000
     environment:
       NODE_ENV: production
       PORT: 3000

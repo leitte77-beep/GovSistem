@@ -1,0 +1,79 @@
+# ChatGov (bot WhatsApp) — stack de producao
+#
+# Reconstruido a partir da configuracao dos containers em execucao
+# (o arquivo original havia sido perdido do disco por `git reset --hard`
+# durante o deploy, pois nao estava versionado).
+#
+# ATENCAO: as imagens backend/frontend sao referenciadas por `image:` porque
+# os Dockerfiles tambem foram perdidos. Enquanto as imagens existirem no host
+# o stack sobe normalmente; para reconstruir do zero e preciso recuperar os
+# Dockerfiles em backend/ e frontend/.
+#
+# Segredos ficam em modulo-chatgov/.env (gitignored). Ver INTERNAL_API_KEY:
+# precisa casar com a do saas-platform (provisionamento de tenants).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-chatgov}
+      POSTGRES_USER: ${POSTGRES_USER:-chatgov}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-chatgov}
+    volumes:
+      - chatgov_pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - chatgov-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chatgov}"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  backend:
+    image: modulo-chatgov-backend
+    command: node src/index.js
+    working_dir: /app
+    env_file:
+      - .env
+    environment:
+      PORT: 3050
+      TZ: America/Sao_Paulo
+      RATE_LIMIT_PER_MINUTE: 30
+      STORAGE_DRIVER: local
+      WA_LOG_LEVEL: silent
+      WA_MEDIA_SELFCHECK: ""
+      SOCKET_CORS_ORIGIN: https://chatgov.govsistem.com.br
+      LIMPEZA_CONVERSAS_ATIVO: "false"
+      LIMPEZA_CONVERSAS_INTERVALO_MIN: 30
+      LIMPEZA_CONVERSAS_HORAS: 72
+      LIMPEZA_CONVERSAS_ACAO: arquivar
+    volumes:
+      - chatgov_uploads:/app/uploads
+    ports:
+      - "3050:3050"
+    depends_on:
+      - postgres
+    restart: unless-stopped
+    networks:
+      - chatgov-network
+
+  frontend:
+    image: modulo-chatgov-frontend
+    command: serve -s dist -l 3000
+    working_dir: /app
+    ports:
+      - "3051:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - chatgov-network
+
+networks:
+  chatgov-network:
+    driver: bridge
+
+volumes:
+  chatgov_pgdata:
+  chatgov_uploads:

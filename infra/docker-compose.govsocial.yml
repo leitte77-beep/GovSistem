@@ -1,0 +1,60 @@
+# GovSocial (modulo SUAS) — definicao versionada.
+#
+# Este modulo roda DENTRO do stack `infra` (usa postgres/redis/minio da infra,
+# redes infra_doe-network e infra_internal), mas foi subido de forma ad-hoc e
+# sua definicao nao estava versionada — reconstruida a partir dos containers
+# em execucao em 2026-07-27.
+#
+# NAO faz parte do deploy automatico (scripts/deploy-production.sh cobre apenas
+# o infra/docker-compose.prod.yml). Suba/atualize o govsocial explicitamente:
+#
+#   docker compose -p infra -f infra/docker-compose.govsocial.yml up -d
+#
+# (usar `-p infra` para compartilhar redes/volumes do stack infra).
+#
+# Segredos ficam em modulo-govsocial/.env (gitignored).
+# ATENCAO: a imagem infra-govsocial-api foi buildada de um Dockerfile que se
+# perdeu; enquanto a imagem existir o servico sobe. O Dockerfile do web esta
+# em modulo-govsocial/Dockerfile.
+
+services:
+  govsocial-api:
+    image: infra-govsocial-api
+    env_file:
+      - ../modulo-govsocial/.env
+    volumes:
+      - govsocial_uploads:/app/uploads
+    ports:
+      - "8202:8000"
+    restart: unless-stopped
+    networks:
+      - doe-network
+      - internal
+
+  govsocial-web:
+    build:
+      context: ../modulo-govsocial
+      dockerfile: Dockerfile
+    image: infra-govsocial-web:latest
+    ports:
+      - "7501:80"
+    depends_on:
+      - govsocial-api
+    restart: unless-stopped
+    networks:
+      - doe-network
+
+# Redes e volumes do stack infra ja existem — referenciados como external
+# para nao criar duplicatas nem recriar recursos.
+networks:
+  doe-network:
+    external: true
+    name: infra_doe-network
+  internal:
+    external: true
+    name: infra_internal
+
+volumes:
+  govsocial_uploads:
+    external: true
+    name: infra_govsocial_uploads
