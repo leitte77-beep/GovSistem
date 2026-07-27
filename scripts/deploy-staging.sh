@@ -8,12 +8,14 @@ echo "=== Deploy Staging ==="
 cd "$(dirname "$0")/.."
 
 git fetch origin
+# Alinha o disco ao develop remoto — composes precisam estar versionados (ver RUNBOOK).
 git reset --hard origin/develop
 
+# Sem --remove-orphans: nao remover containers que nao estao neste arquivo.
 docker compose \
   -p sistemaweb-staging \
   -f infra/docker-compose.staging.yml \
-  up -d --build --remove-orphans
+  up -d --build
 
 docker system prune -f
 
