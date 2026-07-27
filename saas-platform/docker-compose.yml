@@ -1,0 +1,87 @@
+# SaaS Platform stack (govsistem)
+#
+# Reconstruido a partir da configuracao dos containers em execucao
+# (o arquivo original havia sido perdido do disco).
+#
+# web-admin roda em modo PRODUCAO (next build + standalone server),
+# nao mais `next dev` — por isso nao ha mais o WebSocket de HMR
+# (/_next/webpack-hmr) tentando conectar em admin.govsistem.com.br.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-saas_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-saas_password}
+      POSTGRES_DB: ${POSTGRES_DB:-saas_platform}
+    volumes:
+      - saas_pgdata:/var/lib/postgresql/data
+    ports:
+      - "9432:5432"
+    restart: unless-stopped
+    networks:
+      - saas-network
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - saas_redisdata:/data
+    ports:
+      - "9379:6379"
+    restart: unless-stopped
+    networks:
+      - saas-network
+
+  api:
+    image: saas-platform-api
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    working_dir: /app
+    volumes:
+      - ./api:/app
+    env_file:
+      - .env
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      APP_NAME: GovSistem API
+      MODULE_TOKEN_EXPIRE_MINUTES: 480
+      CORS_ORIGINS: '["http://localhost:9002","http://localhost:9202","https://doe-admin.govsistem.com.br"]'
+    ports:
+      - "9009:8000"
+    depends_on:
+      - postgres
+      - redis
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    networks:
+      - saas-network
+
+  web-admin:
+    build:
+      context: ./web-admin
+      dockerfile: Dockerfile.prod
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      NEXT_TELEMETRY_DISABLED: 1
+      SAAS_API_INTERNAL_URL: http://api:8000
+    ports:
+      - "9002:3000"
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - saas-network
+
+networks:
+  saas-network:
+    driver: bridge
+
+volumes:
+  saas_pgdata:
+  saas_redisdata:
