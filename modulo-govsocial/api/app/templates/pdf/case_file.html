@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Prontuário SUAS — {{ familia_codigo }}</title>
+<style>
+  @page {
+    size: A4;
+    margin: 25mm 20mm 30mm 20mm;
+    @bottom-center {
+      content: "Página " counter(page) " de " counter(pages);
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 9pt;
+      color: #666;
+    }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: Georgia, "Times New Roman", "DejaVu Serif", serif;
+    font-size: 11pt;
+    line-height: 1.6;
+    color: #1a1a1a;
+  }
+
+  h1 { font-size: 16pt; font-weight: 700; }
+  h2 {
+    font-size: 12.5pt;
+    font-weight: 700;
+    border-bottom: 1.5px solid #2a5c8a;
+    padding-bottom: 4px;
+    margin-bottom: 12px;
+    color: #2a5c8a;
+  }
+  h3 { font-size: 11pt; font-weight: 700; margin-bottom: 2px; }
+
+  .header {
+    text-align: center;
+    margin-bottom: 24px;
+    border-bottom: 2px solid #2a5c8a;
+    padding-bottom: 16px;
+  }
+  .header .brasao { max-height: 56px; margin-bottom: 8px; }
+  .header h1 { color: #2a5c8a; margin-bottom: 4px; }
+  .header .sub { font-size: 10pt; color: #444; }
+
+  .section { margin-bottom: 20px; }
+
+  .id-grid {
+    display: table;
+    width: 100%;
+    border-collapse: collapse;
+  }
+  .id-row { display: table-row; }
+  .id-label {
+    display: table-cell;
+    width: 130px;
+    font-weight: 700;
+    padding: 4px 0;
+    color: #444;
+    white-space: nowrap;
+  }
+  .id-value { display: table-cell; padding: 4px 0; }
+
+  .acolhida-block {
+    background: #f4f7fa;
+    border-left: 4px solid #2a5c8a;
+    padding: 10px 14px;
+    border-radius: 2px;
+  }
+  .acolhida-block .lbl { font-weight: 700; color: #444; }
+
+  .atendimento-card {
+    border: 1px solid #d0d7de;
+    border-radius: 4px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+    page-break-inside: avoid;
+    background: #fff;
+  }
+  .atendimento-card .meta {
+    display: table;
+    width: 100%;
+    margin-bottom: 8px;
+  }
+  .atendimento-card .meta .mrow { display: table-row; }
+  .atendimento-card .meta .mlbl {
+    display: table-cell;
+    width: 90px;
+    font-weight: 700;
+    padding: 2px 0;
+    color: #444;
+    white-space: nowrap;
+  }
+  .atendimento-card .meta .mval { display: table-cell; padding: 2px 0; }
+
+  .badge-sigiloso {
+    display: inline-block;
+    background: #b91c1c;
+    color: #fff;
+    font-size: 8pt;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 3px;
+    vertical-align: middle;
+    margin-left: 6px;
+    letter-spacing: 0.5px;
+  }
+
+  .evolucao-box {
+    margin-top: 8px;
+    padding: 10px 12px;
+    border-radius: 3px;
+    background: #fafafa;
+    border: 1px solid #e5e7eb;
+    font-size: 10.5pt;
+    line-height: 1.5;
+    white-space: pre-wrap;
+  }
+  .evolucao-box.restrita {
+    background: #f9fafb;
+    color: #999;
+    font-style: italic;
+    text-align: center;
+    border: 1px dashed #d0d7de;
+  }
+  .evolucao-box.empty {
+    color: #999;
+    font-style: italic;
+    text-align: center;
+  }
+
+  .footer {
+    margin-top: 32px;
+    padding-top: 12px;
+    border-top: 1px solid #ccc;
+    text-align: center;
+    font-size: 9pt;
+    color: #888;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  {% if brasao %}
+    <img class="brasao" src="{{ brasao }}" alt="Brasão">
+  {% endif %}
+  <h1>PRONTUÁRIO SUAS</h1>
+  <div class="sub">{{ municipio }}</div>
+  <div class="sub">{{ unidade }} &mdash; {{ servico }}</div>
+</div>
+
+<div class="section">
+  <h2>Identificação da Família</h2>
+  <div class="id-grid">
+    <div class="id-row">
+      <span class="id-label">Código da família</span>
+      <span class="id-value">{{ familia_codigo }}</span>
+    </div>
+    <div class="id-row">
+      <span class="id-label">Responsável familiar</span>
+      <span class="id-value">{{ responsavel }}</span>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Acolhida</h2>
+  <div class="acolhida-block">
+    <div>
+      <span class="lbl">Data da acolhida:</span>
+      {{ acolhida_data if acolhida_data else "&mdash;" }}
+    </div>
+    <div style="margin-top:4px;">
+      <span class="lbl">Motivo:</span>
+      {{ acolhida_motivo if acolhida_motivo else "&mdash;" }}
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Histórico de Atendimentos</h2>
+  {% if atendimentos %}
+    {% for at in atendimentos %}
+      <div class="atendimento-card">
+        <div class="meta">
+          <div class="mrow">
+            <span class="mlbl">Data</span>
+            <span class="mval">{{ at.data }}{% if at.sigiloso %} <span class="badge-sigiloso">SIGILOSO</span>{% endif %}</span>
+          </div>
+          <div class="mrow">
+            <span class="mlbl">Tipo</span>
+            <span class="mval">{{ at.tipo }}</span>
+          </div>
+          <div class="mrow">
+            <span class="mlbl">Serviço</span>
+            <span class="mval">{{ at.servico }}</span>
+          </div>
+          <div class="mrow">
+            <span class="mlbl">Nº de membros</span>
+            <span class="mval">{{ at.n_membros }}</span>
+          </div>
+        </div>
+
+        {% if at.restrita %}
+          <div class="evolucao-box restrita">
+            Evolução restrita por sigilo/perfil &mdash; conteúdo não exibido neste documento.
+          </div>
+        {% elif at.evolucao %}
+          <div class="evolucao-box">{{ at.evolucao | e }}</div>
+        {% else %}
+          <div class="evolucao-box empty">Sem evolução registrada.</div>
+        {% endif %}
+      </div>
+    {% endfor %}
+  {% else %}
+    <p style="color:#999; font-style:italic;">Nenhum atendimento registrado.</p>
+  {% endif %}
+</div>
+
+<div class="footer">
+  Documento gerado em {{ gerado_em }}
+</div>
+
+</body>
+</html>

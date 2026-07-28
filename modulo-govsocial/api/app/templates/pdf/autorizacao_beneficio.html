@@ -1,0 +1,5 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8"><title>Autorização de Benefício</title>
+<style>body{font-family:Arial;padding:30px;font-size:12px}h1,h2{text-align:center}.conteudo{line-height:1.8;margin-top:20px}.assinatura{margin-top:60px}.linha{border-top:1px solid #000;width:300px;margin:20px auto 0;padding-top:5px;text-align:center}</style></head>
+<body><h1>{{ municipio }}</h1><h2>AUTORIZAÇÃO PARA RETIRADA DE BENEFÍCIO</h2><div class="conteudo"><p>Autorizo a retirada do benefício <strong>{{ concessao.benefit_type_code }}</strong></p><p>Beneficiário: <strong>{{ beneficiario }}</strong></p><p>Quantidade: {{ concessao.quantidade }} | Valor: R$ {{ "%.2f"|format(concessao.valor_total or 0) }}</p><p>{{ municipio }}, {{ gerado_em }}</p></div><div class="assinatura"><div class="linha">Assinatura do Técnico Responsável</div></div></body></html>

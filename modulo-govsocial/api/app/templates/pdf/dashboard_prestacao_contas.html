@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Dashboard — Prestação de Contas</title>
+<style>
+  @page {
+    size: A4 landscape;
+    margin: 15mm 15mm 20mm 15mm;
+    @bottom-center {
+      content: "Prestação de Contas — " counter(page) " de " counter(pages);
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 8pt;
+      color: #999;
+    }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: Georgia, "Times New Roman", "DejaVu Serif", serif;
+    font-size: 10pt;
+    line-height: 1.5;
+    color: #1a1a1a;
+  }
+
+  .cabecalho {
+    text-align: center;
+    margin-bottom: 18px;
+    border-bottom: 2px solid #2a5c8a;
+    padding-bottom: 12px;
+  }
+  .cabecalho .brasao { max-height: 45px; margin-bottom: 4px; }
+  .cabecalho h1 { font-size: 14pt; color: #2a5c8a; font-weight: 700; }
+  .cabecalho .org { font-size: 9pt; color: #444; }
+
+  h2 {
+    font-size: 11pt;
+    font-weight: 700;
+    border-bottom: 1px solid #2a5c8a;
+    padding-bottom: 3px;
+    margin: 14px 0 8px;
+    color: #2a5c8a;
+  }
+
+  .cartoes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .cartao {
+    flex: 1;
+    min-width: 140px;
+    border: 1px solid #d0d7de;
+    border-radius: 6px;
+    padding: 12px;
+    text-align: center;
+    background: #f8fafc;
+  }
+  .cartao .numero {
+    font-size: 22pt;
+    font-weight: 700;
+    color: #2a5c8a;
+    line-height: 1.1;
+  }
+  .cartao .rotulo {
+    font-size: 8pt;
+    color: #666;
+    margin-top: 2px;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 14px;
+  }
+  th {
+    background: #e9ecf0;
+    font-weight: 700;
+    padding: 4px 8px;
+    border: 1px solid #c0c6ce;
+    text-align: left;
+    font-size: 9pt;
+  }
+  td {
+    padding: 3px 8px;
+    border: 1px solid #d0d7de;
+    font-size: 9pt;
+  }
+  td.num {
+    text-align: right;
+    font-family: "Courier New", monospace;
+  }
+
+  .rodape {
+    margin-top: 24px;
+    padding-top: 8px;
+    border-top: 1px solid #ccc;
+    font-size: 8pt;
+    color: #888;
+    text-align: center;
+  }
+
+  .assinatura {
+    margin-top: 50px;
+    text-align: center;
+  }
+  .assinatura .linha {
+    border-top: 1px solid #000;
+    width: 280px;
+    margin: 0 auto 4px;
+  }
+</style>
+</head>
+<body>
+
+<div class="cabecalho">
+  {% if brasao %}
+    <img class="brasao" src="{{ brasao }}" alt="Brasão">
+  {% endif %}
+  <h1>RELATÓRIO DE PRESTAÇÃO DE CONTAS</h1>
+  <div class="org">{{ municipio }} — Secretaria Municipal de Assistência Social</div>
+</div>
+
+<div style="text-align:center; font-size:9pt; margin-bottom:16px;">
+  <strong>Período:</strong> {{ data_inicio }} a {{ data_fim }} &nbsp;|&nbsp;
+  <strong>Emitido em:</strong> {{ gerado_em }}
+</div>
+
+<h2>Visão Geral do Período</h2>
+<div class="cartoes">
+  <div class="cartao">
+    <div class="numero">{{ atendimentos_mes }}</div>
+    <div class="rotulo">Atendimentos no período</div>
+  </div>
+  <div class="cartao">
+    <div class="numero">{{ acompanhamentos_ativos }}</div>
+    <div class="rotulo">Acompanhamentos ativos</div>
+  </div>
+  <div class="cartao">
+    <div class="numero">{{ familias_cadastradas }}</div>
+    <div class="rotulo">Famílias cadastradas</div>
+  </div>
+  <div class="cartao">
+    <div class="numero">{{ beneficios_concedidos }}</div>
+    <div class="rotulo">Benefícios concedidos</div>
+  </div>
+  <div class="cartao">
+    <div class="numero">{{ encaminhamentos_pendentes }}</div>
+    <div class="rotulo">Encam. pendentes</div>
+  </div>
+  <div class="cartao">
+    <div class="numero">{{ grupos_ativos }}</div>
+    <div class="rotulo">Grupos ativos</div>
+  </div>
+  <div class="cartao">
+    <div class="numero">{{ inscritos_scfv }}</div>
+    <div class="rotulo">Inscritos SCFV</div>
+  </div>
+</div>
+
+{% if territorios %}
+<h2>Famílias por Território</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Território</th>
+      <th style="text-align:right;width:100px;">Famílias</th>
+      <th style="text-align:right;width:80px;">%</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for t in territorios %}
+    <tr>
+      <td>{{ t.nome }}</td>
+      <td class="num">{{ t.total }}</td>
+      <td class="num">{{ t.percentual }}%</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if beneficios_tipos %}
+<h2>Benefícios Concedidos por Tipo</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Tipo de Benefício</th>
+      <th style="text-align:right;width:100px;">Concessões</th>
+      <th style="text-align:right;width:120px;">Valor Total</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for b in beneficios_tipos %}
+    <tr>
+      <td>{{ b.tipo }}</td>
+      <td class="num">{{ b.total }}</td>
+      <td class="num">R$ {{ b.valor }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+{% if indicadores %}
+<h2>Indicadores Sociais</h2>
+<table>
+  <thead>
+    <tr>
+      <th>Indicador</th>
+      <th style="text-align:right;width:100px;">Valor</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for i in indicadores %}
+    <tr>
+      <td>{{ i.rotulo }}</td>
+      <td class="num">{{ i.valor }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% endif %}
+
+<div class="assinatura">
+  <div class="linha"></div>
+  <span style="font-size:9pt;color:#555;">Assinatura do Gestor Municipal de Assistência Social</span>
+</div>
+
+<div class="rodape">
+  Documento gerado pelo GovSocial em {{ gerado_em }} — Dados agregados, sem informação pessoal identificável.
+</div>
+
+</body>
+</html>

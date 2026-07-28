@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Comprovante de Benefício — {{ familia_codigo }}</title>
+<style>
+  @page {
+    size: A4;
+    margin: 25mm 25mm 30mm 25mm;
+    @bottom-center {
+      content: "Comprovante de Benefício";
+      font-family: Georgia, "Times New Roman", serif;
+      font-size: 9pt;
+      color: #999;
+    }
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: Georgia, "Times New Roman", "DejaVu Serif", serif;
+    font-size: 11pt;
+    line-height: 1.6;
+    color: #1a1a1a;
+  }
+
+  .cabecalho {
+    text-align: center;
+    margin-bottom: 28px;
+    border-bottom: 2px solid #2a5c8a;
+    padding-bottom: 16px;
+  }
+  .cabecalho .brasao { max-height: 56px; margin-bottom: 6px; }
+  .cabecalho h1 { font-size: 14pt; color: #2a5c8a; font-weight: 700; }
+  .cabecalho .org { font-size: 10pt; color: #444; }
+
+  .titulo-doc {
+    text-align: center;
+    font-size: 14pt;
+    font-weight: 700;
+    margin: 24px 0;
+    padding: 10px 0;
+    border-top: 1px solid #ccc;
+    border-bottom: 1px solid #ccc;
+  }
+
+  .info-grid {
+    display: table;
+    width: 100%;
+    margin-top: 16px;
+  }
+  .info-grid .row { display: table-row; }
+  .info-grid .label {
+    display: table-cell;
+    width: 180px;
+    font-weight: 700;
+    padding: 4px 0;
+    color: #444;
+    white-space: nowrap;
+  }
+  .info-grid .value { display: table-cell; padding: 4px 0; }
+
+  h2 {
+    font-size: 12pt;
+    font-weight: 700;
+    border-bottom: 1.5px solid #2a5c8a;
+    padding-bottom: 4px;
+    margin: 20px 0 10px;
+    color: #2a5c8a;
+  }
+
+  .destaque {
+    background: #f4f7fa;
+    border: 1px solid #d0d7de;
+    border-radius: 4px;
+    padding: 14px;
+    margin: 16px 0;
+    text-align: center;
+  }
+
+  .destaque .valor {
+    font-size: 18pt;
+    font-weight: 700;
+    color: #2a5c8a;
+  }
+
+  .assinatura {
+    margin-top: 70px;
+    text-align: center;
+  }
+  .assinatura .linha {
+    border-top: 1px solid #000;
+    width: 280px;
+    margin: 0 auto 4px;
+  }
+  .assinatura .rotulo {
+    font-size: 10pt;
+    color: #555;
+  }
+
+  .verso {
+    margin-top: 40px;
+    padding-top: 16px;
+    border-top: 1px dashed #ccc;
+    font-size: 10pt;
+    color: #555;
+  }
+
+  .rodape {
+    margin-top: 40px;
+    padding-top: 8px;
+    border-top: 1px solid #ccc;
+    font-size: 9pt;
+    color: #888;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div class="cabecalho">
+  {% if brasao %}
+    <img class="brasao" src="{{ brasao }}" alt="Brasão">
+  {% endif %}
+  <h1>PREFEITURA MUNICIPAL DE {{ municipio | upper }}</h1>
+  <div class="org">Secretaria Municipal de Assistência Social</div>
+</div>
+
+<div class="titulo-doc">COMPROVANTE DE ENTREGA DE BENEFÍCIO EVENTUAL</div>
+
+<div class="info-grid">
+  <div class="row">
+    <span class="label">Família</span>
+    <span class="value">{{ familia_codigo }}</span>
+  </div>
+  <div class="row">
+    <span class="label">Responsável</span>
+    <span class="value">{{ responsavel }}</span>
+  </div>
+  {% if nis %}
+  <div class="row">
+    <span class="label">NIS</span>
+    <span class="value">{{ nis }}</span>
+  </div>
+  {% endif %}
+  {% if cpf %}
+  <div class="row">
+    <span class="label">CPF</span>
+    <span class="value">{{ cpf }}</span>
+  </div>
+  {% endif %}
+  {% if endereco %}
+  <div class="row">
+    <span class="label">Endereço</span>
+    <span class="value">{{ endereco }}</span>
+  </div>
+  {% endif %}
+</div>
+
+<h2>Detalhes do Benefício</h2>
+
+<div class="info-grid">
+  <div class="row">
+    <span class="label">Tipo do benefício</span>
+    <span class="value">{{ tipo_beneficio }}</span>
+  </div>
+  <div class="row">
+    <span class="label">Quantidade</span>
+    <span class="value">{{ quantidade }}</span>
+  </div>
+  {% if valor_total %}
+  <div class="row">
+    <span class="label">Valor total</span>
+    <span class="value">R$ {{ valor_total }}</span>
+  </div>
+  {% endif %}
+  <div class="row">
+    <span class="label">Data da entrega</span>
+    <span class="value">{{ data_entrega }}</span>
+  </div>
+  <div class="row">
+    <span class="label">Unidade</span>
+    <span class="value">{{ unidade }}</span>
+  </div>
+  <div class="row">
+    <span class="label">Profissional responsável</span>
+    <span class="value">{{ nome_profissional }}</span>
+  </div>
+</div>
+
+{% if valor_total %}
+<div class="destaque">
+  <span style="font-size: 10pt; display: block; margin-bottom: 4px;">Valor do Benefício</span>
+  <span class="valor">R$ {{ valor_total }}</span>
+</div>
+{% endif %}
+
+<div class="assinatura">
+  <div class="linha"></div>
+  <div class="rotulo">Assinatura do Recebedor</div>
+</div>
+
+<div class="assinatura" style="margin-top: 40px;">
+  <div class="linha"></div>
+  <div class="rotulo">Carimbo e Assinatura do Profissional Responsável</div>
+</div>
+
+<div class="verso">
+  <p><strong>Nota:</strong> Este comprovante atesta a entrega do benefício eventual acima descrito, 
+  no âmbito da Política Municipal de Assistência Social. Reimpressões são registradas para fins de auditoria.</p>
+  <p style="margin-top: 8px;">Caso o beneficiário não possa comparecer para retirada, deverá apresentar 
+  procuração específica com firma reconhecida ou documento equivalente.</p>
+</div>
+
+<div class="rodape">
+  Documento gerado pelo GovSocial em {{ gerado_em }} — Este comprovante é auditado e numerado eletronicamente.
+</div>
+
+</body>
+</html>

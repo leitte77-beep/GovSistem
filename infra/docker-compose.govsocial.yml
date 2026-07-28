@@ -13,12 +13,17 @@
 # (usar `-p infra` para compartilhar redes/volumes do stack infra).
 #
 # Segredos ficam em modulo-govsocial/.env (gitignored).
-# ATENCAO: a imagem infra-govsocial-api foi buildada de um Dockerfile que se
-# perdeu; enquanto a imagem existir o servico sobe. O Dockerfile do web esta
-# em modulo-govsocial/Dockerfile.
+#
+# O fonte da API (186 .py, Dockerfile, requirements, alembic, tests) tinha
+# sumido do disco e sobrevivia so dentro do container; foi restaurado a partir
+# dele em 2026-07-28 e o build agora aponta para modulo-govsocial/api.
+# O Dockerfile do web esta em modulo-govsocial/Dockerfile.
 
 services:
   govsocial-api:
+    build:
+      context: ../modulo-govsocial/api
+      dockerfile: Dockerfile
     image: infra-govsocial-api
     env_file:
       - ../modulo-govsocial/.env

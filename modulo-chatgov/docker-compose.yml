@@ -31,6 +31,9 @@ services:
       retries: 3
 
   backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
     image: modulo-chatgov-backend
     command: node src/index.js
     working_dir: /app

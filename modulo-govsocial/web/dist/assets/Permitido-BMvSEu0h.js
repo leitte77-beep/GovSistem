@@ -1,0 +1,1 @@
+import{j as r}from"./query-aNjqhPgK.js";import{v as i}from"./index-CussEIir.js";function f({capacidade:t,algum:o,fallback:e=null,children:s}){const{tem:m,temAlgum:n}=i();return(t?m(t):o?n(o):!0)?r.jsx(r.Fragment,{children:s}):r.jsx(r.Fragment,{children:e})}export{f as P};

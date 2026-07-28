@@ -1,0 +1,7 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head><meta charset="UTF-8"><title>Relação de Famílias</title>
+<style>body{font-family:Arial;padding:20px;font-size:10px}h1{text-align:center}table{width:100%;border-collapse:collapse}th,td{border:1px solid #000;padding:4px}th{background:#eee}</style></head>
+<body><h1>{{ municipio }}</h1><h2>Relação de Famílias Beneficiadas</h2><p>Período: {{ data_inicio }} a {{ data_fim }}</p>
+<table><tr><th>Família</th><th>Responsável</th><th>Benefício</th><th>Valor</th><th>Data</th></tr>
+{% for c in concessoes %}<tr><td>{{ c.family.codigo if c.family else "" }}</td><td>{{ c.family.responsavel.nome_exibicao if c.family and c.family.responsavel else "" }}</td><td>{{ c.benefit_type_code }}</td><td>R$ {{ "%.2f"|format(c.valor_total or 0) }}</td><td>{{ c.data_solicitacao.strftime('%d/%m/%Y') if c.data_solicitacao else '' }}</td></tr>{% endfor %}</table></body></html>

@@ -320,6 +320,8 @@ services:
     image: nginx:1.25-alpine
     <<: [*restart-policy]
     logging: *default-logging
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "80:80"
       - "443:443"
