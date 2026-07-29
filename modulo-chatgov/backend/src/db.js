@@ -14,10 +14,18 @@ const connection = {
   connectionString: config.databaseUrl,
   max: 30,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,
+  connectionTimeoutMillis: 15000,
 };
 
 const db = pgp(connection);
+
+// Erro emitido pelo pool fora do escopo de uma query (ex.: "Connection terminated
+// due to connection timeout") sobe como uncaughtException e derruba o processo —
+// foram 37 restarts em uma noite, cada um levando junto as sessões do WhatsApp.
+// Aqui ele vira log: o pool se recupera sozinho na próxima query.
+db.$pool.on('error', (err) => {
+  console.error('[DB] Pool error (ignorado, pool se recupera):', err.message);
+});
 
 export async function setTenantContext(tenantId) {
   if (tenantId) {

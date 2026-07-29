@@ -5,9 +5,17 @@ const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16;
 const TAG_LENGTH = 16;
 
+// scryptSync custa ~40ms de CPU *síncrona* por chamada. Derivar a chave a cada
+// encrypt/decrypt bloqueava o event loop por ~1min ao carregar o key store do
+// WhatsApp (1000+ chaves), derrubando a sessão por timeout de keep-alive e
+// estourando o connectionTimeout do pool do Postgres. A chave é determinística
+// (mesma senha + mesmo salt), então derivar uma vez e reusar é equivalente.
+let _cachedKey = null;
 function getKey() {
+  if (_cachedKey) return _cachedKey;
   const key = config.credsEncryptionKey || 'chatgov-dev-encryption-key-32chars!!';
-  return crypto.scryptSync(key, 'chatgov-salt', 32);
+  _cachedKey = crypto.scryptSync(key, 'chatgov-salt', 32);
+  return _cachedKey;
 }
 
 export function encrypt(text) {

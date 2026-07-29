@@ -209,6 +209,11 @@ export class WhatsAppManager extends EventEmitter {
     if (connection === 'close') {
       const statusCode = lastDisconnect?.error?.output?.statusCode;
       const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+      // Sem o motivo no log, uma queda vira "reconectando..." infinito sem
+      // pista nenhuma de causa (timeout, conflito, ban, versão).
+      console.log(
+        `[WA] close tenant=${tenantId} statusCode=${statusCode ?? '?'} motivo=${lastDisconnect?.error?.message || '-'}`
+      );
 
       if (statusCode === DisconnectReason.loggedOut) {
         console.log(`[WA] Logged out for tenant ${tenantId}`);
