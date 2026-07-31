@@ -62,6 +62,9 @@ services:
       - chatgov-network
 
   frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     image: modulo-chatgov-frontend
     command: serve -s dist -l 3000
     working_dir: /app
