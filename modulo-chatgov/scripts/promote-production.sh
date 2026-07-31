@@ -63,6 +63,18 @@ read -r -p "Digite PROMOVER para atualizar a produção: " confirmation
   exit 1
 }
 
+# O nginx da borda resolve o hostname do upstream uma vez, no start, e cacheia o
+# IP no worker. Recriar o container do módulo lhe dá um IP novo e a borda passa a
+# responder 502 mesmo com o módulo saudável — só o reload re-resolve.
+recarregar_borda() {
+  if ! docker inspect infra-nginx-1 >/dev/null 2>&1; then
+    echo "AVISO: infra-nginx-1 não encontrado; recarregue a borda manualmente."
+    return 0
+  fi
+  docker exec infra-nginx-1 nginx -s reload ||
+    echo "AVISO: falha ao recarregar infra-nginx-1; a borda pode responder 502."
+}
+
 rollback() {
   trap - ERR
   echo "Falha de saúde detectada; restaurando imagens anteriores..."
@@ -70,6 +82,7 @@ rollback() {
   docker tag "${old_frontend}" modulo-chatgov-frontend:latest
   docker compose --env-file "${PROD_ENV}" --file "${COMPOSE_FILE}" \
     up -d --no-deps --force-recreate backend frontend
+  recarregar_borda
 }
 trap rollback ERR
 
@@ -82,6 +95,7 @@ for _ in {1..30}; do
   if curl --fail --silent http://127.0.0.1:3050/health >/dev/null &&
      curl --fail --silent http://127.0.0.1:3051/ >/dev/null; then
     trap - ERR
+    recarregar_borda
     echo "Produção atualizada com sucesso para ${short_commit}."
     echo "Backup: ${backup_file}"
     exit 0
