@@ -75,6 +75,10 @@
             background-size: 20px 20px;
         }
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        :focus-visible {
+          outline: 3px solid #2563eb !important;
+          outline-offset: 2px;
+        }
         html, body, #root { height: 100%; }
         /* Em celular a barra de URL do navegador reduz a altura visível;
            100dvh acompanha a área realmente visível e evita cortar o chat. */
@@ -156,9 +160,22 @@
         @media (max-width: 360px) {
           .cg-hdr-phone { display: none; }
         }
+        @media (prefers-reduced-motion: reduce) {
+          *, *::before, *::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            scroll-behavior: auto !important;
+            transition-duration: 0.01ms !important;
+          }
+        }
+        @media (prefers-contrast: more) {
+          button, input, select, textarea { border-color: currentColor !important; }
+          a { text-decoration: underline !important; }
+        }
     </style>
-  <script type="module" crossorigin src="/assets/index-D3MIJbAE.js"></script>
-  <link rel="modulepreload" crossorigin href="/assets/vendor-6URU5HLz.js">
+  <script type="module" crossorigin src="/assets/index-Mqz8qokF.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/rolldown-runtime-QTnfLwEv.js">
+  <link rel="modulepreload" crossorigin href="/assets/vendor-Ctnoc1uU.js">
 </head>
 <body class="bg-background text-on-background antialiased flex overflow-hidden h-screen">
 <div id="root"></div>

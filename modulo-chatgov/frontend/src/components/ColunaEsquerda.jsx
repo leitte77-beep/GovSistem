@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Plus, Users, MessageSquarePlus } from 'lucide-react';
 import { Chip } from './Chip';
 import { ItemConversa } from './ItemConversa';
@@ -25,6 +25,23 @@ function formatarTelefone(numero) {
   return numero || '';
 }
 
+const CHAVE_FIXADAS = 'chatgov_conversas_fixadas';
+
+// Conversa parada há mais tempo que isso, esperando resposta nossa, entra no
+// filtro "Atrasadas". Não é SLA formal — é o corte prático de quem atende.
+const HORAS_ATRASO = 4;
+
+const ENCERRADAS = ['RESOLVIDA', 'resolvida', 'ARQUIVADA', 'arquivada'];
+const emAberto = (c) => !ENCERRADAS.includes(c.status_operacional || c.status);
+
+const SEM_RESPONSAVEL = (c) => !c.operador_id && emAberto(c);
+const COM_PROTOCOLO = (c) => Boolean(c.protocolo_id || c.protocolo_numero || c.protocolo);
+// Atrasada = cidadão esperando (última mensagem foi dele) há mais de HORAS_ATRASO.
+const ATRASADA = (c) => {
+  if (!emAberto(c) || (c.nao_lidas || 0) === 0 || !c.ultima_mensagem_em) return false;
+  return Date.now() - new Date(c.ultima_mensagem_em).getTime() > HORAS_ATRASO * 3600_000;
+};
+
 export function ColunaEsquerda({
   view, onChange, onSelectConversa, onSelectCanal, onOpenQR,
   conversaAtivaId, canalAtivoId, recarregar,
@@ -45,6 +62,9 @@ export function ColunaEsquerda({
   const [busca, setBusca] = useState(() => {
     try { return new URLSearchParams(window.location.search).get('busca') || ''; }
     catch { return ''; }
+  });
+  const [fixadas, setFixadas] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(CHAVE_FIXADAS) || '[]'); } catch { return []; }
   });
   const [carregando, setCarregando] = useState(false);
   const [waStatus, setWaStatus] = useState({ status: 'desconectado', numero: null });
@@ -105,6 +125,7 @@ export function ColunaEsquerda({
   const FILTROS_FIXOS = [
     'todas', 'naolidas', 'fila', 'aguardando_cidadao',
     'aguardando_setor', 'arquivadas', 'minhas', 'resolvidas',
+    'sem_responsavel', 'com_protocolo', 'atrasadas',
   ];
 
   const carregarConversas = useCallback(async () => {
@@ -125,9 +146,12 @@ export function ColunaEsquerda({
       ]);
       let lista = resultado;
       const base = baseResultado || resultado;
-      // 'naolidas' e 'minhas' o backend não filtra — resolvemos no cliente.
+      // Estes o backend não filtra — resolvemos no cliente sobre a lista já carregada.
       if (filtro === 'naolidas') lista = lista.filter((c) => (c.nao_lidas || 0) > 0);
       else if (filtro === 'minhas') lista = lista.filter((c) => c.operador_id === op?.id);
+      else if (filtro === 'sem_responsavel') lista = lista.filter(SEM_RESPONSAVEL);
+      else if (filtro === 'com_protocolo') lista = lista.filter(COM_PROTOCOLO);
+      else if (filtro === 'atrasadas') lista = lista.filter(ATRASADA);
       setConversas(lista);
       setContagens({
         todas: base.length,
@@ -138,6 +162,9 @@ export function ColunaEsquerda({
         aguardando_setor: base.filter((c) => (c.status_operacional || c.status) === 'AGUARDANDO_SETOR').length,
         resolvidas: base.filter((c) => ['RESOLVIDA', 'resolvida'].includes(c.status_operacional || c.status)).length,
         arquivadas: base.filter((c) => Boolean(c.arquivada_em) || ['ARQUIVADA', 'arquivada'].includes(c.status_operacional || c.status)).length,
+        sem_responsavel: base.filter(SEM_RESPONSAVEL).length,
+        com_protocolo: base.filter(COM_PROTOCOLO).length,
+        atrasadas: base.filter(ATRASADA).length,
       });
     } catch (err) { console.error(err); }
     finally { setCarregando(false); }
@@ -234,6 +261,24 @@ export function ColunaEsquerda({
   const larguraPainel = ehMobile ? '100%' : ehTablet ? 320 : larguraDesktop;
   const filtrosPrincipais = new Set(['todas', 'minhas', 'naolidas', 'fila']);
   const filtroSecundarioAtivo = !filtrosPrincipais.has(filtro);
+
+  // Conversas fixadas ficam por operador, neste navegador: é preferência de
+  // trabalho individual e não justifica ida ao banco.
+  const alternarFixada = useCallback((convId) => {
+    setFixadas((prev) => {
+      const proximo = prev.includes(convId) ? prev.filter((id) => id !== convId) : [...prev, convId];
+      try { localStorage.setItem(CHAVE_FIXADAS, JSON.stringify(proximo)); } catch {}
+      return proximo;
+    });
+  }, []);
+
+  // Fixadas sobem para o topo preservando a ordem que o backend devolveu (mais
+  // recentes primeiro) dentro de cada grupo.
+  const conversasOrdenadas = useMemo(() => {
+    if (fixadas.length === 0) return conversas;
+    const fixadasSet = new Set(fixadas);
+    return [...conversas].sort((a, b) => (fixadasSet.has(b.id) ? 1 : 0) - (fixadasSet.has(a.id) ? 1 : 0));
+  }, [conversas, fixadas]);
 
   const redimensionar = (event) => {
     if (ehMobile || ehTablet) return;
@@ -416,10 +461,10 @@ export function ColunaEsquerda({
       ),
 
       React.createElement('div', { role: 'group', 'aria-label': 'Filtros rápidos de conversas', style: { display: 'flex', gap: 6, flexWrap: 'wrap' } },
-        React.createElement(Chip, { label: 'Tudo', ativo: filtro === 'todas', onClick: () => setFiltro('todas'), badge: contagens.todas }),
-        React.createElement(Chip, { label: 'Minhas', ativo: filtro === 'minhas', onClick: () => setFiltro('minhas'), badge: contagens.minhas }),
-        React.createElement(Chip, { label: 'Não lidas', ativo: filtro === 'naolidas', onClick: () => setFiltro('naolidas'), badge: contagens.naolidas }),
-        React.createElement(Chip, { label: 'Fila', ativo: filtro === 'fila', onClick: () => setFiltro('fila'), badge: contagens.fila }),
+        React.createElement(Chip, { label: 'Tudo', icone: 'inbox', titulo: 'Todas as conversas do seu acesso', ativo: filtro === 'todas', onClick: () => setFiltro('todas'), badge: contagens.todas }),
+        React.createElement(Chip, { label: 'Minhas', icone: 'person', titulo: 'Conversas em que você é o atendente responsável', ativo: filtro === 'minhas', onClick: () => setFiltro('minhas'), badge: contagens.minhas }),
+        React.createElement(Chip, { label: 'Não lidas', icone: 'mark_email_unread', titulo: 'Conversas com mensagens novas do cidadão', ativo: filtro === 'naolidas', onClick: () => setFiltro('naolidas'), badge: contagens.naolidas }),
+        React.createElement(Chip, { label: 'Fila', icone: 'schedule', titulo: 'Aguardando triagem: ainda sem setor responsável', ativo: filtro === 'fila', onClick: () => setFiltro('fila'), badge: contagens.fila }),
         React.createElement('button', {
           type: 'button',
           onClick: () => setShowFiltros((v) => !v),
@@ -443,10 +488,13 @@ export function ColunaEsquerda({
         'aria-label': 'Filtros adicionais de conversas',
         style: { display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8, paddingTop: 8, borderTop: `1px solid ${T.border}` },
       },
-        React.createElement(Chip, { label: 'Aguardando cidadão', ativo: filtro === 'aguardando_cidadao', onClick: () => setFiltro('aguardando_cidadao'), badge: contagens.aguardando_cidadao }),
-        React.createElement(Chip, { label: 'Aguardando setor', ativo: filtro === 'aguardando_setor', onClick: () => setFiltro('aguardando_setor'), badge: contagens.aguardando_setor }),
-        React.createElement(Chip, { label: 'Resolvidas', ativo: filtro === 'resolvidas', onClick: () => setFiltro('resolvidas'), badge: contagens.resolvidas }),
-        React.createElement(Chip, { label: 'Arquivadas', ativo: filtro === 'arquivadas', onClick: () => setFiltro('arquivadas'), badge: contagens.arquivadas }),
+        React.createElement(Chip, { label: 'Sem responsável', icone: 'person_off', titulo: 'Conversas abertas que ninguém assumiu', ativo: filtro === 'sem_responsavel', onClick: () => setFiltro('sem_responsavel'), badge: contagens.sem_responsavel }),
+        React.createElement(Chip, { label: 'Atrasadas', icone: 'running_with_errors', titulo: `Cidadão esperando resposta há mais de ${HORAS_ATRASO} horas`, ativo: filtro === 'atrasadas', onClick: () => setFiltro('atrasadas'), badge: contagens.atrasadas }),
+        React.createElement(Chip, { label: 'Com protocolo', icone: 'tag', titulo: 'Conversas com número de protocolo gerado', ativo: filtro === 'com_protocolo', onClick: () => setFiltro('com_protocolo'), badge: contagens.com_protocolo }),
+        React.createElement(Chip, { label: 'Aguardando cidadão', icone: 'hourglass_empty', titulo: 'Respondemos e estamos no aguardo do cidadão', ativo: filtro === 'aguardando_cidadao', onClick: () => setFiltro('aguardando_cidadao'), badge: contagens.aguardando_cidadao }),
+        React.createElement(Chip, { label: 'Aguardando setor', icone: 'apartment', titulo: 'Pendente de retorno do setor responsável', ativo: filtro === 'aguardando_setor', onClick: () => setFiltro('aguardando_setor'), badge: contagens.aguardando_setor }),
+        React.createElement(Chip, { label: 'Resolvidas', icone: 'task_alt', titulo: 'Atendimentos finalizados', ativo: filtro === 'resolvidas', onClick: () => setFiltro('resolvidas'), badge: contagens.resolvidas }),
+        React.createElement(Chip, { label: 'Arquivadas', icone: 'archive', titulo: 'Fora das listas principais', ativo: filtro === 'arquivadas', onClick: () => setFiltro('arquivadas'), badge: contagens.arquivadas }),
         departamentos.map((dep) =>
           React.createElement(Chip, {
             key: dep.id, label: dep.nome, ativo: filtro === dep.id, cor: dep.cor,
@@ -462,8 +510,9 @@ export function ColunaEsquerda({
             ? React.createElement(SkeletonLista, null)
             : conversas.length === 0
             ? React.createElement(VazioLista, { texto: 'Inicie uma conversa para ver suas mensagens aqui.' })
-            : conversas.map((c) => React.createElement(ItemConversa, {
+            : conversasOrdenadas.map((c) => React.createElement(ItemConversa, {
                 key: c.id, conversa: c, ativa: c.id === conversaAtivaId, opId: op?.id,
+                fixada: fixadas.includes(c.id), onFixar: alternarFixada,
                 onClick: () => {
                   if (c.nao_lidas > 0) {
                     setConversas((prev) => prev.map((conv) => conv.id === c.id ? { ...conv, nao_lidas: 0 } : conv));
@@ -539,6 +588,13 @@ export function ColunaEsquerda({
       departamentos,
       onClose: () => setShowNovaConversa(false),
       onCriada: (conv) => { setShowNovaConversa(false); carregarConversas(); if (conv?.id) onSelectConversa(conv); },
+      // "Abrir atendimento existente" (aviso de duplicidade) precisa achar a
+      // conversa na lista atual; se ainda não estiver carregada, recarrega.
+      onAbrirConversa: (convId) => {
+        const existente = conversas.find((c) => c.id === convId);
+        if (existente) onSelectConversa(existente);
+        else carregarConversas().then(() => onSelectConversa({ id: convId }));
+      },
     }),
 
     showNovaDM && React.createElement(ModalSelecaoOperadores, {

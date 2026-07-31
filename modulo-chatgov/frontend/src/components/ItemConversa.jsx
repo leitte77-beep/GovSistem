@@ -1,19 +1,27 @@
 import React from 'react';
+import { Pin } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { DeptBadge } from './DeptBadge';
 import { T } from '../theme';
 import { formatarHoraRelativa } from '../utils/arquivo';
 import { CONVERSA_STATUS_UI, conversationStatus } from '../domain/status';
 
-export function ItemConversa({ conversa, ativa, opId, onClick }) {
+export function ItemConversa({ conversa, ativa, opId, onClick, fixada, onFixar }) {
   const nome = conversa.contato_nome || conversa.contato_telefone || 'Desconhecido';
   const isNumber = !conversa.contato_nome;
   const minha = opId && conversa.operador_id === opId;
   const status = conversationStatus(conversa);
   const statusUi = CONVERSA_STATUS_UI[status];
+  const naoLidas = conversa.nao_lidas || 0;
+  // Quem está atendendo aparece no tooltip da linha inteira: informa sem gastar
+  // espaço numa lista que já está densa.
+  const responsavel = conversa.operador_nome
+    ? `Em atendimento por ${conversa.operador_nome}`
+    : 'Sem atendente responsável';
 
   return React.createElement('div', {
     onClick,
+    title: `${nome} — ${statusUi?.label || status}. ${responsavel}.`,
     // Fundo (incl. estado ativo) controlado por CSS p/ o :hover ter efeito — ver index.html
     className: 'cg-conv-item' + (ativa ? ' ativa' : ''),
     style: {
@@ -28,6 +36,9 @@ export function ItemConversa({ conversa, ativa, opId, onClick }) {
       // Faixa à esquerda destacando conversas atribuídas a mim.
       borderLeft: minha ? `3px solid ${T.primary}` : '3px solid transparent',
       opacity: status === 'ARQUIVADA' ? 0.6 : 1,
+      // Não lida ganha fundo levemente destacado (o negrito vai no nome e na prévia).
+      background: !ativa && naoLidas > 0 ? T.primarySoft : undefined,
+      position: 'relative',
     },
   },
     React.createElement(Avatar, { nome, url: conversa.contato_avatar_url, tamanho: 46, isNumber }),
@@ -38,11 +49,24 @@ export function ItemConversa({ conversa, ativa, opId, onClick }) {
         style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 },
       },
         React.createElement('span', {
-          style: { flex: 1, minWidth: 0, fontSize: 15, fontWeight: 600, color: T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
-        }, nome),
+          style: { flex: 1, minWidth: 0, fontSize: 15, fontWeight: naoLidas > 0 ? 800 : 600, color: T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'flex', alignItems: 'center', gap: 5 },
+        },
+          fixada && React.createElement(Pin, { size: 12, color: T.primary, style: { flexShrink: 0 }, fill: T.primary }),
+          React.createElement('span', { style: { overflow: 'hidden', textOverflow: 'ellipsis' } }, nome),
+        ),
         React.createElement('div', {
           style: { display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, marginLeft: 8 },
         },
+          onFixar && React.createElement('button', {
+            className: 'cg-conv-fixar',
+            title: fixada ? 'Desafixar do topo' : 'Fixar no topo da lista',
+            'aria-label': fixada ? 'Desafixar conversa' : 'Fixar conversa no topo',
+            onClick: (e) => { e.stopPropagation(); onFixar(conversa.id); },
+            style: {
+              background: 'transparent', border: 'none', cursor: 'pointer', padding: 2,
+              display: 'flex', color: fixada ? T.primary : T.textMuted, borderRadius: 4,
+            },
+          }, React.createElement(Pin, { size: 13, fill: fixada ? T.primary : 'none' })),
           minha && React.createElement('span', {
             title: 'Atribuída a você',
             style: { fontSize: 9, fontWeight: 800, padding: '1px 5px', borderRadius: 6, background: T.primarySoft, color: T.primary, textTransform: 'uppercase', letterSpacing: 0.3 },
@@ -68,7 +92,8 @@ export function ItemConversa({ conversa, ativa, opId, onClick }) {
         React.createElement('span', {
           style: {
             fontSize: 13,
-            color: T.textSecondary,
+            color: naoLidas > 0 ? T.text : T.textSecondary,
+            fontWeight: naoLidas > 0 ? 600 : 400,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',

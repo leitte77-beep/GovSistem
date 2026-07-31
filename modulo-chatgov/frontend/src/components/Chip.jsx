@@ -1,11 +1,14 @@
 import React from 'react';
 import { T } from '../theme';
 
-export function Chip({ label, ativo, onClick, cor, badge }) {
+export function Chip({ label, ativo, onClick, cor, badge, icone, titulo }) {
   return React.createElement('button', {
     onClick,
     type: 'button',
     'aria-pressed': ativo,
+    // O tooltip explica o critério do filtro — o rótulo sozinho é ambíguo
+    // ("Fila" e "Aguardando setor" não se distinguem só pelo nome).
+    title: titulo || label,
     'aria-label': badge !== undefined ? `${label}: ${badge}` : label,
     style: {
       background: ativo ? T.primary : T.surfaceMuted,
@@ -24,6 +27,11 @@ export function Chip({ label, ativo, onClick, cor, badge }) {
       transition: 'all 0.15s',
     },
   },
+    icone && React.createElement('span', {
+      className: 'material-symbols-outlined',
+      'aria-hidden': 'true',
+      style: { fontSize: 16, lineHeight: 1 },
+    }, icone),
     label,
     badge !== undefined && React.createElement('span', {
       style: {

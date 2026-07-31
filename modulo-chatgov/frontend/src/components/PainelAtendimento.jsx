@@ -123,6 +123,9 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
 
   const opId = auth?.operador?.id;
   const ehGestor = ['admin', 'supervisor'].includes(auth?.operador?.papel);
+  // Exclusão de conversa é restrita a admin no backend; o menu segue a mesma regra
+  // para não oferecer uma ação que sempre falharia.
+  const ehAdmin = auth?.operador?.papel === 'admin';
   const souDono = conversa?.operador_id && conversa.operador_id === opId;
   const semDono = conversa && !conversa.operador_id;
 
@@ -575,9 +578,11 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
   };
 
   const encaminhar = (depId) => {
+    const dep = departamentos.find((d) => d.id === depId);
     socket?.emit('conversa:atribuir', { convId: conversa.id, departamentoId: depId, operadorId: opId });
     setShowEncaminhar(false);
     onConversaUpdated?.();
+    notificar(`Conversa encaminhada para ${dep?.nome || 'o setor'}.`, 'sucesso');
   };
 
   const assumir = () => {
@@ -639,9 +644,37 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
     socket?.emit('conversa:resolver', conversa.id, (ack) => {
       if (ack?.ok) {
         onConversaUpdated?.();
+        notificar('Atendimento resolvido.', 'sucesso');
       } else {
-        console.error('Erro ao resolver:', ack?.erro);
+        notificar(ack?.erro || 'Não foi possível resolver o atendimento.', 'erro');
       }
+    });
+  };
+
+  // Exclusão administrativa: o backend restringe a admin e exige motivo, então a
+  // confirmação pede o motivo e deixa explícito o alcance da ação.
+  const excluirConversa = () => {
+    pedirConfirmacao({
+      titulo: 'Excluir conversa',
+      texto: 'Esta ação excluirá permanentemente todo o histórico da conversa — mensagens, mídias e notas internas deixam de aparecer no atendimento. Deseja continuar?',
+      comInput: true,
+      inputPlaceholder: 'Motivo da exclusão (obrigatório)',
+      confirmarLabel: 'Excluir conversa',
+      perigoso: true,
+      onConfirm: (motivo) => {
+        if (!motivo?.trim()) {
+          notificar('Informe o motivo da exclusão.', 'erro');
+          return;
+        }
+        socket?.emit('conversa:excluir', { convId: conversa.id, motivo: motivo.trim() }, (ack) => {
+          if (ack?.ok) {
+            notificar('Conversa excluída.', 'sucesso');
+            onConversaUpdated?.();
+          } else {
+            notificar(ack?.erro || 'Não foi possível excluir a conversa.', 'erro');
+          }
+        });
+      },
     });
   };
 
@@ -1032,27 +1065,22 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
       !ehCompacto && React.createElement(React.Fragment, null,
       // Assumir conversa (sem dono)
       semDono && React.createElement('button', {
-        onClick: assumir, title: 'Assumir esta conversa',
+        onClick: assumir, title: 'Assumir — você passa a ser o atendente responsável',
         style: { ...acaoBtn, color: T.primary, borderColor: T.primary, fontWeight: 700 },
       }, React.createElement(UserCheck, { size: 16 }), 'Assumir'),
       // Transferir para colega (dono ou gestor)
       conversa.operador_id && podeGerir && React.createElement('button', {
-        onClick: () => setShowTransferir(true), title: 'Transferir para outro atendente',
+        onClick: () => setShowTransferir(true),
+        title: 'Transferir atendente — muda quem é o responsável por este atendimento',
         style: { ...acaoBtn },
-      }, React.createElement(ArrowRightLeft, { size: 16 }), 'Transferir'),
-      // Devolver para a fila (dono ou gestor)
-      conversa.operador_id && podeGerir && React.createElement('button', {
-        onClick: devolver, title: 'Devolver para a fila do setor',
-        style: { ...acaoBtn, color: T.textSecondary },
-      }, React.createElement(Undo2, { size: 16 }), 'Devolver'),
-      // Anexar atendente
-      React.createElement('button', {
-        onClick: () => setShowParticipantes(true), title: 'Anexar atendente',
-        style: { ...acaoBtn },
-      }, React.createElement(UserPlus, { size: 16 }), 'Anexar'),
+      }, React.createElement(ArrowRightLeft, { size: 16 }), 'Transferir atendente'),
       // Templates
       React.createElement('div', { style: { position: 'relative' } },
-        React.createElement('button', { onClick: () => { setShowTemplates(!showTemplates); setShowEncaminhar(false); setShowEtiquetas(false); }, style: acaoBtn },
+        React.createElement('button', {
+          onClick: () => { setShowTemplates(!showTemplates); setShowEncaminhar(false); setShowEtiquetas(false); },
+          title: 'Inserir uma resposta pronta no campo de mensagem',
+          style: acaoBtn,
+        },
           React.createElement(MessageSquare, { size: 16 }), 'Templates'),
         showTemplates && React.createElement('div', { style: dropdown },
           React.createElement('div', { style: { padding: '8px 14px', fontSize: 11, color: T.textMuted, fontWeight: 700, textTransform: 'uppercase' } }, 'Respostas rápidas'),
@@ -1065,25 +1093,14 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
           templates.length === 0 && React.createElement('div', { style: { padding: 14, fontSize: 12, color: T.textMuted } }, 'Nenhum template. Crie no menu Admin > Templates.'),
         ),
       ),
-      // Etiquetas
+      // Encaminhar para setor — árvore secretaria › departamento, recolhível e com busca
       React.createElement('div', { style: { position: 'relative' } },
-        React.createElement('button', { onClick: () => { setShowEtiquetas(!showEtiquetas); setShowEncaminhar(false); setShowTemplates(false); }, style: acaoBtn },
-          React.createElement(Tag, { size: 16 }), 'Etiquetas'),
-        showEtiquetas && React.createElement('div', { style: dropdown },
-          React.createElement('div', { style: { padding: '8px 14px', fontSize: 11, color: T.textMuted, fontWeight: 700, textTransform: 'uppercase' } }, 'Categorizar'),
-          etiquetas.map((et) => {
-            const ativo = etiquetasConv.some((e) => e.id === et.id);
-            return React.createElement('button', { key: et.id, onClick: () => toggleEtiqueta(et.id), style: { ...dropdownItem, background: ativo ? T.primarySoft : 'transparent' } },
-              React.createElement('span', { style: { width: 10, height: 10, borderRadius: '50%', background: et.cor } }),
-              et.nome, ativo && React.createElement(CheckCircle2, { size: 14, color: T.success, style: { marginLeft: 'auto' } }));
-          }),
-          etiquetas.length === 0 && React.createElement('div', { style: { padding: 14, fontSize: 12, color: T.textMuted } }, 'Nenhuma etiqueta.'),
-        ),
-      ),
-      // Atribuir secretaria — árvore secretaria › departamento, recolhível e com busca
-      React.createElement('div', { style: { position: 'relative' } },
-        React.createElement('button', { onClick: abrirEncaminhar, style: { ...acaoBtn } },
-          React.createElement(Building2, { size: 16 }), 'Encaminhar'),
+        React.createElement('button', {
+          onClick: abrirEncaminhar,
+          title: 'Encaminhar para setor — envia o atendimento a uma secretaria ou departamento',
+          style: { ...acaoBtn },
+        },
+          React.createElement(Building2, { size: 16 }), 'Encaminhar para setor'),
         showEncaminhar && React.createElement('div', { className: 'cg-enc-menu', style: { ...dropdown, minWidth: 280 } },
           React.createElement('style', null, ESTILO_ENCAMINHAR),
           React.createElement('div', { style: { padding: '8px 14px 6px', fontSize: 11, color: T.textMuted, fontWeight: 700, textTransform: 'uppercase' } }, 'Encaminhar para'),
@@ -1130,16 +1147,37 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
           ),
         ),
       ),
-      React.createElement('button', { onClick: resolver, 'aria-label': 'Resolver conversa', style: { ...acaoBtn, color: T.success, borderColor: '#CDEBD6' } },
+      React.createElement('button', {
+        onClick: resolver, 'aria-label': 'Resolver atendimento',
+        title: 'Resolver — finaliza o atendimento',
+        style: { ...acaoBtn, color: T.success, borderColor: '#CDEBD6' },
+      },
         React.createElement(CheckCircle2, { size: 16 }), 'Resolver'),
-      // Ações destrutivas/secundárias agrupadas num menu "⋯" para não lotar o header.
+      // Ações secundárias e destrutivas agrupadas no "⋯": o header fica com o
+      // fluxo principal (encaminhar → transferir → resolver) e o resto sai da frente.
       React.createElement('div', { style: { position: 'relative' } },
         React.createElement('button', {
           onClick: () => { setShowMenuMais(!showMenuMais); setShowEncaminhar(false); setShowTemplates(false); setShowEtiquetas(false); },
           'aria-label': 'Mais ações', 'aria-haspopup': 'menu', 'aria-expanded': showMenuMais,
+          title: 'Mais ações',
           style: { ...acaoBtn, padding: '7px 9px' },
         }, React.createElement(MoreVertical, { size: 16 })),
         showMenuMais && React.createElement('div', { style: dropdown, role: 'menu' },
+          conversa.operador_id && podeGerir && React.createElement('button', {
+            role: 'menuitem', title: 'Remove o atendente atual e devolve o atendimento para a fila do setor',
+            onClick: () => { setShowMenuMais(false); devolver(); }, style: { ...dropdownItem, color: T.textSecondary },
+          }, React.createElement(Undo2, { size: 15 }), 'Devolver para a fila'),
+          React.createElement('button', {
+            role: 'menuitem', title: 'Adiciona outro atendente à conversa sem trocar o responsável',
+            onClick: () => { setShowMenuMais(false); setShowParticipantes(true); }, style: { ...dropdownItem, color: T.textSecondary },
+          }, React.createElement(UserPlus, { size: 15 }), 'Anexar atendente'),
+          React.createElement('button', {
+            role: 'menuitem', title: 'Categorizar o atendimento com etiquetas',
+            onClick: () => { setShowMenuMais(false); setShowEtiquetas(true); }, style: { ...dropdownItem, color: T.textSecondary },
+          }, React.createElement(Tag, { size: 15 }), 'Etiquetas',
+            etiquetasConv.length > 0 && React.createElement('span', {
+              style: { marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: T.primary },
+            }, String(etiquetasConv.length))),
           React.createElement('button', { role: 'menuitem', onClick: () => { setShowMenuMais(false); abrirGaleria(); }, style: { ...dropdownItem, color: T.textSecondary } },
             React.createElement(Images, { size: 15 }), 'Ver mídias'),
           React.createElement('button', { role: 'menuitem', onClick: () => { setShowMenuMais(false); marcarNaoLida(); }, style: { ...dropdownItem, color: T.textSecondary } },
@@ -1149,6 +1187,24 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
                 React.createElement(Archive, { size: 15 }), 'Desarquivar')
             : React.createElement('button', { role: 'menuitem', onClick: () => { setShowMenuMais(false); arquivar(); }, style: { ...dropdownItem, color: T.textSecondary } },
                 React.createElement(Archive, { size: 15 }), 'Arquivar'),
+          // Só admin: o backend recusa a exclusão de qualquer outro papel.
+          ehAdmin && React.createElement('div', { style: { borderTop: `1px solid ${T.border}`, marginTop: 4, paddingTop: 4 } },
+            React.createElement('button', {
+              role: 'menuitem', title: 'Exclui permanentemente todo o histórico da conversa',
+              onClick: () => { setShowMenuMais(false); excluirConversa(); }, style: { ...dropdownItem, color: T.danger },
+            }, React.createElement(Trash2, { size: 15 }), 'Excluir conversa'),
+          ),
+        ),
+        // Etiquetas passaram a abrir a partir do "⋯", ancoradas neste mesmo container.
+        showEtiquetas && React.createElement('div', { style: dropdown },
+          React.createElement('div', { style: { padding: '8px 14px', fontSize: 11, color: T.textMuted, fontWeight: 700, textTransform: 'uppercase' } }, 'Categorizar'),
+          etiquetas.map((et) => {
+            const ativo = etiquetasConv.some((e) => e.id === et.id);
+            return React.createElement('button', { key: et.id, onClick: () => toggleEtiqueta(et.id), style: { ...dropdownItem, background: ativo ? T.primarySoft : 'transparent' } },
+              React.createElement('span', { style: { width: 10, height: 10, borderRadius: '50%', background: et.cor } }),
+              et.nome, ativo && React.createElement(CheckCircle2, { size: 14, color: T.success, style: { marginLeft: 'auto' } }));
+          }),
+          etiquetas.length === 0 && React.createElement('div', { style: { padding: 14, fontSize: 12, color: T.textMuted } }, 'Nenhuma etiqueta.'),
         ),
       ),
       ), // fecha o Fragment da barra de ações desktop (!ehCompacto)
@@ -1182,13 +1238,28 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
       'Em atendimento por ', React.createElement('strong', { style: { color: T.text } }, conversa.operador_nome || 'outro atendente'),
     ),
 
-    // Faixa de status
+    // Faixa de status. Sem setor responsável, ela vira uma chamada para ação: diz o
+    // que falta e traz o botão que resolve, em vez de só descrever o problema.
     React.createElement('div', {
       style: { padding: '7px 16px', background: conversaStatus === 'fila' ? T.warningSoft : T.surfaceAlt, fontSize: 11, textAlign: 'center', flexShrink: 0, borderBottom: `1px solid ${T.border}` },
     },
       conversaStatus === 'fila'
-        ? React.createElement('span', { style: { color: T.warning, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, fontWeight: 600 } },
-            React.createElement(Clock, { size: 12 }), 'Aguardando triagem — encaminhe a uma secretaria para responder')
+        ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, flexWrap: 'wrap' } },
+            React.createElement(Clock, { size: 14, color: T.warning, style: { flexShrink: 0 } }),
+            React.createElement('div', { style: { textAlign: 'left' } },
+              React.createElement('div', { style: { color: T.warning, fontWeight: 700, fontSize: 12 } }, 'Atendimento sem setor responsável'),
+              React.createElement('div', { style: { color: T.textSecondary, fontSize: 11 } },
+                'Encaminhe esta conversa para que um servidor do setor possa responder.'),
+            ),
+            React.createElement('button', {
+              onClick: abrirEncaminhar,
+              style: {
+                background: T.warning, border: 'none', color: '#fff', padding: '6px 14px',
+                borderRadius: T.radiusSm, cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
+              },
+            }, React.createElement(Building2, { size: 14 }), 'Escolher setor'),
+          )
         : conversaStatus === 'arquivada'
         ? React.createElement('span', { style: { color: T.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 } },
             React.createElement(Archive, { size: 12 }), 'Conversa arquivada — não aparece nas listas principais')

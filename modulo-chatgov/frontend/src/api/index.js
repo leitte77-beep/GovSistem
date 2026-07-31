@@ -244,6 +244,17 @@ export async function iniciarConversa(body) {
   return jsonReq('/api/conversas/iniciar', 'POST', body);
 }
 
+// Consulta se o telefone já tem contato cadastrado e atendimento em andamento,
+// para preencher o nome e avisar sobre duplicidade antes de abrir a conversa.
+export async function precheckContato(telefone, signal) {
+  const res = await fetch(`/api/contatos/prechecagem?telefone=${encodeURIComponent(telefone)}`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+    signal,
+  });
+  if (!res.ok) throw new Error('Erro ao consultar o contato');
+  return res.json();
+}
+
 export async function fetchParticipantes(convId) {
   const res = await fetch(`/api/conversas/${convId}/participantes`, {
     headers: { Authorization: `Bearer ${getToken()}` },

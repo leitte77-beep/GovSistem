@@ -541,6 +541,48 @@ app.use('/api', rateLimiter);
     }
   });
 
+  // Pré-checagem da tela "Nova conversa": dado um telefone, diz se já existe
+  // contato cadastrado e se há atendimento em andamento. Serve para preencher o
+  // nome sozinho e para avisar antes de abrir uma conversa duplicada.
+  app.get('/api/contatos/prechecagem', async (req, res) => {
+    try {
+      const op = req.operador;
+      const digits = normalizarTelefoneWhatsApp(req.query.telefone || '');
+      if (digits.length < 10) return res.json({ contato: null, conversa: null });
+
+      const variantes = variantesTelefoneBrasil(digits);
+      const contato = await db.oneOrNone(
+        `SELECT id, nome, telefone, avatar_url
+         FROM contatos
+         WHERE tenant_id = $1 AND (telefone = ANY($2) OR wa_jid = ANY($3))
+         LIMIT 1`,
+        [op.tenantId, variantes, variantes.map((n) => `${n}@s.whatsapp.net`)]
+      );
+      if (!contato) return res.json({ contato: null, conversa: null });
+
+      // Só interessa o atendimento que ainda está de pé — resolvido/arquivado
+      // não impede abrir um novo.
+      const conversa = await db.oneOrNone(
+        `SELECT c.id, c.status, c.status_operacional, c.criado_em, c.ultima_mensagem_em,
+                d.nome AS departamento_nome, o.nome AS operador_nome, p.numero AS protocolo_numero
+         FROM conversas c
+         LEFT JOIN departamentos d ON d.id = c.departamento_id
+         LEFT JOIN operadores o ON o.id = c.operador_id
+         LEFT JOIN protocolos p ON p.id = c.protocolo_id
+         WHERE c.tenant_id = $1 AND c.contato_id = $2 AND c.deleted_at IS NULL
+           AND COALESCE(c.status_operacional, '') NOT IN ('RESOLVIDA', 'ARQUIVADA')
+           AND COALESCE(c.status, '') NOT IN ('resolvida', 'arquivada')
+         ORDER BY c.ultima_mensagem_em DESC NULLS LAST
+         LIMIT 1`,
+        [op.tenantId, contato.id]
+      );
+      res.json({ contato, conversa: conversa || null });
+    } catch (err) {
+      console.error('[API] prechecagem de contato:', err.message);
+      res.status(500).json({ erro: 'Erro ao consultar o contato' });
+    }
+  });
+
   app.post('/api/conversas/iniciar', async (req, res) => {
     try {
       const op = req.operador;
