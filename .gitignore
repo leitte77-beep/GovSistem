@@ -16,6 +16,7 @@ npm-debug.log*
 # Environment
 .env
 .env.local
+.env.dev
 
 # IDE
 .vscode/
@@ -46,9 +47,8 @@ modulo-govsocial/api/uploads/
 modulo-govsocial/web/dist-build/
 apps/api/uploads/
 
-# EXCECAO ao `dist/` acima: o fonte do frontend do GovSocial se perdeu e o
-# do ChatGov nao esta no disco, entao o bundle compilado e o UNICO artefato
-# existente desses dois modulos — e o Dockerfile deles faz COPY do dist.
-# Perder isso significa perder o frontend.
+# EXCECAO ao `dist/` acima: o fonte do frontend do GovSocial se perdeu.
+# O fonte do ChatGov foi recuperado; o dist continua versionado como artefato
+# de contingencia da versao atualmente publicada.
 !modulo-govsocial/web/dist/
 !modulo-chatgov/frontend/dist/
