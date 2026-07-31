@@ -1,9 +1,7 @@
 import db from '../db.js';
-import { excluirMidiaDaConversa } from './midia-conversas.js';
 import { config } from '../config.js';
 
-const { ativo, acao, horas, intervaloMinutos } = config.limpezaConversas;
-const EXCLUIR = acao === 'excluir';
+const { ativo, horas, intervaloMinutos } = config.limpezaConversas;
 const HORAS_INATIVIDADE = Number.isFinite(horas) && horas > 0 ? horas : 72;
 const INTERVALO_MIN = Number.isFinite(intervaloMinutos) && intervaloMinutos > 0 ? intervaloMinutos : 30;
 const INTERVALO_VERIFICACAO_MS = INTERVALO_MIN * 60 * 1000;
@@ -36,28 +34,19 @@ async function processarConversasInativas(storage) {
         );
 
         for (const conv of alvo) {
-          if (EXCLUIR) {
-            // Apaga os arquivos físicos (foto/vídeo/áudio/documentos) antes de
-            // remover a conversa — a cascata em `mensagens` levaria os media_url junto.
-            try {
-              await excluirMidiaDaConversa(storage, tenant.id, conv.id, t);
-            } catch (e) {
-              console.error(`[Limpeza] Falha ao excluir mídia da conversa ${conv.id}:`, e.message);
-            }
-            await t.none('DELETE FROM conversas WHERE id = $1 AND tenant_id = $2', [conv.id, tenant.id]);
-          } else {
-            await t.none(
-              `UPDATE conversas SET status = 'arquivada' WHERE id = $1 AND tenant_id = $2`,
-              [conv.id, tenant.id]
-            );
-          }
+          await t.none(
+            `UPDATE conversas SET status = 'arquivada', status_operacional = 'ARQUIVADA',
+               arquivada_em = now()
+             WHERE id = $1 AND tenant_id = $2`,
+            [conv.id, tenant.id]
+          );
           totalAfetadas += 1;
         }
 
         if (alvo.length > 0) {
           console.log(
             `[Limpeza] ${tenant.nome}: ${alvo.length} conversa(s) ` +
-            `${EXCLUIR ? 'excluída(s)' : 'arquivada(s)'} (>${HORAS_INATIVIDADE}h sem resposta do cidadão)`
+            `arquivada(s) (>${HORAS_INATIVIDADE}h sem resposta do cidadão)`
           );
         }
       });
@@ -67,7 +56,7 @@ async function processarConversasInativas(storage) {
 
     if (totalAfetadas > 0) {
       console.log(
-        `[Limpeza] Total: ${totalAfetadas} conversa(s) ${EXCLUIR ? 'excluída(s)' : 'arquivada(s)'} nesta execução`
+        `[Limpeza] Total: ${totalAfetadas} conversa(s) arquivada(s) nesta execução`
       );
     }
   } catch (err) {
@@ -82,7 +71,7 @@ export function iniciarLimpezaConversas(storage) {
     return;
   }
   console.log(
-    `[Limpeza] Agendado ${EXCLUIR ? 'EXCLUSÃO' : 'arquivamento'} de conversas abertas >${HORAS_INATIVIDADE}h ` +
+    `[Limpeza] Agendado arquivamento de conversas abertas >${HORAS_INATIVIDADE}h ` +
     `sem resposta do cidadão. Verificando a cada ${INTERVALO_MIN}min.`
   );
   processarConversasInativas(storage);

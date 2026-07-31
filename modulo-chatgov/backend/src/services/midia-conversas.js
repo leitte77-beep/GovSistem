@@ -1,11 +1,8 @@
 import db from '../db.js';
 
 /**
- * Remove permanentemente os arquivos físicos (foto, vídeo, áudio, documentos)
- * das mensagens de uma conversa antes de ela ser excluída do banco.
- *
- * Deve ser chamado ANTES do `DELETE FROM conversas`, pois a exclusão da conversa
- * dispara cascata em `mensagens` e os `media_url` deixam de existir.
+ * Rotina reservada ao futuro expurgo LGPD autorizado. Não deve ser chamada
+ * pelo fluxo operacional de arquivamento/exclusão lógica.
  *
  * Por segurança, um arquivo só é apagado se nenhuma outra mensagem (em outra
  * conversa ou em canal interno) ainda o referenciar — evita remover mídia

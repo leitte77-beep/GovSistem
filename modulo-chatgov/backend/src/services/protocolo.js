@@ -1,46 +1,50 @@
 import db from '../db.js';
 
-export async function gerarNumeroProtocolo(tenantId) {
+async function gerarNumeroProtocoloNoContexto(conn, tenantId) {
   const hoje = new Date();
   const ano = hoje.getFullYear();
   const mes = String(hoje.getMonth() + 1).padStart(2, '0');
 
-  const row = await db.one(
-    `SELECT COALESCE(MAX(NULLIF(regexp_replace(numero, '^\\d+-\\d+-', ''), '')::int), 0) + 1 AS seq
-     FROM protocolos
-     WHERE tenant_id = $1 AND numero LIKE $2`,
-    [tenantId, `${ano}-${mes}-%`]
+  const row = await conn.one(
+    `INSERT INTO protocolo_sequencias (tenant_id, ano, mes, ultimo_numero)
+     VALUES ($1, $2, $3, 1)
+     ON CONFLICT (tenant_id, ano, mes)
+     DO UPDATE SET ultimo_numero = protocolo_sequencias.ultimo_numero + 1
+     RETURNING ultimo_numero AS seq`,
+    [tenantId, ano, Number(mes)]
   );
 
   const seq = String(row.seq).padStart(6, '0');
   return `${ano}-${mes}-${seq}`;
 }
 
+export async function gerarNumeroProtocolo(tenantId) {
+  return db.tx((t) => gerarNumeroProtocoloNoContexto(t, tenantId));
+}
+
 export async function gerarProtocolo(tenantId, conversaId, contatoId, departamentoId, operadorId, assunto) {
-  const numero = await gerarNumeroProtocolo(tenantId);
-
-  const proto = await db.one(
-    `INSERT INTO protocolos (tenant_id, numero, conversa_id, contato_id, departamento_id, operador_id, assunto, status, prioridade)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 'aberto', 'normal')
-     RETURNING *`,
-    [tenantId, numero, conversaId, contatoId, departamentoId || null, operadorId || null, assunto || 'Atendimento geral']
-  );
-
-  await db.none(
-    `INSERT INTO andamentos_protocolo (tenant_id, protocolo_id, status, descricao, operador_id)
-     VALUES ($1, $2, 'aberto', 'Protocolo aberto — atendimento iniciado', $3)`,
-    [tenantId, proto.id, operadorId || null]
-  );
-
-  if (conversaId) {
-    await db.none('UPDATE conversas SET protocolo_id = $1 WHERE id = $2 AND tenant_id = $3', [
-      proto.id,
-      conversaId,
-      tenantId,
-    ]);
-  }
-
-  return proto;
+  return db.tx(async (t) => {
+    const numero = await gerarNumeroProtocoloNoContexto(t, tenantId);
+    const proto = await t.one(
+      `INSERT INTO protocolos
+         (tenant_id, numero, conversa_id, contato_id, departamento_id, operador_id,
+          assunto, status, status_operacional, prioridade)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'aberto', 'ABERTO', 'normal')
+       RETURNING *`,
+      [tenantId, numero, conversaId, contatoId, departamentoId || null, operadorId || null, assunto || 'Atendimento geral']
+    );
+    await t.none(
+      `INSERT INTO andamentos_protocolo (tenant_id, protocolo_id, status, descricao, operador_id)
+       VALUES ($1, $2, 'aberto', 'Protocolo aberto — atendimento iniciado', $3)`,
+      [tenantId, proto.id, operadorId || null]
+    );
+    if (conversaId) {
+      await t.none('UPDATE conversas SET protocolo_id = $1 WHERE id = $2 AND tenant_id = $3', [
+        proto.id, conversaId, tenantId,
+      ]);
+    }
+    return proto;
+  });
 }
 
 export async function atualizarStatusProtocolo(protocoloId, tenantId, status, descricao, operadorId) {

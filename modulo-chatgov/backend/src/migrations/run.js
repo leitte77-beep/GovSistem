@@ -9,6 +9,9 @@ export async function runMigrations() {
   const migrations = [
     join(__dirname, 'schema.sql'),
     join(__dirname, 'evolucoes.sql'),
+    join(__dirname, '019_operacao_v2.sql'),
+    join(__dirname, '020_operacao_confiavel.sql'),
+    join(__dirname, '021_operacao_municipal.sql'),
   ];
 
   for (const path of migrations) {

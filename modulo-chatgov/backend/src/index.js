@@ -18,13 +18,19 @@ import { getConfigChatbot } from './services/chatbot.js';
 import * as irisService from './services/iris.js';
 import {
   gerarProtocolo, consultarProtocolo, encerrarProtocolo,
-  getOuGerarProtocolo, atualizarStatusProtocolo,
+  getOuGerarProtocolo,
 } from './services/protocolo.js';
 import { registrarRespostaNPS, calcularNPS, npsPorSetor, npsPorAtendente } from './services/nps.js';
 import rotasEvolucoes from './routes/evolucoes.js';
 import { iniciarLimpezaConversas } from './services/limpeza-conversas.js';
-import { excluirMidiaDaConversa } from './services/midia-conversas.js';
 import { ensureTenantProvisioned } from './services/provisionamento.js';
+import devSaasRouter from './auth/dev-saas.js';
+import operacaoV2Router from './routes/operacao-v2.js';
+import { normalizePhone } from './domain/phone.js';
+import { hasPermission, PERMISSIONS, requirePermission } from './auth/permissions.js';
+import { protectSensitiveFields } from './domain/privacy.js';
+import { transitionProtocol } from './services/status-transitions.js';
+import administracaoV2Router from './routes/administracao-v2.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -134,6 +140,19 @@ async function main() {
 
 app.use('/media', express.static(config.uploadsDir));
 
+// Ponte de autenticação exclusiva do ambiente dev: valida a identidade no SaaS
+// e provisiona somente o banco isolado. A própria rota retorna 404 em produção.
+app.use('/api/dev/saas', devSaasRouter);
+
+app.get('/health', async (_req, res) => {
+  try {
+    await db.one('SELECT 1');
+    res.json({ status: 'ok', ambiente: process.env.NODE_ENV || 'production' });
+  } catch {
+    res.status(503).json({ status: 'error' });
+  }
+});
+
 app.post('/api/internal/sync-organization', async (req, res) => {
   const key = req.headers['x-internal-key'];
   if (key !== (config.internalApiKey || 'chatgov-internal-key-change-me')) {
@@ -218,6 +237,8 @@ app.post('/api/internal/sync-user', async (req, res) => {
 app.use('/api', authMiddleware);
 app.use('/api', rateLimiter);
 
+  app.use('/api/v2', operacaoV2Router);
+  app.use('/api/v2/admin', administracaoV2Router);
   app.use('/api/evolucoes', rotasEvolucoes);
 
   app.get('/api/me', async (req, res) => {
@@ -266,12 +287,13 @@ app.use('/api', rateLimiter);
       }
 
       if (status) {
-        query += ` AND c.status = $${paramIdx++}`;
-        params.push(status);
+        const statusNormalizado = String(status).toUpperCase();
+        query += ` AND c.status_operacional = $${paramIdx++}`;
+        params.push(statusNormalizado);
       } else if (arquivadas === 'true') {
-        query += ` AND c.status = 'arquivada'`;
+        query += ` AND c.status_operacional = 'ARQUIVADA'`;
       } else {
-        query += ` AND c.status NOT IN ('resolvida')`;
+        query += ` AND c.status_operacional NOT IN ('RESOLVIDA', 'ARQUIVADA') AND c.deleted_at IS NULL`;
       }
       if (departamento_id) {
         query += ` AND c.departamento_id = $${paramIdx++}::uuid`;
@@ -282,10 +304,13 @@ app.use('/api', rateLimiter);
         params.push(`%${busca}%`);
       }
 
-      query += ' ORDER BY c.ultima_mensagem_em DESC NULLS LAST LIMIT 100';
+      const limite = Math.min(Math.max(parseInt(req.query.limite, 10) || 50, 1), 100);
+      const pagina = Math.max(parseInt(req.query.pagina, 10) || 1, 1);
+      query += ` ORDER BY c.ultima_mensagem_em DESC NULLS LAST LIMIT $${paramIdx++} OFFSET $${paramIdx++}`;
+      params.push(limite, (pagina - 1) * limite);
 
       const conversas = await db.manyOrNone(query, params);
-      res.json(conversas);
+      res.json(conversas.map((c) => protectSensitiveFields(c, hasPermission(op.papel, PERMISSIONS.SENSITIVE_VIEW))));
     } catch (err) {
       console.error('[API] conversas error:', err.message);
       res.status(500).json({ erro: 'Erro ao buscar conversas' });
@@ -558,10 +583,11 @@ app.use('/api', rateLimiter);
       buscarAvatarContato(wa, op.tenantId, contato.id).catch(() => {});
 
       const conversa = await db.one(
-        `INSERT INTO conversas (tenant_id, contato_id, departamento_id, operador_id, status, ultima_mensagem_em)
-         VALUES ($1, $2, $3, $4, 'aberta', now())
+        `INSERT INTO conversas (tenant_id, contato_id, departamento_id, operador_id, status, status_operacional, ultima_mensagem_em)
+         VALUES ($1, $2, $3, $4, 'aberta', 'EM_ATENDIMENTO', now())
          ON CONFLICT (tenant_id, contato_id) DO UPDATE
            SET status = CASE WHEN conversas.status = 'resolvida' THEN 'aberta' ELSE conversas.status END,
+               status_operacional = CASE WHEN conversas.status_operacional IN ('RESOLVIDA','ARQUIVADA') THEN 'EM_ATENDIMENTO' ELSE conversas.status_operacional END,
                departamento_id = COALESCE($3, conversas.departamento_id),
                operador_id = COALESCE(conversas.operador_id, $4)
          RETURNING *`,
@@ -1131,58 +1157,174 @@ app.use('/api', rateLimiter);
     try {
       const op = req.operador;
       const { busca } = req.query;
-      let query = `SELECT * FROM contatos WHERE tenant_id = $1`;
+      let query = `SELECT c.*,
+                     ult.ultima_conversa_em, ult.departamento_nome, ult.operador_nome,
+                     COALESCE(ult.total_atendimentos, 0) AS total_atendimentos
+                   FROM contatos c
+                   LEFT JOIN LATERAL (
+                     SELECT MAX(cv.ultima_mensagem_em) AS ultima_conversa_em,
+                            (array_agg(d.nome ORDER BY cv.ultima_mensagem_em DESC))[1] AS departamento_nome,
+                            (array_agg(o.nome ORDER BY cv.ultima_mensagem_em DESC))[1] AS operador_nome,
+                            COUNT(*)::int AS total_atendimentos
+                     FROM conversas cv
+                     LEFT JOIN departamentos d ON d.id = cv.departamento_id
+                     LEFT JOIN operadores o ON o.id = cv.operador_id
+                     WHERE cv.tenant_id = c.tenant_id
+                       AND (cv.contato_id = c.id OR cv.contato_id IN (
+                         SELECT id FROM contatos WHERE merged_into_id = c.id AND tenant_id = c.tenant_id
+                       ))
+                   ) ult ON true
+                   WHERE c.tenant_id = $1 AND c.deleted_at IS NULL AND c.merged_into_id IS NULL`;
       const params = [op.tenantId];
       if (busca) {
-        query += ` AND (nome ILIKE $2 OR telefone ILIKE $2)`;
+        query += ` AND (c.nome ILIKE $2 OR c.telefone ILIKE $2 OR c.phone_e164 ILIKE $2)`;
         params.push(`%${busca}%`);
       }
       // Ordem alfabética: contatos com nome primeiro (case-insensitive),
       // os sem nome (só número) vão para o fim, ordenados pelo telefone.
-      query += ` ORDER BY (nome IS NULL OR btrim(nome) = '') ASC, lower(nome) ASC, telefone ASC LIMIT 200`;
+      query += ` ORDER BY (c.nome IS NULL OR btrim(c.nome) = '') ASC, lower(c.nome) ASC, c.telefone ASC LIMIT 200`;
       const lista = await db.manyOrNone(query, params);
-      res.json(lista);
+      res.json(lista.map((p) => protectSensitiveFields(p, hasPermission(op.papel, PERMISSIONS.SENSITIVE_VIEW))));
     } catch (err) {
       res.status(500).json({ erro: 'Erro ao buscar contatos' });
+    }
+  });
+
+  app.post('/api/contatos', async (req, res) => {
+    try {
+      const op = req.operador;
+      const phone = normalizePhone(req.body.telefone);
+      const canal = String(req.body.canal || 'whatsapp').toLowerCase();
+      const existente = await db.oneOrNone(
+        `SELECT * FROM contatos
+         WHERE tenant_id = $1 AND canal = $2 AND phone_e164 = $3
+           AND deleted_at IS NULL AND merged_into_id IS NULL`,
+        [op.tenantId, canal, phone.phoneE164]
+      );
+      if (existente) return res.status(409).json({ erro: 'Contato já cadastrado', contato_existente: existente });
+      const jid = canal === 'whatsapp' ? `${phone.phoneE164.slice(1)}@s.whatsapp.net` : `${canal}:${phone.phoneE164}`;
+      const contato = await db.one(
+        `INSERT INTO contatos
+           (tenant_id, wa_jid, nome, telefone, canal, phone_e164, phone_display,
+            country_code, area_code, local_number)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+        [
+          op.tenantId, jid, req.body.nome?.trim() || null, phone.phoneE164,
+          canal, phone.phoneE164, phone.phoneDisplay, phone.countryCode,
+          phone.areaCode, phone.localNumber,
+        ]
+      );
+      res.status(201).json(contato);
+    } catch (err) {
+      const status = /Telefone/.test(err.message) ? 400 : err.code === '23505' ? 409 : 500;
+      res.status(status).json({ erro: status === 409 ? 'Contato já cadastrado' : err.message || 'Erro ao criar contato' });
+    }
+  });
+
+  app.post('/api/contatos/:id/mesclar', requirePapel('admin', 'supervisor'), async (req, res) => {
+    try {
+      const op = req.operador;
+      const origemId = req.params.id;
+      const destinoId = req.body.destino_id;
+      const motivo = String(req.body.motivo || '').trim();
+      if (!destinoId || destinoId === origemId) return res.status(400).json({ erro: 'Contato de destino inválido' });
+      if (!motivo) return res.status(400).json({ erro: 'Motivo obrigatório' });
+      const resultado = await db.tx(async (t) => {
+        const contatos = await t.manyOrNone(
+          `SELECT * FROM contatos WHERE tenant_id = $1 AND id IN ($2, $3)
+           AND deleted_at IS NULL FOR UPDATE`,
+          [op.tenantId, origemId, destinoId]
+        );
+        if (contatos.length !== 2) throw new Error('Contato não encontrado');
+        const origem = contatos.find((c) => c.id === origemId);
+        const destino = contatos.find((c) => c.id === destinoId);
+        if (origem.nome && origem.nome !== destino.nome) {
+          await t.none(
+            `INSERT INTO contato_nomes_alternativos (tenant_id, contato_id, nome)
+             VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+            [op.tenantId, destinoId, origem.nome]
+          );
+        }
+        await t.none(
+          `UPDATE contatos SET merged_into_id = $1, arquivado_em = now()
+           WHERE id = $2 AND tenant_id = $3`,
+          [destinoId, origemId, op.tenantId]
+        );
+        await t.none(
+          `INSERT INTO contato_merge_eventos
+             (tenant_id, contato_origem_id, contato_destino_id, operador_id, motivo)
+           VALUES ($1,$2,$3,$4,$5)`,
+          [op.tenantId, origemId, destinoId, op.id, motivo]
+        );
+        await t.none(
+          `INSERT INTO auditoria (tenant_id, operador_id, acao, detalhe, origem, entidade, entidade_id)
+           VALUES ($1,$2,'contato.mesclado',$3,'usuario','contato',$4)`,
+          [op.tenantId, op.id, { origemId, destinoId, motivo }, destinoId]
+        );
+        return { ...destino, contatos_mesclados: [origemId] };
+      });
+      res.json(resultado);
+    } catch (err) {
+      res.status(/não encontrado/.test(err.message) ? 404 : 409).json({ erro: err.message });
     }
   });
 
   app.put('/api/contatos/:id', async (req, res) => {
     try {
       const op = req.operador;
-      const { nome } = req.body;
+      const { nome, telefone, canal = 'whatsapp' } = req.body;
+      let phone = null;
+      if (telefone !== undefined) phone = normalizePhone(telefone);
       const row = await db.oneOrNone(
-        `UPDATE contatos SET nome = $1 WHERE id = $2 AND tenant_id = $3 RETURNING *`,
-        [nome || null, req.params.id, op.tenantId]
+        `UPDATE contatos SET
+           nome = $1,
+           telefone = COALESCE($2, telefone),
+           canal = COALESCE($3, canal),
+           phone_e164 = COALESCE($4, phone_e164),
+           phone_display = COALESCE($5, phone_display),
+           country_code = COALESCE($6, country_code),
+           area_code = COALESCE($7, area_code),
+           local_number = COALESCE($8, local_number)
+         WHERE id = $9 AND tenant_id = $10 AND deleted_at IS NULL
+         RETURNING *`,
+        [
+          nome || null,
+          phone?.phoneE164 || null,
+          canal || null,
+          phone?.phoneE164 || null,
+          phone?.phoneDisplay || null,
+          phone?.countryCode || null,
+          phone?.areaCode || null,
+          phone?.localNumber || null,
+          req.params.id,
+          op.tenantId,
+        ]
       );
       if (!row) return res.status(404).json({ erro: 'Contato não encontrado' });
       res.json(row);
     } catch (err) {
-      res.status(500).json({ erro: 'Erro ao atualizar contato' });
+      const status = /Telefone/.test(err.message) ? 400 : err.code === '23505' ? 409 : 500;
+      res.status(status).json({ erro: status === 409 ? 'Já existe um contato com este telefone e canal' : err.message || 'Erro ao atualizar contato' });
     }
   });
 
   app.delete('/api/contatos/:id', async (req, res) => {
     try {
       const op = req.operador;
-      // Excluir o contato cascateia em suas conversas e mensagens. Remove os
-      // arquivos físicos (foto/vídeo/áudio/documentos) dessas conversas antes.
-      const convs = await db.manyOrNone(
-        `SELECT id FROM conversas WHERE contato_id = $1 AND tenant_id = $2`,
-        [req.params.id, op.tenantId]
-      );
-      for (const conv of convs) {
-        try {
-          await excluirMidiaDaConversa(storage, op.tenantId, conv.id);
-        } catch (e) {
-          console.error(`[chatgov] Falha ao excluir mídia da conversa ${conv.id}:`, e.message);
-        }
-      }
+      const motivo = String(req.body?.motivo || 'Exclusão solicitada pelo operador').trim();
       const row = await db.oneOrNone(
-        `DELETE FROM contatos WHERE id = $1 AND tenant_id = $2 RETURNING id, nome, telefone`,
+        `UPDATE contatos SET deleted_at = now()
+         WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+         RETURNING id, nome, telefone`,
         [req.params.id, op.tenantId]
       );
       if (!row) return res.status(404).json({ erro: 'Contato não encontrado' });
+      await db.none(
+        `INSERT INTO auditoria
+           (tenant_id, operador_id, acao, detalhe, origem, entidade, entidade_id, ip, user_agent)
+         VALUES ($1, $2, 'CONTATO_EXCLUSAO_LOGICA', $3, 'usuario', 'contato', $4, $5, $6)`,
+        [op.tenantId, op.id, JSON.stringify({ motivo }), row.id, req.ip || null, req.get('user-agent') || null]
+      );
       res.json({ ok: true, id: row.id });
     } catch (err) {
       console.error('[chatgov] Erro ao excluir contato:', err.message);
@@ -1281,7 +1423,11 @@ app.use('/api', rateLimiter);
       const alvo = await db.oneOrNone('SELECT id FROM operadores WHERE id = $1 AND tenant_id = $2', [req.params.id, op.tenantId]);
       if (!alvo) return res.status(404).json({ erro: 'Operador não encontrado' });
 
-      if (papel && ['admin', 'supervisor', 'operador'].includes(papel)) {
+      const papeisValidos = ['admin', 'supervisor', 'gestor_departamento', 'operador', 'auditor', 'operador_ia'];
+      if (papel && !papeisValidos.includes(papel)) {
+        return res.status(400).json({ erro: 'Perfil inválido' });
+      }
+      if (papel) {
         await db.none('UPDATE operadores SET papel = $1 WHERE id = $2', [papel, alvo.id]);
       }
       if (Array.isArray(departamento_ids)) {
@@ -1293,6 +1439,11 @@ app.use('/api', rateLimiter);
           );
         }
       }
+      await db.none(
+        `INSERT INTO auditoria (tenant_id, operador_id, acao, detalhe, origem, entidade, entidade_id)
+         VALUES ($1,$2,'operador.permissoes.alteradas',$3,'usuario','operador',$4)`,
+        [op.tenantId, op.id, { papel: papel || null, departamento_ids: departamento_ids || null }, alvo.id]
+      );
       res.json({ ok: true });
     } catch (err) {
       console.error('[API] update operador error:', err.message);
@@ -1389,25 +1540,38 @@ app.use('/api', rateLimiter);
   app.post('/api/bloqueios', requirePapel('admin'), async (req, res) => {
     try {
       const op = req.operador;
-      const telefone = String(req.body.telefone || '').replace(/\D/g, '');
-      if (telefone.length < 10) return res.status(400).json({ erro: 'Telefone inválido' });
+      const phone = normalizePhone(req.body.telefone);
+      const telefone = phone.phoneE164.slice(1);
       const row = await db.one(
-        `INSERT INTO contatos_bloqueados (tenant_id, telefone, motivo, bloqueado_por)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (tenant_id, telefone) DO UPDATE SET motivo = EXCLUDED.motivo
+        `INSERT INTO contatos_bloqueados
+           (tenant_id, telefone, phone_e164, motivo, bloqueado_por, ativo, expira_em)
+         VALUES ($1, $2, $3, $4, $5, true, $6)
+         ON CONFLICT (tenant_id, telefone) DO UPDATE SET
+           phone_e164 = EXCLUDED.phone_e164, motivo = EXCLUDED.motivo,
+           bloqueado_por = EXCLUDED.bloqueado_por, ativo = true,
+           expira_em = EXCLUDED.expira_em, desbloqueado_em = NULL, desbloqueado_por = NULL
          RETURNING *`,
-        [op.tenantId, telefone, req.body.motivo || null, op.id]
+        [op.tenantId, telefone, phone.phoneE164, req.body.motivo || null, op.id, req.body.expira_em || null]
       );
       res.json(row);
     } catch (err) {
-      res.status(500).json({ erro: 'Erro ao bloquear contato' });
+      res.status(/Telefone/.test(err.message) ? 400 : 500).json({ erro: err.message || 'Erro ao bloquear contato' });
     }
   });
 
   app.delete('/api/bloqueios/:id', requirePapel('admin'), async (req, res) => {
     try {
       const op = req.operador;
-      await db.none('DELETE FROM contatos_bloqueados WHERE id = $1 AND tenant_id = $2', [req.params.id, op.tenantId]);
+      await db.none(
+        `UPDATE contatos_bloqueados SET ativo = false, desbloqueado_em = now(), desbloqueado_por = $1
+         WHERE id = $2 AND tenant_id = $3`,
+        [op.id, req.params.id, op.tenantId]
+      );
+      await db.none(
+        `INSERT INTO auditoria (tenant_id, operador_id, acao, detalhe, origem, entidade, entidade_id)
+         VALUES ($1,$2,'contato.desbloqueado',$3,'usuario','bloqueio',$4)`,
+        [op.tenantId, op.id, { motivo: req.body?.motivo || null }, req.params.id]
+      );
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ erro: 'Erro ao remover bloqueio' });
@@ -1727,7 +1891,16 @@ app.use('/api', rateLimiter);
   app.delete('/api/templates/:id', requirePapel('admin'), async (req, res) => {
     try {
       const op = req.operador;
-      await db.none('DELETE FROM templates_mensagem WHERE id = $1 AND tenant_id = $2', [req.params.id, op.tenantId]);
+      await db.none(
+        `UPDATE templates_mensagem SET ativo = false, atualizado_em = now()
+         WHERE id = $1 AND tenant_id = $2`,
+        [req.params.id, op.tenantId]
+      );
+      await db.none(
+        `INSERT INTO auditoria (tenant_id, operador_id, acao, detalhe, origem, entidade, entidade_id)
+         VALUES ($1,$2,'template.arquivado',$3,'usuario','template',$4)`,
+        [op.tenantId, op.id, { motivo: req.body?.motivo || 'Arquivado pelo administrador' }, req.params.id]
+      );
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ erro: 'Erro ao excluir template' });
@@ -1767,13 +1940,13 @@ app.use('/api', rateLimiter);
       const op = req.operador;
       const proto = await consultarProtocolo(op.tenantId, req.params.numero);
       if (!proto) return res.status(404).json({ erro: 'Protocolo não encontrado' });
-      res.json(proto);
+      res.json(protectSensitiveFields(proto, hasPermission(op.papel, PERMISSIONS.SENSITIVE_VIEW)));
     } catch (err) {
       res.status(500).json({ erro: 'Erro ao consultar protocolo' });
     }
   });
 
-  app.post('/api/protocolos', async (req, res) => {
+  app.post('/api/protocolos', requirePermission(PERMISSIONS.PROTOCOLOS_MANAGE), async (req, res) => {
     try {
       const op = req.operador;
       const { conversa_id, contato_id, departamento_id, assunto } = req.body;
@@ -1788,15 +1961,23 @@ app.use('/api', rateLimiter);
     }
   });
 
-  app.patch('/api/protocolos/:id/status', async (req, res) => {
+  app.patch('/api/protocolos/:id/status', requirePermission(PERMISSIONS.PROTOCOLOS_MANAGE), async (req, res) => {
     try {
       const op = req.operador;
-      const { status, descricao } = req.body;
+      const { status, descricao, justificativa } = req.body;
       if (!status) return res.status(400).json({ erro: 'Status obrigatório' });
-      const proto = await atualizarStatusProtocolo(req.params.id, op.tenantId, status, descricao || '', op.id);
+      const proto = await transitionProtocol({
+        tenantId: op.tenantId,
+        protocoloId: req.params.id,
+        targetStatus: status,
+        operadorId: op.id,
+        justificativa: justificativa || descricao || '',
+        origem: 'usuario',
+        ip: req.ip,
+      });
       res.json(proto);
     } catch (err) {
-      res.status(500).json({ erro: 'Erro ao atualizar protocolo' });
+      res.status(/não encontrado/.test(err.message) ? 404 : 409).json({ erro: err.message });
     }
   });
 
@@ -2309,6 +2490,29 @@ app.use('/api', rateLimiter);
     }
   });
 
+  app.post('/api/relatorios/exportacoes', requirePermission(PERMISSIONS.EXPORT), async (req, res) => {
+    try {
+      const op = req.operador;
+      const formato = String(req.body.formato || '').toLowerCase();
+      if (!['csv', 'xlsx', 'pdf', 'impressao'].includes(formato)) {
+        return res.status(400).json({ erro: 'Formato de exportação inválido' });
+      }
+      await db.none(
+        `INSERT INTO auditoria
+           (tenant_id, operador_id, acao, detalhe, origem, entidade, ip, user_agent)
+         VALUES ($1,$2,'relatorio.exportado',$3,'usuario','relatorio',$4,$5)`,
+        [
+          op.tenantId, op.id,
+          { formato, filtros: req.body.filtros || {}, periodo: req.body.periodo || null },
+          req.ip || null, req.get('user-agent') || null,
+        ]
+      );
+      res.status(201).json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ erro: 'Erro ao registrar exportação' });
+    }
+  });
+
   // === Relatórios: NPS detalhado (admin/supervisor) ===
   app.get('/api/relatorios/nps-detalhado', requirePapel('admin', 'supervisor'), async (req, res) => {
     try {
@@ -2503,7 +2707,7 @@ app.use('/api', rateLimiter);
          ORDER BY c.ultima_mensagem_em DESC NULLS LAST LIMIT 20`,
         [op.tenantId, `%${q}%`]
       );
-      res.json(results);
+      res.json(results.map((item) => protectSensitiveFields(item, hasPermission(op.papel, PERMISSIONS.SENSITIVE_VIEW))));
     } catch (err) {
       res.status(500).json({ erro: 'Erro na busca' });
     }

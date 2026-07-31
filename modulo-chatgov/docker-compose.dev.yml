@@ -1,0 +1,100 @@
+name: chatgov-dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-chatgov_dev}
+      POSTGRES_USER: ${POSTGRES_USER:-chatgov_dev}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD em .env.dev}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-chatgov_dev} -d ${POSTGRES_DB:-chatgov_dev}"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: chatgov-dev-backend
+    command: node --watch src/index.js
+    working_dir: /app
+    env_file:
+      - .env.dev
+    environment:
+      NODE_ENV: development
+      PORT: 3050
+      DATABASE_URL: postgres://${POSTGRES_USER:-chatgov_dev}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-chatgov_dev}
+      SOCKET_CORS_ORIGIN: http://127.0.0.1:${CHATGOV_DEV_FRONTEND_PORT:-13051}
+      JWT_SECRETS: ${CHATGOV_SAAS_JWT_SECRET:?JWT do SaaS não carregado}
+      ENABLE_DEV_SAAS_AUTH: "true"
+      ENABLE_DEV_E2E_AUTH: "true"
+      SAAS_API_URL: http://host.docker.internal:9009/api/v1
+      STORAGE_DRIVER: local
+      WA_LOG_LEVEL: silent
+      WA_MEDIA_SELFCHECK: ""
+      LIMPEZA_CONVERSAS_ATIVO: "false"
+      TZ: America/Sao_Paulo
+    volumes:
+      - ./backend/src:/app/src:ro
+      - uploads:/app/uploads
+    ports:
+      - "127.0.0.1:${CHATGOV_DEV_BACKEND_PORT:-13050}:3050"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - internal
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3050/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    image: chatgov-dev-frontend
+    environment:
+      VITE_PROXY_TARGET: http://backend:3050
+      VITE_SAAS_API_TARGET: http://host.docker.internal:9009
+      VITE_ENABLE_SAAS_LOGIN: "true"
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+    ports:
+      - "127.0.0.1:${CHATGOV_DEV_FRONTEND_PORT:-13051}:5173"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - internal
+
+networks:
+  internal:
+    # Rede exclusiva do projeto. O acesso externo ao host continua bloqueado
+    # pelas publicações de porta restritas a 127.0.0.1.
+    driver: bridge
+
+volumes:
+  postgres_data:
+  uploads:
+  frontend_node_modules:

@@ -105,13 +105,18 @@ CREATE TABLE IF NOT EXISTS mensagens (
     criado_em     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_msg_conversa ON mensagens(conversa_id, criado_em);
--- Remove duplicatas de mensagens recebidas (mesmo wa_message_id) mantendo a mais antiga.
-DELETE FROM mensagens m
-  USING mensagens d
-  WHERE m.tenant_id = d.tenant_id
-    AND m.wa_message_id = d.wa_message_id
-    AND m.wa_message_id IS NOT NULL
-    AND m.ctid > d.ctid;
+-- Preserva registros legados duplicados. Somente a mensagem mais antiga mantém
+-- a chave ativa do provedor; as demais ficam acessíveis e registram a origem.
+ALTER TABLE mensagens ADD COLUMN IF NOT EXISTS provider_duplicate_of TEXT;
+WITH duplicadas AS (
+  SELECT ctid, wa_message_id,
+         row_number() OVER (PARTITION BY tenant_id, wa_message_id ORDER BY criado_em, ctid) AS ordem
+  FROM mensagens WHERE wa_message_id IS NOT NULL
+)
+UPDATE mensagens m
+SET provider_duplicate_of = d.wa_message_id, wa_message_id = NULL
+FROM duplicadas d
+WHERE m.ctid = d.ctid AND d.ordem > 1;
 -- Garante unicidade de wa_message_id por tenant (evita duplicação em corrida).
 CREATE UNIQUE INDEX IF NOT EXISTS uq_msg_wa_id
   ON mensagens(tenant_id, wa_message_id) WHERE wa_message_id IS NOT NULL;
@@ -220,6 +225,7 @@ CREATE INDEX IF NOT EXISTS idx_dep_secretaria ON departamentos(secretaria_id);
 CREATE TABLE IF NOT EXISTS conversa_participantes (
     conversa_id   UUID NOT NULL REFERENCES conversas(id) ON DELETE CASCADE,
     operador_id   UUID NOT NULL REFERENCES operadores(id) ON DELETE CASCADE,
+    tenant_id     UUID NOT NULL REFERENCES tenants(id) ON DELETE CASCADE,
     papel         TEXT NOT NULL DEFAULT 'anexado',
     adicionado_por UUID REFERENCES operadores(id),
     criado_em     TIMESTAMPTZ NOT NULL DEFAULT now(),

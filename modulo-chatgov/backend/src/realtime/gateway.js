@@ -17,8 +17,9 @@ import {
   marcarLido, assertMembroCanal
 } from '../services/mensagens.js';
 import { criarNotificacao } from '../services/notificacoes.js';
+import { transitionConversation } from '../services/status-transitions.js';
+import { normalizePhone } from '../domain/phone.js';
 import { createStorage } from '../storage/index.js';
-import { excluirMidiaDaConversa } from '../services/midia-conversas.js';
 
 const salas = {
   tenant: (id) => `tenant:${id}`,
@@ -414,7 +415,8 @@ export function iniciarGateway(httpServer, wa, storage) {
         await setTenantContext(op.tenantId);
         const dono = operadorId || op.id;
         await db.none(
-          `UPDATE conversas SET departamento_id = $1, operador_id = $2, status = 'aberta'
+          `UPDATE conversas SET departamento_id = $1, operador_id = $2,
+             status = 'aberta', status_operacional = 'EM_ATENDIMENTO'
            WHERE id = $3 AND tenant_id = $4`,
           [departamentoId, dono, convId, op.tenantId]
         );
@@ -440,7 +442,8 @@ export function iniciarGateway(httpServer, wa, storage) {
       try {
         await setTenantContext(op.tenantId);
         const r = await db.oneOrNone(
-          `UPDATE conversas SET operador_id = $1, status = 'aberta'
+          `UPDATE conversas SET operador_id = $1, status = 'aberta',
+             status_operacional = 'EM_ATENDIMENTO'
            WHERE id = $2 AND tenant_id = $3 AND operador_id IS NULL
            RETURNING id`,
           [op.id, convId, op.tenantId]
@@ -479,7 +482,8 @@ export function iniciarGateway(httpServer, wa, storage) {
           if (ack) ack({ ok: false, erro: 'Apenas o atendente responsável pode devolver a conversa.' });
           return;
         }
-        await db.none(`UPDATE conversas SET operador_id = NULL, status = 'fila' WHERE id = $1 AND tenant_id = $2`, [convId, op.tenantId]);
+        await db.none(`UPDATE conversas SET operador_id = NULL, status = 'fila',
+          status_operacional = 'NA_FILA' WHERE id = $1 AND tenant_id = $2`, [convId, op.tenantId]);
         await db.none('DELETE FROM conversa_participantes WHERE conversa_id = $1 AND tenant_id = $2', [convId, op.tenantId]);
         await db.none(`UPDATE conversa_transferencias SET status = 'cancelada', resolvido_em = now() WHERE conversa_id = $1 AND tenant_id = $2 AND status = 'pendente'`, [convId, op.tenantId]);
         await _auditar(op.tenantId, op.id, 'conversa.devolvida', { conversaId: convId });
@@ -538,7 +542,8 @@ export function iniciarGateway(httpServer, wa, storage) {
         if (t.para_operador_id !== op.id) { if (ack) ack({ ok: false, erro: 'Esta transferência não é para você.' }); return; }
 
         if (aceitar) {
-          await db.none(`UPDATE conversas SET operador_id = $1, status = 'aberta' WHERE id = $2 AND tenant_id = $3`, [op.id, t.conversa_id, op.tenantId]);
+          await db.none(`UPDATE conversas SET operador_id = $1, status = 'aberta',
+            status_operacional = 'EM_ATENDIMENTO' WHERE id = $2 AND tenant_id = $3`, [op.id, t.conversa_id, op.tenantId]);
           await db.none(
             `INSERT INTO conversa_participantes (conversa_id, operador_id, papel, adicionado_por, tenant_id)
              VALUES ($1, $2, 'dono', $3, $4) ON CONFLICT (conversa_id, operador_id) DO UPDATE SET papel = 'dono'`,
@@ -609,11 +614,13 @@ export function iniciarGateway(httpServer, wa, storage) {
     socket.on('conversa:resolver', async (convId, ack) => {
       try {
         await setTenantContext(op.tenantId);
-        await db.none(
-          `UPDATE conversas SET status = 'resolvida' WHERE id = $1 AND tenant_id = $2`,
-          [convId, op.tenantId]
-        );
-        await _auditar(op.tenantId, op.id, 'conversa.resolvida', { conversaId: convId });
+        await transitionConversation({
+          tenantId: op.tenantId,
+          conversaId: convId,
+          targetStatus: 'RESOLVIDA',
+          operadorId: op.id,
+          origem: 'usuario',
+        });
 
         const conv = await db.oneOrNone('SELECT * FROM conversas WHERE id = $1', [convId]);
 
@@ -634,7 +641,8 @@ export function iniciarGateway(httpServer, wa, storage) {
       }
     });
 
-    socket.on('mensagem:enviar', async ({ convId, jid, texto, tipo, mediaBase64, mediaMime, mediaNome, respondendoA }, ack) => {
+    socket.on('mensagem:enviar', async ({ convId, jid, texto, tipo, mediaBase64, mediaMime, mediaNome, respondendoA, idempotencyKey }, ack) => {
+      let envioReservadoId = null;
       try {
         // Bloqueia extensões de arquivo maliciosas (camada de segurança no backend)
         const EXTENSOES_PROIBIDAS = ['exe','bat','cmd','msi','vbs','ps1','scr','com','sh','dll','pif','cpl','wsf','wsh','hta','jar','reg','scf','lnk'];
@@ -652,6 +660,48 @@ export function iniciarGateway(httpServer, wa, storage) {
         }
 
         await setTenantContext(op.tenantId);
+        const conversaEnvio = await db.oneOrNone(
+          `SELECT id, operador_id, status, status_operacional, bloqueada, deleted_at
+           FROM conversas WHERE id = $1 AND tenant_id = $2`,
+          [convId, op.tenantId]
+        );
+        if (!conversaEnvio || conversaEnvio.deleted_at) throw new Error('Conversa não encontrada');
+        if (conversaEnvio.bloqueada) throw new Error('Conversa bloqueada para novas interações');
+        if (conversaEnvio.status_operacional === 'ARQUIVADA' || conversaEnvio.status === 'arquivada') {
+          throw new Error('Restaure a conversa arquivada antes de responder');
+        }
+        const chaveEnvio = String(idempotencyKey || uuidv4()).slice(0, 200);
+        envioReservadoId = uuidv4();
+        const reserva = await db.oneOrNone(
+          `INSERT INTO mensagens
+             (id, tenant_id, conversa_id, direcao, operador_id, tipo, conteudo,
+              media_mime, media_nome, respondendo_a, status, idempotency_key,
+              origem, tentativas, criado_em)
+           VALUES ($1, $2, $3, 'saida', $4, $5, $6, $7, $8, $9,
+                   'processando', $10, 'atendente', 1, now())
+           ON CONFLICT (tenant_id, idempotency_key) WHERE idempotency_key IS NOT NULL
+           DO NOTHING RETURNING id`,
+          [
+            envioReservadoId, op.tenantId, convId, op.id, tipo || 'texto',
+            texto || null, mediaMime || null, mediaNome || null,
+            respondendoA || null, chaveEnvio,
+          ]
+        );
+        if (!reserva) {
+          const existente = await db.oneOrNone(
+            `SELECT * FROM mensagens WHERE tenant_id = $1 AND idempotency_key = $2`,
+            [op.tenantId, chaveEnvio]
+          );
+          if (ack) ack({
+            ok: existente?.status === 'enviado',
+            duplicada: true,
+            processando: existente?.status === 'processando',
+            id: existente?.id,
+            mensagem: existente,
+            erro: existente?.status === 'falhou' ? 'A tentativa anterior falhou; use a ação de nova tentativa.' : undefined,
+          });
+          return;
+        }
         const destinoJid = await obterJidDaConversa(op.tenantId, convId, jid);
         const cfgAssinatura = await obterConfigAssinatura(op.tenantId);
         const operadorPayload = await obterOperadorPayload(op.tenantId, op.id, op.nome);
@@ -719,13 +769,14 @@ export function iniciarGateway(httpServer, wa, storage) {
 
         const waMessageId = result?.key?.id;
         await atualizarContatoDaConversaComJidResolvido(op.tenantId, convId, result?.key?.remoteJid);
-        const msgId = uuidv4();
-
+        const msgId = envioReservadoId;
         const msg = await db.one(
-          `INSERT INTO mensagens (id, tenant_id, conversa_id, wa_message_id, direcao, operador_id, tipo, conteudo, media_url, media_mime, media_nome, respondendo_a, status, criado_em)
-           VALUES ($1, $2, $3, $4, 'saida', $5, $6, $7, $8, $9, $10, $11, 'enviado', now())
-           RETURNING *`,
-          [msgId, op.tenantId, convId, waMessageId, op.id, msgTipo, texto || null, mediaUrl, mimeFinal || mediaMime || null, mediaNome || null, respondendoA || null]
+          `UPDATE mensagens SET
+             wa_message_id = $1, tipo = $2, conteudo = $3, media_url = $4,
+             media_mime = $5, media_nome = $6, status = 'enviado',
+             falha_codigo = NULL, falha_detalhe = NULL
+           WHERE id = $7 AND tenant_id = $8 RETURNING *`,
+          [waMessageId, msgTipo, texto || null, mediaUrl, mimeFinal || mediaMime || null, mediaNome || null, msgId, op.tenantId]
         );
         const msgComOperador = {
           ...msg,
@@ -751,6 +802,13 @@ export function iniciarGateway(httpServer, wa, storage) {
         });
       } catch (err) {
         console.error('[Socket] mensagem:enviar error:', err.message);
+        if (envioReservadoId) {
+          await db.none(
+            `UPDATE mensagens SET status = 'falhou', falha_codigo = $1, falha_detalhe = $2
+             WHERE id = $3 AND tenant_id = $4 AND status = 'processando'`,
+            [err.code || 'ENVIO_FALHOU', String(err.message || 'Falha no envio').slice(0, 1000), envioReservadoId, op.tenantId]
+          ).catch(() => {});
+        }
         try { await wa.setTyping(op.tenantId, jid, false); } catch {}
         if (ack) ack({ ok: false, erro: err.message });
       }
@@ -1210,11 +1268,13 @@ export function iniciarGateway(httpServer, wa, storage) {
     socket.on('conversa:arquivar', async (convId, ack) => {
       try {
         await setTenantContext(op.tenantId);
-        await db.none(
-          `UPDATE conversas SET status = 'arquivada' WHERE id = $1 AND tenant_id = $2`,
-          [convId, op.tenantId]
-        );
-        await _auditar(op.tenantId, op.id, 'conversa.arquivada', { conversaId: convId });
+        await transitionConversation({
+          tenantId: op.tenantId,
+          conversaId: convId,
+          targetStatus: 'ARQUIVADA',
+          operadorId: op.id,
+          origem: 'usuario',
+        });
         io.to(salas.tenant(op.tenantId)).emit('conversa:atualizada', { convId });
         if (ack) ack({ ok: true });
       } catch (err) {
@@ -1226,13 +1286,15 @@ export function iniciarGateway(httpServer, wa, storage) {
     socket.on('conversa:desarquivar', async (convId, ack) => {
       try {
         await setTenantContext(op.tenantId);
-        const conv = await db.oneOrNone('SELECT * FROM conversas WHERE id = $1 AND tenant_id = $2', [convId, op.tenantId]);
-        const novoStatus = conv?.operador_id ? 'aberta' : 'fila';
-        await db.none(
-          `UPDATE conversas SET status = $1 WHERE id = $2 AND tenant_id = $3`,
-          [novoStatus, convId, op.tenantId]
-        );
-        await _auditar(op.tenantId, op.id, 'conversa.desarquivada', { conversaId: convId });
+        const conv = await db.oneOrNone('SELECT operador_id FROM conversas WHERE id = $1 AND tenant_id = $2', [convId, op.tenantId]);
+        await transitionConversation({
+          tenantId: op.tenantId,
+          conversaId: convId,
+          targetStatus: conv?.operador_id ? 'EM_ATENDIMENTO' : 'NA_FILA',
+          operadorId: op.id,
+          justificativa: 'Conversa restaurada',
+          origem: 'usuario',
+        });
         io.to(salas.tenant(op.tenantId)).emit('conversa:atualizada', { convId });
         if (ack) ack({ ok: true });
       } catch (err) {
@@ -1241,22 +1303,23 @@ export function iniciarGateway(httpServer, wa, storage) {
       }
     });
 
-    socket.on('conversa:excluir', async (convId, ack) => {
+    socket.on('conversa:excluir', async (payload, ack) => {
       try {
         await setTenantContext(op.tenantId);
-        // Remove permanentemente os arquivos (foto/vídeo/áudio/documentos) ANTES
-        // de apagar a conversa — a cascata em `mensagens` levaria os media_url junto.
-        let midiasRemovidas = 0;
-        try {
-          midiasRemovidas = await excluirMidiaDaConversa(storage, op.tenantId, convId);
-        } catch (e) {
-          console.error('[Socket] conversa:excluir mídia error:', e.message);
-        }
-        await db.none(
-          `DELETE FROM conversas WHERE id = $1 AND tenant_id = $2`,
-          [convId, op.tenantId]
+        const convId = typeof payload === 'object' ? payload?.convId : payload;
+        const motivo = typeof payload === 'object' ? String(payload?.motivo || '').trim() : '';
+        if (op.papel !== 'admin') throw new Error('Exclusão administrativa restrita a administradores');
+        if (!motivo) throw new Error('Motivo obrigatório para exclusão administrativa');
+        const removida = await db.oneOrNone(
+          `UPDATE conversas
+           SET deleted_at = now(), deleted_by = $1, delete_reason = $2,
+               status_operacional = 'ARQUIVADA', status = 'arquivada', arquivada_em = now()
+           WHERE id = $3 AND tenant_id = $4 AND deleted_at IS NULL
+           RETURNING id`,
+          [op.id, motivo, convId, op.tenantId]
         );
-        await _auditar(op.tenantId, op.id, 'conversa.excluida', { conversaId: convId, midiasRemovidas });
+        if (!removida) throw new Error('Conversa não encontrada');
+        await _auditar(op.tenantId, op.id, 'conversa.exclusao_logica', { conversaId: convId, motivo });
         io.to(salas.tenant(op.tenantId)).emit('conversa:removida', { convId });
         if (ack) ack({ ok: true });
       } catch (err) {
@@ -1292,6 +1355,16 @@ export function iniciarGateway(httpServer, wa, storage) {
 
   wa.on('logout', ({ tenantId }) => {
     io.to(salas.tenant(tenantId)).emit('whatsapp:desconectado');
+    db.manyOrNone(
+      `SELECT id FROM operadores WHERE tenant_id = $1 AND papel IN ('admin','supervisor') AND ativo = true`,
+      [tenantId]
+    ).then((ops) => Promise.all(ops.map((operador) =>
+      criarNotificacao(
+        tenantId, operador.id, 'canal_desconectado', 'Canal WhatsApp desconectado',
+        'O canal perdeu a conexão. Abra Conexões para executar o diagnóstico.',
+        '/configuracoes?secao=conexoes'
+      )
+    ))).catch((err) => console.error('[Notif Canal] logout:', err.message));
   });
 
   // Reconexão esgotou as tentativas: avisa o tenant para reescanear o QR.
@@ -1299,6 +1372,16 @@ export function iniciarGateway(httpServer, wa, storage) {
     io.to(salas.tenant(tenantId)).emit('whatsapp:falha', {
       msg: `Não foi possível reconectar o WhatsApp após ${tentativas} tentativas. Reconecte escaneando o QR.`,
     });
+    db.manyOrNone(
+      `SELECT id FROM operadores WHERE tenant_id = $1 AND papel IN ('admin','supervisor') AND ativo = true`,
+      [tenantId]
+    ).then((ops) => Promise.all(ops.map((operador) =>
+      criarNotificacao(
+        tenantId, operador.id, 'canal_desconectado', 'Falha ao reconectar o WhatsApp',
+        `A reconexão falhou após ${tentativas} tentativas.`,
+        '/configuracoes?secao=conexoes'
+      )
+    ))).catch((err) => console.error('[Notif Canal] falha:', err.message));
   });
 
   // Presença do cidadão (digitando/online) -> repassa para a sala da conversa.
@@ -1458,19 +1541,34 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
 
   // Ignora mensagens de números bloqueados pelo órgão.
   if (telefone) {
+    let phoneE164;
+    try { phoneE164 = normalizePhone(telefone).phoneE164; } catch { phoneE164 = `+${telefone.replace(/\D/g, '')}`; }
     const bloqueado = await db.oneOrNone(
-      'SELECT 1 FROM contatos_bloqueados WHERE tenant_id = $1 AND telefone = $2',
-      [tenantId, telefone.replace(/\D/g, '')]
+      `SELECT id FROM contatos_bloqueados
+       WHERE tenant_id = $1 AND ativo = true
+         AND (phone_e164 = $2 OR telefone = $3)
+         AND (expira_em IS NULL OR expira_em > now())`,
+      [tenantId, phoneE164, telefone.replace(/\D/g, '')]
     );
-    if (bloqueado) return;
+    if (bloqueado) {
+      await db.tx(async (t) => {
+        await t.none('UPDATE contatos_bloqueados SET tentativas = tentativas + 1 WHERE id = $1', [bloqueado.id]);
+        await t.none(
+          `INSERT INTO bloqueio_tentativas (tenant_id, bloqueio_id, phone_e164, provider_message_id)
+           VALUES ($1,$2,$3,$4)`,
+          [tenantId, bloqueado.id, phoneE164, msg.key.id || null]
+        );
+      });
+      return;
+    }
   }
   const msgId = msg.key.id;
   const msgTimestamp = msg.messageTimestamp ? new Date(msg.messageTimestamp * 1000) : new Date();
   // Mensagem de saída que chega pelo sync foi digitada FORA do painel (celular ou
   // WhatsApp Web) e o protocolo não diz qual pessoa a enviou. Antes carimbávamos o
   // primeiro admin do tenant como autor: a bolha exibia um nome errado e os
-  // relatórios creditavam tudo a ele. Fica sem operador e a origem 'whatsapp'
-  // identifica de onde veio.
+  // relatórios creditavam tudo a ele. Fica sem operador e a origem 'whatsapp' faz o
+  // painel mostrar o selo "pelo WhatsApp" no lugar de um nome inventado.
   const origemMensagem = direcao === 'saida' ? 'whatsapp' : 'cidadao';
 
   // Dedupe: o Baileys pode disparar messages.upsert mais de uma vez para o
@@ -1722,14 +1820,25 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
       [pushName, contatoRow.id, tenantId]
     );
   }
+  if (telefone) {
+    try {
+      const phone = normalizePhone(telefone);
+      await db.none(
+        `UPDATE contatos SET phone_e164 = $1, phone_display = $2, country_code = $3,
+           area_code = $4, local_number = $5
+         WHERE id = $6 AND tenant_id = $7`,
+        [phone.phoneE164, phone.phoneDisplay, phone.countryCode, phone.areaCode, phone.localNumber, contatoRow.id, tenantId]
+      );
+    } catch { /* JIDs técnicos/LID não representam telefone E.164 */ }
+  }
 
   // Busca foto de perfil do WhatsApp se o contato ainda não tiver avatar.
   // Executa em background (não bloqueia a entrega da mensagem).
   buscarAvatarContato(wa, tenantId, contatoRow.id).catch(() => {});
 
   const conversaRow = await db.oneOrNone(
-    `INSERT INTO conversas (tenant_id, contato_id, status, nao_lidas, ultima_mensagem, ultima_mensagem_em)
-     VALUES ($1, $2, $5, $6, $3, $4)
+    `INSERT INTO conversas (tenant_id, contato_id, status, status_operacional, nao_lidas, ultima_mensagem, ultima_mensagem_em)
+     VALUES ($1, $2, $5, CASE WHEN $7 = 'saida' THEN 'EM_ATENDIMENTO' ELSE 'NOVA' END, $6, $3, $4)
       ON CONFLICT (tenant_id, contato_id) DO UPDATE
         SET nao_lidas = CASE
               WHEN $7 = 'saida' THEN conversas.nao_lidas
@@ -1739,6 +1848,10 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
             status = CASE
               WHEN conversas.status IN ('resolvida', 'arquivada') AND $7 = 'entrada' THEN 'fila'
               ELSE conversas.status
+            END,
+            status_operacional = CASE
+              WHEN conversas.status IN ('resolvida', 'arquivada') AND $7 = 'entrada' THEN 'NOVA'
+              ELSE conversas.status_operacional
             END,
             operador_id = CASE
               WHEN conversas.status IN ('resolvida', 'arquivada') AND $7 = 'entrada' THEN NULL

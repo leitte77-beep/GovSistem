@@ -1,0 +1,2 @@
+-- Rollback conservador. As tabelas são preservadas para não apagar dados.
+-- Para desativação, reverta a aplicação; estruturas aditivas permanecem inertes.

@@ -20,7 +20,7 @@ import {
 } from '../services/reunioes.js';
 import {
   criarNotificacao, listarNotificacoes, contarNaoLidasNotificacoes,
-  marcarNotificacaoLida, marcarTodasLidas,
+  marcarNotificacaoLida, marcarTodasLidas, arquivarNotificacao,
   getConfigNotificacoes, atualizarConfigNotificacoes,
   silenciarConversa, getSilenciadas, getContagemNaoLidasPorCanal
 } from '../services/notificacoes.js';
@@ -411,8 +411,15 @@ router.patch('/ausencias/:id/aprovar', requirePapel('admin', 'supervisor'), asyn
 router.get('/notificacoes', async (req, res) => {
   try {
     const op = req.operador;
-    const { apenas_nao_lidas } = req.query;
-    const notificacoes = await listarNotificacoes(op.tenantId, op.id, apenas_nao_lidas === 'true');
+    const { apenas_nao_lidas, arquivadas, busca, tipo, pagina, limite } = req.query;
+    const notificacoes = await listarNotificacoes(op.tenantId, op.id, {
+      apenasNaoLidas: apenas_nao_lidas === 'true',
+      arquivadas: arquivadas === 'true',
+      busca,
+      tipo,
+      pagina,
+      limite,
+    });
     res.json(notificacoes);
   } catch (err) {
     res.status(500).json({ erro: 'Erro ao buscar notificações' });
@@ -435,7 +442,7 @@ router.get('/notificacoes/status', async (req, res) => {
 
     const { total: notifTotal } = await db.one(
       `SELECT COUNT(*)::int AS total FROM notificacoes
-       WHERE tenant_id = $1 AND operador_id = $2 AND lida = false`,
+       WHERE tenant_id = $1 AND operador_id = $2 AND lida = false AND arquivada_em IS NULL`,
       [op.tenantId, op.id]
     );
 
@@ -463,7 +470,10 @@ router.get('/notificacoes/status', async (req, res) => {
     res.json({
       notificacoes: notifTotal || 0,
       conversas: naoLidasConv || 0,
-      total: (notifTotal || 0) + (naoLidasConv || 0),
+      // O badge da Central representa exatamente os itens que ela lista.
+      // Mensagens de conversas continuam disponíveis separadamente para alertas
+      // desktop, mas não podem produzir um badge que abre uma tela vazia.
+      total: notifTotal || 0,
       config: config || { push_ativo: true, som_ativado: true },
     });
   } catch (err) {
@@ -479,6 +489,17 @@ router.post('/notificacoes/:id/ler', async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ erro: 'Erro ao marcar como lida' });
+  }
+});
+
+router.post('/notificacoes/:id/arquivar', async (req, res) => {
+  try {
+    const op = req.operador;
+    const notificacao = await arquivarNotificacao(op.tenantId, op.id, req.params.id);
+    if (!notificacao) return res.status(404).json({ erro: 'Notificação não encontrada' });
+    res.json(notificacao);
+  } catch (err) {
+    res.status(500).json({ erro: 'Erro ao arquivar notificação' });
   }
 });
 

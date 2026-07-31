@@ -14,16 +14,32 @@ export async function criarNotificacaoMultipla(tenantId, operadorIds, tipo, titu
   }
 }
 
-export async function listarNotificacoes(tenantId, operadorId, apenasNaoLidas = false) {
-  let query = `SELECT * FROM notificacoes WHERE tenant_id = $1 AND operador_id = $2`;
-  if (apenasNaoLidas) query += ' AND lida = false';
-  query += ' ORDER BY criado_em DESC LIMIT 200';
-  return db.manyOrNone(query, [tenantId, operadorId]);
+export async function listarNotificacoes(tenantId, operadorId, filtros = {}) {
+  const params = [tenantId, operadorId];
+  let query = `SELECT * FROM notificacoes
+               WHERE tenant_id = $1 AND operador_id = $2`;
+  if (filtros.apenasNaoLidas) query += ' AND lida = false';
+  if (filtros.arquivadas) query += ' AND arquivada_em IS NOT NULL';
+  else query += ' AND arquivada_em IS NULL';
+  if (filtros.busca) {
+    params.push(`%${filtros.busca}%`);
+    query += ` AND (titulo ILIKE $${params.length} OR COALESCE(mensagem, '') ILIKE $${params.length})`;
+  }
+  if (filtros.tipo) {
+    params.push(filtros.tipo);
+    query += ` AND tipo = $${params.length}`;
+  }
+  const limite = Math.min(Math.max(Number(filtros.limite) || 50, 1), 100);
+  const pagina = Math.max(Number(filtros.pagina) || 1, 1);
+  params.push(limite, (pagina - 1) * limite);
+  query += ` ORDER BY criado_em DESC LIMIT $${params.length - 1} OFFSET $${params.length}`;
+  return db.manyOrNone(query, params);
 }
 
 export async function contarNaoLidasNotificacoes(tenantId, operadorId) {
   const r = await db.one(
-    'SELECT COUNT(*)::int as c FROM notificacoes WHERE tenant_id = $1 AND operador_id = $2 AND lida = false',
+    `SELECT COUNT(*)::int as c FROM notificacoes
+     WHERE tenant_id = $1 AND operador_id = $2 AND lida = false AND arquivada_em IS NULL`,
     [tenantId, operadorId]
   );
   return r.c;
@@ -40,6 +56,15 @@ export async function marcarTodasLidas(tenantId, operadorId) {
   return db.none(
     'UPDATE notificacoes SET lida = true WHERE tenant_id = $1 AND operador_id = $2',
     [tenantId, operadorId]
+  );
+}
+
+export async function arquivarNotificacao(tenantId, operadorId, notificacaoId) {
+  return db.oneOrNone(
+    `UPDATE notificacoes SET arquivada_em = now()
+     WHERE id = $1 AND tenant_id = $2 AND operador_id = $3 AND arquivada_em IS NULL
+     RETURNING *`,
+    [notificacaoId, tenantId, operadorId]
   );
 }
 
