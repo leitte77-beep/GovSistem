@@ -31,6 +31,23 @@ async function garantirTenantProvisionado(op) {
   }
 }
 
+// Presença da coluna `operadores.ativo` (migration 021), resolvida uma única vez
+// por processo: bases antigas ainda não têm a coluna e o SELECT quebraria.
+let colunaAtivo = null;
+async function temColunaAtivo() {
+  if (colunaAtivo !== null) return colunaAtivo;
+  try {
+    const row = await db.oneOrNone(
+      `SELECT 1 FROM information_schema.columns
+       WHERE table_name = 'operadores' AND column_name = 'ativo'`
+    );
+    colunaAtivo = !!row;
+  } catch {
+    colunaAtivo = false;
+  }
+  return colunaAtivo;
+}
+
 export function operadorFromToken(decoded) {
   if (decoded.type === 'module_access') {
     return {
@@ -72,15 +89,25 @@ export async function authMiddleware(req, res, next) {
 
     await garantirTenantProvisionado(req.operador);
 
-    if ((!req.operador.nome || req.operador.nome === 'Operador') && req.operador.id) {
+    // Papel e situação vêm sempre do banco para que revogação/desativação
+    // produzam efeito no request seguinte, mesmo com JWT ainda válido.
+    // `ativo` só existe a partir da migration 021: em base ainda não migrada a
+    // coluna é ignorada em vez de derrubar a consulta inteira (antes o catch
+    // silencioso engolia o erro e nome/papel nunca vinham do banco).
+    if (req.operador.id) {
       try {
         const row = await db.oneOrNone(
-          'SELECT nome, papel FROM operadores WHERE id = $1',
-          [req.operador.id]
+          `SELECT nome, papel,
+                  ${await temColunaAtivo() ? 'ativo' : 'true AS ativo'}
+           FROM operadores WHERE id = $1 AND tenant_id = $2`,
+          [req.operador.id, req.operador.tenantId]
         );
+        if (row?.ativo === false) return res.status(403).json({ erro: 'Usuário desativado' });
         if (row?.nome) req.operador.nome = row.nome;
         if (row?.papel) req.operador.papel = row.papel;
-      } catch { /* silencioso */ }
+      } catch (err) {
+        console.error('[Auth] Falha ao recarregar operador do banco:', err.message);
+      }
     }
 
     next();

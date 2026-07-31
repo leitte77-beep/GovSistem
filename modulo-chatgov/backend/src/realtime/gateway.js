@@ -1466,9 +1466,12 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
   }
   const msgId = msg.key.id;
   const msgTimestamp = msg.messageTimestamp ? new Date(msg.messageTimestamp * 1000) : new Date();
-  const operadorSync = direcao === 'saida'
-    ? await obterOperadorPayload(tenantId, null, null)
-    : { id: null, nome: null, departamentos: [] };
+  // Mensagem de saída que chega pelo sync foi digitada FORA do painel (celular ou
+  // WhatsApp Web) e o protocolo não diz qual pessoa a enviou. Antes carimbávamos o
+  // primeiro admin do tenant como autor: a bolha exibia um nome errado e os
+  // relatórios creditavam tudo a ele. Fica sem operador e a origem 'whatsapp'
+  // identifica de onde veio.
+  const origemMensagem = direcao === 'saida' ? 'whatsapp' : 'cidadao';
 
   // Dedupe: o Baileys pode disparar messages.upsert mais de uma vez para o
   // mesmo wa_message_id. Sai cedo para não duplicar bolha/contador/mídia/bot.
@@ -1771,9 +1774,9 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
     }
   }
 
-  let novaMensagem = await db.oneOrNone(
-    `INSERT INTO mensagens (tenant_id, conversa_id, wa_message_id, direcao, operador_id, tipo, conteudo, media_url, media_mime, media_nome, status, criado_em)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+  const novaMensagem = await db.oneOrNone(
+    `INSERT INTO mensagens (tenant_id, conversa_id, wa_message_id, direcao, operador_id, tipo, conteudo, media_url, media_mime, media_nome, status, origem, criado_em)
+     VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, $9, $10, $11, $12)
      ON CONFLICT (tenant_id, wa_message_id) WHERE wa_message_id IS NOT NULL DO NOTHING
      RETURNING *`,
     [
@@ -1781,13 +1784,13 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
       conversaRow.id,
       msgId,
       direcao,
-      operadorSync.id,
       tipo,
       conteudo,
       mediaUrl,
       mediaMime,
       mediaNome,
       direcao === 'saida' ? 'enviado' : 'entregue',
+      origemMensagem,
       msgTimestamp,
     ]
   );
@@ -1795,14 +1798,6 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
   if (!novaMensagem) {
     console.log(`[Persist] insert em corrida ignorado wa_message_id=${msgId}`);
     return;
-  }
-
-  if (operadorSync.id) {
-    novaMensagem = {
-      ...novaMensagem,
-      operador_nome: operadorSync.nome,
-      operador_departamentos: operadorSync.departamentos,
-    };
   }
 
   io.to(salas.conversa(conversaRow.id)).emit('mensagem:nova', novaMensagem);
@@ -1839,8 +1834,8 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
 
         const botMsgId = uuidv4();
         const botMsg = await db.one(
-          `INSERT INTO mensagens (id, tenant_id, conversa_id, direcao, tipo, conteudo, status, criado_em)
-           VALUES ($1, $2, $3, 'saida', 'texto', $4, 'enviado', now())
+          `INSERT INTO mensagens (id, tenant_id, conversa_id, direcao, tipo, conteudo, status, origem, criado_em)
+           VALUES ($1, $2, $3, 'saida', 'texto', $4, 'enviado', 'bot', now())
            RETURNING *`,
           [botMsgId, tenantId, conversaRow.id, `🤖 ${textoResposta}`]
         );
