@@ -7,7 +7,31 @@ import { MediaPreview, MediaLightbox } from './MediaPreview';
 
 const REACOES_RAPIDAS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
 
-export function BolhaConversa({ msg, podeExcluir, onExcluir, onResponder, onReagir, onRetry, respondida, nomeContato, compacto }) {
+// Marca as ocorrências do termo buscado sem alterar o texto original. Compara
+// sem acento e sem caixa, mas recorta o trecho pelo índice para preservar a
+// grafia da mensagem.
+function realcarTermo(texto, termo) {
+  const semAcento = (s) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+  const alvo = semAcento(termo);
+  if (!alvo) return texto;
+  const base = semAcento(texto);
+  const partes = [];
+  let cursor = 0;
+  let achado = base.indexOf(alvo);
+  while (achado !== -1) {
+    if (achado > cursor) partes.push(texto.slice(cursor, achado));
+    partes.push(React.createElement('mark', {
+      key: `${achado}-${partes.length}`,
+      style: { background: '#FDE68A', color: '#111827', borderRadius: 2, padding: '0 1px' },
+    }, texto.slice(achado, achado + alvo.length)));
+    cursor = achado + alvo.length;
+    achado = base.indexOf(alvo, cursor);
+  }
+  if (cursor < texto.length) partes.push(texto.slice(cursor));
+  return partes;
+}
+
+export function BolhaConversa({ msg, podeExcluir, onExcluir, onResponder, onReagir, onRetry, respondida, nomeContato, compacto, realce }) {
   const entrada = msg.direcao === 'entrada';
   const [hover, setHover] = useState(false);
   const [showReacoes, setShowReacoes] = useState(false);
@@ -141,7 +165,7 @@ export function BolhaConversa({ msg, podeExcluir, onExcluir, onResponder, onReag
         ),
         msg.conteudo && React.createElement('div', {
           style: { fontSize: 14.2, lineHeight: '19px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
-        }, msg.conteudo),
+        }, realce ? realcarTermo(msg.conteudo, realce) : msg.conteudo),
         React.createElement('div', {
           style: {
             display: 'flex',

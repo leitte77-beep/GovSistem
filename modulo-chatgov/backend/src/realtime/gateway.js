@@ -2154,10 +2154,14 @@ async function _setOnline(tenantId, operadorId, online) {
 
 async function _auditar(tenantId, operadorId, acao, detalhe) {
   try {
+    // Quando a ação é sobre uma conversa, gravamos também entidade/entidade_id:
+    // é assim que o histórico de movimentações encontra os registros sem varrer
+    // o JSON de todo o tenant.
+    const conversaId = detalhe?.conversaId || null;
     await db.none(
-      `INSERT INTO auditoria (tenant_id, operador_id, acao, detalhe, criado_em)
-       VALUES ($1, $2, $3, $4, now())`,
-      [tenantId, operadorId, acao, detalhe]
+      `INSERT INTO auditoria (tenant_id, operador_id, acao, detalhe, entidade, entidade_id, criado_em)
+       VALUES ($1, $2, $3, $4, $5, $6, now())`,
+      [tenantId, operadorId, acao, detalhe, conversaId ? 'conversa' : null, conversaId]
     );
   } catch (err) {
     console.error('[Auditoria] Error:', err.message);

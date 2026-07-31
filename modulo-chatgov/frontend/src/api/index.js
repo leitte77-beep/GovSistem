@@ -244,6 +244,25 @@ export async function iniciarConversa(body) {
   return jsonReq('/api/conversas/iniciar', 'POST', body);
 }
 
+// Linha do tempo da conversa (quem assumiu, encaminhou, resolveu...).
+export async function fetchHistoricoConversa(convId) {
+  const res = await fetch(`/api/conversas/${convId}/historico`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) throw new Error('Erro ao carregar o histórico');
+  return res.json();
+}
+
+// Ficha completa do cidadão para o painel lateral: cadastro, protocolos,
+// atendimentos anteriores e bloqueio, numa chamada só.
+export async function fetchFichaCidadao(convId) {
+  const res = await fetch(`/api/conversas/${convId}/ficha`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
+  if (!res.ok) throw new Error('Erro ao carregar a ficha do cidadão');
+  return res.json();
+}
+
 // Consulta se o telefone já tem contato cadastrado e atendimento em andamento,
 // para preencher o nome e avisar sobre duplicidade antes de abrir a conversa.
 export async function precheckContato(telefone, signal) {

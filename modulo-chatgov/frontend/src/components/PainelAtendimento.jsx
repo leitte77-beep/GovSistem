@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Send, Paperclip, Smile, ShieldCheck, Clock, UserPlus, CheckCircle2, Building2, MessageSquare, Tag, StickyNote, ChevronDown, ChevronRight, Archive, Trash2, ArrowRightLeft, Undo2, UserCheck, X, MoreVertical, ArrowDown, Loader2, Mic, Square, Play, Pause, RotateCcw, Images, Mail, Search, ArrowLeft } from 'lucide-react';
+import { Send, Paperclip, Smile, ShieldCheck, Clock, User, UserPlus, CheckCircle2, Building2, MessageSquare, Tag, StickyNote, ChevronDown, ChevronRight, Archive, Trash2, ArrowRightLeft, Undo2, UserCheck, X, MoreVertical, ArrowDown, Loader2, Mic, Square, Play, Pause, RotateCcw, Images, Mail, Search, ArrowLeft } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { BolhaConversa } from './BolhaConversa';
 import { DeptBadge } from './DeptBadge';
 import { ModalParticipantes } from './ModalParticipantes';
 import { ModalTransferir } from './ModalTransferir';
 import { MediaPreview, MediaLightbox } from './MediaPreview';
+import { PainelCidadao } from './PainelCidadao';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
 import { fetchMensagens, fetchDepartamentos, fetchTemplates, fetchEtiquetas, fetchEtiquetasConversa, fetchNotasInternas, editarContato, fetchTransferenciaPendente, excluirMensagemConversa, fetchMidiasConversa, marcarConversaNaoLida } from '../api';
@@ -16,6 +17,14 @@ import { T } from '../theme';
 const EMOJIS_RAPIDOS = ['😀', '😅', '👍', '🙏', '❤️', '😊', '👏', '✅', '⚠️', '📎'];
 const PERTO_DO_FIM_PX = 120;
 const MAX_MIDIA_BYTES = 16 * 1024 * 1024; // 16 MB (limite prático do WhatsApp)
+// Largura da coluna de leitura das mensagens. Acima disso as bolhas ficariam
+// nas beiradas de um monitor grande, forçando o olho a varrer a tela inteira.
+const LARGURA_MAX_MENSAGENS = 1000;
+
+// Minúsculas e sem acento, para a busca casar "atendimento" com "Atendimento".
+function normalizarTexto(s) {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+}
 const AUDIO_MAX_MS = 2 * 60 * 1000; // 2 minutos
 const EXTENSOES_PROIBIDAS = ['exe','bat','cmd','msi','vbs','ps1','scr','com','sh','dll','pif','cpl','wsf','wsh','hta','jar','reg','scf','lnk'];
 
@@ -37,7 +46,7 @@ function aplicarVariaveis(texto, conversa) {
     .replace(/\{\{\s*data\s*\}\}/gi, new Date().toLocaleDateString('pt-BR'));
 }
 
-export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onVoltar }) {
+export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onVoltar, onAbrirConversa }) {
   const { socket, connected } = useSocket();
   const { auth } = useAuth();
   const ehMobile = breakpoint === 'mobile';
@@ -77,6 +86,13 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
   const [anexando, setAnexando] = useState(false);
   const [respondendoA, setRespondendoA] = useState(null);
   const [showGaleria, setShowGaleria] = useState(false);
+  // Busca dentro da conversa: filtra as mensagens já carregadas e realça o termo.
+  const [showBusca, setShowBusca] = useState(false);
+  const [termoBusca, setTermoBusca] = useState('');
+  // Painel do cidadão fica fechado por padrão e lembra a escolha do operador.
+  const [showCidadao, setShowCidadao] = useState(() => {
+    try { return localStorage.getItem('chatgov_painel_cidadao') === '1'; } catch { return false; }
+  });
   const [midias, setMidias] = useState([]);
   const [carregandoMidias, setCarregandoMidias] = useState(false);
   const [galeriaLightbox, setGaleriaLightbox] = useState(null);
@@ -123,6 +139,13 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
 
   const opId = auth?.operador?.id;
   const ehGestor = ['admin', 'supervisor'].includes(auth?.operador?.papel);
+  // Busca acentuada e sem diferenciar maiúsculas: "protocolo" acha "Protocolo".
+  const mensagensVisiveis = useMemo(() => {
+    const termo = showBusca ? termoBusca.trim() : '';
+    if (!termo) return mensagens;
+    const alvo = normalizarTexto(termo);
+    return mensagens.filter((m) => normalizarTexto(m.conteudo || m.media_nome || '').includes(alvo));
+  }, [mensagens, termoBusca, showBusca]);
   // Exclusão de conversa é restrita a admin no backend; o menu segue a mesma regra
   // para não oferecer uma ação que sempre falharia.
   const ehAdmin = auth?.operador?.papel === 'admin';
@@ -1153,6 +1176,23 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
         style: { ...acaoBtn, color: T.success, borderColor: '#CDEBD6' },
       },
         React.createElement(CheckCircle2, { size: 16 }), 'Resolver'),
+      // Buscar dentro da conversa
+      React.createElement('button', {
+        onClick: () => { setShowBusca((v) => !v); if (showBusca) setTermoBusca(''); },
+        'aria-label': 'Buscar nesta conversa', 'aria-pressed': showBusca,
+        title: 'Buscar nesta conversa',
+        style: { ...acaoBtn, padding: '7px 9px', color: showBusca ? T.primary : T.textSecondary, borderColor: showBusca ? T.primary : undefined },
+      }, React.createElement(Search, { size: 16 })),
+      // Ficha do cidadão: alterna o painel lateral direito.
+      React.createElement('button', {
+        onClick: () => setShowCidadao((v) => {
+          try { localStorage.setItem('chatgov_painel_cidadao', v ? '0' : '1'); } catch {}
+          return !v;
+        }),
+        'aria-label': 'Dados do cidadão', 'aria-pressed': showCidadao,
+        title: 'Dados do cidadão — cadastro, protocolos e atendimentos anteriores',
+        style: { ...acaoBtn, padding: '7px 9px', color: showCidadao ? T.primary : T.textSecondary, borderColor: showCidadao ? T.primary : undefined },
+      }, React.createElement(User, { size: 16 })),
       // Ações secundárias e destrutivas agrupadas no "⋯": o header fica com o
       // fluxo principal (encaminhar → transferir → resolver) e o resto sai da frente.
       React.createElement('div', { style: { position: 'relative' } },
@@ -1279,6 +1319,39 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
         }, et.nome),
       )),
 
+    // Barra de busca dentro da conversa
+    showBusca && React.createElement('div', {
+      style: { padding: '8px 16px', background: T.surfaceAlt, borderBottom: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 },
+    },
+      React.createElement(Search, { size: 15, color: T.textMuted, style: { flexShrink: 0 } }),
+      React.createElement('input', {
+        autoFocus: true,
+        value: termoBusca,
+        onChange: (e) => setTermoBusca(e.target.value),
+        onKeyDown: (e) => { if (e.key === 'Escape') { setShowBusca(false); setTermoBusca(''); } },
+        placeholder: 'Buscar nesta conversa...',
+        'aria-label': 'Buscar nas mensagens desta conversa',
+        style: {
+          flex: 1, padding: '7px 10px', borderRadius: T.radiusSm, border: `1px solid ${T.border}`,
+          background: T.surface, color: T.text, fontSize: 13, outline: 'none', fontFamily: 'inherit',
+        },
+      }),
+      React.createElement('span', { style: { fontSize: 12, color: T.textMuted, whiteSpace: 'nowrap' } },
+        termoBusca.trim()
+          ? `${mensagensVisiveis.length} de ${mensagens.length}`
+          : `${mensagens.length} carregadas`),
+      React.createElement('button', {
+        onClick: () => { setShowBusca(false); setTermoBusca(''); },
+        'aria-label': 'Fechar busca',
+        style: { background: 'transparent', border: 'none', cursor: 'pointer', color: T.textMuted, display: 'flex', padding: 4 },
+      }, React.createElement(X, { size: 15 })),
+    ),
+    // Só as mensagens já carregadas entram na busca — o aviso evita a impressão
+    // de que a conversa inteira foi varrida quando ainda há histórico no servidor.
+    showBusca && termoBusca.trim() && temMais && React.createElement('div', {
+      style: { padding: '5px 16px', fontSize: 11, color: T.textMuted, background: T.surfaceAlt, borderBottom: `1px solid ${T.border}`, flexShrink: 0 },
+    }, 'Busca nas mensagens já carregadas. Use "Carregar mensagens anteriores" para ampliar.'),
+
     // Mensagens (área rolável + botão flutuante "novas mensagens")
     React.createElement('div', { style: { flex: 1, position: 'relative', minHeight: 0, display: 'flex' } },
       React.createElement('div', {
@@ -1294,12 +1367,18 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
           backgroundSize: '20px 20px',
         },
       },
+        // Coluna de leitura com largura máxima: em monitor grande as bolhas
+        // ficavam nas beiradas opostas da tela e o olho ia e voltava a cada linha.
+        React.createElement('div', { style: { maxWidth: LARGURA_MAX_MENSAGENS, margin: '0 auto', width: '100%' } },
         carregandoMais && React.createElement('div', { style: { textAlign: 'center', padding: 8, color: T.textMuted } },
           React.createElement(Loader2, { size: 18, className: 'spin' })),
         temMais && !carregandoMais && React.createElement('div', { style: { textAlign: 'center', marginBottom: 8 } },
           React.createElement('button', { onClick: carregarMais, style: { ...acaoBtn, margin: '0 auto' } }, 'Carregar mensagens anteriores')),
-        mensagens.reduce((acc, msg, i) => {
-          const anterior = mensagens[i - 1];
+        showBusca && termoBusca.trim() && mensagensVisiveis.length === 0 && React.createElement('div', {
+          style: { textAlign: 'center', padding: 20, fontSize: 13, color: T.textMuted },
+        }, `Nenhuma mensagem carregada contém "${termoBusca.trim()}".`),
+        mensagensVisiveis.reduce((acc, msg, i) => {
+          const anterior = mensagensVisiveis[i - 1];
           if (!anterior || !mesmaData(anterior.criado_em, msg.criado_em)) {
             acc.push(React.createElement(SeparadorData, { key: `sep-${msg.id}`, label: formatarDataSeparador(msg.criado_em) }));
           }
@@ -1312,6 +1391,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
             onReagir: (emoji) => reagirMsg(msg, emoji),
             onRetry: () => tentarNovamente(msg),
             respondida: msg.respondendo_a ? mensagens.find((m) => m.id === msg.respondendo_a) : null,
+            realce: showBusca ? termoBusca.trim() : '',
             nomeContato: nome,
             compacto: ehMobile,
           }));
@@ -1320,6 +1400,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
         clienteDigitando && React.createElement('div', {
           style: { fontSize: 12, color: T.textMuted, fontStyle: 'italic', padding: '4px 2px' },
         }, `${nome} está digitando…`),
+        ), // fecha a coluna de leitura
       ),
       // Botão flutuante "↓ X novas mensagens".
       novasAbaixo > 0 && React.createElement('button', {
@@ -1333,6 +1414,18 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
           fontSize: 12, fontWeight: 700, boxShadow: T.shadowMd,
         },
       }, React.createElement(ArrowDown, { size: 14 }), `${novasAbaixo} nova${novasAbaixo > 1 ? 's' : ''}`),
+
+      // Painel lateral do cidadão (não aparece no celular, onde não há espaço).
+      showCidadao && !ehCompacto && React.createElement(PainelCidadao, {
+        conversa,
+        etiquetas: etiquetasConv,
+        onFechar: () => {
+          setShowCidadao(false);
+          try { localStorage.setItem('chatgov_painel_cidadao', '0'); } catch {}
+        },
+        onEditarCadastro: () => setEditandoNome(true),
+        onAbrirConversa: (convId) => onAbrirConversa?.(convId),
+      }),
     ),
 
     // Notas Internas

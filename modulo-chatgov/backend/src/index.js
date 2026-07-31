@@ -541,6 +541,181 @@ app.use('/api', rateLimiter);
     }
   });
 
+  // Linha do tempo da conversa: quem fez o quê e quando. Reúne três fontes que já
+  // existem — auditoria (ações do painel), eventos_status (transições formais) e
+  // notas internas — em vez de criar mais um registro paralelo.
+  const ROTULO_MOVIMENTACAO = {
+    'conversa.assumida': 'Atendimento assumido',
+    'conversa.atribuida': 'Encaminhado para setor',
+    'conversa.devolvida': 'Devolvido para a fila',
+    'conversa.transferida.solicitada': 'Transferência solicitada',
+    'conversa.transferida.aceita': 'Transferência aceita',
+    'conversa.transferida.rejeitada': 'Transferência recusada',
+    'conversa.anexados': 'Atendentes anexados',
+    'conversa.exclusao_logica': 'Conversa excluída',
+    'conversa.status.alterado': 'Status alterado',
+    'conversa.resolvida': 'Atendimento resolvido',
+    'conversa.reaberta': 'Atendimento reaberto',
+    'conversa.arquivada': 'Conversa arquivada',
+    'conversa.desarquivada': 'Conversa desarquivada',
+    'conversa.excluida': 'Conversa excluída',
+    'conversa.nao_lida': 'Marcada como não lida',
+    'etiqueta.adicionada': 'Etiqueta adicionada',
+    'etiqueta.removida': 'Etiqueta removida',
+  };
+
+  app.get('/api/conversas/:id/historico', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const op = req.operador;
+      if (!(await podeVerConversa(op, id))) {
+        return res.status(403).json({ erro: 'Sem acesso a esta conversa' });
+      }
+
+      const [conversa, acoes, transicoes, notas] = await Promise.all([
+        db.oneOrNone(
+          `SELECT c.criado_em, c.resolvida_em, c.arquivada_em, p.numero AS protocolo_numero, p.aberto_em AS protocolo_em
+           FROM conversas c LEFT JOIN protocolos p ON p.id = c.protocolo_id
+           WHERE c.id = $1 AND c.tenant_id = $2`,
+          [id, op.tenantId]
+        ),
+        db.manyOrNone(
+          `SELECT a.acao, a.detalhe, a.criado_em, o.nome AS operador_nome
+           FROM auditoria a LEFT JOIN operadores o ON o.id = a.operador_id
+           WHERE a.tenant_id = $1
+             AND a.acao <> 'mensagem.enviada'
+             AND (a.entidade_id = $2 OR a.detalhe ->> 'conversaId' = $3)
+           ORDER BY a.criado_em DESC LIMIT 60`,
+          [op.tenantId, id, id]
+        ),
+        db.manyOrNone(
+          `SELECT e.status_anterior, e.novo_status, e.justificativa, e.criado_em, o.nome AS operador_nome
+           FROM eventos_status e LEFT JOIN operadores o ON o.id = e.operador_id
+           WHERE e.tenant_id = $1 AND e.entidade = 'conversa' AND e.entidade_id = $2
+           ORDER BY e.criado_em DESC LIMIT 60`,
+          [op.tenantId, id]
+        ),
+        db.manyOrNone(
+          `SELECT n.criado_em, o.nome AS operador_nome
+           FROM notas_internas n LEFT JOIN operadores o ON o.id = n.operador_id
+           WHERE n.conversa_id = $1 AND n.tenant_id = $2
+           ORDER BY n.criado_em DESC LIMIT 30`,
+          [id, op.tenantId]
+        ),
+      ]);
+      if (!conversa) return res.status(404).json({ erro: 'Conversa não encontrada' });
+
+      const eventos = [];
+      const push = (tipo, titulo, criado_em, detalhe, operador_nome) => {
+        if (criado_em) eventos.push({ tipo, titulo, criado_em, detalhe: detalhe || null, operador_nome: operador_nome || null });
+      };
+
+      push('inicio', 'Atendimento recebido', conversa.criado_em);
+      if (conversa.protocolo_numero) push('protocolo', `Protocolo #${conversa.protocolo_numero} gerado`, conversa.protocolo_em);
+      acoes.forEach((a) => push(
+        'acao',
+        ROTULO_MOVIMENTACAO[a.acao] || a.acao,
+        a.criado_em,
+        a.detalhe?.motivo || a.detalhe?.departamentoNome || null,
+        a.operador_nome
+      ));
+      transicoes.forEach((t) => push(
+        'status',
+        `Status: ${t.status_anterior || '—'} → ${t.novo_status}`,
+        t.criado_em, t.justificativa, t.operador_nome
+      ));
+      notas.forEach((n) => push('nota', 'Nota interna adicionada', n.criado_em, null, n.operador_nome));
+      if (conversa.resolvida_em) push('resolvida', 'Atendimento resolvido', conversa.resolvida_em);
+      if (conversa.arquivada_em) push('arquivada', 'Conversa arquivada', conversa.arquivada_em);
+
+      eventos.sort((a, b) => new Date(b.criado_em) - new Date(a.criado_em));
+      res.json({ eventos });
+    } catch (err) {
+      console.error('[API] histórico da conversa:', err.message);
+      res.status(500).json({ erro: 'Erro ao carregar o histórico' });
+    }
+  });
+
+  // Ficha do cidadão para o painel lateral do atendimento: cadastro, protocolos,
+  // atendimentos anteriores e bloqueio. Uma chamada só — o painel abre e fecha o
+  // tempo todo e não vale multiplicar requisições.
+  app.get('/api/conversas/:id/ficha', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const op = req.operador;
+      if (!(await podeVerConversa(op, id))) {
+        return res.status(403).json({ erro: 'Sem acesso a esta conversa' });
+      }
+      const conversa = await db.oneOrNone(
+        `SELECT c.id, c.contato_id, c.criado_em, c.departamento_id, c.operador_id,
+                d.nome AS departamento_nome, d.cor AS departamento_cor,
+                o.nome AS operador_nome, p.numero AS protocolo_numero
+         FROM conversas c
+         LEFT JOIN departamentos d ON d.id = c.departamento_id
+         LEFT JOIN operadores o ON o.id = c.operador_id
+         LEFT JOIN protocolos p ON p.id = c.protocolo_id
+         WHERE c.id = $1 AND c.tenant_id = $2`,
+        [id, op.tenantId]
+      );
+      if (!conversa) return res.status(404).json({ erro: 'Conversa não encontrada' });
+
+      const [contato, protocolos, atendimentos, bloqueio, primeiroContato] = await Promise.all([
+        db.oneOrNone(
+          `SELECT id, nome, telefone, phone_display, cpf, data_nascimento, endereco, bairro,
+                  avatar_url, criado_em
+           FROM contatos WHERE id = $1 AND tenant_id = $2`,
+          [conversa.contato_id, op.tenantId]
+        ),
+        db.manyOrNone(
+          `SELECT p.numero, p.assunto, p.status, p.aberto_em, p.fechado_em, d.nome AS departamento_nome
+           FROM protocolos p
+           LEFT JOIN departamentos d ON d.id = p.departamento_id
+           WHERE p.contato_id = $1 AND p.tenant_id = $2
+           ORDER BY p.aberto_em DESC LIMIT 10`,
+          [conversa.contato_id, op.tenantId]
+        ),
+        db.manyOrNone(
+          `SELECT c.id, c.criado_em, c.ultima_mensagem_em, c.status, c.status_operacional,
+                  d.nome AS departamento_nome, o.nome AS operador_nome
+           FROM conversas c
+           LEFT JOIN departamentos d ON d.id = c.departamento_id
+           LEFT JOIN operadores o ON o.id = c.operador_id
+           WHERE c.contato_id = $1 AND c.tenant_id = $2 AND c.id <> $3 AND c.deleted_at IS NULL
+           ORDER BY c.ultima_mensagem_em DESC NULLS LAST LIMIT 8`,
+          [conversa.contato_id, op.tenantId, id]
+        ),
+        db.oneOrNone(
+          `SELECT motivo, criado_em, expira_em FROM contatos_bloqueados
+           WHERE tenant_id = $1 AND ativo = true
+             AND (phone_e164 = (SELECT phone_e164 FROM contatos WHERE id = $2)
+                  OR telefone = (SELECT telefone FROM contatos WHERE id = $2))
+             AND (expira_em IS NULL OR expira_em > now())
+           LIMIT 1`,
+          [op.tenantId, conversa.contato_id]
+        ),
+        db.oneOrNone(
+          `SELECT min(criado_em) AS em FROM mensagens
+           WHERE tenant_id = $1 AND conversa_id IN (
+             SELECT id FROM conversas WHERE contato_id = $2 AND tenant_id = $1
+           )`,
+          [op.tenantId, conversa.contato_id]
+        ),
+      ]);
+
+      res.json({
+        contato,
+        conversa,
+        protocolos,
+        atendimentos,
+        bloqueio: bloqueio || null,
+        primeiro_contato_em: primeiroContato?.em || conversa.criado_em,
+      });
+    } catch (err) {
+      console.error('[API] ficha do cidadão:', err.message);
+      res.status(500).json({ erro: 'Erro ao carregar a ficha do cidadão' });
+    }
+  });
+
   // Pré-checagem da tela "Nova conversa": dado um telefone, diz se já existe
   // contato cadastrado e se há atendimento em andamento. Serve para preencher o
   // nome sozinho e para avisar antes de abrir uma conversa duplicada.

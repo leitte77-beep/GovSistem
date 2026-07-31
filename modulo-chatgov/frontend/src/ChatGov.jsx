@@ -201,6 +201,9 @@ export function ChatGov() {
                     onConversaUpdated: handleConversaUpdated,
                     breakpoint,
                     onVoltar: handleVoltar,
+                    // Usado pelo painel do cidadão para pular para um atendimento
+                    // anterior do mesmo contato.
+                    onAbrirConversa: (convId) => handleSelectConversa({ id: convId }),
                   })
                 : React.createElement(PainelChatInternoAvancado, {
                     canal: canalAtivo,
