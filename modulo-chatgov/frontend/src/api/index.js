@@ -18,6 +18,17 @@ export async function fetchConversas({ status, departamento, busca, arquivadas, 
   }
 }
 
+// Estado atual de uma conversa (setor, responsável, status, protocolo). Retorna
+// null quando o operador perdeu o acesso ou a conversa sumiu.
+export async function fetchConversa(convId, { signal } = {}) {
+  const res = await fetch(`/api/conversas/${convId}`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+    signal,
+  });
+  if (!res.ok) return null;
+  return res.json();
+}
+
 // Retorna { mensagens, temMais }. `antesDe` (ISO criado_em) carrega o lote anterior
 // para scroll infinito; sem cursor traz as últimas `limite` mensagens.
 export async function fetchMensagens(convId, { antesDe, limite = 50, signal } = {}) {

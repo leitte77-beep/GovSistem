@@ -14,6 +14,7 @@ import { useAuth } from './context/AuthContext';
 import { useSocket } from './context/SocketContext';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { T } from './theme';
+import { fetchConversa } from './api';
 import { fetchNotificacoesStatus } from './api/evolucoes';
 import { useNotificacoesDesktop } from './hooks/useNotificacoesDesktop';
 
@@ -103,6 +104,48 @@ export function ChatGov() {
   }, [socket, handleChangeView, handleSelectConversa]);
 
   const handleConversaUpdated = useCallback(() => setRecarregar((n) => n + 1), []);
+
+  // A conversa selecionada chega da lista como um retrato do instante do clique.
+  // Setor, responsável e status mudam depois (encaminhar, assumir, devolver,
+  // reabrir), e o painel precisa desses campos frescos — senão continua exibindo
+  // avisos que já não valem, como "sem setor responsável" numa conversa já
+  // encaminhada. Mantemos o objeto sincronizado com o servidor.
+  const conversaAtivaId = conversaAtiva?.id;
+  useEffect(() => {
+    if (!conversaAtivaId) return undefined;
+    let cancelado = false;
+    let debounce = null;
+
+    const sincronizar = () => {
+      fetchConversa(conversaAtivaId)
+        .then((fresca) => {
+          if (cancelado || !fresca || fresca.id !== conversaAtivaId) return;
+          setConversaAtiva((atual) => (
+            atual?.id === fresca.id && JSON.stringify(atual) === JSON.stringify(fresca)
+              ? atual   // nada mudou: preserva a identidade e evita re-render do painel
+              : fresca
+          ));
+        })
+        .catch(() => {});
+    };
+
+    sincronizar();
+
+    if (!socket) return () => { cancelado = true; };
+    // 'conversa:atualizada' também dispara a cada tique de entrega/leitura:
+    // coalescemos os eventos para não virar uma enxurrada de GETs.
+    const onAtualizada = ({ convId }) => {
+      if (convId !== conversaAtivaId) return;
+      clearTimeout(debounce);
+      debounce = setTimeout(sincronizar, 600);
+    };
+    socket.on('conversa:atualizada', onAtualizada);
+    return () => {
+      cancelado = true;
+      clearTimeout(debounce);
+      socket.off('conversa:atualizada', onAtualizada);
+    };
+  }, [socket, conversaAtivaId, recarregar]);
 
   const mostrarListaMobile = ehMobile && !conversaAtiva && !canalAtivo;
   const mostrarPainelMobile = ehMobile && (conversaAtiva || canalAtivo);

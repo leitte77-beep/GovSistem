@@ -40,6 +40,8 @@ function ehGestor(op) {
   return op.papel === 'admin' || op.papel === 'supervisor';
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 // Fragmento SQL (para alias de conversa) que filtra o que um operador comum pode ver.
 // Usa $opId como placeholder textual — substituído pelo índice real no chamador.
 function filtroVisibilidadeSql(alias, opIdParam) {
@@ -314,6 +316,43 @@ app.use('/api', rateLimiter);
     } catch (err) {
       console.error('[API] conversas error:', err.message);
       res.status(500).json({ erro: 'Erro ao buscar conversas' });
+    }
+  });
+
+  // Estado atual de uma conversa. O painel de atendimento consulta esta rota para
+  // não ficar preso ao retrato tirado no momento do clique na lista: setor,
+  // responsável e status mudam por eventos (encaminhar, assumir, devolver, reabrir).
+  app.get('/api/conversas/:id', async (req, res, next) => {
+    // Rotas irmãs como /api/conversas/busca e /api/conversas/operacional são
+    // literais, não UUIDs — deixa o Express seguir para elas.
+    if (!UUID_RE.test(req.params.id)) return next();
+    try {
+      const op = req.operador;
+      const params = [op.tenantId, req.params.id];
+      let where = 'c.tenant_id = $1 AND c.id = $2::uuid';
+      if (!ehGestor(op)) {
+        where += ` AND ${filtroVisibilidadeSql('c', '$3')}`;
+        params.push(op.id);
+      }
+      const conversa = await db.oneOrNone(
+        `SELECT c.*, co.nome as contato_nome, co.telefone as contato_telefone, co.wa_jid,
+                co.avatar_url as contato_avatar_url,
+                d.nome as departamento_nome, d.cor as departamento_cor,
+                o.nome as operador_nome,
+                pr.numero as protocolo_numero
+         FROM conversas c
+         JOIN contatos co ON co.id = c.contato_id
+         LEFT JOIN departamentos d ON d.id = c.departamento_id
+         LEFT JOIN operadores o ON o.id = c.operador_id
+         LEFT JOIN protocolos pr ON pr.id = c.protocolo_id
+         WHERE ${where}`,
+        params
+      );
+      if (!conversa) return res.status(404).json({ erro: 'Conversa não encontrada' });
+      res.json(protectSensitiveFields(conversa, hasPermission(op.papel, PERMISSIONS.SENSITIVE_VIEW)));
+    } catch (err) {
+      console.error('[API] conversa error:', err.message);
+      res.status(500).json({ erro: 'Erro ao buscar conversa' });
     }
   });
 

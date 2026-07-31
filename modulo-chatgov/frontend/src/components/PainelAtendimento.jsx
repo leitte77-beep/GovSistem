@@ -79,7 +79,6 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
   const [novasAbaixo, setNovasAbaixo] = useState(0);
   const [clienteDigitando, setClienteDigitando] = useState(false);
   const [botDigitando, setBotDigitando] = useState(null); // null | 'iris' | 'chatbot'
-  const [conversaStatus, setConversaStatus] = useState(conversa?.status);
   const [showMenuMais, setShowMenuMais] = useState(false);
   const [showAcoes, setShowAcoes] = useState(false); // menu de ações combinado (mobile/tablet)
   const [showEmojis, setShowEmojis] = useState(false);
@@ -151,6 +150,15 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
   const ehAdmin = auth?.operador?.papel === 'admin';
   const souDono = conversa?.operador_id && conversa.operador_id === opId;
   const semDono = conversa && !conversa.operador_id;
+  // Estado sempre derivado da prop — o ChatGov mantém a conversa em dia com o
+  // servidor. `status_operacional` é a fonte de verdade; `status` é o campo legado.
+  const conversaStatus = conversa?.status;
+  const statusOper = conversa?.status_operacional;
+  // Aguardando triagem: ainda não há atendente responsável.
+  const emTriagem = ['NOVA', 'NA_FILA'].includes(statusOper)
+    || (!statusOper && conversaStatus === 'fila');
+  const semSetor = !conversa?.departamento_id;
+  const ehArquivada = statusOper === 'ARQUIVADA' || conversaStatus === 'arquivada';
 
   // Fecha dropdowns ao clicar fora ou pressionar Esc
   const fecharDropdowns = useCallback(() => {
@@ -178,7 +186,6 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
     };
   }, [showMenuMais, showTemplates, showEtiquetas, showEncaminhar, showEmojis, fecharDropdowns]);
 
-  useEffect(() => { setConversaStatus(conversa?.status); }, [conversa?.id, conversa?.status]);
   const podeGerir = souDono || ehGestor;
 
   useEffect(() => {
@@ -282,13 +289,9 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
     socket.on('mensagem:reacao', onReacao);
     socket.on('mensagem:excluida', onExcluida);
     socket.on('cliente:presenca', onPresenca);
-    const onConvAtualizada = ({ convId }) => {
-      if (convId === conversa?.id) {
-        // Atualiza status da conversa ativa quando reaberta (ex: resolved → fila)
-        setConversaStatus('fila');
-      }
-    };
-    socket.on('conversa:atualizada', onConvAtualizada);
+    // 'conversa:atualizada' é tratado no ChatGov, que rebusca a conversa e repassa
+    // o estado real por prop. Aqui não dá para adivinhar o novo status: o evento
+    // é o mesmo para abrir, encaminhar, assumir, reabrir e tique de entrega.
     const onNotaNova = (nota) => setNotas((prev) => [nota, ...prev]);
     socket.on('nota:nova', onNotaNova);
     const onTransferencia = ({ convId }) => {
@@ -303,7 +306,6 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
       socket.off('mensagem:reacao', onReacao);
       socket.off('mensagem:excluida', onExcluida);
       socket.off('cliente:presenca', onPresenca);
-      socket.off('conversa:atualizada', onConvAtualizada);
       socket.off('nota:nova', onNotaNova);
       socket.off('transferencia:nova', onTransferencia);
     };
@@ -1222,7 +1224,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
             React.createElement(Images, { size: 15 }), 'Ver mídias'),
           React.createElement('button', { role: 'menuitem', onClick: () => { setShowMenuMais(false); marcarNaoLida(); }, style: { ...dropdownItem, color: T.textSecondary } },
             React.createElement(Mail, { size: 15 }), 'Marcar como não lida'),
-          conversa.status === 'arquivada'
+          ehArquivada
             ? React.createElement('button', { role: 'menuitem', onClick: () => { setShowMenuMais(false); desarquivar(); }, style: { ...dropdownItem, color: T.primary } },
                 React.createElement(Archive, { size: 15 }), 'Desarquivar')
             : React.createElement('button', { role: 'menuitem', onClick: () => { setShowMenuMais(false); arquivar(); }, style: { ...dropdownItem, color: T.textSecondary } },
@@ -1278,29 +1280,42 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
       'Em atendimento por ', React.createElement('strong', { style: { color: T.text } }, conversa.operador_nome || 'outro atendente'),
     ),
 
-    // Faixa de status. Sem setor responsável, ela vira uma chamada para ação: diz o
-    // que falta e traz o botão que resolve, em vez de só descrever o problema.
+    // Faixa de status. Enquanto o atendimento está em triagem ela vira uma chamada
+    // para ação: diz exatamente o que falta — setor ou atendente — e traz o botão
+    // que resolve, em vez de só descrever o problema.
     React.createElement('div', {
-      style: { padding: '7px 16px', background: conversaStatus === 'fila' ? T.warningSoft : T.surfaceAlt, fontSize: 11, textAlign: 'center', flexShrink: 0, borderBottom: `1px solid ${T.border}` },
+      style: { padding: '7px 16px', background: emTriagem ? T.warningSoft : T.surfaceAlt, fontSize: 11, textAlign: 'center', flexShrink: 0, borderBottom: `1px solid ${T.border}` },
     },
-      conversaStatus === 'fila'
+      emTriagem
         ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, flexWrap: 'wrap' } },
             React.createElement(Clock, { size: 14, color: T.warning, style: { flexShrink: 0 } }),
             React.createElement('div', { style: { textAlign: 'left' } },
-              React.createElement('div', { style: { color: T.warning, fontWeight: 700, fontSize: 12 } }, 'Atendimento sem setor responsável'),
+              React.createElement('div', { style: { color: T.warning, fontWeight: 700, fontSize: 12 } },
+                semSetor ? 'Atendimento sem setor responsável' : 'Atendimento aguardando atendente'),
               React.createElement('div', { style: { color: T.textSecondary, fontSize: 11 } },
-                'Encaminhe esta conversa para que um servidor do setor possa responder.'),
+                semSetor
+                  ? 'Encaminhe esta conversa para que um servidor do setor possa responder.'
+                  : `Na fila de ${conversa.departamento_nome || 'um setor'} — assuma para se tornar o responsável.`),
             ),
-            React.createElement('button', {
-              onClick: abrirEncaminhar,
-              style: {
-                background: T.warning, border: 'none', color: '#fff', padding: '6px 14px',
-                borderRadius: T.radiusSm, cursor: 'pointer', fontSize: 12, fontWeight: 700,
-                display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
-              },
-            }, React.createElement(Building2, { size: 14 }), 'Escolher setor'),
+            semSetor || !semDono
+              ? React.createElement('button', {
+                  onClick: abrirEncaminhar,
+                  style: {
+                    background: T.warning, border: 'none', color: '#fff', padding: '6px 14px',
+                    borderRadius: T.radiusSm, cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                    display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
+                  },
+                }, React.createElement(Building2, { size: 14 }), 'Escolher setor')
+              : React.createElement('button', {
+                  onClick: assumir,
+                  style: {
+                    background: T.warning, border: 'none', color: '#fff', padding: '6px 14px',
+                    borderRadius: T.radiusSm, cursor: 'pointer', fontSize: 12, fontWeight: 700,
+                    display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0,
+                  },
+                }, React.createElement(UserCheck, { size: 14 }), 'Assumir'),
           )
-        : conversaStatus === 'arquivada'
+        : ehArquivada
         ? React.createElement('span', { style: { color: T.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 } },
             React.createElement(Archive, { size: 12 }), 'Conversa arquivada — não aparece nas listas principais')
         : React.createElement('span', { style: { color: T.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 } },
@@ -1682,7 +1697,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
       acaoSheetItem(CheckCircle2, 'Resolver conversa', () => { setShowAcoes(false); resolver(); }, T.success),
       acaoSheetItem(Images, 'Ver mídias', () => { setShowAcoes(false); abrirGaleria(); }),
       acaoSheetItem(Mail, 'Marcar como não lida', () => { setShowAcoes(false); marcarNaoLida(); }),
-      conversa.status === 'arquivada'
+      ehArquivada
         ? acaoSheetItem(Archive, 'Desarquivar', () => { setShowAcoes(false); desarquivar(); }, T.primary)
         : acaoSheetItem(Archive, 'Arquivar', () => { setShowAcoes(false); arquivar(); }),
     ),
