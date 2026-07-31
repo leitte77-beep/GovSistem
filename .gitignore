@@ -52,3 +52,6 @@ apps/api/uploads/
 # de contingencia da versao atualmente publicada.
 !modulo-govsocial/web/dist/
 !modulo-chatgov/frontend/dist/
+
+# Backups de producao (dumps, volumes, .env) — nunca versionar
+backup-prod/
