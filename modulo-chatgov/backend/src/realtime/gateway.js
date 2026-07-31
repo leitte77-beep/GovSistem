@@ -19,6 +19,7 @@ import {
 import { criarNotificacao } from '../services/notificacoes.js';
 import { transitionConversation } from '../services/status-transitions.js';
 import { normalizePhone } from '../domain/phone.js';
+import { extrairContatosCompartilhados } from '../domain/contato-compartilhado.js';
 import { createStorage } from '../storage/index.js';
 
 const salas = {
@@ -115,7 +116,14 @@ function _rotuloMensagem(mensagem) {
   };
   const base = rotulos[tipo] || '📎 Anexo';
   // Se houver legenda/nome, mostra junto.
-  if (caption && !caption.startsWith('[')) return `${base} — ${caption.slice(0, 90)}`;
+  if (tipo === 'contato' && caption) {
+    try {
+      const contatos = JSON.parse(caption);
+      const nomes = contatos.map((contato) => contato.nome).filter(Boolean);
+      if (nomes.length) return `${base} — ${nomes.slice(0, 2).join(', ')}`;
+    } catch {}
+  }
+  if (caption && !caption.startsWith('[') && tipo !== 'contato') return `${base} — ${caption.slice(0, 90)}`;
   if (mensagem?.media_nome) return `${base} — ${mensagem.media_nome}`;
   return base;
 }
@@ -1659,6 +1667,14 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
       const buffer = await downloadMediaMessage(msg, 'buffer', {});
       mediaUrl = await storage.salvar(buffer, mediaMime, tenantId);
     } catch {}
+  } else if (messageContent?.contactMessage || messageContent?.contactsArrayMessage) {
+    const contatos = extrairContatosCompartilhados(messageContent);
+    if (contatos.length === 0) {
+      console.log(`[Persist] contato sem dados ignorado wa_message_id=${msgId}`);
+      return;
+    }
+    tipo = 'contato';
+    conteudo = JSON.stringify(contatos);
   } else if (messageContent?.locationMessage) {
     tipo = 'local';
     conteudo = JSON.stringify({
@@ -1871,7 +1887,7 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
     [
       tenantId,
       contatoRow.id,
-      conteudo || `[${tipo}]`,
+      tipo === 'contato' ? '[Contato]' : (conteudo || `[${tipo}]`),
       msgTimestamp,
       direcao === 'saida' ? 'aberta' : 'fila',
       direcao === 'saida' ? 0 : 1,

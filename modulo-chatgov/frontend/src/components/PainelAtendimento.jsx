@@ -9,7 +9,7 @@ import { MediaPreview, MediaLightbox } from './MediaPreview';
 import { PainelCidadao } from './PainelCidadao';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
-import { fetchMensagens, fetchDepartamentos, fetchTemplates, fetchEtiquetas, fetchEtiquetasConversa, fetchNotasInternas, editarContato, fetchTransferenciaPendente, excluirMensagemConversa, fetchMidiasConversa, marcarConversaNaoLida } from '../api';
+import { fetchMensagens, fetchDepartamentos, fetchTemplates, fetchEtiquetas, fetchEtiquetasConversa, fetchNotasInternas, editarContato, fetchTransferenciaPendente, excluirMensagemConversa, fetchMidiasConversa, marcarConversaNaoLida, criarContato, iniciarConversa } from '../api';
 import { mimeParaTipo, encodeFileBase64, mesmaData, formatarDataSeparador } from '../utils/arquivo';
 import { SeparadorData } from './SeparadorData';
 import { T } from '../theme';
@@ -19,7 +19,6 @@ const PERTO_DO_FIM_PX = 120;
 const MAX_MIDIA_BYTES = 16 * 1024 * 1024; // 16 MB (limite prático do WhatsApp)
 // Largura da coluna de leitura das mensagens. Acima disso as bolhas ficariam
 // nas beiradas de um monitor grande, forçando o olho a varrer a tela inteira.
-const LARGURA_MAX_MENSAGENS = 1000;
 
 // Minúsculas e sem acento, para a busca casar "atendimento" com "Atendimento".
 function normalizarTexto(s) {
@@ -132,6 +131,24 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
     setToast({ mensagem, tipo });
     setTimeout(() => setToast(null), 3500);
   }, []);
+
+  const salvarContatoRecebido = useCallback(async (contato) => {
+    const salvo = await criarContato({ nome: contato.nome || null, telefone: contato.telefone, canal: 'whatsapp' });
+    notificar(salvo.ja_cadastrado ? 'Este contato já está na agenda.' : 'Contato adicionado à agenda.', 'ok');
+    return salvo;
+  }, [notificar]);
+
+  const iniciarConversaComContato = useCallback(async (contato) => {
+    const novaConversa = await iniciarConversa({
+      nome: contato.nome || null,
+      telefone: contato.telefone,
+      departamento_id: conversa?.departamento_id || null,
+      mensagem: null,
+    });
+    onConversaUpdated?.();
+    onAbrirConversa?.(novaConversa.id);
+    return novaConversa;
+  }, [conversa?.departamento_id, onConversaUpdated, onAbrirConversa]);
 
   // Modal de confirmação (substitui confirm/prompt). `comInput` habilita um campo.
   const pedirConfirmacao = useCallback((opcoes) => setConfirmacao(opcoes), []);
@@ -1382,9 +1399,9 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
           backgroundSize: '20px 20px',
         },
       },
-        // Coluna de leitura com largura máxima: em monitor grande as bolhas
-        // ficavam nas beiradas opostas da tela e o olho ia e voltava a cada linha.
-        React.createElement('div', { style: { maxWidth: LARGURA_MAX_MENSAGENS, margin: '0 auto', width: '100%' } },
+        // Ocupa toda a largura útil para alinhar as mensagens recebidas e enviadas
+        // às laterais da conversa, respeitando apenas o padding da área rolável.
+        React.createElement('div', { style: { width: '100%' } },
         carregandoMais && React.createElement('div', { style: { textAlign: 'center', padding: 8, color: T.textMuted } },
           React.createElement(Loader2, { size: 18, className: 'spin' })),
         temMais && !carregandoMais && React.createElement('div', { style: { textAlign: 'center', marginBottom: 8 } },
@@ -1409,6 +1426,8 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
             realce: showBusca ? termoBusca.trim() : '',
             nomeContato: nome,
             compacto: ehMobile,
+            onSalvarContato: salvarContatoRecebido,
+            onIniciarConversa: iniciarConversaComContato,
           }));
           return acc;
         }, []),

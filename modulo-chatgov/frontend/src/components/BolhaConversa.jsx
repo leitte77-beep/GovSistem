@@ -1,11 +1,123 @@
 import React, { useState } from 'react';
-import { Trash2, Reply, Smile, RotateCcw, AlertTriangle, Smartphone } from 'lucide-react';
+import { Trash2, Reply, Smile, RotateCcw, AlertTriangle, Smartphone, UserRound, Phone, BookUser, MessageSquare, Loader2, Check } from 'lucide-react';
 import { Tick } from './Tick';
 import { T } from '../theme';
 import { formatarHora } from '../utils/arquivo';
 import { MediaPreview, MediaLightbox } from './MediaPreview';
 
 const REACOES_RAPIDAS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
+
+function contatosDaMensagem(conteudo) {
+  try {
+    const contatos = JSON.parse(conteudo || '[]');
+    return Array.isArray(contatos) ? contatos : [];
+  } catch {
+    return [];
+  }
+}
+
+function CartaoContato({ contato, entrada, onSalvarContato, onIniciarConversa }) {
+  const [salvando, setSalvando] = useState(false);
+  const [iniciando, setIniciando] = useState(false);
+  const [salvo, setSalvo] = useState(false);
+  const [erro, setErro] = useState('');
+  const telefone = contato.telefone || '';
+  const href = telefone ? `tel:${telefone.replace(/[^+\d]/g, '')}` : null;
+
+  const salvar = async (e) => {
+    e.stopPropagation();
+    if (!telefone || salvando || salvo) return;
+    setErro('');
+    setSalvando(true);
+    try {
+      await onSalvarContato?.(contato);
+      setSalvo(true);
+    } catch (error) {
+      setErro(error.message || 'Não foi possível salvar o contato.');
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const iniciar = async (e) => {
+    e.stopPropagation();
+    if (!telefone || iniciando) return;
+    setErro('');
+    setIniciando(true);
+    try {
+      await onIniciarConversa?.(contato);
+    } catch (error) {
+      setErro(error.message || 'Não foi possível iniciar a conversa.');
+      setIniciando(false);
+    }
+  };
+
+  const botao = {
+    border: `1px solid ${T.border}`, borderRadius: 7, padding: '6px 9px',
+    background: entrada ? T.surface : (T.bubbleMediaBg || 'rgba(255,255,255,0.65)'),
+    color: T.textSecondary, cursor: 'pointer', fontSize: 11.5, fontWeight: 700,
+    display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+  };
+
+  return React.createElement('div', {
+    style: {
+      padding: '8px 10px', borderRadius: 8, border: `1px solid ${T.border}`,
+      background: entrada ? T.surfaceAlt : (T.bubbleMediaBg || 'rgba(255,255,255,0.55)'),
+    },
+  },
+    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+      React.createElement('span', {
+        style: {
+          width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+          display: 'grid', placeItems: 'center', background: `${T.primary}18`, color: T.primary,
+        },
+      }, React.createElement(UserRound, { size: 19 })),
+      React.createElement('div', { style: { minWidth: 0, flex: 1 } },
+        React.createElement('div', {
+          style: { fontSize: 13, fontWeight: 700, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+        }, contato.nome || 'Contato'),
+        telefone && React.createElement('div', { style: { marginTop: 2, fontSize: 12, color: T.textMuted } }, telefone),
+      ),
+      href && React.createElement('a', {
+        href, onClick: (e) => e.stopPropagation(), 'aria-label': `Ligar para ${contato.nome || telefone}`,
+        title: 'Ligar', style: { color: T.primary, display: 'flex', padding: 5, borderRadius: '50%' },
+      }, React.createElement(Phone, { size: 16 })),
+    ),
+    telefone && React.createElement('div', { style: { display: 'flex', gap: 6, marginTop: 8 } },
+      React.createElement('button', {
+        type: 'button', onClick: salvar, disabled: salvando || salvo,
+        style: { ...botao, flex: 1, opacity: salvando ? 0.65 : 1, color: salvo ? T.success : T.textSecondary },
+      },
+        salvando ? React.createElement(Loader2, { size: 13, className: 'spin' }) : React.createElement(salvo ? Check : BookUser, { size: 13 }),
+        salvo ? 'Na agenda' : 'Salvar na agenda'),
+      React.createElement('button', {
+        type: 'button', onClick: iniciar, disabled: iniciando,
+        style: { ...botao, flex: 1, background: T.primary, borderColor: T.primary, color: '#fff', opacity: iniciando ? 0.7 : 1 },
+      },
+        iniciando ? React.createElement(Loader2, { size: 13, className: 'spin' }) : React.createElement(MessageSquare, { size: 13 }),
+        iniciando ? 'Abrindo...' : 'Iniciar conversa'),
+    ),
+    !telefone && React.createElement('div', {
+      role: 'status',
+      style: { marginTop: 7, fontSize: 11, lineHeight: 1.35, color: T.warning },
+    }, 'Telefone indisponível neste cartão. Reenvie o contato para habilitar as ações.'),
+    erro && React.createElement('div', { role: 'alert', style: { marginTop: 6, fontSize: 11, color: T.danger } }, erro),
+  );
+}
+
+function ContatoCompartilhado({ conteudo, entrada, onSalvarContato, onIniciarConversa }) {
+  const contatos = contatosDaMensagem(conteudo);
+  if (contatos.length === 0) {
+    return React.createElement('div', { style: { fontSize: 13, color: T.textMuted } }, 'Contato compartilhado');
+  }
+
+  return React.createElement('div', {
+    style: { display: 'flex', flexDirection: 'column', gap: 7, minWidth: 220, maxWidth: 300 },
+  }, contatos.map((contato, indice) => React.createElement(CartaoContato, {
+    key: `${contato.nome || 'contato'}-${contato.telefone || ''}-${indice}`,
+    contato, entrada, onSalvarContato, onIniciarConversa,
+  })));
+}
 
 // Marca as ocorrências do termo buscado sem alterar o texto original. Compara
 // sem acento e sem caixa, mas recorta o trecho pelo índice para preservar a
@@ -31,7 +143,7 @@ function realcarTermo(texto, termo) {
   return partes;
 }
 
-export function BolhaConversa({ msg, podeExcluir, onExcluir, onResponder, onReagir, onRetry, respondida, nomeContato, compacto, realce }) {
+export function BolhaConversa({ msg, podeExcluir, onExcluir, onResponder, onReagir, onRetry, respondida, nomeContato, compacto, realce, onSalvarContato, onIniciarConversa }) {
   const entrada = msg.direcao === 'entrada';
   const [hover, setHover] = useState(false);
   const [showReacoes, setShowReacoes] = useState(false);
@@ -163,7 +275,10 @@ export function BolhaConversa({ msg, podeExcluir, onExcluir, onResponder, onReag
         hasMedia && React.createElement('div', { style: { marginBottom: msg.conteudo ? 4 : 0 } },
           React.createElement(MediaPreview, { msg, isMe: !entrada, onOpenLightbox: abrirLightbox }),
         ),
-        msg.conteudo && React.createElement('div', {
+        msg.tipo === 'contato' && React.createElement(ContatoCompartilhado, {
+          conteudo: msg.conteudo, entrada, onSalvarContato, onIniciarConversa,
+        }),
+        msg.conteudo && msg.tipo !== 'contato' && React.createElement('div', {
           style: { fontSize: 14.2, lineHeight: '19px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
         }, realce ? realcarTermo(msg.conteudo, realce) : msg.conteudo),
         React.createElement('div', {

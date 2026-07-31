@@ -273,6 +273,7 @@ export function ChatGov() {
                     conversa: conversaAtiva,
                     onConversaUpdated: handleConversaUpdated,
                     breakpoint,
+                    onAbrirConversa: (convId) => handleSelectConversa({ id: convId }),
                   })
                 : React.createElement(PainelChatInternoAvancado, { canal: canalAtivo, breakpoint }),
             ),

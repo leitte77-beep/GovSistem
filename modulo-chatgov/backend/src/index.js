@@ -1451,11 +1451,16 @@ app.use('/api', rateLimiter);
       const op = req.operador;
       const phone = normalizePhone(req.body.telefone);
       const canal = String(req.body.canal || 'whatsapp').toLowerCase();
+      const digitos = phone.phoneE164.slice(1);
+      const variantes = variantesTelefoneBrasil(digitos);
       const existente = await db.oneOrNone(
         `SELECT * FROM contatos
-         WHERE tenant_id = $1 AND canal = $2 AND phone_e164 = $3
+         WHERE tenant_id = $1 AND canal = $2
+           AND (phone_e164 = $3
+             OR regexp_replace(COALESCE(telefone, ''), '\\D', '', 'g') = ANY($4)
+             OR wa_jid = ANY($5))
            AND deleted_at IS NULL AND merged_into_id IS NULL`,
-        [op.tenantId, canal, phone.phoneE164]
+        [op.tenantId, canal, phone.phoneE164, variantes, variantes.map((numero) => `${numero}@s.whatsapp.net`)]
       );
       if (existente) return res.status(409).json({ erro: 'Contato já cadastrado', contato_existente: existente });
       const jid = canal === 'whatsapp' ? `${phone.phoneE164.slice(1)}@s.whatsapp.net` : `${canal}:${phone.phoneE164}`;

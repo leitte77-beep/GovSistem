@@ -600,6 +600,24 @@ export async function fetchContatos(busca) {
   return res.json();
 }
 
+export async function criarContato(body) {
+  const res = await fetch('/api/contatos', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${getToken()}`,
+    },
+    body: JSON.stringify(body),
+  });
+  const dados = await res.json().catch(() => ({}));
+  // Salvar novamente o mesmo cartão deve ser idempotente para o operador.
+  if (res.status === 409 && dados.contato_existente) {
+    return { ...dados.contato_existente, ja_cadastrado: true };
+  }
+  if (!res.ok) throw new Error(dados.erro || 'Erro ao adicionar contato à agenda');
+  return dados;
+}
+
 export async function editarContato(id, body) {
   return jsonReq(`/api/contatos/${id}`, 'PUT', body);
 }
