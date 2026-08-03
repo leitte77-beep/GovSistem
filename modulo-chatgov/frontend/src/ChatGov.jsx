@@ -88,6 +88,33 @@ export function ChatGov() {
     try { localStorage.removeItem('chatgov_canal'); } catch {}
   }, []);
 
+  // `convId` é opcional: quando vem preenchido, só fecha se aquela conversa ainda
+  // for a aberta — o atendente pode ter clicado em outra no intervalo entre o
+  // pedido e a confirmação, e fechar a tela dele seria pior que não fechar nada.
+  const fecharConversa = useCallback((convId) => {
+    setConversaAtiva((atual) => {
+      if (convId && atual?.id !== convId) return atual;
+      try { localStorage.removeItem('chatgov_conversa'); } catch {}
+      return null;
+    });
+  }, []);
+
+  // Exclusão administrativa: quem estiver com a conversa aberta sai dela na
+  // hora. O backend passa a recusar leitura e envio, então manter o painel
+  // aberto só rende o erro "Conversa não encontrada" no primeiro envio.
+  useEffect(() => {
+    if (!socket) return undefined;
+    const onRemovida = ({ convId }) => {
+      setConversaAtiva((atual) => {
+        if (atual?.id !== convId) return atual;
+        try { localStorage.removeItem('chatgov_conversa'); } catch {}
+        return null;
+      });
+    };
+    socket.on('conversa:removida', onRemovida);
+    return () => socket.off('conversa:removida', onRemovida);
+  }, [socket]);
+
   useEffect(() => {
     if (!socket) return;
 
@@ -126,7 +153,11 @@ export function ChatGov() {
               : fresca
           ));
         })
-        .catch(() => {});
+        .catch((err) => {
+          // A conversa deixou de existir (exclusão administrativa): fecha o
+          // painel em vez de deixar o atendente escrevendo numa tela morta.
+          if (!cancelado && err?.name === 'ConversaRemovidaError') fecharConversa();
+        });
     };
 
     sincronizar();
@@ -145,7 +176,7 @@ export function ChatGov() {
       clearTimeout(debounce);
       socket.off('conversa:atualizada', onAtualizada);
     };
-  }, [socket, conversaAtivaId, recarregar]);
+  }, [socket, conversaAtivaId, recarregar, fecharConversa]);
 
   const mostrarListaMobile = ehMobile && !conversaAtiva && !canalAtivo;
   const mostrarPainelMobile = ehMobile && (conversaAtiva || canalAtivo);
@@ -247,6 +278,7 @@ export function ChatGov() {
                     // Usado pelo painel do cidadão para pular para um atendimento
                     // anterior do mesmo contato.
                     onAbrirConversa: (convId) => handleSelectConversa({ id: convId }),
+                    onEncerrada: fecharConversa,
                   })
                 : React.createElement(PainelChatInternoAvancado, {
                     canal: canalAtivo,
@@ -274,6 +306,7 @@ export function ChatGov() {
                     onConversaUpdated: handleConversaUpdated,
                     breakpoint,
                     onAbrirConversa: (convId) => handleSelectConversa({ id: convId }),
+                    onEncerrada: fecharConversa,
                   })
                 : React.createElement(PainelChatInternoAvancado, { canal: canalAtivo, breakpoint }),
             ),

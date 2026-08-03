@@ -108,13 +108,19 @@ async function obterJidDaConversaIndex(tenantId, convId) {
   return digits ? `${digits}@s.whatsapp.net` : null;
 }
 
+// Conversa excluída administrativamente não é legível por ninguém — nem
+// mensagens, nem timeline, nem ficha do cidadão.
 async function podeVerConversa(op, convId) {
   if (ehGestor(op)) {
-    const r = await db.oneOrNone('SELECT 1 FROM conversas WHERE id = $1 AND tenant_id = $2', [convId, op.tenantId]);
+    const r = await db.oneOrNone(
+      'SELECT 1 FROM conversas WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
+      [convId, op.tenantId]
+    );
     return !!r;
   }
   const r = await db.oneOrNone(
-    `SELECT 1 FROM conversas c WHERE c.id = $1 AND c.tenant_id = $2 AND ${filtroVisibilidadeSql('c', '$3')}`,
+    `SELECT 1 FROM conversas c WHERE c.id = $1 AND c.tenant_id = $2 AND c.deleted_at IS NULL
+       AND ${filtroVisibilidadeSql('c', '$3')}`,
     [convId, op.tenantId, op.id]
   );
   return !!r;
@@ -123,6 +129,17 @@ async function podeVerConversa(op, convId) {
 async function main() {
   await runMigrations();
   console.log('[Boot] Migrations complete');
+
+  // Todo socket morreu junto com o processo anterior: ninguém está online até
+  // reconectar. Sem esta limpeza o flag fica preso em true e a presença mente.
+  try {
+    const zerados = await db.result(
+      'UPDATE operadores SET online = false WHERE online = true', [], (r) => r.rowCount
+    );
+    if (zerados > 0) console.log(`[Boot] Presença reiniciada: ${zerados} operador(es) marcado(s) offline`);
+  } catch (err) {
+    console.warn('[Boot] Não foi possível reiniciar a presença:', err.message);
+  }
 
   try {
     await seedDemoData();
@@ -277,7 +294,7 @@ app.use('/api', rateLimiter);
         LEFT JOIN departamentos d ON d.id = c.departamento_id
         LEFT JOIN operadores o ON o.id = c.operador_id
         LEFT JOIN protocolos pr ON pr.id = c.protocolo_id
-        WHERE c.tenant_id = $1
+        WHERE c.tenant_id = $1 AND c.deleted_at IS NULL
       `;
       const params = [op.tenantId];
       let paramIdx = 2;
@@ -295,7 +312,7 @@ app.use('/api', rateLimiter);
       } else if (arquivadas === 'true') {
         query += ` AND c.status_operacional = 'ARQUIVADA'`;
       } else {
-        query += ` AND c.status_operacional NOT IN ('RESOLVIDA', 'ARQUIVADA') AND c.deleted_at IS NULL`;
+        query += ` AND c.status_operacional NOT IN ('RESOLVIDA', 'ARQUIVADA')`;
       }
       if (departamento_id) {
         query += ` AND c.departamento_id = $${paramIdx++}::uuid`;
@@ -329,7 +346,7 @@ app.use('/api', rateLimiter);
     try {
       const op = req.operador;
       const params = [op.tenantId, req.params.id];
-      let where = 'c.tenant_id = $1 AND c.id = $2::uuid';
+      let where = 'c.tenant_id = $1 AND c.id = $2::uuid AND c.deleted_at IS NULL';
       if (!ehGestor(op)) {
         where += ` AND ${filtroVisibilidadeSql('c', '$3')}`;
         params.push(op.id);
@@ -700,7 +717,7 @@ app.use('/api', rateLimiter);
 
       const [contato, protocolos, atendimentos, bloqueio, primeiroContato] = await Promise.all([
         db.oneOrNone(
-          `SELECT id, nome, telefone, phone_display, cpf, data_nascimento, endereco, bairro,
+          `SELECT id, nome, telefone, phone_e164, phone_display, cpf, data_nascimento, endereco, bairro,
                   avatar_url, criado_em
            FROM contatos WHERE id = $1 AND tenant_id = $2`,
           [conversa.contato_id, op.tenantId]
@@ -735,7 +752,8 @@ app.use('/api', rateLimiter);
         db.oneOrNone(
           `SELECT min(criado_em) AS em FROM mensagens
            WHERE tenant_id = $1 AND conversa_id IN (
-             SELECT id FROM conversas WHERE contato_id = $2 AND tenant_id = $1
+             SELECT id FROM conversas
+             WHERE contato_id = $2 AND tenant_id = $1 AND deleted_at IS NULL
            )`,
           [op.tenantId, conversa.contato_id]
         ),
@@ -841,7 +859,7 @@ app.use('/api', rateLimiter);
       const conversa = await db.one(
         `INSERT INTO conversas (tenant_id, contato_id, departamento_id, operador_id, status, status_operacional, ultima_mensagem_em)
          VALUES ($1, $2, $3, $4, 'aberta', 'EM_ATENDIMENTO', now())
-         ON CONFLICT (tenant_id, contato_id) DO UPDATE
+         ON CONFLICT (tenant_id, contato_id) WHERE deleted_at IS NULL DO UPDATE
            SET status = CASE WHEN conversas.status = 'resolvida' THEN 'aberta' ELSE conversas.status END,
                status_operacional = CASE WHEN conversas.status_operacional IN ('RESOLVIDA','ARQUIVADA') THEN 'EM_ATENDIMENTO' ELSE conversas.status_operacional END,
                departamento_id = COALESCE($3, conversas.departamento_id),
@@ -1221,7 +1239,7 @@ app.use('/api', rateLimiter);
     try {
       const op = req.operador;
       const result = await db.one(
-        'SELECT COUNT(*)::int as total FROM conversas WHERE tenant_id = $1 AND status = $2',
+        'SELECT COUNT(*)::int as total FROM conversas WHERE tenant_id = $1 AND status = $2 AND deleted_at IS NULL',
         [op.tenantId, 'fila']
       );
       res.json(result);
@@ -1243,9 +1261,11 @@ app.use('/api', rateLimiter);
       const params = [op.tenantId];
       let idx = 2;
 
-      const visibilidadeWhere = gestor
+      // Conversa excluída administrativamente não entra em nenhum indicador —
+      // o recorte vale para todas as queries que usam este trecho.
+      const visibilidadeWhere = (gestor
         ? ''
-        : ` AND ${filtroVisibilidadeSql('c', `$${idx++}`)}`;
+        : ` AND ${filtroVisibilidadeSql('c', `$${idx++}`)}`) + ' AND c.deleted_at IS NULL';
       if (!gestor) params.push(op.id);
 
       let deptFilter = '';
@@ -1533,30 +1553,51 @@ app.use('/api', rateLimiter);
   app.put('/api/contatos/:id', async (req, res) => {
     try {
       const op = req.operador;
-      const { nome, telefone, canal = 'whatsapp' } = req.body;
+      const { nome, telefone, canal, cpf, data_nascimento, endereco, bairro } = req.body;
       let phone = null;
       if (telefone !== undefined) phone = normalizePhone(telefone);
+      const canalTelefone = String(canal || 'whatsapp').toLowerCase();
+      const jid = phone
+        ? (canalTelefone === 'whatsapp'
+            ? `${phone.phoneE164.slice(1)}@s.whatsapp.net`
+            : `${canalTelefone}:${phone.phoneE164}`)
+        : null;
       const row = await db.oneOrNone(
         `UPDATE contatos SET
-           nome = $1,
-           telefone = COALESCE($2, telefone),
-           canal = COALESCE($3, canal),
-           phone_e164 = COALESCE($4, phone_e164),
-           phone_display = COALESCE($5, phone_display),
-           country_code = COALESCE($6, country_code),
-           area_code = COALESCE($7, area_code),
-           local_number = COALESCE($8, local_number)
-         WHERE id = $9 AND tenant_id = $10 AND deleted_at IS NULL
+           nome = CASE WHEN $1 THEN $2 ELSE nome END,
+           telefone = COALESCE($3, telefone),
+           canal = COALESCE($4, canal),
+           phone_e164 = COALESCE($5, phone_e164),
+           phone_display = COALESCE($6, phone_display),
+           country_code = COALESCE($7, country_code),
+           area_code = COALESCE($8, area_code),
+           local_number = COALESCE($9, local_number),
+           cpf = CASE WHEN $10 THEN $11 ELSE cpf END,
+           data_nascimento = CASE WHEN $12 THEN $13::date ELSE data_nascimento END,
+           endereco = CASE WHEN $14 THEN $15 ELSE endereco END,
+           bairro = CASE WHEN $16 THEN $17 ELSE bairro END,
+           wa_jid = COALESCE($18, wa_jid)
+         WHERE id = $19 AND tenant_id = $20 AND deleted_at IS NULL
          RETURNING *`,
         [
-          nome || null,
+          nome !== undefined,
+          nome?.trim() || null,
           phone?.phoneE164 || null,
-          canal || null,
+          canal ? String(canal).toLowerCase() : null,
           phone?.phoneE164 || null,
           phone?.phoneDisplay || null,
           phone?.countryCode || null,
           phone?.areaCode || null,
           phone?.localNumber || null,
+          cpf !== undefined,
+          cpf?.trim() || null,
+          data_nascimento !== undefined,
+          data_nascimento || null,
+          endereco !== undefined,
+          endereco?.trim() || null,
+          bairro !== undefined,
+          bairro?.trim() || null,
+          jid,
           req.params.id,
           op.tenantId,
         ]
@@ -2963,7 +3004,7 @@ app.use('/api', rateLimiter);
          JOIN contatos co ON co.id = c.contato_id
          LEFT JOIN departamentos d ON d.id = c.departamento_id
          LEFT JOIN protocolos p ON p.conversa_id = c.id
-         WHERE c.tenant_id = $1
+         WHERE c.tenant_id = $1 AND c.deleted_at IS NULL
            AND (co.nome ILIKE $2 OR co.telefone ILIKE $2 OR co.cpf ILIKE $2 OR p.numero ILIKE $2)
          ORDER BY c.ultima_mensagem_em DESC NULLS LAST LIMIT 20`,
         [op.tenantId, `%${q}%`]

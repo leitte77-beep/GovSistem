@@ -45,7 +45,7 @@ function aplicarVariaveis(texto, conversa) {
     .replace(/\{\{\s*data\s*\}\}/gi, new Date().toLocaleDateString('pt-BR'));
 }
 
-export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onVoltar, onAbrirConversa }) {
+export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onVoltar, onAbrirConversa, onEncerrada }) {
   const { socket, connected } = useSocket();
   const { auth } = useAuth();
   const ehMobile = breakpoint === 'mobile';
@@ -94,6 +94,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
   const [midias, setMidias] = useState([]);
   const [carregandoMidias, setCarregandoMidias] = useState(false);
   const [galeriaLightbox, setGaleriaLightbox] = useState(null);
+  const [avatarAmpliado, setAvatarAmpliado] = useState(false);
   const [draggingFile, setDraggingFile] = useState(false);
   const [toast, setToast] = useState(null);
   const [confirmacao, setConfirmacao] = useState(null);
@@ -687,6 +688,12 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
       if (ack?.ok) {
         onConversaUpdated?.();
         notificar('Atendimento resolvido.', 'sucesso');
+        // A conversa sai da lista ao ser resolvida; sem fechar o painel o
+        // atendente ficava olhando um atendimento que já não existe na lista —
+        // e podia continuar digitando nele. O respiro é só para o toast de
+        // confirmação aparecer antes da tela voltar ao início.
+        const encerrada = conversa.id;
+        setTimeout(() => onEncerrada?.(encerrada), 900);
       } else {
         notificar(ack?.erro || 'Não foi possível resolver o atendimento.', 'erro');
       }
@@ -997,7 +1004,10 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
         onClick: onVoltar, 'aria-label': 'Voltar', title: 'Voltar',
         style: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 36, height: 36, flexShrink: 0, borderRadius: '50%', border: 'none', cursor: 'pointer', background: 'transparent', color: T.text },
       }, React.createElement(ArrowLeft, { size: 22 })),
-      React.createElement(Avatar, { nome, url: conversa.contato_avatar_url, tamanho: ehCompacto ? 38 : 42, isNumber }),
+      React.createElement(Avatar, {
+        nome, url: conversa.contato_avatar_url, tamanho: ehCompacto ? 38 : 42, isNumber,
+        onClick: conversa.contato_avatar_url ? () => setAvatarAmpliado(true) : undefined,
+      }),
       // Mobile ≤400px: header em 2 linhas com truncamento
       ehMobile
         ? React.createElement('div', { style: { flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 } },
@@ -1457,7 +1467,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
           setShowCidadao(false);
           try { localStorage.setItem('chatgov_painel_cidadao', '0'); } catch {}
         },
-        onEditarCadastro: () => setEditandoNome(true),
+        onContatoAtualizado: () => onConversaUpdated?.(),
         onAbrirConversa: (convId) => onAbrirConversa?.(convId),
       }),
     ),
@@ -1814,6 +1824,10 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
       ),
     ),
     galeriaLightbox && React.createElement(MediaLightbox, { src: galeriaLightbox.src, tipo: galeriaLightbox.tipo, mime: galeriaLightbox.mime, nome: galeriaLightbox.nome, onClose: () => setGaleriaLightbox(null) }),
+    avatarAmpliado && React.createElement(MediaLightbox, {
+      src: conversa.contato_avatar_url, tipo: 'imagem', mime: 'image/jpeg', nome: `Foto de ${nome}`,
+      onClose: () => setAvatarAmpliado(false),
+    }),
     // Toast + modal de confirmação (substituem alert/confirm/prompt)
     toast && React.createElement('div', {
       role: 'status',

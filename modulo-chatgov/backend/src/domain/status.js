@@ -16,9 +16,13 @@ export const PROTOCOLO_STATUS = Object.freeze({
   CANCELADO: 'CANCELADO',
 });
 
+// Resolver direto da fila é rotina no balcão: o atendente lê a mensagem, vê que
+// não há o que fazer (engano, duplicidade, assunto já tratado no telefone) e
+// encerra sem "assumir" formalmente. Sem esses caminhos o botão Resolvido
+// devolvia "Transição inválida" e a conversa ficava aberta para sempre.
 const CONVERSA_TRANSITIONS = Object.freeze({
-  NOVA: ['NA_FILA', 'ARQUIVADA'],
-  NA_FILA: ['EM_ATENDIMENTO', 'ARQUIVADA'],
+  NOVA: ['NA_FILA', 'EM_ATENDIMENTO', 'RESOLVIDA', 'ARQUIVADA'],
+  NA_FILA: ['EM_ATENDIMENTO', 'RESOLVIDA', 'ARQUIVADA'],
   EM_ATENDIMENTO: ['NA_FILA', 'AGUARDANDO_CIDADAO', 'AGUARDANDO_SETOR', 'RESOLVIDA', 'ARQUIVADA'],
   AGUARDANDO_CIDADAO: ['EM_ATENDIMENTO', 'AGUARDANDO_SETOR', 'RESOLVIDA', 'ARQUIVADA'],
   AGUARDANDO_SETOR: ['EM_ATENDIMENTO', 'AGUARDANDO_CIDADAO', 'RESOLVIDA', 'ARQUIVADA'],

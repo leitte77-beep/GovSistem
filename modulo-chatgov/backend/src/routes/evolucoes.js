@@ -451,6 +451,7 @@ router.get('/notificacoes/status', async (req, res) => {
        FROM conversas c
        WHERE c.tenant_id = $1
          AND c.nao_lidas > 0
+         AND c.deleted_at IS NULL
          AND c.status NOT IN ('resolvida', 'arquivada')
          AND (
            c.operador_id = $2

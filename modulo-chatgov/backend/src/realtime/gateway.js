@@ -302,13 +302,17 @@ async function atualizarContatoDaConversaComJidResolvido(tenantId, convId, resol
 }
 
 // Mesmo critério de visibilidade do index.js (privacidade de conversas).
+// Conversa excluída administrativamente não é visível para ninguém.
 async function podeVerConversa(op, convId) {
   if (ehGestor(op)) {
-    const r = await db.oneOrNone('SELECT 1 FROM conversas WHERE id = $1 AND tenant_id = $2', [convId, op.tenantId]);
+    const r = await db.oneOrNone(
+      'SELECT 1 FROM conversas WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
+      [convId, op.tenantId]
+    );
     return !!r;
   }
     const r = await db.oneOrNone(
-    `SELECT 1 FROM conversas c WHERE c.id = $1 AND c.tenant_id = $2 AND (
+    `SELECT 1 FROM conversas c WHERE c.id = $1 AND c.tenant_id = $2 AND c.deleted_at IS NULL AND (
        EXISTS (SELECT 1 FROM conversa_participantes p WHERE p.conversa_id = c.id AND p.operador_id = $3 AND p.tenant_id = $2)
        OR (c.status = 'fila' AND (
          c.departamento_id IS NULL
@@ -367,6 +371,32 @@ export function iniciarGateway(httpServer, wa, storage) {
       next(new Error('Token inválido'));
     }
   });
+
+  // Heartbeat de presença: renova `ultimo_visto` de quem tem socket aberto. Sem
+  // isso, "online" só é escrito no connect/disconnect e mente sempre que o
+  // processo cai — e a Iris passaria a prometer atendente que não está lá.
+  const HEARTBEAT_MS = 60_000;
+  const heartbeat = setInterval(async () => {
+    try {
+      const conectados = new Map();
+      for (const s of io.sockets.sockets.values()) {
+        const o = s.data?.operador;
+        if (o?.id && o?.tenantId) conectados.set(o.id, o.tenantId);
+      }
+      if (conectados.size === 0) return;
+      for (const [tenantId, ids] of agruparPorTenant(conectados)) {
+        await setTenantContext(tenantId);
+        await db.none(
+          `UPDATE operadores SET online = true, ultimo_visto = now()
+           WHERE tenant_id = $1 AND id = ANY($2::uuid[])`,
+          [tenantId, ids]
+        );
+      }
+    } catch (err) {
+      console.error('[Socket] heartbeat de presença:', err.message);
+    }
+  }, HEARTBEAT_MS);
+  heartbeat.unref?.();
 
   io.on('connection', async (socket) => {
     const op = socket.data.operador;
@@ -622,6 +652,23 @@ export function iniciarGateway(httpServer, wa, storage) {
     socket.on('conversa:resolver', async (convId, ack) => {
       try {
         await setTenantContext(op.tenantId);
+        // Conversa ainda na fila não tem dono, e a máquina de estados exige um
+        // responsável para resolver. Quem clicou assume a autoria do
+        // encerramento — é o que os relatórios por atendente esperam.
+        const assumida = await db.oneOrNone(
+          `UPDATE conversas SET operador_id = $1
+            WHERE id = $2 AND tenant_id = $3 AND operador_id IS NULL AND deleted_at IS NULL
+            RETURNING id`,
+          [op.id, convId, op.tenantId]
+        );
+        if (assumida) {
+          await db.none(
+            `INSERT INTO conversa_participantes (conversa_id, operador_id, papel, adicionado_por, tenant_id)
+             VALUES ($1, $2, 'dono', $2, $3)
+             ON CONFLICT (conversa_id, operador_id) DO UPDATE SET papel = 'dono'`,
+            [convId, op.id, op.tenantId]
+          );
+        }
         await transitionConversation({
           tenantId: op.tenantId,
           conversaId: convId,
@@ -673,7 +720,8 @@ export function iniciarGateway(httpServer, wa, storage) {
            FROM conversas WHERE id = $1 AND tenant_id = $2`,
           [convId, op.tenantId]
         );
-        if (!conversaEnvio || conversaEnvio.deleted_at) throw new Error('Conversa não encontrada');
+        if (!conversaEnvio) throw new Error('Conversa não encontrada');
+        if (conversaEnvio.deleted_at) throw new Error('Esta conversa foi excluída e não aceita novas mensagens');
         if (conversaEnvio.bloqueada) throw new Error('Conversa bloqueada para novas interações');
         if (conversaEnvio.status_operacional === 'ARQUIVADA' || conversaEnvio.status === 'arquivada') {
           throw new Error('Restaure a conversa arquivada antes de responder');
@@ -1852,10 +1900,14 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
   // Executa em background (não bloqueia a entrega da mensagem).
   buscarAvatarContato(wa, tenantId, contatoRow.id).catch(() => {});
 
+  // O ON CONFLICT mira o índice parcial (migração 022): conversa excluída não
+  // conta como conflito, então o cidadão que volta a escrever depois de uma
+  // exclusão administrativa abre um atendimento novo em vez de ressuscitar —
+  // e ficar preso em — o histórico apagado.
   const conversaRow = await db.oneOrNone(
     `INSERT INTO conversas (tenant_id, contato_id, status, status_operacional, nao_lidas, ultima_mensagem, ultima_mensagem_em)
      VALUES ($1, $2, $5, CASE WHEN $7 = 'saida' THEN 'EM_ATENDIMENTO' ELSE 'NOVA' END, $6, $3, $4)
-      ON CONFLICT (tenant_id, contato_id) DO UPDATE
+      ON CONFLICT (tenant_id, contato_id) WHERE deleted_at IS NULL DO UPDATE
         SET nao_lidas = CASE
               WHEN $7 = 'saida' THEN conversas.nao_lidas
               WHEN conversas.status = 'resolvida' THEN 1
@@ -1949,8 +2001,11 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
       const isFirstContact = msgCountResult.cnt === 1;
 
       const enviarBotMsg = async (textoResposta, origem = 'bot') => {
-        if (!textoResposta || !textoResposta.trim()) {
-          console.log('[Chatbot] Resposta vazia, ignorando envio');
+        // Barra também respostas sem conteúdo real ("{", "...", só emoji de
+        // pontuação): já aconteceu de um JSON truncado do provedor virar
+        // mensagem "🤖 {" no WhatsApp do cidadão.
+        if (!textoResposta || String(textoResposta).replace(/[^\p{L}\p{N}]/gu, '').length < 2) {
+          console.log('[Chatbot] Resposta sem conteúdo, ignorando envio:', JSON.stringify(textoResposta)?.slice(0, 60));
           return;
         }
         // Emite evento "bot digitando..." antes de enviar
@@ -1992,6 +2047,7 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
       };
 
       let departamentoAlvo = null;
+      let operadorAlvo = null;
 
       // O bot (Iris/chatbot) so atua na triagem: enquanto nenhum operador humano assumiu
       let botPodeResponder = !conversaRow.operador_id;
@@ -2003,32 +2059,12 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
         botPodeResponder = dep?.eh_recepcao === true;
       }
 
-      // Se tem operador mas ele pode ter abandonado a conversa (offline + sem resposta ha 10+ min)
-      if (!botPodeResponder && conversaRow.operador_id) {
-        try {
-          const operador = await db.oneOrNone(
-            'SELECT online FROM operadores WHERE id = $1 AND tenant_id = $2',
-            [conversaRow.operador_id, tenantId]
-          );
-          if (!operador?.online) {
-            const ultimaMsgOperador = await db.oneOrNone(
-              `SELECT criado_em FROM mensagens
-               WHERE conversa_id = $1 AND tenant_id = $2 AND direcao = 'saida' AND operador_id = $3
-               ORDER BY criado_em DESC LIMIT 1`,
-              [conversaRow.id, tenantId, conversaRow.operador_id]
-            );
-            const agora = new Date();
-            const tempoSemResposta = ultimaMsgOperador
-              ? (agora - new Date(ultimaMsgOperador.criado_em)) / 1000 / 60
-              : Infinity;
-            if (tempoSemResposta > 10) {
-              botPodeResponder = true;
-            }
-          }
-        } catch (e) {
-          console.error('[Gateway] Erro ao verificar abandono de conversa:', e.message);
-        }
-      }
+      // Nada de "resgate de conversa abandonada" aqui. A regra antiga soltava o
+      // bot quando o atendente estava offline e não escrevia havia 10 minutos, e
+      // o efeito prático era a Iris responder por cima de um atendimento humano
+      // em curso: o atendente mandava um documento, saía, e a resposta do cidadão
+      // meia hora depois caía na IA. Conversa com responsável é assunto dele — a
+      // mensagem fica como não lida no painel até ele voltar.
 
       if (botPodeResponder && irisCfg) {
         // Emite "Iris esta digitando" para o painel
@@ -2046,8 +2082,11 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
           if (resultado.departamento_id) {
             departamentoAlvo = resultado.departamento_id;
           }
+          if (resultado.operador_id) {
+            operadorAlvo = resultado.operador_id;
+          }
           if (resultado.confianca) {
-            console.log(`[Iris] Confianca: ${resultado.confianca} | Depto: ${departamentoAlvo || 'nenhum'}`);
+            console.log(`[Iris] Confianca: ${resultado.confianca} | Depto: ${departamentoAlvo || 'nenhum'} | Atendente: ${operadorAlvo || 'nenhum'}`);
           }
         } else {
           io.to(salas.conversa(conversaRow.id)).emit('cliente:presenca', {
@@ -2090,6 +2129,52 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
             digitando: false,
             estado: null,
           });
+        }
+      }
+
+      // O cidadão pediu por um atendente e a Iris confirmou que ele está online
+      // e com vaga: a conversa já entra com dono, como uma transferência.
+      // A corrida com um humano que assumiu no meio do caminho é resolvida pelo
+      // `operador_id IS NULL` no UPDATE — quem chegou primeiro fica.
+      if (!conversaRow.operador_id && operadorAlvo) {
+        const atribuida = await db.oneOrNone(
+          `UPDATE conversas SET operador_id = $1, status = 'aberta', status_operacional = 'EM_ATENDIMENTO'
+           WHERE id = $2 AND tenant_id = $3 AND operador_id IS NULL AND deleted_at IS NULL
+           RETURNING id`,
+          [operadorAlvo, conversaRow.id, tenantId]
+        );
+        if (atribuida) {
+          // Sem o registro de participante o atendente não enxerga a conversa
+          // (o filtro de visibilidade olha conversa_participantes).
+          await db.none(
+            `INSERT INTO conversa_participantes (conversa_id, operador_id, papel, adicionado_por, tenant_id)
+             VALUES ($1, $2, 'dono', $2, $3)
+             ON CONFLICT (conversa_id, operador_id) DO UPDATE SET papel = 'dono'`,
+            [conversaRow.id, operadorAlvo, tenantId]
+          );
+          // Alinha o setor da conversa ao do atendente, quando ele tem um só.
+          const setor = await db.oneOrNone(
+            `SELECT od.departamento_id FROM operador_departamentos od
+             JOIN departamentos d ON d.id = od.departamento_id AND d.ativo = true
+             WHERE od.operador_id = $1 AND od.tenant_id = $2
+             LIMIT 2`,
+            [operadorAlvo, tenantId]
+          );
+          if (setor?.departamento_id && !departamentoAlvo) {
+            await db.none(
+              'UPDATE conversas SET departamento_id = $1 WHERE id = $2 AND tenant_id = $3',
+              [setor.departamento_id, conversaRow.id, tenantId]
+            );
+          }
+          conversaRow.operador_id = operadorAlvo;
+          await criarNotificacao(
+            tenantId, operadorAlvo, 'conversa_atribuida', 'Atendimento direcionado pela Iris',
+            'O cidadão pediu para falar com você.', `/?conversa=${conversaRow.id}`
+          ).catch(() => {});
+          io.to(salas.tenant(tenantId)).emit('conversa:atualizada', { convId: conversaRow.id });
+          console.log(`[Iris] Conversa ${conversaRow.id} atribuída ao atendente ${operadorAlvo}`);
+        } else {
+          console.log('[Iris] Atendente indicado, mas a conversa já tinha dono — atribuição ignorada.');
         }
       }
 
@@ -2160,12 +2245,26 @@ function extrairConteudoMensagem(message) {
   return atual;
 }
 
+// `ultimo_visto` é atualizado nos dois sentidos: ao conectar vira o marco inicial
+// do sinal de vida (renovado pelo heartbeat), ao desconectar vira o "visto por
+// último". Quem lê presença confia na dupla online + ultimo_visto recente, então
+// uma queda do processo não deixa ninguém eternamente "online".
 async function _setOnline(tenantId, operadorId, online) {
   await db.none(
-    `UPDATE operadores SET online = $1, ultimo_visto = CASE WHEN $1 THEN ultimo_visto ELSE now() END
+    `UPDATE operadores SET online = $1, ultimo_visto = now()
      WHERE id = $2 AND tenant_id = $3`,
     [online, operadorId, tenantId]
   );
+}
+
+// Map<operadorId, tenantId> -> [[tenantId, [operadorId, ...]], ...]
+function agruparPorTenant(conectados) {
+  const porTenant = new Map();
+  for (const [opId, tenantId] of conectados) {
+    if (!porTenant.has(tenantId)) porTenant.set(tenantId, []);
+    porTenant.get(tenantId).push(opId);
+  }
+  return porTenant;
 }
 
 async function _auditar(tenantId, operadorId, acao, detalhe) {

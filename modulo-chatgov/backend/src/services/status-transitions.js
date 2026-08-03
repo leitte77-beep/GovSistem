@@ -30,6 +30,11 @@ export async function transitionConversation({
     if (!conversa) throw new Error('Conversa não encontrada');
 
     const from = normalizeStatus('conversa', conversa.status_operacional || conversa.status);
+    // Clicar duas vezes em Resolvido (ou dois atendentes fechando a mesma
+    // conversa) não é erro: o estado desejado já é o atual, então não há o que
+    // gravar nem o que auditar.
+    if (from === normalizeStatus('conversa', targetStatus)) return conversa;
+
     const target = assertTransition('conversa', from, targetStatus, {
       operadorId: conversa.operador_id,
       justificativa,

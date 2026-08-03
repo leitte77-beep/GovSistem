@@ -32,6 +32,17 @@ test('protocolo concluído exige motivo para reabrir', () => {
   );
 });
 
+test('conversa na fila pode ser resolvida por quem assume o encerramento', () => {
+  assert.equal(
+    assertTransition('conversa', 'NA_FILA', 'RESOLVIDA', { operadorId: 'atendente-1' }),
+    'RESOLVIDA'
+  );
+  assert.equal(
+    assertTransition('conversa', 'NOVA', 'RESOLVIDA', { operadorId: 'atendente-1' }),
+    'RESOLVIDA'
+  );
+});
+
 test('transição inexistente é rejeitada', () => {
   assert.throws(
     () => assertTransition('conversa', 'ARQUIVADA', 'RESOLVIDA', { operadorId: 'x' }),

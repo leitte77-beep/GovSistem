@@ -18,13 +18,25 @@ export async function fetchConversas({ status, departamento, busca, arquivadas, 
   }
 }
 
+// Sinaliza que a conversa não existe mais (excluída ou fora do alcance do
+// operador) — diferente de uma falha momentânea de rede, que não deve fechar o
+// painel de quem está atendendo.
+export class ConversaRemovidaError extends Error {
+  constructor() {
+    super('Conversa não encontrada');
+    this.name = 'ConversaRemovidaError';
+  }
+}
+
 // Estado atual de uma conversa (setor, responsável, status, protocolo). Retorna
-// null quando o operador perdeu o acesso ou a conversa sumiu.
+// null quando a consulta falha; lança ConversaRemovidaError quando a conversa
+// deixou de existir.
 export async function fetchConversa(convId, { signal } = {}) {
   const res = await fetch(`/api/conversas/${convId}`, {
     headers: { Authorization: `Bearer ${getToken()}` },
     signal,
   });
+  if (res.status === 404) throw new ConversaRemovidaError();
   if (!res.ok) return null;
   return res.json();
 }

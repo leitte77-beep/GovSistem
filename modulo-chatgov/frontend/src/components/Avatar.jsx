@@ -25,17 +25,25 @@ function iniciais(nome) {
   return partes[0].substring(0, 2).toUpperCase();
 }
 
-export function Avatar({ nome, url, tamanho = 40, online, tipo, isNumber }) {
+export function Avatar({ nome, url, tamanho = 40, online, tipo, isNumber, onClick }) {
   const bg = useMemo(() => corPorNome(nome), [nome]);
   const [imgErro, setImgErro] = React.useState(false);
 
   if (url && !imgErro) {
     return React.createElement('div', {
+      onClick,
+      onKeyDown: onClick ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(e); } } : undefined,
+      role: onClick ? 'button' : undefined,
+      tabIndex: onClick ? 0 : undefined,
+      'aria-label': onClick ? `Ampliar foto de ${nome || 'perfil'}` : undefined,
+      title: onClick ? 'Clique para ampliar a foto' : undefined,
       style: {
         position: 'relative',
         width: tamanho,
         height: tamanho,
         flexShrink: 0,
+        cursor: onClick ? 'zoom-in' : 'default',
+        borderRadius: '50%',
       },
     },
       React.createElement('img', {

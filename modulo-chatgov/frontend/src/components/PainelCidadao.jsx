@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   X, Copy, Check, User, Phone, IdCard, MapPin, Calendar, Tag, Building2,
   UserCheck, FileText, MessageSquare, Ban, Loader2, Pencil,
 } from 'lucide-react';
 import { T } from '../theme';
-import { fetchFichaCidadao, fetchHistoricoConversa } from '../api';
+import { fetchFichaCidadao, fetchHistoricoConversa, editarContato } from '../api';
 import { CONVERSA_STATUS_UI, conversationStatus } from '../domain/status';
 
 // Cor da bolinha na linha do tempo por tipo de evento.
@@ -74,11 +74,16 @@ function Secao({ titulo, children, contador }) {
   );
 }
 
-export function PainelCidadao({ conversa, etiquetas = [], onFechar, onEditarCadastro, onAbrirConversa }) {
+export function PainelCidadao({ conversa, etiquetas = [], onFechar, onContatoAtualizado, onAbrirConversa }) {
   const [ficha, setFicha] = useState(null);
   const [historico, setHistorico] = useState([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState('');
+  const [editando, setEditando] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [erroEdicao, setErroEdicao] = useState('');
+  const [form, setForm] = useState({ nome: '', telefone: '', cpf: '', data_nascimento: '', endereco: '', bairro: '' });
+  const painelRef = useRef(null);
 
   const carregar = useCallback(async () => {
     if (!conversa?.id) return;
@@ -105,7 +110,55 @@ export function PainelCidadao({ conversa, etiquetas = [], onFechar, onEditarCada
   const telefone = contato?.phone_display || contato?.telefone || conversa?.contato_telefone;
   const protocoloAtual = ficha?.conversa?.protocolo_numero || conversa?.protocolo_numero;
 
+  const abrirEdicao = () => {
+    setForm({
+      nome: contato?.nome || conversa?.contato_nome || '',
+      telefone: contato?.phone_e164 || contato?.telefone || conversa?.contato_telefone || '',
+      cpf: contato?.cpf || '',
+      data_nascimento: contato?.data_nascimento ? String(contato.data_nascimento).slice(0, 10) : '',
+      endereco: contato?.endereco || '',
+      bairro: contato?.bairro || '',
+    });
+    setErroEdicao('');
+    setEditando(true);
+    requestAnimationFrame(() => painelRef.current?.scrollTo({ top: 0, behavior: 'smooth' }));
+  };
+
+  const salvarEdicao = async () => {
+    if (!contato?.id) return;
+    setSalvando(true);
+    setErroEdicao('');
+    try {
+      const atualizado = await editarContato(contato.id, form);
+      setFicha((atual) => ({ ...atual, contato: atualizado }));
+      setEditando(false);
+      onContatoAtualizado?.(atualizado);
+    } catch (e) {
+      setErroEdicao(e.message || 'Não foi possível atualizar o cadastro.');
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const campo = (rotulo, chave, opcoes = {}) => React.createElement('label', {
+    style: { display: 'block', marginBottom: 9, fontSize: 10.5, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.3 },
+  },
+    rotulo,
+    React.createElement('input', {
+      type: opcoes.type || 'text', value: form[chave],
+      onChange: (e) => setForm((atual) => ({ ...atual, [chave]: e.target.value })),
+      placeholder: opcoes.placeholder,
+      style: {
+        display: 'block', width: '100%', marginTop: 4, padding: '8px 9px',
+        borderRadius: T.radiusSm, border: `1px solid ${T.border}`, background: T.surfaceMuted,
+        color: T.text, fontSize: 12.5, fontFamily: 'inherit', outline: 'none', boxSizing: 'border-box',
+        textTransform: 'none', letterSpacing: 0, fontWeight: 400,
+      },
+    }),
+  );
+
   return React.createElement('aside', {
+    ref: painelRef,
     'aria-label': 'Dados do cidadão',
     style: {
       width: 300, flexShrink: 0, height: '100%', overflowY: 'auto',
@@ -145,18 +198,42 @@ export function PainelCidadao({ conversa, etiquetas = [], onFechar, onEditarCada
 
       // Cadastro
       React.createElement('div', { style: { padding: '4px 16px 10px' } },
-        React.createElement(Linha, { icone: User, rotulo: 'Nome', valor: contato?.nome || conversa?.contato_nome }),
-        React.createElement(Linha, {
-          icone: Phone, rotulo: 'Telefone', valor: telefone,
-          acao: React.createElement(BotaoCopiar, { texto: telefone, rotulo: 'telefone' }),
-        }),
-        React.createElement(Linha, { icone: IdCard, rotulo: 'CPF', valor: contato?.cpf }),
-        React.createElement(Linha, { icone: MapPin, rotulo: 'Endereço', valor: contato?.endereco }),
-        React.createElement(Linha, { icone: MapPin, rotulo: 'Bairro / comunidade', valor: contato?.bairro }),
-        React.createElement(Linha, {
-          icone: Calendar, rotulo: 'Primeiro contato',
-          valor: formatarData(ficha?.primeiro_contato_em),
-        }),
+        editando
+          ? React.createElement('div', { style: { paddingTop: 8 } },
+              React.createElement('div', { style: { fontSize: 12.5, fontWeight: 800, color: T.text, marginBottom: 10 } }, 'Editar dados do cidadão'),
+              campo('Nome', 'nome', { placeholder: 'Nome completo' }),
+              campo('Telefone', 'telefone', { type: 'tel', placeholder: '+55 (44) 99999-9999' }),
+              campo('CPF', 'cpf', { placeholder: '000.000.000-00' }),
+              campo('Data de nascimento', 'data_nascimento', { type: 'date' }),
+              campo('Endereço', 'endereco', { placeholder: 'Rua, número e complemento' }),
+              campo('Bairro / comunidade', 'bairro', { placeholder: 'Bairro ou comunidade' }),
+              erroEdicao && React.createElement('div', { role: 'alert', style: { color: T.danger, fontSize: 11.5, marginBottom: 8 } }, erroEdicao),
+              React.createElement('div', { style: { display: 'flex', gap: 7, marginBottom: 4 } },
+                React.createElement('button', {
+                  type: 'button', onClick: () => setEditando(false), disabled: salvando,
+                  style: { flex: 1, padding: '8px 10px', borderRadius: T.radiusSm, border: `1px solid ${T.border}`, background: 'transparent', color: T.textSecondary, cursor: 'pointer', fontWeight: 700, fontSize: 12 },
+                }, 'Cancelar'),
+                React.createElement('button', {
+                  type: 'button', onClick: salvarEdicao, disabled: salvando,
+                  style: { flex: 1, padding: '8px 10px', borderRadius: T.radiusSm, border: 'none', background: T.primary, color: '#fff', cursor: salvando ? 'wait' : 'pointer', opacity: salvando ? 0.7 : 1, fontWeight: 700, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5 },
+                }, salvando && React.createElement(Loader2, { size: 13, className: 'spin' }), salvando ? 'Salvando...' : 'Salvar'),
+              ),
+            )
+          : React.createElement(React.Fragment, null,
+              React.createElement(Linha, { icone: User, rotulo: 'Nome', valor: contato?.nome || conversa?.contato_nome }),
+              React.createElement(Linha, {
+                icone: Phone, rotulo: 'Telefone', valor: telefone,
+                acao: React.createElement(BotaoCopiar, { texto: telefone, rotulo: 'telefone' }),
+              }),
+              React.createElement(Linha, { icone: IdCard, rotulo: 'CPF', valor: contato?.cpf }),
+              React.createElement(Linha, { icone: Calendar, rotulo: 'Data de nascimento', valor: formatarData(contato?.data_nascimento) }),
+              React.createElement(Linha, { icone: MapPin, rotulo: 'Endereço', valor: contato?.endereco }),
+              React.createElement(Linha, { icone: MapPin, rotulo: 'Bairro / comunidade', valor: contato?.bairro }),
+              React.createElement(Linha, {
+                icone: Calendar, rotulo: 'Primeiro contato',
+                valor: formatarData(ficha?.primeiro_contato_em),
+              }),
+            ),
       ),
 
       // Atendimento atual
@@ -258,7 +335,7 @@ export function PainelCidadao({ conversa, etiquetas = [], onFechar, onEditarCada
       // Ações rápidas
       React.createElement(Secao, { titulo: 'Ações' },
         React.createElement('button', {
-          onClick: onEditarCadastro,
+          onClick: abrirEdicao,
           style: {
             width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '9px 10px',
             borderRadius: T.radiusSm, border: `1px solid ${T.border}`, background: 'transparent',

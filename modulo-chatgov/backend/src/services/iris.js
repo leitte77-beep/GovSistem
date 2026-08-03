@@ -110,7 +110,8 @@ async function obterInfoFila(tenantId, departamentoSugerido) {
        FROM departamentos d
        LEFT JOIN operador_departamentos od ON od.departamento_id = d.id
        LEFT JOIN operadores o ON o.id = od.operador_id AND o.online = true
-       LEFT JOIN conversas c ON c.departamento_id = d.id AND c.status = 'fila' AND c.tenant_id = $1
+       LEFT JOIN conversas c ON c.departamento_id = d.id AND c.status = 'fila'
+         AND c.tenant_id = $1 AND c.deleted_at IS NULL
        WHERE d.tenant_id = $1 AND d.ativo = true
        GROUP BY d.id, d.nome
        ORDER BY d.nome`,
@@ -123,20 +124,28 @@ async function obterInfoFila(tenantId, departamentoSugerido) {
        FROM conversas
        WHERE tenant_id = $1
          AND status = 'fila'
-         AND operador_id IS NULL`,
+         AND operador_id IS NULL
+         AND deleted_at IS NULL`,
       [tenantId]
     );
 
-    // Tempo médio de espera (últimas 100 conversas resolvidas)
+    // Tempo médio de espera (últimas 100 conversas resolvidas).
+    // O recorte precisa acontecer numa subconsulta: ORDER BY/LIMIT ao lado de
+    // um AVG sem GROUP BY é erro de SQL — e derrubava a função inteira, deixando
+    // a Iris sem nenhum dado de fila.
     const tempoMedio = await db.oneOrNone(
       `SELECT AVG(EXTRACT(EPOCH FROM (ultima_mensagem_em - criado_em)))::int AS segundos
-       FROM conversas
-       WHERE tenant_id = $1
-         AND status = 'resolvida'
-         AND operador_id IS NOT NULL
-         AND criado_em > now() - INTERVAL '30 days'
-       ORDER BY criado_em DESC
-       LIMIT 100`,
+       FROM (
+         SELECT ultima_mensagem_em, criado_em
+         FROM conversas
+         WHERE tenant_id = $1
+           AND status = 'resolvida'
+           AND operador_id IS NOT NULL
+           AND deleted_at IS NULL
+           AND criado_em > now() - INTERVAL '30 days'
+         ORDER BY criado_em DESC
+         LIMIT 100
+       ) recentes`,
       [tenantId]
     );
 
@@ -149,6 +158,7 @@ async function obterInfoFila(tenantId, departamentoSugerido) {
          WHERE tenant_id = $1
            AND status = 'fila'
            AND operador_id IS NULL
+           AND deleted_at IS NULL
            AND departamento_id = $2
            AND criado_em < (SELECT criado_em FROM conversas WHERE departamento_sugerido = $2 AND tenant_id = $1 LIMIT 1)`,
         [tenantId, departamentoSugerido]
@@ -173,7 +183,72 @@ async function obterInfoFila(tenantId, departamentoSugerido) {
   }
 }
 
-function buildSystemPrompt(tenantNome, secretarias, departamentos, infoFila, contextoHorario = null, insistencia = 0) {
+// Janela de tolerância do heartbeat de presença (gateway renova a cada 60s).
+// Fora dela o atendente é tratado como offline, mesmo com a flag `online` ligada.
+const PRESENCA_FRESCA = '3 minutes';
+
+// A equipe é lida do banco a cada mensagem: quem for cadastrado, desativado ou
+// trocado de setor entra no contexto da Iris na conversa seguinte, sem ninguém
+// precisar editar o prompt.
+async function obterEquipe(tenantId) {
+  try {
+    return await db.manyOrNone(
+      `SELECT o.id, o.nome, o.papel,
+              (o.online AND o.ultimo_visto > now() - INTERVAL '${PRESENCA_FRESCA}') AS online,
+              o.status_atendente,
+              COALESCE(o.limite_conversas, o.capacidade_maxima) AS limite,
+              COALESCE(carga.abertas, 0)::int AS em_atendimento,
+              COALESCE(
+                array_agg(d.nome ORDER BY d.nome) FILTER (WHERE d.nome IS NOT NULL),
+                '{}'
+              ) AS setores,
+              COALESCE(
+                array_agg(d.id::text ORDER BY d.nome) FILTER (WHERE d.id IS NOT NULL),
+                '{}'
+              ) AS setor_ids
+       FROM operadores o
+       LEFT JOIN operador_departamentos od ON od.operador_id = o.id
+       LEFT JOIN departamentos d ON d.id = od.departamento_id AND d.ativo = true
+       LEFT JOIN LATERAL (
+         SELECT COUNT(*)::int AS abertas FROM conversas c
+         WHERE c.operador_id = o.id AND c.tenant_id = o.tenant_id AND c.deleted_at IS NULL
+           AND c.status_operacional IN ('EM_ATENDIMENTO', 'AGUARDANDO_CIDADAO', 'AGUARDANDO_SETOR')
+       ) carga ON true
+       WHERE o.tenant_id = $1 AND o.ativo = true
+       GROUP BY o.id, carga.abertas
+       ORDER BY o.nome`,
+      [tenantId]
+    );
+  } catch (err) {
+    console.error('[Iris] Erro ao obter equipe:', err.message);
+    return [];
+  }
+}
+
+// Formato enxuto entregue ao modelo: nome para conversar, id para rotear.
+function equipeCompacta(equipe) {
+  return equipe.map((o) => ({
+    id: o.id,
+    nome: o.nome,
+    setores: o.setores || [],
+    online: o.online === true,
+    conversas_abertas: o.em_atendimento,
+    limite: o.limite,
+  }));
+}
+
+const REGRAS_EQUIPE = `
+ATENDENTES:
+- A lista "EQUIPE" traz os atendentes reais, com o setor de cada um e se estao online agora.
+- Pode citar pelo nome quem esta online ("A Karina, da Tributacao, esta disponivel").
+- Nunca prometa uma pessoa que esta offline nem invente nomes fora da lista.
+- Se o cidadao pedir por uma pessoa da lista e ela estiver online e com vaga
+  (conversas_abertas < limite), devolva o UUID dela em "operador_id" — a conversa vai direto para ela.
+- Se a pessoa pedida estiver offline ou lotada, diga isso com naturalidade e encaminhe
+  para o setor dela usando "departamento_id" (deixe "operador_id" null).
+- Sem pedido por pessoa, roteie por assunto como sempre: use so "departamento_id".`;
+
+function buildSystemPrompt(tenantNome, secretarias, departamentos, infoFila, contextoHorario = null, insistencia = 0, equipe = []) {
   const deptos = departamentos.map((d) => {
     const sec = secretarias.find((s) => s.id === d.secretaria_id);
     const prefix = sec ? `${sec.nome} › ` : '';
@@ -250,21 +325,27 @@ REGRAS:
 
 DEPARTAMENTOS DISPONIVEIS:
 ${deptos}
+${REGRAS_EQUIPE}
 
 FORMATO DE RESPOSTA (JSON obrigatorio):
 {
   "resposta": "sua mensagem para o cidadao",
   "departamento_id": "id-do-departamento ou null",
+  "operador_id": "id-do-atendente ou null",
   "finalizado": true
 }
 
-IMPORTANTE: 
+IMPORTANTE:
 - "departamento_id": use o UUID do departamento que esta na lista acima. NAO use null se souber o departamento.
 - So use "departamento_id": null se ainda estiver fazendo perguntas.
+- "operador_id": so preencha quando o cidadao pedir por um atendente da lista EQUIPE que esteja online e com vaga.
 - "finalizado": true ao encaminhar. false so se fizer pergunta e esperar resposta.
 
 DEPARTAMENTOS EM JSON:
-${JSON.stringify(deptosCompact)}`;
+${JSON.stringify(deptosCompact)}
+
+EQUIPE:
+${JSON.stringify(equipeCompacta(equipe))}`;
 }
 
 /**
@@ -315,6 +396,62 @@ function extrairDepartamentoDoTexto(textoBruto, departamentos) {
   return null;
 }
 
+// Uma resposta só serve para ser enviada ao cidadão se tiver conteúdo de fato.
+// O DeepSeek eventualmente devolve só a abertura do objeto ("{") ou string
+// vazia; mandar isso pelo WhatsApp é pior do que não responder — e, como a
+// mensagem entra no histórico da conversa, o modelo passa a imitar o padrão e
+// responde "{" para sempre naquele atendimento.
+function textoUtil(txt) {
+  return typeof txt === 'string' && txt.replace(/[^\p{L}\p{N}]/gu, '').length >= 2;
+}
+
+// Aceita JSON puro, JSON dentro de bloco ```json e JSON embutido em texto.
+function extrairJson(bruto) {
+  const txt = String(bruto || '').trim();
+  if (!txt) return null;
+  const candidatos = [txt];
+
+  const fence = txt.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  if (fence) candidatos.push(fence[1].trim());
+
+  const inicio = txt.indexOf('{');
+  const fim = txt.lastIndexOf('}');
+  if (inicio !== -1 && fim > inicio) candidatos.push(txt.slice(inicio, fim + 1));
+
+  for (const c of candidatos) {
+    try {
+      const obj = JSON.parse(c);
+      if (obj && typeof obj === 'object') return obj;
+    } catch { /* tenta o próximo formato */ }
+  }
+  return null;
+}
+
+// O prompt do tenant costuma trazer "não repita a apresentação". Sem este aviso
+// o modelo trata o retorno do cidadão como continuação do atendimento anterior —
+// e, como aquele assunto já foi encerrado, não responde nada.
+const AVISO_RETORNO = `INSTRUCAO PRIORITARIA (vale para esta resposta e prevalece sobre a saudacao padrao definida acima):
+RETORNO DO CIDADAO — o atendimento anterior deste cidadao ja foi encerrado pelo atendente. A mensagem atual abre um NOVO atendimento e a triagem recomeca do zero.
+- Cumprimente de novo e se apresente, mesmo que voce ja tenha se apresentado em atendimentos anteriores.
+- Se o assunto ja estiver claro na mensagem dele, encaminhe normalmente para o setor.
+- Se a mensagem NAO deixar claro o que ele precisa, sua resposta DEVE perguntar com qual setor ele quer falar. Use exatamente este tipo de frase: "Ola! Sou a Iris, assistente virtual da Prefeitura. Com qual setor voce gostaria de falar hoje?". NAO encerre a frase com "Em que posso ajudar?". Nesse caso mantenha "departamento_id": null e "finalizado": false.
+- Nao presuma que o assunto e o mesmo do atendimento anterior nem comente o que foi tratado antes.`;
+
+// Rede de segurança para quando o provedor nao devolve nada aproveitavel: mantem
+// a triagem viva em vez de deixar o cidadao falando sozinho.
+function mensagemTriagem(comApresentacao) {
+  if (comApresentacao) {
+    return 'Olá! Sou a Iris, assistente virtual do atendimento. Com qual setor você gostaria de falar? '
+      + 'Me conte o assunto que eu encaminho para o atendente certo.';
+  }
+  return 'Desculpe, não consegui entender. Pode me dizer com qual setor você quer falar ou qual é o assunto?';
+}
+
+const REFORCO_FORMATO = 'Responda AGORA somente com o objeto JSON no formato exigido: '
+  + '{"resposta": "mensagem para o cidadao", "departamento_id": "uuid ou null", '
+  + '"operador_id": "uuid ou null", "finalizado": true}. '
+  + 'O campo "resposta" nunca pode ficar vazio.';
+
 export async function processarComIris(tenantId, conversaId, texto) {
   const cfg = await db.oneOrNone(
     'SELECT * FROM config_iris WHERE tenant_id = $1 AND ativo = true',
@@ -353,14 +490,20 @@ export async function processarComIris(tenantId, conversaId, texto) {
     [tenantId]
   );
 
-  // Obter departamento_sugerido da conversa (contexto de mensagens anteriores)
+  // `encerrada_em` marca o fim do último atendimento. A conversa é reaproveitada
+  // quando o cidadão volta a escrever, então essa data é a fronteira entre o
+  // atendimento antigo e o novo.
   const conv = await db.oneOrNone(
-    'SELECT departamento_sugerido FROM conversas WHERE id = $1 AND tenant_id = $2',
+    `SELECT departamento_sugerido, GREATEST(resolvida_em, arquivada_em) AS encerrada_em
+     FROM conversas WHERE id = $1 AND tenant_id = $2`,
     [conversaId, tenantId]
   );
 
   // Obter informações da fila
   const infoFila = await obterInfoFila(tenantId, conv?.departamento_sugerido);
+
+  // Quem atende, em que setor e quem está online neste instante
+  const equipe = await obterEquipe(tenantId);
 
   // Obter contexto de horário de atendimento
   const contextoHorario = await obterContextoHorario(tenantId);
@@ -384,15 +527,26 @@ export async function processarComIris(tenantId, conversaId, texto) {
   }
   console.log('[Iris] contextoHorario:', JSON.stringify(contextoHorario), 'insistencia:', insistencia);
 
+  // Só o atendimento atual entra no histórico. Levar junto a conversa já
+  // encerrada fazia o modelo concluir que não sobrou nada a dizer e devolver
+  // resposta vazia (o DeepSeek responde só espaços em branco nessa situação):
+  // a Iris ficava muda justamente quando o cidadão voltava depois do "resolvido".
   const historico = await db.manyOrNone(
-    `SELECT direcao, CASE WHEN direcao = 'entrada' THEN conteudo ELSE conteudo END as conteudo
+    `SELECT direcao, conteudo
      FROM mensagens
      WHERE conversa_id = $1 AND tenant_id = $2 AND tipo = 'texto'
+       AND ($3::timestamptz IS NULL OR criado_em > $3)
      ORDER BY criado_em DESC LIMIT 15`,
-    [conversaId, tenantId]
+    [conversaId, tenantId, conv?.encerrada_em || null]
   );
 
-  let systemPrompt = cfg.system_prompt || buildSystemPrompt(tenant?.nome, secretarias, departamentos, infoFila, contextoHorario, insistencia);
+  // Primeira mensagem depois de um atendimento encerrado: a triagem recomeça do
+  // zero, como em um contato novo.
+  const retomandoAtendimento = Boolean(conv?.encerrada_em)
+    && !historico.some((h) => h.direcao === 'saida');
+
+  let systemPrompt = cfg.system_prompt
+    || buildSystemPrompt(tenant?.nome, secretarias, departamentos, infoFila, contextoHorario, insistencia, equipe);
 
   if (cfg.system_prompt) {
     const deptosCompact = departamentos.map((d) => {
@@ -419,6 +573,16 @@ export async function processarComIris(tenantId, conversaId, texto) {
     }
 
     systemPrompt += `\n\nDEPARTAMENTOS DISPONIVEIS (use o UUID exato em "departamento_id"):\n${JSON.stringify(deptosCompact)}`;
+    // O prompt customizado do tenant não conhece a equipe: anexamos a lista viva
+    // e as regras de uso, do mesmo jeito que fazemos com os departamentos.
+    systemPrompt += `\n${REGRAS_EQUIPE}\n\nEQUIPE (use o UUID exato em "operador_id"):\n${JSON.stringify(equipeCompacta(equipe))}`;
+  }
+
+  // Vai no fim do prompt, depois das regras do tenant: prefixado, ele perdia para
+  // a saudação literal que o prompt customizado manda usar ("Em que posso
+  // ajudar?") e a Iris não chegava a perguntar o setor no retorno do cidadão.
+  if (retomandoAtendimento) {
+    systemPrompt = `${systemPrompt}\n\n---\n\n${AVISO_RETORNO}`;
   }
 
   const messages = [
@@ -429,7 +593,10 @@ export async function processarComIris(tenantId, conversaId, texto) {
 
   for (let i = historico.length - 1; i >= 0; i--) {
     const h = historico[i];
-    const clean = h.conteudo.replace(/^🤖\s*/, '');
+    const clean = String(h.conteudo || '').replace(/^🤖\s*/, '');
+    // Restos de falhas anteriores do provedor ("{", mensagem vazia) ficam de
+    // fora: no histórico eles ensinam o modelo a repetir o mesmo lixo.
+    if (!textoUtil(clean)) continue;
     if (h.direcao === 'entrada') {
       messages.push({ role: 'user', content: clean });
     } else {
@@ -437,74 +604,88 @@ export async function processarComIris(tenantId, conversaId, texto) {
     }
   }
 
+  // Uma chamada ao provedor. Devolve o texto cru da resposta (ou null).
+  const chamarProvedor = async (msgs) => {
+    const url = provider === 'deepseek' ? DEEPSEEK_API_URL : OPENAI_API_URL;
+    const model = provider === 'deepseek'
+      ? (cfg.model || 'deepseek-chat')
+      : (cfg.openai_model || cfg.model || 'gpt-4o-mini');
+
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Authorization': `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model,
+        messages: msgs,
+        temperature: cfg.temperatura ?? 0.7,
+        max_tokens: cfg.max_tokens ?? 1024,
+        response_format: { type: 'json_object' },
+      }),
+    });
+
+    if (!res.ok) {
+      const errText = await res.text();
+      console.error(`[Iris] ${provider} API error:`, res.status, errText.slice(0, 300));
+      return null;
+    }
+
+    const data = await res.json();
+    const escolha = data.choices?.[0];
+    if (escolha?.finish_reason && escolha.finish_reason !== 'stop') {
+      console.warn(`[Iris] finish_reason=${escolha.finish_reason} tokens=${data.usage?.completion_tokens}`);
+    }
+    return escolha?.message?.content ?? null;
+  };
+
   try {
-    let response;
-
-    if (provider === 'deepseek') {
-      const body = JSON.stringify({
-        model: cfg.model || 'deepseek-chat',
-        messages,
-        temperature: cfg.temperatura ?? 0.7,
-        max_tokens: cfg.max_tokens ?? 1024,
-        response_format: { type: 'json_object' },
-      });
-
-      const res = await fetch(DEEPSEEK_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json; charset=utf-8',
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body,
-      });
-
-      if (!res.ok) {
-        const errText = await res.text();
-        console.error('[Iris] DeepSeek API error:', res.status, errText.slice(0, 300));
-        return null;
-      }
-
-      const data = await res.json();
-      response = data.choices?.[0]?.message?.content;
-    } else if (provider === 'openai') {
-      const body = JSON.stringify({
-        model: cfg.openai_model || cfg.model || 'gpt-4o-mini',
-        messages,
-        temperature: cfg.temperatura ?? 0.7,
-        max_tokens: cfg.max_tokens ?? 1024,
-        response_format: { type: 'json_object' },
-      });
-
-      const res = await fetch(OPENAI_API_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json; charset=utf-8',
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body,
-      });
-
-      if (!res.ok) {
-        const errText = await res.text();
-        console.error('[Iris] OpenAI API error:', res.status, errText.slice(0, 300));
-        return null;
-      }
-
-      const data = await res.json();
-      response = data.choices?.[0]?.message?.content;
-    } else {
+    if (provider !== 'deepseek' && provider !== 'openai') {
       console.error('[Iris] Provider desconhecido:', provider);
       return null;
     }
 
-    if (!response) return null;
+    // O provedor às vezes devolve um objeto truncado ("{") ou vazio. Quando isso
+    // acontece, uma segunda tentativa com o formato reforçado costuma resolver;
+    // se não resolver, é melhor calar do que mandar lixo para o cidadão — a
+    // conversa segue na fila e o atendente humano assume.
+    let response = await chamarProvedor(messages);
+    let parsed = extrairJson(response);
+    // `null` = chamada falhou (erro HTTP/rede). Conteúdo inútil = provedor no ar,
+    // mas sem nada a dizer. Os dois casos merecem tratamento diferente.
+    let provedorNoAr = response !== null;
 
-    let parsed;
-    try {
-      parsed = JSON.parse(response);
-    } catch {
-      // Fallback inteligente: tenta extrair departamento do texto bruto
-      const raw = (response || '').trim();
+    if (!textoUtil(parsed?.resposta) && !textoUtil(response)) {
+      console.warn('[Iris] Resposta degenerada, repetindo com reforço de formato:', JSON.stringify(response)?.slice(0, 80));
+      response = await chamarProvedor([...messages, { role: 'system', content: REFORCO_FORMATO }]);
+      parsed = extrairJson(response);
+      provedorNoAr = provedorNoAr || response !== null;
+    }
+
+    if (!textoUtil(parsed?.resposta) && !textoUtil(response)) {
+      if (provedorNoAr) {
+        // Deixar o cidadão sem resposta é pior do que uma triagem genérica: a
+        // conversa segue para a fila com a Iris tendo ao menos perguntado o setor.
+        console.warn('[Iris] Resposta inutilizável nas 2 tentativas — enviando triagem padrão.');
+        return {
+          respondido: true,
+          resposta: mensagemTriagem(retomandoAtendimento || historico.length <= 1),
+          departamento_id: null,
+          operador_id: null,
+          finalizado: false,
+          origem: 'iris',
+          confianca: 'fallback (provedor sem resposta)',
+        };
+      }
+      console.error('[Iris] Provedor indisponível nas 2 tentativas — nada será enviado ao cidadão.');
+      return null;
+    }
+
+    if (!parsed || !textoUtil(parsed.resposta)) {
+      // Veio texto puro em vez de JSON: aproveita o texto e tenta descobrir o
+      // departamento por ele.
+      const raw = String(response || '').trim();
       console.log('[Iris] Resposta nao-JSON, usando fallback inteligente:', raw.slice(0, 120));
 
       const deptoDoTexto = extrairDepartamentoDoTexto(raw, departamentos);
@@ -519,13 +700,9 @@ export async function processarComIris(tenantId, conversaId, texto) {
         deptoAlvo = recepcao?.id || null;
       }
 
-      const respostaFinal = raw
-        ? raw.slice(0, 1000)
-        : 'Desculpe, nao entendi sua mensagem. Poderia reformular, por favor?';
-
       return {
         respondido: true,
-        resposta: respostaFinal,
+        resposta: raw.slice(0, 1000),
         departamento_id: deptoAlvo,
         finalizado: true,
         origem: 'iris',
@@ -536,9 +713,27 @@ export async function processarComIris(tenantId, conversaId, texto) {
     console.log('[Iris] Resposta:', JSON.stringify({
       resposta: parsed.resposta?.slice(0, 80),
       departamento_id: parsed.departamento_id,
+      operador_id: parsed.operador_id,
       finalizado: parsed.finalizado,
       provider,
     }));
+
+    // O atendente escolhido é conferido contra a lista real: só vale quem está
+    // na equipe deste tenant, online agora e com vaga. O modelo pode alucinar um
+    // UUID ou insistir em alguém que acabou de sair — a decisão final é nossa.
+    let operadorValido = null;
+    if (parsed.operador_id) {
+      const alvo = equipe.find((o) => o.id === String(parsed.operador_id));
+      if (!alvo) {
+        console.log('[Iris] Atendente fora da equipe, ignorando:', parsed.operador_id);
+      } else if (!alvo.online) {
+        console.log(`[Iris] Atendente ${alvo.nome} está offline — cai para o setor.`);
+      } else if (alvo.limite && alvo.em_atendimento >= alvo.limite) {
+        console.log(`[Iris] Atendente ${alvo.nome} no limite (${alvo.em_atendimento}/${alvo.limite}) — cai para o setor.`);
+      } else {
+        operadorValido = alvo.id;
+      }
+    }
 
     // Valida se o departamento_id existe no tenant
     let deptoValido = null;
@@ -572,6 +767,13 @@ export async function processarComIris(tenantId, conversaId, texto) {
       }
     }
 
+    // Pediram uma pessoa que não pode assumir agora: a conversa vai para a fila
+    // do setor dela, para um colega pegar, em vez de ficar sem destino.
+    if (!operadorValido && parsed.operador_id && !deptoValido) {
+      const alvo = equipe.find((o) => o.id === String(parsed.operador_id));
+      if (alvo?.setor_ids?.length) deptoValido = alvo.setor_ids[0];
+    }
+
     // Se o departamento_id extraído do texto é o mesmo sugerido, é um bom sinal
     const confianca = deptoValido
       ? (conv?.departamento_sugerido === deptoValido ? 'alta' : 'normal')
@@ -581,6 +783,7 @@ export async function processarComIris(tenantId, conversaId, texto) {
       respondido: true,
       resposta: parsed.resposta || 'Desculpe, nao entendi. Um atendente ira ajuda-lo.',
       departamento_id: deptoValido,
+      operador_id: operadorValido,
       finalizado: parsed.finalizado !== false,
       origem: 'iris',
       confianca,
