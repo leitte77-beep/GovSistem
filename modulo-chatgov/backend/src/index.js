@@ -568,10 +568,11 @@ app.use('/api', rateLimiter);
         `SELECT m.id, m.tipo, m.media_url, m.media_mime, m.media_nome, m.conteudo,
                 m.direcao, m.criado_em, NULL::bigint AS media_tamanho,
                 o.nome AS remetente_nome,
-                c.contato_nome
+                ct.nome AS contato_nome
          FROM mensagens m
          LEFT JOIN operadores o ON o.id = m.operador_id AND o.tenant_id = m.tenant_id
          LEFT JOIN conversas c ON c.id = m.conversa_id AND c.tenant_id = m.tenant_id
+         LEFT JOIN contatos ct ON ct.id = c.contato_id AND ct.tenant_id = c.tenant_id
          WHERE m.conversa_id = $1 AND m.tenant_id = $2
            AND m.media_url IS NOT NULL AND m.excluida = false
          ORDER BY m.criado_em DESC`,
