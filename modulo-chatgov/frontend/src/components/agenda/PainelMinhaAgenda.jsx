@@ -11,15 +11,6 @@ import { useAuth } from '../../context/AuthContext';
 
 const MAX_POR_BLOCO = 4;
 
-const CORES = {
-  bgPagina: '#F3F5F8',
-  textoTitulo: '#111827',
-  textoSubtitulo: '#667085',
-  textoCorpo: '#667085',
-  bordaCard: '#E7EAF0',
-  sombraCard: '0 8px 30px rgba(15, 23, 42, 0.08)',
-};
-
 export function PainelMinhaAgenda({ onAbrirConversa, breakpoint }) {
   const { auth } = useAuth();
   const nomeUsuario = auth?.operador?.nome || '';
@@ -88,13 +79,13 @@ export function PainelMinhaAgenda({ onAbrirConversa, breakpoint }) {
 
   const resumoNumeros = React.createElement('div', {
     style: {
-      display: 'flex', gap: 16, fontSize: 12, color: CORES.textoCorpo,
-      padding: '0 0 12px', borderBottom: `1px solid ${CORES.bordaCard}`,
+      display: 'flex', gap: 16, fontSize: 12, color: T.textSecondary,
+      padding: '0 0 12px', borderBottom: `1px solid ${T.border}`,
     },
   },
-    React.createElement('span', null, blocoTitulo('Hoje ', CORES.textoTitulo), totalHoje),
-    React.createElement('span', null, blocoTitulo('Pendentes ', CORES.textoTitulo), totalPendentes),
-    React.createElement('span', null, blocoTitulo('Atrasados ', CORES.textoTitulo), atrasados),
+    React.createElement('span', null, blocoTitulo('Hoje ', T.text), totalHoje),
+    React.createElement('span', null, blocoTitulo('Pendentes ', T.text), totalPendentes),
+    React.createElement('span', null, blocoTitulo('Atrasados ', T.text), atrasados),
   );
 
   const itensComConteudo = !vazio && !carregando && !erro;
@@ -105,7 +96,7 @@ export function PainelMinhaAgenda({ onAbrirConversa, breakpoint }) {
     const restantes = itens.length - visiveis.length;
     return React.createElement('div', { key: titulo, style: { marginBottom: 10 } },
       React.createElement('div', {
-        style: { fontSize: 11, fontWeight: 800, letterSpacing: 0.6, textTransform: 'uppercase', color: opcoes.cor || CORES.textoSubtitulo, marginBottom: 4 },
+        style: { fontSize: 11, fontWeight: 800, letterSpacing: 0.6, textTransform: 'uppercase', color: opcoes.cor || T.textSecondary, marginBottom: 4 },
       }, titulo),
       ...visiveis.map((item) => React.createElement(ItemAgenda, {
         key: item.id,
@@ -134,7 +125,7 @@ export function PainelMinhaAgenda({ onAbrirConversa, breakpoint }) {
         background: T.surface, borderBottom: `1px solid ${T.border}`, flexShrink: 0,
       },
     },
-      React.createElement('h1', { style: { fontSize: 18, fontWeight: 700, color: CORES.textoTitulo, letterSpacing: -0.3 } },
+      React.createElement('h1', { style: { fontSize: 18, fontWeight: 700, color: T.text, letterSpacing: -0.3 } },
         'ChatGov — Central de Atendimento'),
     ),
 
@@ -146,8 +137,8 @@ export function PainelMinhaAgenda({ onAbrirConversa, breakpoint }) {
         paddingLeft: ehMobile ? '18px' : '32px',
         paddingRight: ehMobile ? '18px' : '32px',
         paddingBottom: ehMobile ? '18px' : '32px',
-        backgroundColor: CORES.bgPagina,
-        backgroundImage: `radial-gradient(${CORES.bordaCard} 0.45px, transparent 0.45px)`,
+        backgroundColor: T.bg,
+        backgroundImage: `radial-gradient(${T.border} 0.45px, transparent 0.45px)`,
         backgroundSize: '24px 24px',
       },
     },
@@ -155,26 +146,26 @@ export function PainelMinhaAgenda({ onAbrirConversa, breakpoint }) {
         style: { width: '100%', maxWidth: 560, marginBottom: 20, textAlign: 'center' },
       },
         React.createElement('h2', {
-          style: { fontSize: 20, fontWeight: 700, color: CORES.textoTitulo, margin: 0 },
+          style: { fontSize: 20, fontWeight: 700, color: T.text, margin: 0 },
         }, `${saudacao()}, ${primeiroNome(nomeUsuario)}`),
         React.createElement('p', {
-          style: { fontSize: 13.5, color: CORES.textoSubtitulo, margin: '4px 0 0', lineHeight: '20px' },
+          style: { fontSize: 13.5, color: T.textSecondary, margin: '4px 0 0', lineHeight: '20px' },
         }, 'Organize seus retornos e compromissos sem sair do atendimento.'),
       ),
 
       React.createElement('div', {
         style: {
           width: '100%', maxWidth: 560, minHeight: 260,
-          background: '#FFFFFF', border: `1px solid ${CORES.bordaCard}`,
-          borderRadius: T.radiusLg, boxShadow: CORES.sombraCard,
+          background: T.surface, border: `1px solid ${T.border}`,
+          borderRadius: T.radiusLg, boxShadow: T.shadow,
           padding: ehMobile ? 20 : 28,
         },
       },
         React.createElement('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14 } },
           React.createElement(CalendarDays, { size: 20, color: T.primary, style: { marginTop: 2, flexShrink: 0 } }),
           React.createElement('div', { style: { flex: 1 } },
-            React.createElement('h2', { style: { fontSize: 16, fontWeight: 700, color: CORES.textoTitulo, margin: 0 } }, 'Minha agenda'),
-            React.createElement('p', { style: { fontSize: 12.5, color: CORES.textoSubtitulo, margin: '2px 0 0', lineHeight: '18px' } },
+            React.createElement('h2', { style: { fontSize: 16, fontWeight: 700, color: T.text, margin: 0 } }, 'Minha agenda'),
+            React.createElement('p', { style: { fontSize: 12.5, color: T.textSecondary, margin: '2px 0 0', lineHeight: '18px' } },
               'Seus compromissos e lembretes de hoje'),
           ),
           React.createElement('button', {
@@ -188,17 +179,17 @@ export function PainelMinhaAgenda({ onAbrirConversa, breakpoint }) {
         ),
 
         carregando
-          ? React.createElement('div', { style: { fontSize: 13, color: CORES.textoSubtitulo, padding: '18px 0' } }, 'Carregando...')
+          ? React.createElement('div', { style: { fontSize: 13, color: T.textSecondary, padding: '18px 0' } }, 'Carregando...')
           : erro
           ? React.createElement('div', { style: { fontSize: 13, color: T.danger, padding: '12px 0' } }, erro)
           : vazio
           ? React.createElement('div', { style: { padding: '4px 0' } },
               resumoNumeros,
               React.createElement('div', { style: { textAlign: 'center', padding: '24px 12px 16px' } },
-                React.createElement(CalendarDays, { size: 36, color: CORES.textoSubtitulo, style: { opacity: 0.3, margin: '0 auto' } }),
-                React.createElement('div', { style: { fontSize: 14, fontWeight: 700, color: CORES.textoTitulo, marginTop: 10 } },
+                React.createElement(CalendarDays, { size: 36, color: T.textSecondary, style: { opacity: 0.3, margin: '0 auto' } }),
+                React.createElement('div', { style: { fontSize: 14, fontWeight: 700, color: T.text, marginTop: 10 } },
                   'Nenhum compromisso para hoje'),
-                React.createElement('div', { style: { fontSize: 12.5, color: CORES.textoSubtitulo, marginTop: 4, lineHeight: '18px', maxWidth: 340, marginLeft: 'auto', marginRight: 'auto' } },
+                React.createElement('div', { style: { fontSize: 12.5, color: T.textSecondary, marginTop: 4, lineHeight: '18px', maxWidth: 340, marginLeft: 'auto', marginRight: 'auto' } },
                   'Crie um lembrete, tarefa ou compromisso para organizar seus retornos.'),
               ),
             )

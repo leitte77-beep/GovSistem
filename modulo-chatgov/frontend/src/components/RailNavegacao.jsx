@@ -371,7 +371,7 @@ export function RailNavegacao({ view, onChange, isAdmin, verRelatorios, notifCou
       React.createElement('span', {
         style: {
           width: 7, height: 7, borderRadius: '50%', flexShrink: 0,
-          background: waConectado ? '#22C55E' : waDesconectado ? '#EF4444' : '#9CA3AF',
+          background: waConectado ? T.whatsappStatusIcon : waDesconectado ? T.danger : T.offline,
           boxShadow: waConectado ? '0 0 6px rgba(34,197,94,0.4)' : 'none',
         },
       }),
