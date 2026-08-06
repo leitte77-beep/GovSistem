@@ -17,13 +17,10 @@ export function SeletorDepartamento({ departamentos, valor, onChange, placeholde
 
   useEffect(() => {
     if (!aberto) return;
-    const fora = (e) => { if (containerRef.current && !containerRef.current.contains(e.target)) setAberto(false); };
     const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); setAberto(false); } };
-    document.addEventListener('mousedown', fora);
     document.addEventListener('keydown', esc, true);
     buscaRef.current?.focus();
     return () => {
-      document.removeEventListener('mousedown', fora);
       document.removeEventListener('keydown', esc, true);
     };
   }, [aberto]);
@@ -89,6 +86,11 @@ export function SeletorDepartamento({ departamentos, valor, onChange, placeholde
     ),
 
     // Lista (aberta)
+    // Overlay transparente atrás do dropdown — fecha ao clicar fora
+    aberto && React.createElement('div', {
+      onClick: (e) => { e.stopPropagation(); setAberto(false); },
+      style: { position: 'fixed', inset: 0, zIndex: 39 },
+    }),
     aberto && React.createElement('div', {
       role: 'listbox',
       onMouseDown: (e) => e.stopPropagation(),
