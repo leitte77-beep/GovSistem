@@ -288,12 +288,19 @@ app.use('/api', rateLimiter);
                co.avatar_url as contato_avatar_url,
                d.nome as departamento_nome, d.cor as departamento_cor,
                o.nome as operador_nome,
-               pr.numero as protocolo_numero
+               pr.numero as protocolo_numero,
+               um.direcao AS ultima_mensagem_direcao,
+               um.tipo AS ultima_mensagem_tipo
         FROM conversas c
         JOIN contatos co ON co.id = c.contato_id
         LEFT JOIN departamentos d ON d.id = c.departamento_id
         LEFT JOIN operadores o ON o.id = c.operador_id
         LEFT JOIN protocolos pr ON pr.id = c.protocolo_id
+        LEFT JOIN LATERAL (
+          SELECT m.tipo, m.direcao FROM mensagens m
+          WHERE m.conversa_id = c.id AND m.tenant_id = c.tenant_id AND m.excluida = false
+          ORDER BY m.criado_em DESC LIMIT 1
+        ) um ON true
         WHERE c.tenant_id = $1 AND c.deleted_at IS NULL
       `;
       const params = [op.tenantId];
