@@ -120,7 +120,7 @@ export function AgendaCompleta({ onClose, onAbrirConversa, breakpoint, modo = 'o
         React.createElement('button', {
           onClick: () => setCriando(true),
           style: { display: 'flex', alignItems: 'center', gap: 5, border: 'none', background: T.primary, color: '#fff', padding: '7px 13px', borderRadius: T.radiusSm, cursor: 'pointer', fontSize: 12.5, fontWeight: 700 },
-        }, React.createElement(Plus, { size: 15 }), 'Novo'),
+        }, React.createElement(Plus, { size: 15 }), '+ Novo compromisso'),
         ehOverlay && React.createElement('button', {
           onClick: onClose, 'aria-label': 'Fechar agenda',
           style: { width: 32, height: 32, border: 'none', background: 'transparent', cursor: 'pointer', borderRadius: T.radiusSm, display: 'flex', alignItems: 'center', justifyContent: 'center' },

@@ -1,25 +1,32 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Plus, CalendarDays, ChevronRight } from 'lucide-react';
+import { Plus, CalendarDays, ChevronRight, Clock } from 'lucide-react';
 import { T } from '../../theme';
 import { fetchResumoAgenda, concluirItemAgenda, reabrirItemAgenda } from '../../api/agenda';
 import { ItemAgenda } from './ItemAgenda';
 import { ModalCompromisso } from './ModalCompromisso';
 import { AgendaCompleta } from './AgendaCompleta';
 import { notificarAgendaAtualizada, useAgendaAtualizada } from './eventos';
+import { saudacao, primeiroNome } from './util';
+import { useAuth } from '../../context/AuthContext';
 
-// Teto do que a tela inicial mostra por bloco. O resto fica na agenda completa:
-// a área vazia é um cartão de apoio, não um dashboard.
-const MAX_POR_BLOCO = 5;
+const MAX_POR_BLOCO = 4;
 
-/**
- * Painel exibido na área central quando nenhuma conversa está aberta.
- * Substitui o antigo estado vazio ("Selecione uma conversa").
- */
+const CORES = {
+  bgPagina: '#F3F5F8',
+  textoTitulo: '#111827',
+  textoSubtitulo: '#667085',
+  textoCorpo: '#667085',
+  bordaCard: '#E7EAF0',
+  sombraCard: '0 8px 30px rgba(15, 23, 42, 0.08)',
+};
+
 export function PainelMinhaAgenda({ onAbrirConversa, breakpoint }) {
+  const { auth } = useAuth();
+  const nomeUsuario = auth?.operador?.nome || '';
   const [resumo, setResumo] = useState(null);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState('');
-  const [editando, setEditando] = useState(null);   // item em edição
+  const [editando, setEditando] = useState(null);
   const [criando, setCriando] = useState(false);
   const [verTudo, setVerTudo] = useState(false);
   const ehMobile = breakpoint === 'mobile';
@@ -38,9 +45,6 @@ export function PainelMinhaAgenda({ onAbrirConversa, breakpoint }) {
 
   useEffect(() => { carregar(); }, [carregar]);
 
-  // Recarrega sem piscar quando algo mexe na agenda em outro ponto da tela
-  // (popup de lembrete, modal de login) e quando a aba volta ao foco — o
-  // atendente costuma deixar o ChatGov aberto o dia inteiro.
   useAgendaAtualizada(() => carregar({ silencioso: true }));
   useEffect(() => {
     const onFoco = () => carregar({ silencioso: true });
@@ -49,8 +53,6 @@ export function PainelMinhaAgenda({ onAbrirConversa, breakpoint }) {
   }, [carregar]);
 
   const concluir = async (item) => {
-    // Otimista: a lista responde na hora e o servidor confirma depois. Se
-    // falhar, o recarregamento devolve o item ao estado real.
     setResumo((r) => r && mapearItem(r, item.id, (i) => ({ ...i, status: 'concluida' })));
     try {
       await concluirItemAgenda(item.id);
@@ -72,13 +74,38 @@ export function PainelMinhaAgenda({ onAbrirConversa, breakpoint }) {
 
   const aposSalvar = () => { carregar({ silencioso: true }); notificarAgendaAtualizada(); };
 
-  const bloco = (titulo, itens, opcoes = {}) => {
+  const vazio = resumo
+    && !resumo.hoje.length && !resumo.proximos.length && !resumo.pendencias.length;
+
+  const totalHoje = (resumo?.hoje?.length || 0);
+  const totalPendentes = (resumo?.pendencias?.length || 0);
+  const atrasados = [...(resumo?.pendencias || []), ...(resumo?.hoje || [])].filter(
+    (i) => i.status !== 'concluida' && i.status !== 'cancelada' && new Date(i.inicio).getTime() < Date.now()
+  ).length;
+
+  const blocoTitulo = (titulo, cor) =>
+    React.createElement('span', { style: { fontWeight: 700, color: cor } }, titulo);
+
+  const resumoNumeros = React.createElement('div', {
+    style: {
+      display: 'flex', gap: 16, fontSize: 12, color: CORES.textoCorpo,
+      padding: '0 0 12px', borderBottom: `1px solid ${CORES.bordaCard}`,
+    },
+  },
+    React.createElement('span', null, blocoTitulo('Hoje ', CORES.textoTitulo), totalHoje),
+    React.createElement('span', null, blocoTitulo('Pendentes ', CORES.textoTitulo), totalPendentes),
+    React.createElement('span', null, blocoTitulo('Atrasados ', CORES.textoTitulo), atrasados),
+  );
+
+  const itensComConteudo = !vazio && !carregando && !erro;
+
+  const blocoLista = (titulo, itens, opcoes = {}) => {
     if (!itens?.length) return null;
     const visiveis = itens.slice(0, MAX_POR_BLOCO);
     const restantes = itens.length - visiveis.length;
-    return React.createElement('div', { key: titulo, style: { marginBottom: 18 } },
+    return React.createElement('div', { key: titulo, style: { marginBottom: 10 } },
       React.createElement('div', {
-        style: { fontSize: 11, fontWeight: 800, letterSpacing: 0.6, textTransform: 'uppercase', color: opcoes.cor || T.textMuted, marginBottom: 6 },
+        style: { fontSize: 11, fontWeight: 800, letterSpacing: 0.6, textTransform: 'uppercase', color: opcoes.cor || CORES.textoSubtitulo, marginBottom: 4 },
       }, titulo),
       ...visiveis.map((item) => React.createElement(ItemAgenda, {
         key: item.id,
@@ -88,29 +115,26 @@ export function PainelMinhaAgenda({ onAbrirConversa, breakpoint }) {
         onReabrir: reabrir,
         onEditar: setEditando,
         onAbrirConversa,
+        compacto: true,
       })),
       restantes > 0 && React.createElement('button', {
         onClick: () => setVerTudo(true),
         style: { marginTop: 2, marginLeft: 13, background: 'none', border: 'none', padding: 0, fontSize: 12, color: T.primary, cursor: 'pointer', fontWeight: 600 },
-      }, `+${restantes} ${restantes === 1 ? 'item' : 'itens'}`),
+      }, `+${restantes} ${restantes === 1 ? 'outro compromisso' : 'outros compromissos'}`),
     );
   };
-
-  const vazio = resumo
-    && !resumo.hoje.length && !resumo.proximos.length && !resumo.pendencias.length;
 
   return React.createElement('div', {
     role: 'main',
     style: { flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 },
   },
-    /* cabeçalho da área central, o mesmo do estado vazio anterior */
     React.createElement('header', {
       style: {
         height: 64, width: '100%', display: 'flex', alignItems: 'center', padding: '0 24px',
         background: T.surface, borderBottom: `1px solid ${T.border}`, flexShrink: 0,
       },
     },
-      React.createElement('h1', { style: { fontSize: 18, fontWeight: 700, color: T.text, letterSpacing: -0.3 } },
+      React.createElement('h1', { style: { fontSize: 18, fontWeight: 700, color: CORES.textoTitulo, letterSpacing: -0.3 } },
         'ChatGov — Central de Atendimento'),
     ),
 
@@ -118,61 +142,83 @@ export function PainelMinhaAgenda({ onAbrirConversa, breakpoint }) {
       style: {
         flex: 1, minHeight: 0, overflowY: 'auto',
         display: 'flex', flexDirection: 'column', alignItems: 'center',
-        justifyContent: vazio ? 'center' : 'flex-start',
-        padding: ehMobile ? '18px 14px' : '32px 24px',
-        backgroundColor: T.bg,
-        backgroundImage: `radial-gradient(${T.borderStrong} 0.45px, transparent 0.45px)`,
+        paddingTop: '22vh',
+        paddingLeft: ehMobile ? '18px' : '32px',
+        paddingRight: ehMobile ? '18px' : '32px',
+        paddingBottom: ehMobile ? '18px' : '32px',
+        backgroundColor: CORES.bgPagina,
+        backgroundImage: `radial-gradient(${CORES.bordaCard} 0.45px, transparent 0.45px)`,
         backgroundSize: '24px 24px',
       },
     },
+      nomeUsuario && React.createElement('div', {
+        style: { width: '100%', maxWidth: 560, marginBottom: 20, textAlign: 'center' },
+      },
+        React.createElement('h2', {
+          style: { fontSize: 20, fontWeight: 700, color: CORES.textoTitulo, margin: 0 },
+        }, `${saudacao()}, ${primeiroNome(nomeUsuario)}`),
+        React.createElement('p', {
+          style: { fontSize: 13.5, color: CORES.textoSubtitulo, margin: '4px 0 0', lineHeight: '20px' },
+        }, 'Organize seus retornos e compromissos sem sair do atendimento.'),
+      ),
+
       React.createElement('div', {
         style: {
-          width: '100%', maxWidth: 520,
-          background: T.surface, border: `1px solid ${T.border}`,
-          borderRadius: T.radiusLg, boxShadow: T.shadow,
-          padding: ehMobile ? 16 : 22,
+          width: '100%', maxWidth: 560, minHeight: 260,
+          background: '#FFFFFF', border: `1px solid ${CORES.bordaCard}`,
+          borderRadius: T.radiusLg, boxShadow: CORES.sombraCard,
+          padding: ehMobile ? 20 : 28,
         },
       },
-        /* título do cartão */
-        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 } },
-          React.createElement(CalendarDays, { size: 19, color: T.primary }),
-          React.createElement('h2', { style: { fontSize: 16, fontWeight: 700, color: T.text, flex: 1 } }, 'Minha agenda'),
+        React.createElement('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14 } },
+          React.createElement(CalendarDays, { size: 20, color: T.primary, style: { marginTop: 2, flexShrink: 0 } }),
+          React.createElement('div', { style: { flex: 1 } },
+            React.createElement('h2', { style: { fontSize: 16, fontWeight: 700, color: CORES.textoTitulo, margin: 0 } }, 'Minha agenda'),
+            React.createElement('p', { style: { fontSize: 12.5, color: CORES.textoSubtitulo, margin: '2px 0 0', lineHeight: '18px' } },
+              'Seus compromissos e lembretes de hoje'),
+          ),
           React.createElement('button', {
             onClick: () => setCriando(true),
             style: {
-              display: 'flex', alignItems: 'center', gap: 5, border: 'none',
-              background: T.primary, color: '#fff', padding: '7px 13px',
-              borderRadius: T.radiusSm, cursor: 'pointer', fontSize: 12.5, fontWeight: 700,
+              display: 'flex', alignItems: 'center', gap: 5, border: 'none', flexShrink: 0,
+              background: T.primary, color: '#fff', padding: '8px 14px',
+              borderRadius: T.radiusSm, cursor: 'pointer', fontSize: 13, fontWeight: 700,
             },
-          }, React.createElement(Plus, { size: 15 }), 'Novo'),
+          }, React.createElement(Plus, { size: 15 }), '+ Novo compromisso'),
         ),
 
         carregando
-          ? React.createElement('div', { style: { fontSize: 13, color: T.textMuted, padding: '18px 0' } }, 'Carregando...')
+          ? React.createElement('div', { style: { fontSize: 13, color: CORES.textoSubtitulo, padding: '18px 0' } }, 'Carregando...')
           : erro
           ? React.createElement('div', { style: { fontSize: 13, color: T.danger, padding: '12px 0' } }, erro)
           : vazio
-          ? React.createElement('div', { style: { padding: '10px 0 4px' } },
-              React.createElement('div', { style: { fontSize: 14, color: T.textSecondary, fontWeight: 600 } }, 'Nada marcado por aqui.'),
-              React.createElement('div', { style: { fontSize: 12.5, color: T.textMuted, marginTop: 4, lineHeight: '18px' } },
-                'Selecione uma conversa na lista ao lado para atender, ou registre um compromisso para não esquecer de um retorno.'),
+          ? React.createElement('div', { style: { padding: '4px 0' } },
+              resumoNumeros,
+              React.createElement('div', { style: { textAlign: 'center', padding: '24px 12px 16px' } },
+                React.createElement(CalendarDays, { size: 36, color: CORES.textoSubtitulo, style: { opacity: 0.3, margin: '0 auto' } }),
+                React.createElement('div', { style: { fontSize: 14, fontWeight: 700, color: CORES.textoTitulo, marginTop: 10 } },
+                  'Nenhum compromisso para hoje'),
+                React.createElement('div', { style: { fontSize: 12.5, color: CORES.textoSubtitulo, marginTop: 4, lineHeight: '18px', maxWidth: 340, marginLeft: 'auto', marginRight: 'auto' } },
+                  'Crie um lembrete, tarefa ou compromisso para organizar seus retornos.'),
+              ),
             )
           : React.createElement(React.Fragment, null,
-              bloco('Pendências', resumo.pendencias, { cor: T.danger, mostrarDia: true }),
-              bloco('Hoje', resumo.hoje),
-              bloco('Próximos', resumo.proximos, { mostrarDia: true }),
+              resumoNumeros,
+              blocoLista('Pendências', resumo.pendencias, { cor: T.danger, mostrarDia: true }),
+              blocoLista('Hoje', resumo.hoje),
+              blocoLista('Próximos', resumo.proximos, { mostrarDia: true }),
             ),
 
         !carregando && !erro && React.createElement('button', {
           onClick: () => setVerTudo(true),
           style: {
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-            width: '100%', marginTop: 8, padding: '9px 0',
-            border: `1px solid ${T.border}`, borderRadius: T.radiusSm,
-            background: 'transparent', color: T.textSecondary,
-            cursor: 'pointer', fontSize: 12.5, fontWeight: 600,
+            marginTop: itensComConteudo ? 6 : 8, padding: 0,
+            border: 'none', background: 'transparent', color: T.primary,
+            cursor: 'pointer', fontSize: 13, fontWeight: 600,
+            width: '100%',
           },
-        }, 'Abrir agenda completa', React.createElement(ChevronRight, { size: 15 })),
+        }, 'Ver agenda completa', React.createElement(ChevronRight, { size: 15 })),
       ),
     ),
 
@@ -191,7 +237,6 @@ export function PainelMinhaAgenda({ onAbrirConversa, breakpoint }) {
   );
 }
 
-/** Aplica uma transformação ao item de id `id` nas três listas do resumo. */
 function mapearItem(resumo, id, fn) {
   const mapear = (lista) => lista.map((i) => (i.id === id ? fn(i) : i));
   return {
