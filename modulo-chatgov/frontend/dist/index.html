@@ -115,15 +115,21 @@
         }
         :root[data-theme="dark"] {
           color-scheme: dark;
-          --sb-thumb: #3F4355; --sb-track: #1A1D23;
+          --sb-thumb: #324766; --sb-track: transparent;
         }
 
+        [data-theme="dark"] ::-webkit-scrollbar-thumb { background: #3E5370; }
+        [data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: #3B82F6; }
+        [data-theme="dark"] * { scrollbar-color: #3E5370 transparent; }
+
         /* dark ─ unificado sob [data-theme="dark"] */
-        [data-theme="dark"] .chat-pattern { background-color: #0D1117; background-image: radial-gradient(#2A2D35 0.5px, transparent 0.5px); }
-        [data-theme="dark"] body { background-color: #0D1117; color: #F3F4F6; }
-        [data-theme="dark"] .cg-conv-item:hover { background: #2A2D35; }
-        [data-theme="dark"] .cg-conv-item.ativa { background: rgba(37, 99, 235, 0.12); }
-        [data-theme="dark"] .cg-conv-item.ativa:hover { background: rgba(37, 99, 235, 0.18); }
+        [data-theme="dark"] .chat-pattern { background-color: #0A1120; background-image: radial-gradient(rgba(255,255,255,0.02) 0.5px, transparent 0.5px); }
+        [data-theme="dark"] body { background-color: #0A1120; color: #E8EDF7; }
+        [data-theme="dark"] .cg-conv-item { margin: 0 8px 6px; border-radius: 12px; padding: 10px 12px; transition: all 0.15s ease; }
+        [data-theme="dark"] .cg-conv-item:hover { background: #365276; transform: translateY(-1px); box-shadow: 0 4px 12px rgba(0,0,0,0.25); }
+        [data-theme="dark"] .cg-conv-item.ativa { background: #2E4464; border-left: 4px solid #3B82F6; box-shadow: inset 0 0 0 1px rgba(59,130,246,0.15); }
+        [data-theme="dark"] .cg-conv-item.ativa:hover { background: #3A5A84; border-left-color: #60A5FA; }
+        [data-theme="dark"] .cg-conv-item.nao-lida { background: rgba(59,130,246,0.10); }
 
         /* Composer */
         .composer { display: flex; align-items: flex-end; gap: .375rem; padding: .5rem; min-width: 0; }
@@ -178,7 +184,7 @@
           a { text-decoration: underline !important; }
         }
     </style>
-  <script type="module" crossorigin src="/assets/index-BZrKwq-Z.js"></script>
+  <script type="module" crossorigin src="/assets/index-D7qdAJdQ.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/rolldown-runtime-QTnfLwEv.js">
   <link rel="modulepreload" crossorigin href="/assets/vendor-CQDbaHW-.js">
 </head>
