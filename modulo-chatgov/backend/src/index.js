@@ -566,7 +566,7 @@ app.use('/api', rateLimiter);
       }
       const rows = await db.manyOrNone(
         `SELECT m.id, m.tipo, m.media_url, m.media_mime, m.media_nome, m.conteudo,
-                m.direcao, m.criado_em, m.media_tamanho,
+                m.direcao, m.criado_em, NULL::bigint AS media_tamanho,
                 o.nome AS remetente_nome,
                 c.contato_nome
          FROM mensagens m
