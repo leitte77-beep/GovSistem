@@ -271,6 +271,18 @@ export async function atualizarItem(tenantId, operadorId, itemId, dados) {
   );
   if (!atual) throw new AgendaError('Compromisso não encontrado', 404);
 
+  // Remarcar só o início tem que arrastar o fim junto, preservando a duração.
+  // Sem isso, mover uma reunião de 14h–15h para as 16h deixaria o fim às 15h e
+  // a edição seria recusada por "hora final anterior à inicial" — um erro que o
+  // atendente não teria como entender, já que ele nem tocou na hora final.
+  let fimAjustado = dados.fim !== undefined ? dados.fim : atual.fim;
+  if (dados.fim === undefined && dados.inicio && atual.fim) {
+    const delta = new Date(dados.inicio).getTime() - new Date(atual.inicio).getTime();
+    if (Number.isFinite(delta) && delta !== 0) {
+      fimAjustado = new Date(new Date(atual.fim).getTime() + delta).toISOString();
+    }
+  }
+
   // PATCH parcial: o que não veio no corpo mantém o valor atual. Passar o
   // registro atual pelo normalizador garante que a validação roda igual na
   // criação e na edição, sem duas listas de regras para divergir.
@@ -279,7 +291,7 @@ export async function atualizarItem(tenantId, operadorId, itemId, dados) {
     titulo: dados.titulo ?? atual.titulo,
     descricao: dados.descricao ?? atual.descricao,
     inicio: dados.inicio ?? atual.inicio,
-    fim: dados.fim !== undefined ? dados.fim : atual.fim,
+    fim: fimAjustado,
     dia_todo: dados.dia_todo ?? atual.dia_todo,
     prioridade: dados.prioridade ?? atual.prioridade,
     status: dados.status ?? atual.status,

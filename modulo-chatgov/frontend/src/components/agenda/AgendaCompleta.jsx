@@ -40,7 +40,15 @@ function filtrosDaAba(aba) {
   }
 }
 
-export function AgendaCompleta({ onClose, onAbrirConversa, breakpoint }) {
+/**
+ * Agenda em lista.
+ *
+ * `modo: 'overlay'` (padrão) abre sobre a tela atual, a partir do painel
+ * central; `modo: 'pagina'` ocupa a área de conteúdo como view do rail. O miolo
+ * é o mesmo nos dois — só muda o invólucro, para a lista não existir em duas
+ * versões que divergem com o tempo.
+ */
+export function AgendaCompleta({ onClose, onAbrirConversa, breakpoint, modo = 'overlay' }) {
   const [aba, setAba] = useState('hoje');
   const [busca, setBusca] = useState('');
   const [itens, setItens] = useState([]);
@@ -68,11 +76,15 @@ export function AgendaCompleta({ onClose, onAbrirConversa, breakpoint }) {
     return () => clearTimeout(t);
   }, [carregar, busca]);
 
+  // Esc só fecha no modo sobreposto: como view do rail não há o que fechar, e
+  // sequestrar a tecla ali confundiria quem espera que ela feche o modal.
+  const ehOverlay = modo === 'overlay';
   useEffect(() => {
+    if (!ehOverlay) return undefined;
     const onEsc = (e) => { if (e.key === 'Escape' && !criando && !editando) onClose?.(); };
     document.addEventListener('keydown', onEsc);
     return () => document.removeEventListener('keydown', onEsc);
-  }, [onClose, criando, editando]);
+  }, [ehOverlay, onClose, criando, editando]);
 
   const concluir = async (item) => {
     setItens((l) => l.map((i) => (i.id === item.id ? { ...i, status: 'concluida' } : i)));
@@ -84,22 +96,23 @@ export function AgendaCompleta({ onClose, onAbrirConversa, breakpoint }) {
   };
   const aposSalvar = () => { carregar(); notificarAgendaAtualizada(); };
 
-  return React.createElement('div', {
-    style: {
-      position: 'fixed', inset: 0, background: 'rgba(15,26,42,0.45)',
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      zIndex: 1000, padding: ehMobile ? 0 : 24,
-    },
-    onMouseDown: (e) => { if (e.target === e.currentTarget) onClose?.(); },
-  },
-    React.createElement('div', {
-      role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Agenda completa',
-      style: {
-        background: T.surface, borderRadius: ehMobile ? 0 : T.radiusLg,
-        width: '100%', maxWidth: 680, height: ehMobile ? '100%' : '82vh',
-        display: 'flex', flexDirection: 'column', boxShadow: T.shadowLg, overflow: 'hidden',
-      },
-    },
+  const painel = React.createElement('div',
+    ehOverlay
+      ? {
+          role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Agenda completa',
+          style: {
+            background: T.surface, borderRadius: ehMobile ? 0 : T.radiusLg,
+            width: '100%', maxWidth: 680, height: ehMobile ? '100%' : '82vh',
+            display: 'flex', flexDirection: 'column', boxShadow: T.shadowLg, overflow: 'hidden',
+          },
+        }
+      : {
+          role: 'main', 'aria-label': 'Agenda',
+          style: {
+            background: T.surface, flex: 1, minWidth: 0, minHeight: 0,
+            display: 'flex', flexDirection: 'column', overflow: 'hidden',
+          },
+        },
       /* cabeçalho */
       React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, padding: '16px 20px 12px', borderBottom: `1px solid ${T.border}` } },
         React.createElement(CalendarDays, { size: 19, color: T.primary }),
@@ -108,7 +121,7 @@ export function AgendaCompleta({ onClose, onAbrirConversa, breakpoint }) {
           onClick: () => setCriando(true),
           style: { display: 'flex', alignItems: 'center', gap: 5, border: 'none', background: T.primary, color: '#fff', padding: '7px 13px', borderRadius: T.radiusSm, cursor: 'pointer', fontSize: 12.5, fontWeight: 700 },
         }, React.createElement(Plus, { size: 15 }), 'Novo'),
-        React.createElement('button', {
+        ehOverlay && React.createElement('button', {
           onClick: onClose, 'aria-label': 'Fechar agenda',
           style: { width: 32, height: 32, border: 'none', background: 'transparent', cursor: 'pointer', borderRadius: T.radiusSm, display: 'flex', alignItems: 'center', justifyContent: 'center' },
         }, React.createElement(X, { size: 18, color: T.textMuted })),
@@ -165,13 +178,23 @@ export function AgendaCompleta({ onClose, onAbrirConversa, breakpoint }) {
               })),
             ),
       ),
-    ),
+    );
 
-    (criando || editando) && React.createElement(ModalCompromisso, {
-      item: editando,
-      onClose: () => { setCriando(false); setEditando(null); },
-      onSalvo: aposSalvar,
-      onExcluido: aposSalvar,
-    }),
-  );
+  const modais = (criando || editando) && React.createElement(ModalCompromisso, {
+    item: editando,
+    onClose: () => { setCriando(false); setEditando(null); },
+    onSalvo: aposSalvar,
+    onExcluido: aposSalvar,
+  });
+
+  if (!ehOverlay) return React.createElement(React.Fragment, null, painel, modais);
+
+  return React.createElement('div', {
+    style: {
+      position: 'fixed', inset: 0, background: 'rgba(15,26,42,0.45)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 1000, padding: ehMobile ? 0 : 24,
+    },
+    onMouseDown: (e) => { if (e.target === e.currentTarget) onClose?.(); },
+  }, painel, modais);
 }

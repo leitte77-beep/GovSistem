@@ -4,10 +4,15 @@ import { T } from '../theme';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 
+// "Agenda" passou a ser a agenda de compromissos do atendente; a lista de
+// pessoas virou "Contatos", que é o que ela sempre foi. As chaves internas
+// (`compromissos`/`contatos`) são novas de propósito: a chave antiga `agenda`
+// guardada no localStorage cairia numa tela com outro significado.
 const NAV_ICONS = {
   atendimento: 'chat',
   dashboard: 'dashboard',
-  agenda: 'calendar_today',
+  compromissos: 'calendar_today',
+  contatos: 'contacts',
   interno: 'groups',
   protocolos: 'description',
   relatorios: 'monitoring',
@@ -19,7 +24,8 @@ const NAV_ICONS = {
 const NAV_LABELS = {
   atendimento: 'Atendimento',
   dashboard: 'Dashboard',
-  agenda: 'Agenda',
+  compromissos: 'Agenda',
+  contatos: 'Contatos',
   interno: 'Equipe',
   protocolos: 'Protocolos',
   relatorios: 'Relatórios',
@@ -152,8 +158,11 @@ export function RailNavegacao({ view, onChange, isAdmin, verRelatorios, notifCou
   }, [recolhida]);
   const somenteIcone = breakpoint === 'tablet' || (breakpoint === 'desktop' && recolhida);
   const [menuMobileAberto, setMenuMobileAberto] = React.useState(false);
+  // A barra inferior do celular tem cinco lugares e a agenda ocupou um deles;
+  // os contatos passaram para o menu "Mais".
   const viewsMenuMobile = [
     isAdmin && 'dashboard',
+    'contatos',
     'protocolos',
     verRelatorios && 'relatorios',
     isAdmin && 'configuracoes',
@@ -173,7 +182,7 @@ export function RailNavegacao({ view, onChange, isAdmin, verRelatorios, notifCou
       },
     },
       React.createElement(BotaoRailMobile, { view: 'atendimento', ativo: view === 'atendimento', onClick: onChange }),
-      React.createElement(BotaoRailMobile, { view: 'agenda', ativo: view === 'agenda', onClick: onChange }),
+      React.createElement(BotaoRailMobile, { view: 'compromissos', ativo: view === 'compromissos', onClick: onChange }),
       React.createElement(BotaoRailMobile, { view: 'interno', ativo: view === 'interno', onClick: onChange }),
       React.createElement(BotaoRailMobile, { view: 'notificacoes', ativo: view === 'notificacoes', onClick: onChange, badge: notifCount || 0 }),
       viewsMenuMobile.length > 0 && React.createElement(React.Fragment, null,
@@ -298,7 +307,8 @@ export function RailNavegacao({ view, onChange, isAdmin, verRelatorios, notifCou
     },
       React.createElement(BotaoRail, { view: 'atendimento', ativo: view === 'atendimento', onClick: onChange, somenteIcone }),
       isAdmin && React.createElement(BotaoRail, { view: 'dashboard', ativo: view === 'dashboard', onClick: onChange, somenteIcone }),
-      React.createElement(BotaoRail, { view: 'agenda', ativo: view === 'agenda', onClick: onChange, somenteIcone }),
+      React.createElement(BotaoRail, { view: 'compromissos', ativo: view === 'compromissos', onClick: onChange, somenteIcone }),
+      React.createElement(BotaoRail, { view: 'contatos', ativo: view === 'contatos', onClick: onChange, somenteIcone }),
       React.createElement(BotaoRail, { view: 'interno', ativo: view === 'interno', onClick: onChange, somenteIcone }),
       React.createElement(BotaoRail, { view: 'protocolos', ativo: view === 'protocolos', onClick: onChange, somenteIcone }),
       verRelatorios && React.createElement(BotaoRail, { view: 'relatorios', ativo: view === 'relatorios', onClick: onChange, somenteIcone }),

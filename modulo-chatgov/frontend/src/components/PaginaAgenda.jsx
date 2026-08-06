@@ -115,7 +115,7 @@ export function PaginaAgenda({ onSendMessage, breakpoint }) {
     /* ── HEADER ── */
     React.createElement('div', { style: { ...sf.header, ...(ehMobile ? sf.headerMobile : null) } },
       React.createElement('div', { style: { ...sf.headerLeft, ...(ehMobile ? sf.headerLeftMobile : null) } },
-        React.createElement('h1', { style: sf.title }, 'Agenda'),
+        React.createElement('h1', { style: sf.title }, 'Contatos'),
         !ehMobile && React.createElement('div', { style: sf.divider }),
         React.createElement('nav', { style: { ...sf.tabs, ...(ehMobile ? sf.tabsMobile : null) } },
           ...abas.map((aba) =>

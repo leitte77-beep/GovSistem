@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Send, Paperclip, Smile, ShieldCheck, Clock, User, UserPlus, CheckCircle2, Building2, MessageSquare, Tag, StickyNote, ChevronDown, ChevronRight, Archive, Trash2, ArrowRightLeft, Undo2, UserCheck, X, MoreVertical, ArrowDown, Loader2, Mic, Square, Play, Pause, RotateCcw, Images, Mail, Search, ArrowLeft } from 'lucide-react';
+import { Send, Paperclip, Smile, ShieldCheck, Clock, User, UserPlus, CheckCircle2, Building2, MessageSquare, Tag, StickyNote, ChevronDown, ChevronRight, Archive, Trash2, ArrowRightLeft, Undo2, UserCheck, X, MoreVertical, ArrowDown, Loader2, Mic, Square, Play, Pause, RotateCcw, Images, Mail, Search, ArrowLeft, CalendarPlus } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { BolhaConversa } from './BolhaConversa';
 import { DeptBadge } from './DeptBadge';
@@ -13,6 +13,9 @@ import { useAuth } from '../context/AuthContext';
 import { fetchMensagens, fetchDepartamentos, fetchTemplates, fetchEtiquetas, fetchEtiquetasConversa, fetchNotasInternas, editarContato, fetchTransferenciaPendente, excluirMensagemConversa, fetchMidiasConversa, marcarConversaNaoLida, criarContato, iniciarConversa } from '../api';
 import { mimeParaTipo, encodeFileBase64, mesmaData, formatarDataSeparador } from '../utils/arquivo';
 import { SeparadorData } from './SeparadorData';
+import { PainelMinhaAgenda } from './agenda/PainelMinhaAgenda';
+import { ModalCompromisso } from './agenda/ModalCompromisso';
+import { notificarAgendaAtualizada } from './agenda/eventos';
 import { T } from '../theme';
 
 const EMOJIS_RAPIDOS = ['😀', '😅', '👍', '🙏', '❤️', '😊', '👏', '✅', '⚠️', '📎'];
@@ -80,6 +83,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
   const [clienteDigitando, setClienteDigitando] = useState(false);
   const [botDigitando, setBotDigitando] = useState(null); // null | 'iris' | 'chatbot'
   const [showMenuMais, setShowMenuMais] = useState(false);
+  const [showNovoCompromisso, setShowNovoCompromisso] = useState(false);
   const [showAcoes, setShowAcoes] = useState(false); // menu de ações combinado (mobile/tablet)
   const [showEmojis, setShowEmojis] = useState(false);
   const [anexando, setAnexando] = useState(false);
@@ -988,11 +992,11 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
     }
   };
 
+  // Sem conversa aberta, a área central deixa de ser um cartaz institucional e
+  // passa a mostrar a agenda do próprio atendente — é o momento em que ele está
+  // decidindo o que fazer a seguir.
   if (!conversa) {
-    return React.createElement(EstadoVazio, {
-      title: 'Selecione uma conversa',
-      subtitle: 'Escolha um atendimento na lista ou inicie uma nova conversa.',
-    });
+    return React.createElement(PainelMinhaAgenda, { onAbrirConversa, breakpoint });
   }
 
   const nome = conversa.contato_nome || conversa.contato_telefone || 'Desconhecido';
@@ -1273,6 +1277,10 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
             etiquetasConv.length > 0 && React.createElement('span', {
               style: { marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: T.primary },
             }, String(etiquetasConv.length))),
+          React.createElement('button', {
+            role: 'menuitem', title: 'Marca um retorno na sua agenda, já vinculado a esta conversa',
+            onClick: () => { setShowMenuMais(false); setShowNovoCompromisso(true); }, style: { ...dropdownItem, color: T.textSecondary },
+          }, React.createElement(CalendarPlus, { size: 15 }), 'Criar lembrete'),
           React.createElement('button', { role: 'menuitem', onClick: () => { setShowMenuMais(false); abrirGaleria(); }, style: { ...dropdownItem, color: T.textSecondary } },
             React.createElement(Images, { size: 15 }), 'Ver mídias'),
           React.createElement('button', { role: 'menuitem', onClick: () => { setShowMenuMais(false); marcarNaoLida(); }, style: { ...dropdownItem, color: T.textSecondary } },
@@ -1751,6 +1759,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
       acaoSheetItem(Tag, 'Etiquetas', () => { setShowAcoes(false); setShowEtiquetas(true); }),
       acaoSheetItem(Building2, 'Encaminhar para setor', () => { setShowAcoes(false); if (!showEncaminhar) abrirEncaminhar(); }),
       acaoSheetItem(CheckCircle2, 'Resolver conversa', () => { setShowAcoes(false); resolver(); }, T.success),
+      acaoSheetItem(CalendarPlus, 'Criar lembrete', () => { setShowAcoes(false); setShowNovoCompromisso(true); }),
       acaoSheetItem(Images, 'Ver mídias', () => { setShowAcoes(false); abrirGaleria(); }),
       acaoSheetItem(Mail, 'Marcar como não lida', () => { setShowAcoes(false); marcarNaoLida(); }),
       ehArquivada
@@ -1818,6 +1827,19 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
           }),
     ),
 
+    // Lembrete criado de dentro do atendimento já nasce vinculado à conversa —
+    // é o que permite o popup oferecer "Abrir conversa" na hora do retorno.
+    showNovoCompromisso && React.createElement(ModalCompromisso, {
+      preenchimento: {
+        tipo: 'lembrete',
+        titulo: `Retornar para ${nome}`,
+        conversa_id: conversa.id,
+        contato_id: conversa.contato_id || null,
+        contato_nome: nome,
+      },
+      onClose: () => setShowNovoCompromisso(false),
+      onSalvo: notificarAgendaAtualizada,
+    }),
     showParticipantes && React.createElement(ModalParticipantes, { conversa, onClose: () => setShowParticipantes(false) }),
     showTransferir && React.createElement(ModalTransferir, { conversa, onClose: () => setShowTransferir(false), onTransferido: () => onConversaUpdated?.() }),
 
@@ -1879,118 +1901,6 @@ function ConfirmModal({ titulo, texto, confirmarLabel = 'Confirmar', cancelarLab
           onClick: confirmar, disabled: ocupado, autoFocus: !comInput,
           style: { display: 'flex', alignItems: 'center', gap: 6, border: 'none', borderRadius: T.radiusSm, padding: '8px 16px', cursor: ocupado ? 'default' : 'pointer', fontSize: 13, fontWeight: 700, color: '#fff', background: perigoso ? T.danger : T.primary },
         }, confirmarLabel),
-      ),
-    ),
-  );
-}
-
-function EstadoVazio({ title, subtitle }) {
-  return React.createElement('div', {
-    role: 'main',
-    'aria-labelledby': 'chatgov-empty-title',
-    style: {
-      flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden',
-    },
-  },
-    React.createElement('header', {
-      style: {
-        height: 64, width: '100%', display: 'flex', alignItems: 'center',
-        padding: '0 24px',
-        background: T.surface,
-        backdropFilter: 'blur(12px)',
-        WebkitBackdropFilter: 'blur(12px)',
-        borderBottom: `1px solid ${T.border}`,
-        flexShrink: 0,
-      },
-    },
-      React.createElement('h1', {
-        style: { fontSize: 18, fontWeight: 700, color: T.text, letterSpacing: -0.3 },
-      }, 'ChatGov — Central de Atendimento'),
-    ),
-    React.createElement('div', {
-      style: {
-        flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-        position: 'relative',
-         backgroundColor: T.bg,
-        backgroundImage: `radial-gradient(${T.borderStrong} 0.45px, transparent 0.45px)`,
-        backgroundSize: '24px 24px',
-      },
-    },
-      React.createElement('div', {
-        style: {
-          position: 'absolute', inset: 0, pointerEvents: 'none',
-        },
-      },
-        React.createElement('div', {
-          style: {
-            position: 'absolute', top: '20%', left: '50%',
-            transform: 'translateX(-50%)',
-            width: 420, height: 420,
-            background: 'rgba(37,99,235,0.05)',
-            filter: 'blur(120px)', borderRadius: '50%',
-          },
-        }),
-      ),
-      React.createElement('div', {
-        style: { maxWidth: 440, width: '100%', textAlign: 'center', position: 'relative', zIndex: 10, padding: 24 },
-      },
-        React.createElement('div', {
-          style: { position: 'relative', display: 'inline-block', marginBottom: 24 },
-        },
-          React.createElement('div', {
-            style: {
-              width: 76, height: 76, borderRadius: 24,
-              background: T.primary, color: '#fff',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              boxShadow: '0 10px 28px rgba(37,99,235,0.24)',
-              position: 'relative',
-            },
-          },
-            React.createElement('span', {
-              className: 'material-symbols-outlined',
-              style: { fontSize: 38, fontVariationSettings: "'FILL' 1" },
-            }, 'forum'),
-          ),
-          React.createElement('div', {
-            style: {
-              position: 'absolute', bottom: -4, right: -4,
-              background: T.surface, padding: 6, borderRadius: '50%',
-              boxShadow: '0 2px 8px rgba(0,0,0,0.12)',
-              border: `1px solid ${T.border}`,
-            },
-          },
-            React.createElement('span', {
-              className: 'material-symbols-outlined',
-              style: { color: T.primary, fontSize: 17, fontVariationSettings: "'FILL' 1" },
-            }, 'verified'),
-          ),
-        ),
-        React.createElement('h2', {
-          id: 'chatgov-empty-title',
-          style: { fontSize: 26, fontWeight: 800, color: T.text, marginBottom: 10, letterSpacing: -0.5 },
-        }, title || 'Selecione uma conversa'),
-        React.createElement('p', {
-          style: { fontSize: 14, color: T.textSecondary, lineHeight: '22px', maxWidth: 360, margin: '0 auto 20px' },
-        }, subtitle || 'Escolha um atendimento na lista ou inicie uma nova conversa.'),
-        React.createElement('div', {
-          style: {
-            display: 'inline-flex', alignItems: 'center', gap: 8, padding: '8px 12px',
-            borderRadius: 10, background: T.surface, border: `1px solid ${T.border}`,
-            color: T.textSecondary, fontSize: 12.5, marginBottom: 22,
-          },
-        },
-          React.createElement('kbd', { style: { fontFamily: T.font, fontWeight: 800, color: T.text } }, 'Ctrl + K'),
-          React.createElement('span', null, 'Pesquisar conversas'),
-        ),
-        React.createElement('div', {
-          style: { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, color: T.textSecondary },
-        },
-          React.createElement('span', {
-            className: 'material-symbols-outlined',
-            style: { fontSize: 16 },
-          }, 'lock'),
-          React.createElement('span', { style: { fontSize: 12 } }, 'Ambiente interno protegido'),
-        ),
       ),
     ),
   );

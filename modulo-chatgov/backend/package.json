@@ -9,7 +9,9 @@
     "migrate": "node src/migrations/run.js",
     "test": "node --test",
     "test:load:dev": "node ../scripts/load-test-dev.mjs",
-    "test:integration:dev": "node ../scripts/verify-admin-dev.mjs"
+    "test:integration:dev": "node ../scripts/verify-admin-dev.mjs",
+    "test:agenda": "node ../scripts/teste-agenda.mjs",
+    "test:agenda:http": "node ../scripts/teste-agenda-http.mjs"
   },
   "dependencies": {
     "@hapi/boom": "^10.0.1",

@@ -10,6 +10,10 @@ import { PaginaProtocolos } from './components/PaginaProtocolos';
 import { PaginaAgenda } from './components/PaginaAgenda';
 import { PaginaDashboard } from './components/PaginaDashboard';
 import { TelaQR } from './components/TelaQR';
+import { AgendaCompleta } from './components/agenda/AgendaCompleta';
+import { ModalResumoLogin } from './components/agenda/ModalResumoLogin';
+import { PopupLembrete } from './components/agenda/PopupLembrete';
+import { useLembretesAgenda } from './hooks/useLembretesAgenda';
 import { useAuth } from './context/AuthContext';
 import { useSocket } from './context/SocketContext';
 import { useBreakpoint } from './hooks/useBreakpoint';
@@ -27,7 +31,10 @@ export function ChatGov() {
   const ehMobile = breakpoint === 'mobile';
 
   const [view, setView] = useState(() => {
-    const VIEWS_VALIDAS = ['atendimento', 'agenda', 'interno', 'protocolos', 'relatorios', 'notificacoes', 'configuracoes'];
+    // `agenda` saiu da lista de propósito: a chave mudou de significado (era a
+    // lista de contatos, virou a de compromissos). Quem tinha a antiga salva
+    // cai no fallback em vez de aterrissar numa tela que não pediu.
+    const VIEWS_VALIDAS = ['atendimento', 'compromissos', 'contatos', 'interno', 'protocolos', 'relatorios', 'notificacoes', 'configuracoes'];
     if (isAdmin) VIEWS_VALIDAS.push('dashboard');
     try {
       const salva = localStorage.getItem('chatgov_view');
@@ -41,6 +48,17 @@ export function ChatGov() {
   const [notifCount, setNotifCount] = useState(0);
 
   useNotificacoesDesktop({ conversaAtivaId: conversaAtiva?.id });
+
+  // Lembretes da agenda pessoal. Ficam aqui, e não dentro do painel central,
+  // porque precisam avisar o atendente esteja ele onde estiver — inclusive com
+  // uma conversa aberta ou na tela de relatórios.
+  const lembretes = useLembretesAgenda({ ativo: Boolean(auth?.operador?.id) });
+
+  // Reaproveita o caminho que as notificações já usam para abrir uma conversa
+  // pelo id: troca de view e carrega a conversa pelo socket.
+  const abrirConversaPorId = useCallback((conversaId) => {
+    window.dispatchEvent(new CustomEvent('notificacao:abrir-conversa', { detail: { conversaId } }));
+  }, []);
 
   useEffect(() => {
     if (!connected) return;
@@ -235,7 +253,15 @@ export function ChatGov() {
       ? React.createElement('div', { style: pageShellStyle },
           React.createElement(CentroNotificacoes, { onCountChange: setNotifCount }),
         )
-      : view === 'agenda'
+      : view === 'compromissos'
+      ? React.createElement('div', { style: pageShellStyle },
+          React.createElement(AgendaCompleta, {
+            modo: 'pagina',
+            breakpoint,
+            onAbrirConversa: abrirConversaPorId,
+          }),
+        )
+      : view === 'contatos'
       ? (ehMobile
           ? React.createElement('div', { style: { ...pageShellStyle, overflow: 'hidden' } },
               React.createElement(PaginaAgenda, {
@@ -313,5 +339,24 @@ export function ChatGov() {
           ),
 
     showQR && React.createElement(TelaQR, { onClose: () => setShowQR(false) }),
+
+    // Resumo do dia: decide sozinho se deve aparecer (só quando há compromisso
+    // de hoje, pendência atrasada ou item urgente).
+    React.createElement(ModalResumoLogin, {
+      operadorNome: auth?.operador?.nome,
+      onAbrirConversa: abrirConversaPorId,
+      breakpoint,
+    }),
+
+    lembretes.atual && React.createElement(PopupLembrete, {
+      lembrete: lembretes.atual,
+      restantes: lembretes.restantes,
+      ocupado: lembretes.ocupado,
+      onDispensar: lembretes.dispensar,
+      onAdiar: lembretes.adiar,
+      onConcluir: lembretes.concluir,
+      onAbrirConversa: abrirConversaPorId,
+      breakpoint,
+    }),
   );
 }
