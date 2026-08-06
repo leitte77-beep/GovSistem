@@ -22,6 +22,7 @@ import {
 } from './services/protocolo.js';
 import { registrarRespostaNPS, calcularNPS, npsPorSetor, npsPorAtendente } from './services/nps.js';
 import rotasEvolucoes from './routes/evolucoes.js';
+import rotasAgenda from './routes/agenda.js';
 import { iniciarLimpezaConversas } from './services/limpeza-conversas.js';
 import { ensureTenantProvisioned } from './services/provisionamento.js';
 import devSaasRouter from './auth/dev-saas.js';
@@ -259,6 +260,7 @@ app.use('/api', rateLimiter);
   app.use('/api/v2', operacaoV2Router);
   app.use('/api/v2/admin', administracaoV2Router);
   app.use('/api/evolucoes', rotasEvolucoes);
+  app.use('/api/agenda', rotasAgenda);
 
   app.get('/api/me', async (req, res) => {
     try {

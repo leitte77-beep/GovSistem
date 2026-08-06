@@ -192,11 +192,21 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
 
   useEffect(() => {
     if (!showMenuMais && !showTemplates && !showEtiquetas && !showEncaminhar && !showEmojis) return;
+    // Um dropdown aberto "pertence" a estes elementos; eventos vindos de dentro
+    // deles não podem fechá-lo.
+    const dentroDoMenu = (alvo) =>
+      alvo instanceof Element && !!alvo.closest('[role="menu"], .cg-enc-menu');
     const onClickFora = (e) => {
-      if (!e.target.closest('[role="menu"], .cg-enc-menu')) fecharDropdowns();
+      if (!dentroDoMenu(e.target)) fecharDropdowns();
     };
     const onEsc = (e) => { if (e.key === 'Escape') fecharDropdowns(); };
-    const onScroll = () => fecharDropdowns();
+    // O listener é em capture (scroll não borbulha), então ele vê a rolagem de
+    // qualquer container — inclusive a lista de setores do próprio menu, que tem
+    // rolagem própria. Rolar dentro do menu não pode fechá-lo.
+    const onScroll = (e) => {
+      if (dentroDoMenu(e.target)) return;
+      fecharDropdowns();
+    };
     document.addEventListener('click', onClickFora, true);
     document.addEventListener('keydown', onEsc);
     window.addEventListener('scroll', onScroll, true);
@@ -1181,8 +1191,10 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
               onBlur: (e) => { e.target.style.borderColor = T.border; e.target.style.boxShadow = 'none'; },
             }),
           ),
-          // Lista agrupada com rolagem própria (não toma a tela toda)
-          React.createElement('div', { style: { maxHeight: 320, overflowY: 'auto', paddingBottom: 4 } },
+          // Lista agrupada com rolagem própria (não toma a tela toda). O
+          // overscroll contido impede que, ao chegar no fim da lista, a roda do
+          // mouse passe a rolar o painel atrás — o que fecharia o menu.
+          React.createElement('div', { style: { maxHeight: 320, overflowY: 'auto', overscrollBehavior: 'contain', paddingBottom: 4 } },
             gruposEncFiltrados.length === 0
               ? React.createElement('div', { style: { padding: '10px 14px', fontSize: 13, color: T.textMuted } }, 'Nenhum resultado.')
               : gruposEncFiltrados.map((g) => {
