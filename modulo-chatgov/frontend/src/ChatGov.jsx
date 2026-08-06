@@ -18,7 +18,7 @@ import { useAuth } from './context/AuthContext';
 import { useSocket } from './context/SocketContext';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { T } from './theme';
-import { fetchConversa } from './api';
+import { fetchConversa, fetchWhatsAppStatus } from './api';
 import { fetchNotificacoesStatus } from './api/evolucoes';
 import { useNotificacoesDesktop } from './hooks/useNotificacoesDesktop';
 
@@ -46,6 +46,7 @@ export function ChatGov() {
   const [showQR, setShowQR] = useState(false);
   const [recarregar, setRecarregar] = useState(0);
   const [notifCount, setNotifCount] = useState(0);
+  const [waStatus, setWaStatus] = useState({ status: 'desconectado', numero: null });
 
   useNotificacoesDesktop({ conversaAtivaId: conversaAtiva?.id });
 
@@ -73,6 +74,19 @@ export function ChatGov() {
     const interval = setInterval(atualizar, 10000);
     return () => clearInterval(interval);
   }, [connected]);
+
+  useEffect(() => {
+    fetchWhatsAppStatus().then(setWaStatus).catch(console.error);
+    if (!socket) return;
+    const onConectado = (d) => setWaStatus({ status: 'conectado', numero: d?.numero });
+    const onDesconectado = () => setWaStatus({ status: 'desconectado', numero: null });
+    socket.on('whatsapp:conectado', onConectado);
+    socket.on('whatsapp:desconectado', onDesconectado);
+    return () => {
+      socket.off('whatsapp:conectado', onConectado);
+      socket.off('whatsapp:desconectado', onDesconectado);
+    };
+  }, [socket]);
 
   const handleSelectConversa = useCallback((c) => {
     setConversaAtiva(c);
@@ -229,7 +243,7 @@ export function ChatGov() {
     // Rail: lateral no desktop/tablet, bottom-tab fixo no mobile.
     // Some quando um chat está aberto no celular (tela cheia, estilo WhatsApp).
     !chatMobileAberto && React.createElement(RailNavegacao, {
-      view, onChange: handleChangeView, isAdmin, verRelatorios, notifCount, breakpoint,
+      view, onChange: handleChangeView, isAdmin, verRelatorios, notifCount, breakpoint, waStatus,
     }),
 
     // Views de tela cheia
