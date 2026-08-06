@@ -179,7 +179,7 @@ function Meta({ info, msg }) {
 
 // ─── CTA button ───
 
-function Btn({ label, onClick }) {
+function Btn({ label, onClick, icon: Icon }) {
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onClick?.(); }}
@@ -194,10 +194,68 @@ function Btn({ label, onClick }) {
       onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 3px 12px rgba(37,99,235,0.35)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
       onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 1px 4px rgba(37,99,235,0.25)'; e.currentTarget.style.transform = ''; }}
     >
-      <Eye size={14} />
+      {Icon ? React.createElement(Icon, { size: 14 }) : React.createElement(Eye, { size: 14 })}
       {label}
     </button>
   );
+}
+
+function BtnBaixar({ info }) {
+  const baixar = (e) => {
+    e.stopPropagation();
+    const a = document.createElement('a'); a.href = info.url; a.download = info.nome; a.click();
+  };
+  return (
+    <button
+      onClick={baixar}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 5,
+        padding: '6px 12px', borderRadius: 8,
+        background: T.surfaceAlt, color: T.text, border: `1px solid ${T.borderStrong}`,
+        cursor: 'pointer', fontSize: 12.5, fontWeight: 600,
+        transition: 'background 0.15s, border-color 0.15s',
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = T.surfaceMuted; e.currentTarget.style.borderColor = T.primary; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = T.surfaceAlt; e.currentTarget.style.borderColor = T.borderStrong; }}
+      title="Baixar arquivo"
+    >
+      <Download size={14} />
+      Baixar
+    </button>
+  );
+}
+
+function documentGradient(mime) {
+  if (!mime) return 'linear-gradient(135deg, #f0f4ff 0%, #e6edf8 100%)';
+  if (mime.includes('word') || mime.includes('document') || mime.includes('odt'))
+    return 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)';
+  if (mime.includes('sheet') || mime.includes('excel') || mime.includes('ods') || mime.includes('csv'))
+    return 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)';
+  if (mime.includes('presentation') || mime.includes('powerpoint') || mime.includes('odp'))
+    return 'linear-gradient(135deg, #fdf4ff 0%, #f3e8ff 100%)';
+  if (mime.includes('text') || mime.includes('plain'))
+    return 'linear-gradient(135deg, #fafaf9 0%, #f5f5f4 100%)';
+  return 'linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%)';
+}
+
+function documentLabel(mime) {
+  if (!mime) return 'Arquivo';
+  if (mime.includes('word') || mime.includes('document') || mime.includes('odt')) return 'Documento Word';
+  if (mime.includes('sheet') || mime.includes('excel') || mime.includes('ods')) return 'Planilha Excel';
+  if (mime.includes('csv')) return 'Planilha CSV';
+  if (mime.includes('presentation') || mime.includes('powerpoint') || mime.includes('odp')) return 'Apresentação';
+  if (mime.includes('text') || mime.includes('plain')) return 'Texto';
+  return 'Arquivo';
+}
+
+function isDocumentMime(mime) {
+  if (!mime) return false;
+  if (mime.includes('word') || mime.includes('document')) return true;
+  if (mime.includes('sheet') || mime.includes('excel') || mime.includes('csv')) return true;
+  if (mime.includes('presentation') || mime.includes('powerpoint')) return true;
+  if (mime.includes('opendocument')) return true;
+  if (mime.includes('text/plain')) return true;
+  return false;
 }
 
 // ─── Menu 3 pontos ───
@@ -275,14 +333,18 @@ function PdfMessage({ info, msg, isMe, onOpenLightbox }) {
       </div>
       <div style={{ padding: '16px 20px 18px', display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{
-          fontSize: 15, fontWeight: 600, color: T.text, lineHeight: 1.3,
-          maxHeight: 42, overflow: 'hidden', wordBreak: 'break-word',
+          fontSize: 14, fontWeight: 600, color: T.text, lineHeight: 1.35,
+          maxHeight: 40, overflow: 'hidden',
+          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+          wordBreak: 'break-word',
         }} title={info.nomeTitle || info.nome}>
           {nome}
         </div>
         <Meta info={info} msg={msg} />
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
           <Btn label="Visualizar PDF" onClick={() => onOpenLightbox?.(info.url, 'pdf', info.mime, nome)} />
+          <BtnBaixar info={info} />
+          <div style={{ flex: 1 }} />
           <Menu msg={msg} info={info} />
         </div>
       </div>
@@ -371,14 +433,18 @@ function ImageMessage({ info, msg, isMe, onOpenLightbox }) {
       </div>
       <div style={{ padding: '16px 20px 18px', display: 'flex', flexDirection: 'column', gap: 6 }}>
         <div style={{
-          fontSize: 14, fontWeight: 600, color: T.text, lineHeight: 1.3,
-          maxHeight: 40, overflow: 'hidden', wordBreak: 'break-word',
+          fontSize: 14, fontWeight: 600, color: T.text, lineHeight: 1.35,
+          maxHeight: 40, overflow: 'hidden',
+          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+          wordBreak: 'break-word',
         }} title={info.nomeTitle || info.nome}>
           {nome}
         </div>
         <Meta info={info} msg={msg} />
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
           <Btn label="Ampliar" onClick={() => onOpenLightbox?.(info.url, 'imagem', info.mime, nome)} />
+          <BtnBaixar info={info} />
+          <div style={{ flex: 1 }} />
           <Menu msg={msg} info={info} />
         </div>
       </div>
@@ -536,7 +602,10 @@ function AudioMessage({ info, msg, isMe }) {
               }}>{v}x</button>
             ))}
           </div>
-          <Menu msg={msg} info={info} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <BtnBaixar info={info} />
+            <Menu msg={msg} info={info} />
+          </div>
         </div>
         <Meta info={info} msg={msg} />
       </div>
@@ -585,12 +654,19 @@ function VideoMessage({ info, msg, isMe, onOpenLightbox }) {
         </div>
       </div>
       <div style={{ padding: '16px 20px 18px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={info.nome}>
+        <div style={{
+          fontSize: 14, fontWeight: 600, color: T.text, lineHeight: 1.35,
+          maxHeight: 40, overflow: 'hidden',
+          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
+          wordBreak: 'break-word',
+        }} title={info.nome}>
           {'\uD83C\uDFAC'} {info.nome}
         </div>
         <Meta info={info} msg={msg} />
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 }}>
           <Btn label="Reproduzir" onClick={() => onOpenLightbox?.(info.url, 'video', info.mime, info.nome)} />
+          <BtnBaixar info={info} />
+          <div style={{ flex: 1 }} />
           <Menu msg={msg} info={info} />
         </div>
       </div>
@@ -598,29 +674,54 @@ function VideoMessage({ info, msg, isMe, onOpenLightbox }) {
   );
 }
 
-// ─── Generic ───
+// ─── Document ───
 
-function GenericFileMessage({ info, msg, isMe }) {
+function DocumentMessage({ info, msg, isMe, onOpenLightbox }) {
   const nome = info.nome;
   const icon = iconEmoji(info.mime);
-  return (
-    <Card isMe={isMe} onClick={() => window.open(info.url, '_blank', 'noopener')}>
-      <div style={{ padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
-        <div style={{
-          width: 50, height: 50, borderRadius: 12, background: T.surfaceMuted || T.surfaceAlt,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 24,
-        }}>
-          {icon}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={info.nomeTitle || nome}>
-            {nome}
-          </div>
-          <Meta info={info} msg={msg} />
-        </div>
-        <Menu msg={msg} info={info} />
-      </div>
-    </Card>
+  const grad = documentGradient(info.mime);
+  const label = documentLabel(info.mime);
+  const ehSimples = !isDocumentMime(info.mime);
+
+  if (ehSimples) {
+    return React.createElement(Card, { isMe, onClick: () => window.open(info.url, '_blank', 'noopener') },
+      React.createElement('div', { style: { padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 14 } },
+        React.createElement('div', { style: { width: 50, height: 50, borderRadius: 12, background: T.surfaceMuted || T.surfaceAlt, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 24 } }, icon),
+        React.createElement('div', { style: { flex: 1, minWidth: 0 } },
+          React.createElement('div', {
+            style: { fontSize: 14, fontWeight: 600, color: T.text, lineHeight: 1.35, maxHeight: 40, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', wordBreak: 'break-word' },
+            title: info.nomeTitle || nome,
+          }, nome),
+          React.createElement(Meta, { info, msg }),
+        ),
+        React.createElement(Menu, { msg, info }),
+      ),
+    );
+  }
+
+  return React.createElement(Card, { isMe, onClick: () => window.open(info.url, '_blank', 'noopener') },
+    React.createElement('div', {
+      style: { height: 110, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: grad },
+    },
+      React.createElement('span', { style: { fontSize: 44 } }, icon),
+      React.createElement('span', { style: { fontSize: 11, fontWeight: 700, color: T.textSecondary, marginTop: 4, letterSpacing: 0.3 } }, label),
+    ),
+    React.createElement('div', { style: { padding: '16px 20px 18px', display: 'flex', flexDirection: 'column', gap: 8 } },
+      React.createElement('div', {
+        style: { fontSize: 14, fontWeight: 600, color: T.text, lineHeight: 1.35, maxHeight: 40, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', wordBreak: 'break-word' },
+        title: info.nomeTitle || info.nome,
+      }, nome),
+      React.createElement(Meta, { info, msg }),
+      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 } },
+        React.createElement(Btn, {
+          label: 'Visualizar',
+          onClick: () => window.open(info.url, '_blank', 'noopener'),
+        }),
+        React.createElement(BtnBaixar, { info }),
+        React.createElement('div', { style: { flex: 1 } }),
+        React.createElement(Menu, { msg, info }),
+      ),
+    ),
   );
 }
 
@@ -636,7 +737,7 @@ export function MediaPreview({ msg, isMe, onOpenLightbox, compacto, onIrParaMens
   if (info.ehImagem) return <ImageMessage {...props} />;
   if (info.ehAudio) return <AudioMessage {...props} />;
   if (info.ehVideo) return <VideoMessage {...props} />;
-  return <GenericFileMessage {...props} />;
+  return <DocumentMessage {...props} />;
 }
 
 // ─── Lightbox ───
