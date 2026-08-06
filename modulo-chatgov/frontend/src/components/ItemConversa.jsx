@@ -33,13 +33,14 @@ function previewLabel(tipo) {
 
 function formatarPreview(msg, direcao, tipo) {
   const isEntrada = direcao === 'entrada';
-  const isSaida = direcao === 'saida';
+  const generoFeminino = { imagem: true, image: true, localizacao: true, location: true };
 
   if (tipo && tipo !== 'texto') {
     const icon = previewIcon(tipo);
     const label = previewLabel(tipo);
-    if (tipo === 'audio' && msg) return `${icon} ${label} (\u00c1udio)`;
-    return `${icon} ${label} ${isEntrada ? 'recebido' : 'enviado'}${isEntrada ? 'a' : ''}`;
+    const acao = isEntrada ? 'recebid' : 'enviad';
+    const sufixo = generoFeminino[tipo] ? 'a' : 'o';
+    return `${icon} ${label} ${acao}${sufixo}`;
   }
 
   if (!msg) return '';
