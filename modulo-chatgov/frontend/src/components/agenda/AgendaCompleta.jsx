@@ -10,11 +10,11 @@ import { notificarAgendaAtualizada } from './eventos';
 // em grade de calendário fica para a etapa da agenda compartilhada, onde a grade
 // passa a valer a pena (vários calendários sobrepostos).
 const ABAS = [
-  { key: 'hoje',       label: 'Hoje' },
-  { key: 'amanha',     label: 'Amanhã' },
-  { key: 'semana',     label: 'Esta semana' },
-  { key: 'atrasados',  label: 'Atrasados' },
-  { key: 'concluidos', label: 'Concluídos' },
+  { key: 'hoje',       label: 'Hoje',       vazio: 'Nenhum compromisso para hoje' },
+  { key: 'amanha',     label: 'Amanhã',     vazio: 'Nenhum compromisso para amanhã' },
+  { key: 'semana',     label: 'Esta semana',vazio: 'Nenhum compromisso esta semana' },
+  { key: 'atrasados',  label: 'Atrasados',  vazio: 'Nenhuma tarefa atrasada' },
+  { key: 'concluidos', label: 'Concluídos', vazio: 'Nenhum item concluído ainda' },
 ];
 
 /** Traduz a aba escolhida nos filtros que a API entende. */
@@ -120,7 +120,7 @@ export function AgendaCompleta({ onClose, onAbrirConversa, breakpoint, modo = 'o
         React.createElement('button', {
           onClick: () => setCriando(true),
           style: { display: 'flex', alignItems: 'center', gap: 5, border: 'none', background: T.primary, color: '#fff', padding: '7px 13px', borderRadius: T.radiusSm, cursor: 'pointer', fontSize: 12.5, fontWeight: 700 },
-        }, React.createElement(Plus, { size: 15 }), '+ Novo compromisso'),
+        }, React.createElement(Plus, { size: 15 }), 'Novo compromisso'),
         ehOverlay && React.createElement('button', {
           onClick: onClose, 'aria-label': 'Fechar agenda',
           style: { width: 32, height: 32, border: 'none', background: 'transparent', cursor: 'pointer', borderRadius: T.radiusSm, display: 'flex', alignItems: 'center', justifyContent: 'center' },
@@ -140,8 +140,18 @@ export function AgendaCompleta({ onClose, onAbrirConversa, breakpoint, modo = 'o
             fontWeight: aba === a.key ? 700 : 500,
             color: aba === a.key ? T.primary : T.textMuted,
             borderBottom: `2px solid ${aba === a.key ? T.primary : 'transparent'}`,
+            display: 'flex', alignItems: 'center', gap: 5,
           },
-        }, a.label)),
+        },
+          a.label,
+          aba === a.key && !carregando && !erro && itens.length > 0 && React.createElement('span', {
+            style: {
+              fontSize: 10, fontWeight: 700, color: T.primary,
+              background: T.primarySoft, borderRadius: 9999,
+              padding: '1px 6px', minWidth: 18, textAlign: 'center',
+            },
+          }, itens.length > 99 ? '99+' : itens.length),
+        )),
       ),
 
       /* busca */
@@ -162,9 +172,18 @@ export function AgendaCompleta({ onClose, onAbrirConversa, breakpoint, modo = 'o
           ? React.createElement('div', { style: { fontSize: 13, color: T.danger, padding: '20px 0' } }, erro)
           : itens.length === 0
           ? React.createElement('div', { style: { textAlign: 'center', padding: '48px 12px', color: T.textMuted } },
-              React.createElement(CalendarDays, { size: 40, style: { opacity: 0.25 } }),
-              React.createElement('div', { style: { fontSize: 13.5, fontWeight: 600, marginTop: 10 } },
-                busca ? 'Nenhum item encontrado.' : 'Nada nesta lista.'),
+              React.createElement(CalendarDays, { size: 40, style: { opacity: 0.2, margin: '0 auto' } }),
+              React.createElement('div', { style: { fontSize: 14, fontWeight: 600, color: T.text, marginTop: 12 } },
+                busca ? 'Nenhum item encontrado.' : (ABAS.find((a) => a.key === aba) || {}).vazio || 'Nada nesta lista.'),
+              !busca && React.createElement('button', {
+                onClick: () => setCriando(true),
+                style: {
+                  display: 'inline-flex', alignItems: 'center', gap: 5,
+                  marginTop: 10, padding: '8px 16px',
+                  border: 'none', background: T.primary, color: '#fff',
+                  borderRadius: T.radiusSm, cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                },
+              }, React.createElement(Plus, { size: 14 }), 'Novo compromisso'),
             )
           : React.createElement('div', null,
               ...itens.map((item) => React.createElement(ItemAgenda, {
