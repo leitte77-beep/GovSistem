@@ -17,6 +17,9 @@ var _LIGHT = {
   chartBar: '#dbeafe',
   primaryGradient: 'linear-gradient(135deg, #2563EB 0%, #4F46E5 100%)',
 
+  link: '#2563eb',
+  linkHover: '#1d4ed8',
+
   success: '#16A34A',
   successSoft: '#E7F6EC',
   successDark: '#064E3B',
@@ -62,37 +65,49 @@ var _LIGHT = {
 };
 
 var _DARK = {
-  bg: '#0F172A',
-  surface: '#1E293B',
-  surfaceAlt: '#111827',
-  surfaceMuted: '#273449',
+  // Fundo principal — o mais profundo, cria a sensação de "canvas"
+  bg: '#0B1220',
 
-  border: '#334155',
-  borderStrong: '#475569',
+  // Cards "flutuam" acima do fundo
+  surface: '#1C2840',
+  surfaceAlt: '#172235',
+  surfaceMuted: '#24344F',
 
-  text: '#F8FAFC',
-  textSecondary: '#94A3B8',
-  textMuted: '#64748B',
+  // Hover — tom intermediário entre card e selecionado
+  hover: '#263754',
+
+  // Bordas — sutis, com transparência para não pesar
+  border: 'rgba(255,255,255,0.06)',
+  borderStrong: '#324766',
+
+  // Texto — três níveis de hierarquia
+  text: '#FFFFFF',
+  textSecondary: '#D6DCE8',
+  textMuted: '#AAB5C5',
 
   primary: '#2563EB',
   primaryHover: '#3B82F6',
   primarySoft: 'rgba(37, 99, 235, 0.15)',
-  chartBar: '#3B5B8C',
+  chartBar: '#3B82F6',
   primaryGradient: 'linear-gradient(135deg, #2563EB 0%, #4F46E5 100%)',
+
+  link: '#5AA9FF',
+  linkHover: '#82C3FF',
 
   success: '#16A34A',
   successSoft: 'rgba(22, 163, 74, 0.15)',
   successDark: '#064E3B',
   successLight: '#86EFAC',
-  warning: '#D97706',
-  warningSoft: 'rgba(217, 119, 6, 0.12)',
-  danger: '#EF4444',
+  warning: '#F59E0B',
+  warningSoft: 'rgba(245, 158, 11, 0.12)',
+  danger: '#DC2626',
   dangerDark: '#FCA5A5',
   dangerSoft: 'rgba(239, 68, 68, 0.12)',
   online: '#22C55E',
   offline: '#4B5563',
 
-  bubbleIn: '#1E293B',
+  // Bolhas do WhatsApp
+  bubbleIn: '#1C2840',
   bubbleOut: '#005C4B',
   bubbleOutMeta: '#94A3B8',
   bubbleOutReplyBg: '#00473A',
@@ -101,10 +116,11 @@ var _DARK = {
   bubbleOutAuthor: '#7DD3FC',
   bubbleOutTagBg: 'rgba(0, 0, 0, 0.18)',
   bubbleMediaBg: '#273449',
-  bubbleMediaText: '#E2E8F0',
+  bubbleMediaText: '#D6DCE8',
   bubbleMediaMeta: '#94A3B8',
 
-  accentBlueLight: '#60A5FA',
+  // Tags / departamentos
+  accentBlueLight: '#5AA9FF',
   tagTributacao: '#4C1D95',
   tagTributacaoText: '#E9D5FF',
   tagNotificacoes: '#1E3A5F',
@@ -117,14 +133,15 @@ var _DARK = {
   radius: 12,
   radiusSm: 8,
   radiusLg: 16,
-  shadow: '0 8px 30px rgba(0,0,0,0.35)',
-  shadowMd: '0 4px 16px rgba(0,0,0,0.4)',
-  shadowLg: '0 12px 40px rgba(0,0,0,0.5)',
+  shadow: '0 8px 24px rgba(0,0,0,0.28)',
+  shadowMd: '0 4px 16px rgba(0,0,0,0.35)',
+  shadowLg: '0 20px 60px rgba(0,0,0,0.45)',
 
-  railBg: '#0B1220',
+  railBg: '#111827',
   railText: '#94A3B8',
-  railActive: '#60A5FA',
+  railActive: '#5AA9FF',
 
+  // WhatsApp — verde mais discreto no dark
   whatsappGreen: '#16A34A',
   whatsappGreenSoft: 'rgba(22, 163, 74, 0.12)',
   whatsappStatusBg: '#0A2E1F',

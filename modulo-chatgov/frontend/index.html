@@ -115,15 +115,21 @@
         }
         :root[data-theme="dark"] {
           color-scheme: dark;
-          --sb-thumb: #3F4355; --sb-track: #1A1D23;
+          --sb-thumb: #324766; --sb-track: transparent;
         }
 
+        /* dark — scrollbar fina com cor primária */
+        [data-theme="dark"] ::-webkit-scrollbar-thumb { background: #324766; }
+        [data-theme="dark"] ::-webkit-scrollbar-thumb:hover { background: #3B82F6; }
+        [data-theme="dark"] * { scrollbar-color: #324766 transparent; }
+
         /* dark ─ unificado sob [data-theme="dark"] */
-        [data-theme="dark"] .chat-pattern { background-color: #0D1117; background-image: radial-gradient(#2A2D35 0.5px, transparent 0.5px); }
-        [data-theme="dark"] body { background-color: #0D1117; color: #F3F4F6; }
-        [data-theme="dark"] .cg-conv-item:hover { background: #2A2D35; }
-        [data-theme="dark"] .cg-conv-item.ativa { background: rgba(37, 99, 235, 0.12); }
-        [data-theme="dark"] .cg-conv-item.ativa:hover { background: rgba(37, 99, 235, 0.18); }
+        [data-theme="dark"] .chat-pattern { background-color: #0B1220; background-image: radial-gradient(rgba(255,255,255,0.03) 0.5px, transparent 0.5px); }
+        [data-theme="dark"] body { background-color: #0B1220; color: #D6DCE8; }
+        [data-theme="dark"] .cg-conv-item:hover { background: #263754; }
+        [data-theme="dark"] .cg-conv-item.ativa { background: #284567; border-left: 4px solid #3B82F6; }
+        [data-theme="dark"] .cg-conv-item.ativa:hover { background: #2D4D72; border-left-color: #3B82F6; }
+        [data-theme="dark"] .cg-conv-item.nao-lida { background: rgba(59,130,246,0.08); }
 
         /* Composer */
         .composer { display: flex; align-items: flex-end; gap: .375rem; padding: .5rem; min-width: 0; }
