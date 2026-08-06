@@ -13,7 +13,9 @@ const IMG_TALL_RATIO = 2.2;
 // Hash filename pattern: looks like a hex/random hash with no extension
 function ehHash(str) {
   if (!str) return false;
-  return /^[a-f0-9]{16,}$/i.test(str) || /^[a-f0-9-]{32,}$/i.test(str);
+  const semExt = str.replace(/\.[^.]+$/, '');
+  if (/^[a-f0-9]{24,}$/i.test(semExt)) return true;
+  return false;
 }
 
 // Friendly display name — never show raw hashes
