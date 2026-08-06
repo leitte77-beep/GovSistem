@@ -2,39 +2,11 @@
 
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { api, EditionSummary as Edition } from "@/lib/api";
 import { useOrg } from "@/lib/org-context";
-import { formatSummary } from "@/lib/summary";
-import ShareDialog from "@/components/ShareDialog";
-
-const TYPE_LABELS: Record<string, string> = {
-  normal: "ORDINÁRIA",
-  extra: "EXTRAORDINÁRIA",
-  suplementar: "SUPLEMENTAR",
-};
-
-const TYPE_STYLES: Record<string, string> = {
-  normal:
-    "bg-secondary-container text-on-secondary-container",
-  extra: "bg-primary-container text-on-primary-container",
-  suplementar:
-    "bg-tertiary-container text-on-tertiary-container",
-};
-
-const TYPE_BG: Record<string, string> = {
-  normal: "bg-surface-container-low/30",
-  extra: "bg-tertiary-container/10",
-  suplementar: "bg-surface-container-low/30",
-};
-
-function formatDate(dateStr: string): string {
-  return new Date(dateStr + "T00:00:00").toLocaleDateString("pt-BR", {
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  });
-}
+import EditionCard from "@/components/EditionCard";
 
 export default function HomePage() {
   const router = useRouter();
@@ -73,10 +45,10 @@ export default function HomePage() {
       <section className="bg-surface py-stack-lg border-b border-outline-variant">
         <div className="max-w-container-max mx-auto px-gutter text-center">
           <h1 className="font-headline-lg text-headline-lg text-primary mb-stack-sm">
-            {org?.name || "Diário Oficial Eletrônico"}
+              {org?.name || "Diário Oficial Eletrônico"}
           </h1>
           <p className="text-body-lg font-body-lg text-on-surface-variant mb-stack-md max-w-2xl mx-auto">
-            {org?.description || "Acesse publicações oficiais, atos normativos e transparência governamental com facilidade e segurança jurídica."}
+              {org?.description || "Acesse publicações oficiais, atos normativos e transparência governamental com facilidade e segurança jurídica."}
           </p>
 
           <div className="bg-surface-container-lowest p-2 rounded-xl shadow-lg border border-outline-variant max-w-4xl mx-auto">
@@ -142,7 +114,7 @@ export default function HomePage() {
               Últimas Edições
             </h2>
             <p className="text-body-sm font-body-sm text-on-surface-variant">
-              Publicações recentes do Diário Oficial da União
+              Publicações recentes{org?.name ? ` da(o) ${org.name}` : " do Diário Oficial"}
             </p>
           </div>
           <Link
@@ -167,79 +139,7 @@ export default function HomePage() {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-gutter">
             {displayed.map((edition) => (
-              <div
-                key={edition.id}
-                className="bg-surface-container-lowest rounded-xl border border-outline-variant shadow-sm flex flex-col hover:shadow-md transition-shadow duration-300"
-              >
-                <div
-                  className={`p-6 border-b border-outline-variant ${
-                    TYPE_BG[edition.type] || "bg-surface-container-low/30"
-                  }`}
-                >
-                  <div className="flex justify-between items-start mb-2">
-                    <span
-                      className={`${
-                        TYPE_STYLES[edition.type] || TYPE_STYLES.normal
-                      } px-2 py-0.5 rounded text-[10px] font-bold tracking-wider`}
-                    >
-                      {TYPE_LABELS[edition.type] || TYPE_LABELS.normal}
-                    </span>
-                    <span className="text-label-md font-label-md text-on-surface-variant">
-                      {formatDate(edition.publication_date)}
-                    </span>
-                  </div>
-                  <h3 className="font-headline-sm text-headline-sm text-primary leading-tight">
-                    {edition.title}
-                  </h3>
-                </div>
-                <div className="p-6 flex-grow">
-                  <div className="mb-3 flex items-center gap-2 text-label-md font-label-md text-on-surface-variant uppercase tracking-widest">
-                    <span className="h-px w-6 bg-secondary" />
-                    Súmula do Dia
-                  </div>
-                  <div className="relative min-h-[116px] rounded-lg border border-outline-variant/70 bg-surface-container-low/45 px-4 py-3">
-                    <p
-                      className="text-body-sm font-body-sm text-on-surface leading-7"
-                      style={{
-                        display: "-webkit-box",
-                        WebkitLineClamp: 4,
-                        WebkitBoxOrient: "vertical",
-                        overflow: "hidden",
-                      }}
-                    >
-                      {formatSummary(edition.daily_summary)}
-                    </p>
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 rounded-b-lg bg-gradient-to-t from-surface-container-low to-transparent" />
-                  </div>
-                </div>
-                <div className="p-4 bg-surface-container-low flex items-center justify-between">
-                  <Link
-                    href={`/edicoes/${edition.year}/${edition.number}`}
-                    className="bg-primary text-on-primary px-4 py-2 rounded-lg text-label-md font-label-md hover:opacity-90 transition-all"
-                  >
-                    Visualizar
-                  </Link>
-                  <div className="flex gap-1">
-                    {edition.pdf_url && (
-                      <a
-                        href={edition.pdf_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="p-2 text-on-surface-variant hover:bg-surface-container-highest rounded-lg transition-colors"
-                        title="Baixar PDF"
-                      >
-                        <span className="material-symbols-outlined">
-                          download
-                        </span>
-                      </a>
-                    )}
-                    <ShareDialog
-                      url={`${typeof window !== "undefined" ? window.location.origin : ""}/edicoes/${edition.year}/${edition.number}`}
-                      title={`Edição ${edition.number}/${edition.year} - Diário Oficial`}
-                    />
-                  </div>
-                </div>
-              </div>
+              <EditionCard key={edition.id} edition={edition} />
             ))}
           </div>
         )}
@@ -302,7 +202,7 @@ export default function HomePage() {
               </h4>
               <p className="text-body-sm font-body-sm text-on-primary-container mb-6">
                 Pesquise em nossa base de dados histórica que contempla edições
-                desde a fundação do Diário Oficial do Município.
+                desde a primeira edição do Diário Oficial.
               </p>
               <Link
                 href="/acervo"
@@ -380,9 +280,11 @@ export default function HomePage() {
               </p>
             </div>
             <div className="lg:w-1/2 relative min-h-[300px] w-full rounded-xl overflow-hidden shadow-inner">
-              <img
+              <Image
                 alt="Institutional"
-                className="absolute inset-0 w-full h-full object-cover"
+                fill
+                sizes="(max-width: 1024px) 100vw, 50vw"
+                className="object-cover"
                 src="https://lh3.googleusercontent.com/aida-public/AB6AXuDbkLKUPgGmqB36f1mghg52fm7xEC19nNAReJJ7tfQcBfkfT0dQ101PGlEHGIdDFQ4jsgxSHFMk_nREUOfWOqDRVIyIBZTzj4OGxqidtWFSXCgdQBA4cQmH6prCXK03HKoiEP9hHy_ZlAZuS_mwCHZq2Mh4iYddC7T-eWjSBG1V2yDJapd31x7KFYbxWqEtmZ1xrzPi-ly-GEot5a9lS1aJGBL_OBn8v-tgkdD7UE8pI9jDlGBT0-ZTlaIBhzZFlLRXSJBxPBS3VbYA"
               />
             </div>

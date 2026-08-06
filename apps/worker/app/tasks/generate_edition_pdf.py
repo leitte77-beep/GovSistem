@@ -1,9 +1,13 @@
 """Async PDF generation task - delegates to the API internal endpoint."""
 
+import logging
+
 import httpx
 
 from app.config import settings
 from app.worker import celery_app
+
+logger = logging.getLogger(__name__)
 
 
 def _call_api_generate_pdf(edition_id: str) -> dict:
@@ -17,6 +21,18 @@ def _call_api_generate_pdf(edition_id: str) -> dict:
         return response.json()
 
 
-@celery_app.task(bind=True, name="generate_edition_pdf")
+@celery_app.task(
+    bind=True,
+    name="generate_edition_pdf",
+    autoretry_for=(httpx.HTTPStatusError, httpx.RequestError),
+    max_retries=5,
+    retry_backoff=True,
+    retry_backoff_max=600,
+    retry_jitter=True,
+)
 def generate_edition_pdf_task(self, edition_id: str, **kwargs):
-    return _call_api_generate_pdf(edition_id)
+    try:
+        return _call_api_generate_pdf(edition_id)
+    except Exception as exc:
+        logger.error("PDF generation failed for edition %s: %s", edition_id, exc)
+        raise

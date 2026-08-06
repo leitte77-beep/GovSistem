@@ -1,0 +1,92 @@
+{
+  "version": 2,
+  "skills": {
+    "tlc-spec-driven": {
+      "name": "tlc-spec-driven",
+      "source": "local",
+      "contentHash": "69867b0e19be1fb556d2e697f0f18f1de0363d1aa2de9d36754d5b107156357c",
+      "installedAt": "2026-06-17T19:02:17.599Z",
+      "updatedAt": "2026-06-17T19:02:36.130Z",
+      "agents": [
+        "cursor",
+        "claude-code",
+        "windsurf",
+        "opencode"
+      ],
+      "method": "copy",
+      "global": false
+    },
+    "coupling-analysis": {
+      "name": "coupling-analysis",
+      "source": "local",
+      "contentHash": "a33a142a73ac2e6b8db300acb3d13dba5077e225cbfad7599b0ac431290ab5c7",
+      "installedAt": "2026-06-17T19:04:20.442Z",
+      "updatedAt": "2026-06-17T19:04:20.442Z",
+      "agents": [
+        "opencode"
+      ],
+      "method": "copy",
+      "global": false
+    },
+    "technical-design-doc-creator": {
+      "name": "technical-design-doc-creator",
+      "source": "local",
+      "contentHash": "d05974df076f695f96b4e4c263ad19f2aaffe8ee6248c1b07a634dd9ed0ea51e",
+      "installedAt": "2026-06-17T19:05:17.056Z",
+      "updatedAt": "2026-06-17T19:05:17.056Z",
+      "agents": [
+        "opencode"
+      ],
+      "method": "copy",
+      "global": false
+    },
+    "confluence-assistant": {
+      "name": "confluence-assistant",
+      "source": "local",
+      "contentHash": "b9f019173a7d864db1d0a9eca13ee920d294806ea4c5cabfb626ccaedbaaeae7",
+      "installedAt": "2026-06-17T19:07:11.355Z",
+      "updatedAt": "2026-06-17T19:07:11.355Z",
+      "agents": [
+        "opencode"
+      ],
+      "method": "copy",
+      "global": false
+    },
+    "react-native-expert": {
+      "name": "react-native-expert",
+      "source": "local",
+      "contentHash": "9da108258c0a93cd04b57d94a5a7788e6c37c704ca4322ca9b6bedce8e3ff683",
+      "installedAt": "2026-06-17T19:08:13.540Z",
+      "updatedAt": "2026-06-17T19:08:13.540Z",
+      "agents": [
+        "opencode"
+      ],
+      "method": "copy",
+      "global": false
+    },
+    "subagent-creator": {
+      "name": "subagent-creator",
+      "source": "local",
+      "contentHash": "bef6b5a9f23b3186af259c1041c2561e9af15fa94810009d72d775bb217aa3ca",
+      "installedAt": "2026-06-17T19:09:15.106Z",
+      "updatedAt": "2026-06-17T19:09:15.106Z",
+      "agents": [
+        "opencode"
+      ],
+      "method": "copy",
+      "global": false
+    },
+    "skill-architect": {
+      "name": "skill-architect",
+      "source": "local",
+      "contentHash": "349b256153447631c3ed356996c3a62fec52493d07ba75e37b12c458f9fbf6bb",
+      "installedAt": "2026-06-17T19:09:40.831Z",
+      "updatedAt": "2026-06-17T19:09:40.831Z",
+      "agents": [
+        "opencode"
+      ],
+      "method": "copy",
+      "global": false
+    }
+  }
+}

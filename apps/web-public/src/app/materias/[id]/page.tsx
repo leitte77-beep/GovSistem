@@ -6,6 +6,13 @@ import { ArrowLeft, FileText, Loader2, ShieldCheck } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/api";
 import { formatBrasiliaDateTime } from "@/lib/dates";
+import { sanitizeHtml } from "@/lib/sanitize";
+
+const API_HOST = (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/api\/v1\/?$/, "");
+
+function fixImageUrls(html: string): string {
+  return API_HOST ? html.replace(/http:\/\/api:8000/g, API_HOST) : html;
+}
 
 export default function MatterDetailPage() {
   const params = useParams();
@@ -71,7 +78,7 @@ export default function MatterDetailPage() {
         </div>
       )}
 
-      <div className="prose max-w-none text-gray-800" dangerouslySetInnerHTML={{ __html: data.content_html }} />
+      <div className="prose max-w-none text-gray-800" dangerouslySetInnerHTML={{ __html: sanitizeHtml(fixImageUrls(data.content_html)) }} />
 
       {data.attachments?.length > 0 && (
         <div className="mt-8">

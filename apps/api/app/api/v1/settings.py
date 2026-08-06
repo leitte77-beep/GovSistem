@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import require_roles
+from app.core.auth import get_current_user, require_roles
 from app.core.database import get_db
 from app.models.setting import SystemSetting
 from app.models.user import User
@@ -108,3 +108,71 @@ async def delete_setting(
         raise HTTPException(status_code=404, detail="Setting not found")
     await db.delete(setting)
     await db.commit()
+
+# ── PDF Layout ─────────────────────────────────────────────────────────────
+
+from app.services.edition_pdf import AVAILABLE_LAYOUTS
+
+@router.get("/settings/pdf-layouts")
+async def list_pdf_layouts():
+    """List available PDF layout templates."""
+    return {
+        "layouts": [
+            {
+                "id": "classico",
+                "name": "Clássico",
+                "description": "Estilo tradicional de diário oficial — brasão centralizado, faixas cinza, tipografia serifada.",
+            },
+            {
+                "id": "moderno",
+                "name": "Moderno",
+                "description": "Design limpo com linhas azuis, cantos arredondados, tipografia sans-serif.",
+            },
+            {
+                "id": "minimalista",
+                "name": "Minimalista",
+                "description": "Preto e branco com linhas finas, sem decorações. Máxima economia de tinta.",
+            },
+        ],
+    }
+
+
+@router.get("/settings/organization/pdf-layout")
+async def get_org_pdf_layout(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from app.models.organization import Organization
+    org_result = await db.execute(
+        select(Organization).where(Organization.id == user.organization_id)
+    )
+    org = org_result.scalar_one_or_none()
+    if not org:
+        raise HTTPException(404, "Organization not found")
+    return {"layout": org.pdf_layout, "available": AVAILABLE_LAYOUTS}
+
+
+@router.patch("/settings/organization/pdf-layout")
+async def update_org_pdf_layout(
+    body: dict,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles("ADMIN")),
+):
+    from app.models.organization import Organization
+    layout = body.get("layout", "")
+    if layout not in AVAILABLE_LAYOUTS:
+        raise HTTPException(
+            422,
+            f"Invalid layout. Available: {', '.join(AVAILABLE_LAYOUTS)}",
+        )
+
+    org_result = await db.execute(
+        select(Organization).where(Organization.id == user.organization_id)
+    )
+    org = org_result.scalar_one_or_none()
+    if not org:
+        raise HTTPException(404, "Organization not found")
+
+    org.pdf_layout = layout
+    await db.commit()
+    return {"layout": org.pdf_layout, "message": f"PDF layout updated to '{layout}'"}

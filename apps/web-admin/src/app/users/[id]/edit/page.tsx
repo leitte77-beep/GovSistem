@@ -11,6 +11,9 @@ import {
   ArrowLeft,
   ToggleLeft,
   ToggleRight,
+  Lock,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import toast from "react-hot-toast";
 import clsx from "clsx";
@@ -24,7 +27,10 @@ export default function EditUserPage() {
   const [user, setUser] = useState<UserType | null>(null);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [cpf, setCpf] = useState("");
   const [isActive, setIsActive] = useState(true);
+  const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
   const [roles, setRoles] = useState<Role[]>([]);
   const [loading, setLoading] = useState(true);
@@ -40,6 +46,7 @@ export default function EditUserPage() {
         setUser(u);
         setName(u.name);
         setEmail(u.email);
+        setCpf(u.cpf || "");
         setIsActive(u.is_active);
         setRoles(r);
       })
@@ -64,12 +71,15 @@ export default function EditUserPage() {
     if (!name.trim() || !email.trim()) return;
     setSaving(true);
     try {
-      await api.updateUser(params.id as string, {
+      const body: Record<string, unknown> = {
         name: name.trim(),
         email: email.trim(),
         is_active: isActive,
         role_names: selectedRoles.length > 0 ? selectedRoles : undefined,
-      });
+      };
+      if (password) body.password = password;
+      body.cpf = cpf.replace(/\D/g, "") || undefined;
+      await api.updateUser(params.id as string, body);
       toast.success("Usuário atualizado com sucesso!");
       router.push("/users");
     } catch (err: unknown) {
@@ -169,6 +179,46 @@ export default function EditUserPage() {
             )}
           />
           {errors.email && <p className="text-xs text-red-500 mt-1">{errors.email}</p>}
+        </div>
+
+        {/* CPF */}
+        <div>
+          <label htmlFor="edit-user-cpf" className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 mb-1.5">
+            <User size={15} /> CPF
+          </label>
+          <input
+            id="edit-user-cpf"
+            type="text"
+            value={cpf}
+            onChange={(e) => setCpf(e.target.value)}
+            placeholder="000.000.000-00"
+            maxLength={14}
+            className="w-full px-4 py-2.5 border-2 border-slate-200 rounded-xl outline-none transition-all text-sm focus-visible:border-blue-400 hover:border-slate-300"
+          />
+        </div>
+
+        {/* Password */}
+        <div>
+          <label htmlFor="edit-user-password" className="flex items-center gap-1.5 text-sm font-semibold text-slate-700 mb-1.5">
+            <Lock size={15} /> Nova Senha
+          </label>
+          <div className="relative">
+            <input
+              id="edit-user-password"
+              type={showPassword ? "text" : "password"}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Nova senha"
+              className="w-full px-4 py-2.5 pr-12 border-2 border-slate-200 rounded-xl outline-none transition-all text-sm focus-visible:border-blue-400 hover:border-slate-300"
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+            >
+              {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
         </div>
 
         {/* Active toggle */}

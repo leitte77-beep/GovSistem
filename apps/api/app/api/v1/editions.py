@@ -1,10 +1,14 @@
+import asyncio
+import logging
 import os
+import re
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -26,6 +30,7 @@ from app.schemas.edition import (
     EditionListResponse,
     EditionResponse,
     EditionUpdate,
+    NextEditionNumberResponse,
     PublishResponse,
     ReorderRequest,
     SignRequest,
@@ -33,6 +38,7 @@ from app.schemas.edition import (
     ValidateSignatureResponse,
 )
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["editions"])
 
 
@@ -40,10 +46,40 @@ def _status_value(status) -> str:
     return status.value if hasattr(status, "value") else str(status)
 
 
-async def _get_edition_or_404(
-    edition_id: uuid.UUID, db: AsyncSession
-) -> Edition:
+async def _auto_numbering_enabled(db: AsyncSession) -> bool:
+    """Read the 'edition.auto_numbering' system setting (defaults to True)."""
+    from app.models.setting import SystemSetting
+
     result = await db.execute(
+        select(SystemSetting).where(SystemSetting.key == "edition.auto_numbering")
+    )
+    setting = result.scalar_one_or_none()
+    if setting is None or setting.value is None:
+        return True
+    return str(setting.value).strip().lower() in ("true", "1", "yes", "on")
+
+
+async def _next_edition_number(
+    db: AsyncSession, organization_id: uuid.UUID, year: int, type_: EditionType
+) -> int:
+    result = await db.execute(
+        select(func.coalesce(func.max(Edition.number), 0)).where(
+            Edition.organization_id == organization_id,
+            Edition.year == year,
+            Edition.type == type_,
+        )
+    )
+    return int(result.scalar() or 0) + 1
+
+
+def _default_edition_title(number: int) -> str:
+    return f"Diário Oficial - Edição {number:02d}"
+
+
+async def _get_edition_or_404(
+    edition_id: uuid.UUID, db: AsyncSession, user: User | None = None
+) -> Edition:
+    query = (
         select(Edition)
         .where(Edition.id == edition_id)
         .options(
@@ -57,6 +93,9 @@ async def _get_edition_or_404(
             selectinload(Edition.signatures),
         )
     )
+    if user is not None:
+        query = query.where(Edition.organization_id == user.organization_id)
+    result = await db.execute(query)
     edition = result.scalar_one_or_none()
     if edition is None:
         raise HTTPException(status_code=404, detail="Edition not found")
@@ -102,32 +141,76 @@ async def create_edition(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("DIAGRAMADOR", "ADMIN")),
 ):
-    existing = await db.execute(
-        select(Edition).where(
-            Edition.year == body.year,
-            Edition.number == body.number,
-            Edition.type == body.type,
-        )
-    )
-    if existing.scalar_one_or_none():
+    auto_numbering = await _auto_numbering_enabled(db)
+
+    if body.number is None and not auto_numbering:
         raise HTTPException(
-            status_code=409,
-            detail=f"Edition {body.number}/{body.year} ({body.type.value}) already exists",
+            status_code=422,
+            detail="Edition number is required when auto numbering is disabled",
         )
 
-    edition = Edition(
-        organization_id=user.organization_id,
-        number=body.number,
-        year=body.year,
-        type=body.type,
-        title=body.title.strip(),
-        subtitle=body.subtitle.strip() if body.subtitle else None,
-        publication_date=body.publication_date,
-        status=EditionStatus.DRAFT,
-        created_by=user.id,
-    )
-    db.add(edition)
-    await db.commit()
+    server_assigned = auto_numbering or body.number is None
+    if server_assigned:
+        number = await _next_edition_number(
+            db, user.organization_id, body.year, body.type
+        )
+    else:
+        number = body.number
+        existing = await db.execute(
+            select(Edition).where(
+                Edition.organization_id == user.organization_id,
+                Edition.year == body.year,
+                Edition.number == number,
+                Edition.type == body.type,
+            )
+        )
+        if existing.scalar_one_or_none():
+            raise HTTPException(
+                status_code=409,
+                detail=f"Edition {number}/{body.year} ({body.type.value}) already exists",
+            )
+
+    def _resolve_title(final_number: int) -> str:
+        title = (body.title or "").strip()
+        if not title:
+            return _default_edition_title(final_number)
+        if (
+            server_assigned
+            and body.number is not None
+            and final_number != body.number
+            and re.fullmatch(rf"Diário Oficial - Edição 0*{body.number}", title)
+        ):
+            return _default_edition_title(final_number)
+        return title
+
+    edition = None
+    max_attempts = 3
+    for attempt in range(max_attempts):
+        edition = Edition(
+            organization_id=user.organization_id,
+            number=number,
+            year=body.year,
+            type=body.type,
+            title=_resolve_title(number),
+            subtitle=body.subtitle.strip() if body.subtitle else None,
+            publication_date=body.publication_date,
+            status=EditionStatus.DRAFT,
+            created_by=user.id,
+        )
+        db.add(edition)
+        try:
+            await db.commit()
+            break
+        except IntegrityError:
+            await db.rollback()
+            if not server_assigned or attempt == max_attempts - 1:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Edition {number}/{body.year} ({body.type.value}) already exists",
+                )
+            number = await _next_edition_number(
+                db, user.organization_id, body.year, body.type
+            )
     await db.refresh(edition)
 
     info = await capture_request_info(request)
@@ -139,6 +222,25 @@ async def create_edition(
         ip_address=info["ip_address"],
     )
     return await _edition_to_response(edition)
+
+
+@router.get("/editions/next-number", response_model=NextEditionNumberResponse)
+async def get_next_edition_number(
+    year: Optional[int] = None,
+    type: EditionType = EditionType.NORMAL,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    target_year = year or datetime.now(timezone.utc).year
+    next_number = await _next_edition_number(
+        db, user.organization_id, target_year, type
+    )
+    return NextEditionNumberResponse(
+        year=target_year,
+        type=type,
+        next_number=next_number,
+        auto_numbering=await _auto_numbering_enabled(db),
+    )
 
 
 @router.get("/editions", response_model=list[EditionListResponse])
@@ -181,7 +283,7 @@ async def get_edition(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     return await _edition_to_response(edition)
 
 
@@ -193,7 +295,7 @@ async def update_edition(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("DIAGRAMADOR", "ADMIN")),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     if not edition.can_edit():
         raise HTTPException(422, f"Cannot edit edition in status '{_status_value(edition.status)}'")
     if body.title is not None:
@@ -203,7 +305,7 @@ async def update_edition(
     if body.publication_date is not None:
         edition.publication_date = body.publication_date
     await db.commit()
-    await db.refresh(edition)
+    await db.refresh(edition, attribute_names=["updated_at"])
     return await _edition_to_response(edition)
 
 
@@ -216,7 +318,7 @@ async def list_items(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     return [
         EditionItemOut(
             id=i.id, matter_id=i.matter_id,
@@ -236,7 +338,7 @@ async def add_item(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("DIAGRAMADOR", "ADMIN")),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     if not EditionStatus.can_add_items(edition.status):
         raise HTTPException(422, f"Cannot add items to edition in status '{_status_value(edition.status)}'")
 
@@ -272,7 +374,7 @@ async def add_item(
     )
     db.add(item)
     await db.commit()
-    await db.refresh(edition)
+    await db.refresh(edition, attribute_names=["updated_at"])
 
     info = await capture_request_info(request)
     await log_audit_event(
@@ -282,6 +384,7 @@ async def add_item(
         description=f"Matter '{matter.title}' added to edition",
         ip_address=info["ip_address"],
     )
+    await db.refresh(edition, attribute_names=["updated_at"])
     return await _edition_to_response(edition)
 
 
@@ -292,7 +395,7 @@ async def reorder_items(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("DIAGRAMADOR", "ADMIN")),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     if not EditionStatus.can_add_items(edition.status):
         raise HTTPException(422, f"Cannot reorder items in status '{_status_value(edition.status)}'")
 
@@ -302,7 +405,6 @@ async def reorder_items(
             new_pos = next(i.position for i in body.items if i.id == item.id)
             item.position = new_pos
     await db.commit()
-    await db.refresh(edition)
 
     return [
         EditionItemOut(
@@ -323,7 +425,7 @@ async def remove_item(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("DIAGRAMADOR", "ADMIN")),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     if not EditionStatus.can_add_items(edition.status):
         raise HTTPException(422, f"Cannot remove items in status '{_status_value(edition.status)}'")
 
@@ -350,31 +452,38 @@ async def close_edition(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("DIAGRAMADOR", "ADMIN")),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     edition.change_status(EditionStatus.CLOSED)
     await db.commit()
-    await db.refresh(edition)
 
-    # Auto-generate PDF after closing (uses its own sync session)
-    from app.services.edition_pdf import generate_edition_pdf_sync
+    # Enfileira geracao de PDF no worker Celery (assincrono)
     try:
-        generate_edition_pdf_sync(edition_id=str(edition_id))
+        from app.tasks import enqueue_pdf_generation
+        enqueue_pdf_generation(str(edition_id))
     except Exception as e:
         import logging
-        logging.getLogger("doe").warning(f"Auto PDF generation failed for edition {edition_id}: {e}")
-
-    # Refresh from DB to pick up pdf_path/pdf_hash set by the sync session
-    await db.refresh(edition)
+        logging.getLogger("doe").warning(
+            f"Failed to enqueue PDF generation for edition {edition_id}: {e}"
+        )
+        raise HTTPException(
+            status_code=502,
+            detail="Edition closed but PDF generation could not be scheduled. "
+            "The PDF must be generated manually from the edition page.",
+        )
 
     info = await capture_request_info(request)
     await log_audit_event(
         db=db, action=AuditAction.EDITION_STATUS_CHANGED,
         user_id=user.id, organization_id=user.organization_id,
         entity_type="edition", entity_id=edition.id,
-        description=f"Edition {edition.year}/{edition.number} closed and PDF generated",
+        description=f"Edition {edition.year}/{edition.number} closed — PDF generation queued",
         extra_metadata={"from": "draft/reviewing/scheduled", "to": _status_value(edition.status)},
         ip_address=info["ip_address"],
     )
+    # updated_at (onupdate server-side) expira apos o UPDATE. Recarrega apenas
+    # essa coluna: um refresh completo re-carregaria items sem o matter aninhado
+    # e quebraria _edition_to_response com MissingGreenlet.
+    await db.refresh(edition, attribute_names=["updated_at"])
     return await _edition_to_response(edition)
 
 
@@ -385,7 +494,7 @@ async def reopen_edition(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("DIAGRAMADOR", "ADMIN")),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     if not EditionStatus.can_reopen(edition.status):
         raise HTTPException(422, f"Cannot reopen edition in status '{_status_value(edition.status)}'")
 
@@ -394,7 +503,7 @@ async def reopen_edition(
 
     edition.change_status(EditionStatus.DRAFT)
     await db.commit()
-    await db.refresh(edition)
+    await db.refresh(edition, attribute_names=["updated_at"])
 
     info = await capture_request_info(request)
     await log_audit_event(
@@ -405,6 +514,7 @@ async def reopen_edition(
         extra_metadata={"from": "closed", "to": "draft"},
         ip_address=info["ip_address"],
     )
+    await db.refresh(edition, attribute_names=["updated_at"])
     return await _edition_to_response(edition)
 
 
@@ -413,12 +523,12 @@ async def cancel_edition(
     edition_id: uuid.UUID,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("AUTOR", "DIAGRAMADOR", "ADMIN")),
+    user: User = Depends(require_roles("DIAGRAMADOR", "ADMIN")),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     edition.change_status(EditionStatus.CANCELLED)
     await db.commit()
-    await db.refresh(edition)
+    await db.refresh(edition, attribute_names=["updated_at"])
     info = await capture_request_info(request)
     await log_audit_event(
         db=db, action=AuditAction.EDITION_STATUS_CHANGED,
@@ -428,6 +538,7 @@ async def cancel_edition(
         extra_metadata={"to": "cancelled"},
         ip_address=info["ip_address"],
     )
+    await db.refresh(edition, attribute_names=["updated_at"])
     return await _edition_to_response(edition)
 
 
@@ -437,7 +548,7 @@ async def delete_edition(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("AUTOR", "ADMIN")),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     if edition.status == EditionStatus.PUBLISHED:
         raise HTTPException(409, "Cannot delete a published edition")
     await db.delete(edition)
@@ -450,7 +561,7 @@ async def generate_edition_pdf(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("DIAGRAMADOR", "ADMIN")),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     if edition.status not in (EditionStatus.CLOSED, EditionStatus.PDF_GENERATED):
         raise HTTPException(
             422,
@@ -460,8 +571,22 @@ async def generate_edition_pdf(
         raise HTTPException(409, "Cannot regenerate PDF for a signed edition")
 
     from app.services.edition_pdf import generate_edition_pdf_sync
+    from app.models.organization import Organization
 
-    result = generate_edition_pdf_sync(edition_id=str(edition_id))
+    org_result = await db.execute(
+        select(Organization).where(Organization.id == edition.organization_id)
+    )
+    organization = org_result.scalar_one_or_none()
+    organ_name = organization.name if organization else None
+    pdf_layout = organization.pdf_layout if organization else "classico"
+
+    # WeasyPrint e pesado: roda em thread para nao bloquear o event loop.
+    result = await asyncio.to_thread(
+        generate_edition_pdf_sync,
+        edition_id=str(edition_id),
+        organ_name=organ_name,
+        layout=pdf_layout,
+    )
     edition.pdf_path = result["filename"]
     edition.pdf_hash = result["sha256"]
     edition.status = EditionStatus.PDF_GENERATED
@@ -480,7 +605,7 @@ async def sign_edition(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("ASSINADOR", "ADMIN")),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     if not EditionStatus.can_sign(edition.status):
         raise HTTPException(
             422, f"Edition must be PDF_GENERATED to sign, current: {_status_value(edition.status)}"
@@ -496,7 +621,7 @@ async def sign_edition(
     pfx_b64 = body.pfx_base64 or ""
     pfx_pass = body.pfx_password or ""
     if body.signing_credential_id:
-        import base64
+        import base64 as b64_mod
         cred_result = await db.execute(
             select(SigningCredential).where(
                 SigningCredential.id == body.signing_credential_id,
@@ -507,10 +632,10 @@ async def sign_edition(
         if credential is None:
             raise HTTPException(404, "Signing credential not found")
 
-        from app.services.encryption import decrypt_bytes, decrypt
+        from app.services.encryption import decrypt_bytes
         try:
             pfx_encrypted = credential.config.get("pfx_encrypted", "")
-            pfx_b64 = base64.b64encode(decrypt_bytes(pfx_encrypted.encode("utf-8"))).decode("utf-8")
+            pfx_b64 = b64_mod.b64encode(decrypt_bytes(pfx_encrypted.encode("utf-8"))).decode("utf-8")
             if not body.pfx_password:
                 raise HTTPException(422, "Informe a senha do certificado")
             pfx_pass = body.pfx_password
@@ -519,37 +644,36 @@ async def sign_edition(
                 raise e
             raise HTTPException(500, f"Erro ao descriptografar certificado: {e}")
 
+    import base64 as b64_mod
+    import hashlib
     from app.core.config import settings as api_settings
-    from app.services.edition_pdf import generate_edition_pdf_sync
+    from app.models.organization import Organization
 
-    generated = generate_edition_pdf_sync(edition_id=str(edition_id))
-    edition.pdf_path = generated["filename"]
-    edition.pdf_hash = generated["sha256"]
-    pdf_full_path = os.path.join(api_settings.UPLOAD_DIR, "pdf", edition.pdf_path)
+    org_result = await db.execute(
+        select(Organization).where(Organization.id == edition.organization_id)
+    )
+    organization = org_result.scalar_one_or_none()
+    pdf_layout = organization.pdf_layout if organization else "classico"
 
-    from app.providers.antivirus import NoopVirusScanner
-    NoopVirusScanner()
+    pdf_full_path = os.path.join(api_settings.UPLOAD_DIR, edition.pdf_path)
 
-    import os as file_os
-    if not file_os.path.exists(pdf_full_path):
-        generated = generate_edition_pdf_sync(edition_id=str(edition_id))
-        edition.pdf_path = generated["filename"]
-        edition.pdf_hash = generated["sha256"]
-        pdf_full_path = os.path.join(api_settings.UPLOAD_DIR, "pdf", edition.pdf_path)
-
-    if not file_os.path.exists(pdf_full_path):
-        raise HTTPException(404, "PDF file not found in storage")
+    if not os.path.exists(pdf_full_path):
+        raise HTTPException(404, "PDF file not found in storage — regenerate PDF first")
 
     with open(pdf_full_path, "rb") as f:
         pdf_bytes = f.read()
 
-    import base64
+    current_hash = hashlib.sha256(pdf_bytes).hexdigest()
+    if current_hash != edition.pdf_hash:
+        raise HTTPException(422, "PDF hash mismatch — regenerate PDF before signing")
+
     result = None
     try:
         import httpx
+        internal_api_key = api_settings.INTERNAL_API_KEY.get_secret_value()
         signer_payload = {
             "edition_id": str(edition_id),
-            "unsigned_pdf_base64": base64.b64encode(pdf_bytes).decode("utf-8"),
+            "unsigned_pdf_base64": b64_mod.b64encode(pdf_bytes).decode("utf-8"),
             "pfx_base64": pfx_b64,
             "pfx_password": pfx_pass,
             "reason": body.reason or "Assinatura de Edição",
@@ -561,6 +685,7 @@ async def sign_edition(
             signer_resp = await http_client.post(
                 f"{settings.SIGNER_URL}/internal/sign-pdf",
                 json=signer_payload,
+                headers={"X-Internal-API-Key": internal_api_key},
                 timeout=120,
             )
         if signer_resp.status_code != 200:
@@ -569,9 +694,12 @@ async def sign_edition(
     except Exception as e:
         raise HTTPException(502, f"Signing service failed: {e}")
 
-    signed_bytes = base64.b64decode(result["signed_pdf_base64"])
+    signed_bytes = b64_mod.b64decode(result["signed_pdf_base64"])
     sig_filename = f"signed_{edition.year}_{edition.number}_{uuid.uuid4().hex[:8]}.pdf"
     from app.core.storage import storage as store_backend
+    if organization:
+        from app.core.storage import set_storage_tenant as _set_tenant
+        _set_tenant(organization.slug)
     await store_backend.store(sig_filename, signed_bytes)
 
     signed_at = datetime.now(timezone.utc)
@@ -580,7 +708,7 @@ async def sign_edition(
         user_id=user.id,
         signing_credential_id=credential.id if credential else None,
         signed_at=signed_at,
-        signature_data=result["signed_pdf_base64"][:1000],  # store truncated
+        signature_data=result["signed_pdf_base64"][:1000],
         certificate_info={
             "subject": result["certificate_subject"],
             "serial": result["certificate_serial"],
@@ -629,7 +757,7 @@ async def validate_edition_signature(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     if not edition.signatures or len(edition.signatures) == 0:
         raise HTTPException(404, "No signatures found for this edition")
 
@@ -673,7 +801,7 @@ async def publish_edition(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("PUBLICADOR", "ADMIN")),
 ):
-    edition = await _get_edition_or_404(edition_id, db)
+    edition = await _get_edition_or_404(edition_id, db, user)
     if edition.status == EditionStatus.PUBLISHED:
         return PublishResponse(
             edition_id=str(edition.id),
@@ -692,14 +820,63 @@ async def publish_edition(
     if not edition.signatures:
         raise HTTPException(422, "Edition has no signatures")
 
+    # Validate all matters can transition to PUBLISHED before any DB changes
+    from app.services.search_indexer import get_search_provider
+    indexer = get_search_provider()
+    failed_matters: list[dict[str, str]] = []
+    for item in edition.items or []:
+        if not item.matter:
+            continue
+        matter = item.matter
+        # status vem do banco como str (coluna String); normaliza para o enum
+        # antes de chamar métodos de instância como can_transition_to.
+        matter_status = MatterStatus(matter.status)
+        if matter_status == MatterStatus.PUBLISHED:
+            continue
+        if not matter_status.can_transition_to(MatterStatus.PUBLISHED):
+            failed_matters.append({
+                "id": str(matter.id),
+                "title": matter.title or "Sem título",
+                "status": matter_status.value,
+            })
+
+    if failed_matters:
+        raise HTTPException(
+            422,
+            {
+                "message": (
+                    "Algumas matérias não estão em status APPROVED "
+                    "e não podem ser publicadas"
+                ),
+                "failed_matters": failed_matters,
+            },
+        )
+
     edition.change_status(EditionStatus.PUBLISHED)
-    edition.published_at = datetime.utcnow()
+    edition.published_at = datetime.now(timezone.utc)
     edition.published_by = user.id
     if not edition.verification_code:
         edition.generate_verification_code()
     if not edition.immutability_hash:
         edition.immutability_hash = edition.compute_immutability_hash()
 
+    # Mark matters as published and index before committing
+    for item in edition.items or []:
+        if not item.matter:
+            continue
+        matter = item.matter
+        if matter.status == MatterStatus.PUBLISHED:
+            continue
+        matter.change_status(MatterStatus.PUBLISHED)
+        matter.published_at = datetime.now(timezone.utc)
+        try:
+            await indexer.index_matter(matter, edition, db)
+        except Exception as exc:
+            logger.warning(
+                "Failed to index matter %s during publish: %s", matter.id, exc
+            )
+
+    # Audit event commits the whole transaction atomically
     info = await capture_request_info(request)
     await log_audit_event(
         db=db, action=AuditAction.EDITION_PUBLISHED,
@@ -708,18 +885,6 @@ async def publish_edition(
         description=f"Edition {edition.year}/{edition.number} published",
         ip_address=info["ip_address"],
     )
-
-    # Index all matters in the edition for full-text search and mark as published
-    from app.services.search_indexer import get_search_provider
-    from app.models.enums import MatterStatus
-    indexer = get_search_provider()
-    for item in edition.items or []:
-        if item.matter:
-            item.matter.change_status(MatterStatus.PUBLISHED)
-            item.matter.published_at = datetime.utcnow()
-            await indexer.index_matter(item.matter, edition, db)
-
-    await db.commit()
 
     return PublishResponse(
         edition_id=str(edition.id),

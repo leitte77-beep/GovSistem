@@ -54,6 +54,9 @@ class Settings(BaseSettings):
     ]
 
     PUBLIC_URL: str = "http://localhost:7200"
+    TENANT_BASE_DOMAIN: str = "govsistem.com.br"
+
+    VERIFICATION_BASE_URL: str = "https://govsistem.com.br/verificar"
 
     SENTRY_DSN: str | None = None
     ENVIRONMENT: str = "development"
@@ -73,8 +76,17 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
+    # Segredos compartilhados com a plataforma SaaS (SSO):
+    # SAAS_JWT_SECRET valida tokens module_access emitidos pela plataforma;
+    # SAAS_INTERNAL_API_KEY autentica as chamadas /internal/sync-* da plataforma.
+    SAAS_JWT_SECRET: SecretStr = SecretStr("")
+    SAAS_INTERNAL_API_KEY: SecretStr = SecretStr("")
+
     SIGNER_URL: str = "http://signer:8100"
     INTERNAL_API_KEY: SecretStr = SecretStr("")
+
+    CLAMAV_HOST: str = ""
+    CLAMAV_PORT: int = 3310
 
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_SIZE_MB: int = 50
@@ -92,6 +104,7 @@ class Settings(BaseSettings):
 
     STORAGE_BACKEND: str = "local"
     STORAGE_LOCAL_PATH: str = "uploads"
+    STORAGE_TENANT_ISOLATION: bool = True
 
     PASSWORD_MIN_LENGTH: int = 8
     PASSWORD_MIN_UPPERCASE: int = 1

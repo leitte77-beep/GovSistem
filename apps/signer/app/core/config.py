@@ -1,4 +1,4 @@
-from pydantic import SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -12,6 +12,13 @@ class Settings(BaseSettings):
     SIGNER_PROVIDER: str = "a1"
     SIGNER_A1_PFX_PATH: str = "/certs/cert.pfx"
     SIGNER_A1_PASSWORD: SecretStr = SecretStr("")
+
+    VERIFICATION_BASE_URL: str = Field(
+        default="https://govsistem.com.br/verificar",
+        description="Base URL for verification links embedded in signed PDFs",
+    )
+
+    INTERNAL_API_KEY: SecretStr = SecretStr("dev-internal-key-saas")
 
 
 settings = Settings()

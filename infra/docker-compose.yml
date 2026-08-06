@@ -106,6 +106,10 @@ services:
       DEBUG: ${API_DEBUG:-true}
       SECRET_KEY: ${API_SECRET_KEY:-change-me-in-production}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-123}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+    volumes:
+      - uploads:/app/uploads
     ports:
       - "8001:8000"
     depends_on:
@@ -121,6 +125,7 @@ services:
       start_period: 15s
     networks:
       - doe-network
+      - internal
     restart: unless-stopped
 
   worker:
@@ -143,6 +148,8 @@ services:
       API_URL: http://api:8000
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-123}
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
+    volumes:
+      - uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -196,6 +203,7 @@ services:
       SIGNER_PROVIDER: ${SIGNER_PROVIDER:-a1}
       SIGNER_A1_PFX_PATH: ${SIGNER_A1_PFX_PATH:-/certs/cert.pfx}
       SIGNER_A1_PASSWORD: ${SIGNER_A1_PASSWORD:-}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-123}
     ports:
       - "8110:8100"
     volumes:
@@ -242,6 +250,33 @@ services:
       start_period: 15s
     networks:
       - doe-network
+      - internal
+    restart: unless-stopped
+
+  chatgov-backend:
+    build:
+      context: ../modulo-chatgov/backend
+      dockerfile: Dockerfile
+    logging: *default-logging
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-doe_user}:${POSTGRES_PASSWORD:-doe_password}@postgres:5432/${POSTGRES_DB:-doe}
+      JWT_SECRET: ${CHATGOV_JWT_SECRET:-chatgov-dev-secret-change-in-production}
+      JWT_SECRETS: ${CHATGOV_JWT_SECRETS:-dev-saas-secret-key-change-in-production}
+      PORT: 3050
+      STORAGE_DRIVER: ${CHATGOV_STORAGE_DRIVER:-local}
+      SOCKET_CORS_ORIGIN: ${CHATGOV_SOCKET_CORS_ORIGIN:-http://localhost:7201}
+      CREDS_ENCRYPTION_KEY: ${CHATGOV_CREDS_ENCRYPTION_KEY:-chatgov-dev-encryption-key-32chars}
+      RATE_LIMIT_PER_MINUTE: ${CHATGOV_RATE_LIMIT_PER_MINUTE:-30}
+      UPLOADS_DIR: /app/uploads
+    ports:
+      - "3050:3050"
+    volumes:
+      - chatgov_uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - doe-network
     restart: unless-stopped
 
   web-public:
@@ -279,16 +314,245 @@ services:
       start_period: 15s
     networks:
       - doe-network
+      - internal
+    restart: unless-stopped
+
+  govtask-db-init:
+    image: postgres:16-alpine
+    logging: *default-logging
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        echo "Creating govtask database if not exists..."
+        PGPASSWORD=${POSTGRES_PASSWORD:-doe_password} psql -h postgres -U ${POSTGRES_USER:-doe_user} -d ${POSTGRES_DB:-doe} -tc "SELECT 1 FROM pg_database WHERE datname = '${GOVTASK_POSTGRES_DB:-govtask}'" | grep -q 1 || \
+        PGPASSWORD=${POSTGRES_PASSWORD:-doe_password} psql -h postgres -U ${POSTGRES_USER:-doe_user} -d ${POSTGRES_DB:-doe} -c "CREATE DATABASE ${GOVTASK_POSTGRES_DB:-govtask}"
+        echo "GovTask database ready"
+        exit 0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - doe-network
+
+  govtask-api:
+    build:
+      context: ../modulo-govtask/api
+      dockerfile: Dockerfile
+    logging: *default-logging
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${GOVTASK_POSTGRES_DB:-govtask}
+      POSTGRES_USER: ${POSTGRES_USER:-doe_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-doe_password}
+      REDIS_HOST: redis
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minio_access}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minio_secret}
+      MINIO_BUCKET: ${GOVTASK_MINIO_BUCKET:-govtask-files}
+      MINIO_SECURE: "false"
+      CORS_ORIGINS: '["http://localhost:7301","http://localhost:7300"]'
+      DEBUG: ${API_DEBUG:-true}
+      SECRET_KEY: ${GOVTASK_SECRET_KEY:-govtask-dev-secret-key-change-in-production}
+      SAAS_JWT_SECRET: ${SAAS_JWT_SECRET:-dev-saas-secret-key-change-in-production}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-123}
+    volumes:
+      - govtask_uploads:/app/uploads
+    ports:
+      - "8101:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      govtask-db-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/govtask/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - doe-network
+      - internal
+    restart: unless-stopped
+
+  govtask-web:
+    build:
+      context: ../modulo-govtask/web-admin
+      dockerfile: Dockerfile
+    logging: *default-logging
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      NEXT_PUBLIC_API_URL: http://localhost:8101
+    ports:
+      - "7301:3000"
+    depends_on:
+      govtask-api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://127.0.0.1:3000",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - doe-network
+      - internal
+    restart: unless-stopped
+
+  govavalia:
+    build:
+      context: ../modulo-govavalia
+      dockerfile: Dockerfile
+    logging: *default-logging
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-doe_user}:${POSTGRES_PASSWORD:-doe_password}@postgres:5432/${POSTGRES_DB:-doe}
+      GOVAVALIA_PORT: 4000
+      GOVAVALIA_BASE_PATH: /avalia
+      GOVAVALIA_ADMIN_DOMAIN: govavalia.govsistem.com.br
+      GOVAVALIA_ALLOWED_ORIGINS: ${GOVAVALIA_ALLOWED_ORIGINS:-https://govsistem.com.br,https://govavalia.govsistem.com.br}
+      GOVAVALIA_ROLE_GESTOR: ${GOVAVALIA_ROLE_GESTOR:-gestor}
+      GOVAVALIA_ROLE_OUVIDORIA: ${GOVAVALIA_ROLE_OUVIDORIA:-ouvidoria}
+      GOVAVALIA_RETENCAO_CONTATO_DIAS: ${GOVAVALIA_RETENCAO_CONTATO_DIAS:-365}
+      GOVAVALIA_DEV_FAKE_USER: ${GOVAVALIA_DEV_FAKE_USER:-true}
+      GOVAVALIA_SAAS_JWT_SECRET: ${SAAS_JWT_SECRET:-dev-saas-secret-key-change-in-production}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-123}
+      PGSSL: "false"
+    ports:
+      - "4100:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - doe-network
+    restart: unless-stopped
+
+  govsocial-db-init:
+    image: postgres:16-alpine
+    logging: *default-logging
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        echo "Creating govsocial database if not exists..."
+        PGPASSWORD=${POSTGRES_PASSWORD:-doe_password} psql -h postgres -U ${POSTGRES_USER:-doe_user} -d ${POSTGRES_DB:-doe} -tc "SELECT 1 FROM pg_database WHERE datname = '${GOVSOCIAL_POSTGRES_DB:-govsocial}'" | grep -q 1 || \
+        PGPASSWORD=${POSTGRES_PASSWORD:-doe_password} psql -h postgres -U ${POSTGRES_USER:-doe_user} -d ${POSTGRES_DB:-doe} -c "CREATE DATABASE ${GOVSOCIAL_POSTGRES_DB:-govsocial}"
+        echo "GovSocial database ready"
+        exit 0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - doe-network
+
+  govsocial-api:
+    build:
+      context: ../modulo-govsocial/api
+      dockerfile: Dockerfile
+    logging: *default-logging
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${GOVSOCIAL_POSTGRES_DB:-govsocial}
+      POSTGRES_USER: ${POSTGRES_USER:-doe_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-doe_password}
+      REDIS_HOST: redis
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minio_access}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minio_secret}
+      MINIO_BUCKET: ${GOVSOCIAL_MINIO_BUCKET:-govsocial-files}
+      MINIO_SECURE: "false"
+      CORS_ORIGINS: '["https://govsocial.govsistem.com.br","http://localhost:7501"]'
+      PUBLIC_URL: ${GOVSOCIAL_PUBLIC_URL:-https://govsocial.govsistem.com.br}
+      DEBUG: ${API_DEBUG:-false}
+      SECRET_KEY: ${GOVSOCIAL_SECRET_KEY:-govsocial-dev-secret-key-change-in-production}
+      # SSO: DEVE ser igual ao SECRET_KEY da plataforma SaaS (assina o module_access).
+      SAAS_JWT_SECRET: ${GOVSOCIAL_SAAS_JWT_SECRET:-dev-saas-secret-key-change-in-production}
+      # SSO: DEVE ser igual ao INTERNAL_API_KEY da plataforma SaaS (protege /internal/sync-*).
+      INTERNAL_API_KEY: ${GOVSOCIAL_INTERNAL_API_KEY:-dev-internal-key-123}
+      # LGPD: chave Fernet (44 chars). Vazio → derivada do SECRET_KEY (só dev).
+      FIELD_ENCRYPTION_KEY: ${GOVSOCIAL_FIELD_ENCRYPTION_KEY:-}
+    volumes:
+      - govsocial_uploads:/app/uploads
+    ports:
+      - "8202:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      govsocial-db-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/govsocial/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    networks:
+      - doe-network
+      - internal
+    restart: unless-stopped
+
+  govsocial-web:
+    build:
+      context: ../modulo-govsocial/web
+      dockerfile: Dockerfile
+    logging: *default-logging
+    ports:
+      - "7501:80"
+    depends_on:
+      govsocial-api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://127.0.0.1:80/",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - doe-network
+      - internal
     restart: unless-stopped
 
 networks:
   doe-network:
     driver: bridge
+  internal:
+    name: infra_internal
+    external: true
 
 volumes:
   pgdata:
     driver: local
   miniodata:
     driver: local
+  uploads:
+    driver: local
   api_uploads:
+    driver: local
+  chatgov_uploads:
+    driver: local
+  govtask_uploads:
+    driver: local
+  govsocial_uploads:
     driver: local

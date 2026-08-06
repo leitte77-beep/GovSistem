@@ -1,0 +1,305 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Avaliação e Ouvidoria — Saúde de Farol</title>
+<style>
+  :root{
+    --fundo:#EEF2EC; --cartao:#FFFFFF; --tinta:#1B2A27; --tinta-suave:#4A5A56;
+    --verde:#15524C; --verde-claro:#E2EEEA; --acao:#BF4E2E; --acao-escuro:#A33F22;
+    --ruim:#C0392B; --regular:#C98314; --bom:#1F8A60; --borda:#D4DDD8; --foco:#15524C;
+    --sombra:0 6px 22px rgba(21,82,76,.10); --raio:22px;
+  }
+  *{ box-sizing:border-box; }
+  html{ font-size:18px; } @media (min-width:760px){ html{ font-size:20px; } }
+  body{ margin:0; font-family:"Segoe UI",system-ui,-apple-system,Roboto,Arial,sans-serif;
+    background:var(--fundo); color:var(--tinta); line-height:1.5; min-height:100vh;
+    display:flex; flex-direction:column; -webkit-font-smoothing:antialiased; }
+  header{ background:var(--verde); color:#fff; padding:1rem 1.2rem; display:flex; align-items:center; gap:.9rem; }
+  header .marca{ font-weight:700; font-size:1.15rem; line-height:1.2; }
+  header .marca small{ display:block; font-weight:400; opacity:.85; font-size:.85rem; }
+  header .cruz{ width:2.6rem; height:2.6rem; background:#fff; color:var(--verde); border-radius:12px;
+    display:grid; place-items:center; font-size:1.6rem; font-weight:800; flex:0 0 auto; }
+  main{ flex:1; width:100%; max-width:880px; margin:0 auto; padding:1.4rem 1.1rem 2rem; display:flex; flex-direction:column; }
+  .tela{ display:flex; flex-direction:column; flex:1; animation:surge .25s ease; }
+  @keyframes surge{ from{opacity:0; transform:translateY(8px);} to{opacity:1; transform:none;} }
+  @media (prefers-reduced-motion:reduce){ .tela{ animation:none; } }
+  h1{ font-size:1.9rem; margin:.2rem 0 .6rem; line-height:1.2; }
+  h2{ font-size:1.55rem; margin:.2rem 0 1rem; line-height:1.25; }
+  .sub{ color:var(--tinta-suave); font-size:1.05rem; margin:0 0 1.4rem; }
+  .botao{ appearance:none; border:none; cursor:pointer; font-family:inherit; font-size:1.3rem;
+    font-weight:700; border-radius:var(--raio); padding:1.15rem 1.3rem; min-height:72px;
+    display:flex; align-items:center; gap:.8rem; transition:transform .08s, box-shadow .12s; width:100%; text-align:left; }
+  .botao:active{ transform:scale(.98); }
+  .botao .ico{ font-size:1.8rem; flex:0 0 auto; }
+  .botao-acao{ background:var(--acao); color:#fff; justify-content:center; text-align:center; box-shadow:var(--sombra); }
+  .botao-acao:hover{ background:var(--acao-escuro); }
+  .botao-verde{ background:var(--verde); color:#fff; box-shadow:var(--sombra); }
+  .botao-cartao{ background:var(--cartao); color:var(--tinta); border:2px solid var(--borda); box-shadow:var(--sombra); }
+  .botao-cartao:hover{ border-color:var(--verde); }
+  .botao-suave{ background:transparent; color:var(--verde); min-height:60px; font-size:1.15rem; justify-content:center; border:2px solid transparent; }
+  .botao-suave:hover{ border-color:var(--borda); }
+  .pilha{ display:flex; flex-direction:column; gap:1rem; }
+  .pilha-auto{ margin-top:auto; }
+  .botao:focus-visible, button:focus-visible, textarea:focus-visible, input:focus-visible{ outline:4px solid var(--foco); outline-offset:3px; }
+  .inicio-titulo{ text-align:center; } .inicio-titulo .ola{ font-size:1.2rem; color:var(--tinta-suave); }
+  .inicio-titulo h1{ font-size:2.2rem; }
+  .progresso{ display:flex; align-items:center; gap:.6rem; color:var(--tinta-suave); font-size:1.05rem; font-weight:600; margin-bottom:.6rem; }
+  .barra{ flex:1; height:12px; background:var(--verde-claro); border-radius:99px; overflow:hidden; }
+  .barra > i{ display:block; height:100%; background:var(--verde); border-radius:99px; transition:width .3s; }
+  .carinhas{ display:flex; gap:.8rem; margin-top:1rem; }
+  .carinha{ flex:1; appearance:none; cursor:pointer; font-family:inherit; background:var(--cartao);
+    border:3px solid var(--borda); border-radius:var(--raio); padding:1.2rem .4rem 1rem; display:flex;
+    flex-direction:column; align-items:center; gap:.4rem; transition:transform .08s,border-color .12s,background .12s; box-shadow:var(--sombra); }
+  .carinha:active{ transform:scale(.97); }
+  .carinha .emoji{ font-size:3.4rem; line-height:1; } .carinha .txt{ font-size:1.25rem; font-weight:700; }
+  @media (max-width:520px){ .carinha .emoji{ font-size:2.8rem; } .carinha .txt{ font-size:1.05rem; } }
+  textarea{ width:100%; min-height:180px; resize:vertical; font-family:inherit; font-size:1.3rem; line-height:1.5;
+    padding:1rem; border-radius:var(--raio); border:2px solid var(--borda); background:var(--cartao); color:var(--tinta); }
+  .campo-rotulo{ font-size:1.2rem; font-weight:700; margin:0 0 .5rem; display:block; }
+  input[type=text]{ width:100%; font-family:inherit; font-size:1.3rem; padding:1rem; border-radius:var(--raio);
+    border:2px solid var(--borda); background:var(--cartao); color:var(--tinta); margin-bottom:1rem; }
+  .escolha-identidade{ display:flex; flex-direction:column; gap:.8rem; margin:.4rem 0 1.2rem; }
+  .confirma{ text-align:center; margin:auto 0; } .confirma .check{ font-size:4.5rem; } .confirma h2{ font-size:1.8rem; }
+  .protocolo{ display:inline-block; margin:.8rem 0; padding:.7rem 1.2rem; background:var(--verde-claro);
+    color:var(--verde); border-radius:14px; font-size:1.5rem; font-weight:800; letter-spacing:.5px; }
+  .ouvir{ align-self:flex-start; margin:.2rem 0 1rem; background:var(--verde-claro); color:var(--verde);
+    border:2px solid transparent; border-radius:99px; padding:.6rem 1.1rem; font-size:1.05rem; font-weight:700;
+    cursor:pointer; display:inline-flex; align-items:center; gap:.5rem; }
+  .ouvir:hover{ border-color:var(--verde); }
+  .nav-baixo{ display:flex; gap:.8rem; margin-top:1.4rem; } .nav-baixo .botao{ flex:1; }
+  .rodape-lgpd{ text-align:center; color:var(--tinta-suave); font-size:.85rem; padding:1rem; max-width:760px; margin:0 auto; }
+  .erro-box{ background:#FDECEA; border:1px solid #E8B4AD; color:#8a2b1e; padding:1rem; border-radius:14px; margin-bottom:1rem; }
+</style>
+</head>
+<body>
+<header>
+  <div class="cruz" aria-hidden="true">+</div>
+  <div class="marca" id="marcaTopo">Secretaria Municipal de Saúde<small>Município de Farol</small></div>
+</header>
+<main id="app"></main>
+<p class="rodape-lgpd">A pesquisa é anônima. Seus dados são usados apenas para melhorar o atendimento público de saúde, conforme a LGPD (Lei 13.709/2018) e a Lei da Ouvidoria (Lei 13.460/2017).</p>
+
+<script>
+/* Base da API = caminho onde a página é servida (ex.: /avalia). */
+const API_BASE = location.pathname.replace(/\/index\.html?$/i,'').replace(/\/$/,'');
+const api = (p) => `${API_BASE}/api/v1${p}`;
+
+const app = document.getElementById('app');
+let CFG = null;                 // config vinda do servidor
+let unidadeId = null;
+const SEG_INATIVIDADE = 90;
+let timerInat = null;
+let pesquisa = { respostas:[], indice:0 };
+let ouvidoria = { tipo:null, texto:'', anonimo:true, contato:'' };
+
+/* ---- voz ---- */
+function falar(t){ try{ if(!('speechSynthesis' in window))return; speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(t); u.lang='pt-BR'; u.rate=.95; speechSynthesis.speak(u);}catch(_){} }
+function pararVoz(){ try{ speechSynthesis.cancel(); }catch(_){} }
+function botaoOuvir(t){ return `<button class="ouvir" onclick='falar(${JSON.stringify(t)})'>🔊 Ouvir</button>`; }
+
+/* ---- navegação ---- */
+function ir(html){ pararVoz(); app.innerHTML = `<section class="tela">${html}</section>`; reiniciarInat(); }
+function reiniciarInat(){ clearTimeout(timerInat); if(SEG_INATIVIDADE>0) timerInat=setTimeout(telaInicio, SEG_INATIVIDADE*1000); }
+['click','touchstart','keydown'].forEach(ev=>document.addEventListener(ev, reiniciarInat, {passive:true}));
+
+function chave(){ return (crypto.randomUUID?crypto.randomUUID():String(Date.now()+Math.random())); }
+async function enviar(caminho, corpo){
+  const r = await fetch(api(caminho), {
+    method:'POST',
+    headers:{'Content-Type':'application/json','Idempotency-Key':chave()},
+    body: JSON.stringify(corpo)
+  });
+  if(!r.ok) throw new Error('falha');
+  return r.json();
+}
+
+/* ---- início ---- */
+async function iniciar(){
+  try{
+    const r = await fetch(api('/config'));
+    CFG = await r.json();
+    document.getElementById('marcaTopo').innerHTML =
+      (CFG.unidades[0]?.nome || 'Secretaria de Saúde') + '<small>Município de Farol</small>';
+    if(CFG.unidades.length === 1) unidadeId = CFG.unidades[0].id;
+  }catch(_){
+    return telaErroCarregar();
+  }
+  telaInicio();
+}
+function telaErroCarregar(){
+  ir(`<div class="confirma"><div class="check">📡</div>
+    <h2>Sem conexão no momento</h2>
+    <p class="sub">Avise um atendente. Vamos tentar de novo.</p>
+    <button class="botao botao-verde" style="max-width:340px;margin:0 auto;" onclick="iniciar()">Tentar de novo</button></div>`);
+}
+
+function telaInicio(){
+  pesquisa = { respostas:[], indice:0 };
+  ouvidoria = { tipo:null, texto:'', anonimo:true, contato:'' };
+  if(CFG && CFG.unidades.length>1 && !unidadeId) return telaEscolherUnidade();
+  ir(`
+    <div class="inicio-titulo">
+      <p class="ola">Olá! Sua opinião ajuda a melhorar a saúde de Farol.</p>
+      <h1>O que você quer fazer?</h1>
+    </div>
+    <div class="pilha" style="margin-top:1.2rem;">
+      <button class="botao botao-acao" style="font-size:1.5rem;min-height:96px;" onclick="iniciarPesquisa()">
+        <span class="ico" aria-hidden="true">⭐</span> Avaliar o atendimento de hoje</button>
+      <button class="botao botao-verde" style="font-size:1.5rem;min-height:96px;" onclick="iniciarOuvidoria()">
+        <span class="ico" aria-hidden="true">💬</span> Falar com a Ouvidoria</button>
+    </div>
+    <button class="botao botao-suave pilha-auto" onclick="telaConsultarProtocolo()">Acompanhar uma manifestação</button>
+  `);
+}
+
+function telaEscolherUnidade(){
+  const botoes = CFG.unidades.map(u=>`<button class="botao botao-cartao" onclick="unidadeId='${u.id}';telaInicio()">
+    <span class="ico" aria-hidden="true">🏥</span> ${u.nome}</button>`).join('');
+  ir(`<h2>Onde você está sendo atendido?</h2><p class="sub">Toque no nome do local.</p>
+      <div class="pilha">${botoes}</div>`);
+}
+
+/* ---- pesquisa ---- */
+function iniciarPesquisa(){ pesquisa={respostas:[],indice:0}; telaPergunta(); }
+function telaPergunta(){
+  const i=pesquisa.indice, total=CFG.perguntas.length, p=CFG.perguntas[i];
+  const sel=pesquisa.respostas[i], pct=Math.round((i/total)*100);
+  const cor={1:'var(--ruim)',2:'var(--regular)',3:'var(--bom)',4:'var(--bom)',5:'var(--bom)'};
+  const carinhas=CFG.escala.map(op=>`
+    <button class="carinha" style="${sel===op.valor?'border-color:'+(cor[op.valor]||'var(--verde)'):''}"
+      onclick="responder(${op.valor})" aria-label="${op.rotulo}">
+      <span class="emoji" aria-hidden="true">${op.face}</span>
+      <span class="txt" style="color:${cor[op.valor]||'var(--verde)'}">${op.rotulo}</span></button>`).join('');
+  ir(`
+    <div class="progresso"><span>Pergunta ${i+1} de ${total}</span>
+      <div class="barra" aria-hidden="true"><i style="width:${pct}%"></i></div></div>
+    <h2>${p.texto}</h2>${botaoOuvir(p.texto)}
+    <p class="sub">Toque na carinha que mostra o que você achou.</p>
+    <div class="carinhas">${carinhas}</div>
+    <div class="nav-baixo">
+      ${i>0?`<button class="botao botao-cartao" onclick="voltarPergunta()">⬅ Voltar</button>`:''}
+      <button class="botao botao-suave" onclick="telaInicio()">Cancelar</button></div>`);
+  setTimeout(()=>falar(p.texto),350);
+}
+function responder(v){ pesquisa.respostas[pesquisa.indice]=v;
+  if(pesquisa.indice<CFG.perguntas.length-1){ pesquisa.indice++; telaPergunta(); } else enviarPesquisa(); }
+function voltarPergunta(){ if(pesquisa.indice>0){ pesquisa.indice--; telaPergunta(); } }
+
+async function enviarPesquisa(){
+  ir(`<div class="confirma"><div class="check">⏳</div><h2>Enviando...</h2></div>`);
+  const corpo={ unidadeId, respostas: CFG.perguntas.map((p,idx)=>({codigo:p.codigo, nota:pesquisa.respostas[idx]})).filter(r=>r.nota) };
+  try{
+    await enviar('/avaliacoes', corpo);
+    ir(`<div class="confirma"><div class="check">✅</div><h2>Pronto! Muito obrigado.</h2>
+      <p class="sub">Sua avaliação foi enviada de forma anônima e vai ajudar a melhorar o atendimento.</p>
+      <button class="botao botao-verde" style="max-width:340px;margin:0 auto;" onclick="telaInicio()">Voltar ao início</button></div>`);
+    falar('Pronto! Muito obrigado. Sua avaliação foi enviada.');
+    setTimeout(()=>{ if(app.querySelector('.confirma')) telaInicio(); }, 6000);
+  }catch(_){ telaErroEnvio(enviarPesquisa); }
+}
+
+/* ---- ouvidoria ---- */
+function iniciarOuvidoria(){ ouvidoria={tipo:null,texto:'',anonimo:true,contato:''}; telaTipo(); }
+function telaTipo(){
+  const botoes=CFG.tiposManifestacao.map(t=>`
+    <button class="botao botao-cartao" onclick="ouvidoria.tipo='${t.id}';telaMensagem()">
+      <span class="ico" aria-hidden="true">${t.icone}</span>
+      <span><b>${t.rotulo}</b><br><span style="font-weight:400;color:var(--tinta-suave);font-size:1rem;">${t.dica}</span></span></button>`).join('');
+  ir(`<h2>Com o que você quer falar?</h2><p class="sub">Toque na opção que combina com o que você quer dizer.</p>
+      <div class="pilha">${botoes}</div>
+      <button class="botao botao-suave pilha-auto" onclick="telaInicio()">⬅ Voltar ao início</button>`);
+}
+function telaMensagem(){
+  const t=CFG.tiposManifestacao.find(x=>x.id===ouvidoria.tipo);
+  ir(`<h2>${t.icone} ${t.rotulo}</h2>${botaoOuvir('Escreva sua mensagem. Se preferir, peça ajuda a um atendente.')}
+    <label class="campo-rotulo" for="msg">Escreva sua mensagem</label>
+    <p class="sub" style="margin-top:-.6rem;">Se preferir, peça ajuda a um atendente para escrever.</p>
+    <textarea id="msg" placeholder="Conte aqui o que aconteceu...">${ouvidoria.texto}</textarea>
+    <div class="nav-baixo">
+      <button class="botao botao-cartao" onclick="ouvidoria.texto=document.getElementById('msg').value;telaTipo()">⬅ Voltar</button>
+      <button class="botao botao-acao" onclick="avancarIdentidade()">Continuar ➜</button></div>`);
+}
+function avancarIdentidade(){
+  const v=document.getElementById('msg').value.trim();
+  if(!v){ falar('Por favor, escreva sua mensagem antes de continuar.'); document.getElementById('msg').focus(); return; }
+  ouvidoria.texto=v; telaIdentidade();
+}
+function telaIdentidade(){
+  ir(`<h2>Você quer se identificar?</h2>
+    ${botaoOuvir('Você pode enviar sem dizer seu nome. Se quiser receber uma resposta, deixe seu nome e um telefone ou e-mail.')}
+    <p class="sub">Você pode enviar sem dizer quem é. Se quiser <b>receber uma resposta</b>, deixe seu contato.</p>
+    <div class="escolha-identidade">
+      <button class="botao botao-cartao" id="bAnon" onclick="definirId(true)"><span class="ico">🕶️</span> Enviar sem me identificar (anônimo)</button>
+      <button class="botao botao-cartao" id="bIdent" onclick="definirId(false)"><span class="ico">✉️</span> Quero deixar meu contato para resposta</button>
+    </div>
+    <div id="campoContato"></div>
+    <div class="nav-baixo">
+      <button class="botao botao-cartao" onclick="telaMensagem()">⬅ Voltar</button>
+      <button class="botao botao-acao" onclick="enviarOuvidoria()">Enviar ✔</button></div>`);
+}
+function definirId(anon){
+  ouvidoria.anonimo=anon;
+  document.getElementById('bAnon').style.borderColor = anon?'var(--verde)':'';
+  document.getElementById('bIdent').style.borderColor = !anon?'var(--verde)':'';
+  const c=document.getElementById('campoContato');
+  if(anon){ c.innerHTML=''; ouvidoria.contato=''; }
+  else c.innerHTML=`<label class="campo-rotulo" for="contato">Seu nome e telefone ou e-mail</label>
+    <input type="text" id="contato" placeholder="Ex.: Maria Silva — (44) 99999-0000" value="${ouvidoria.contato}" oninput="ouvidoria.contato=this.value">`;
+}
+async function enviarOuvidoria(){
+  const corpo={ tipo:ouvidoria.tipo, mensagem:ouvidoria.texto, anonimo:ouvidoria.anonimo,
+    contato: ouvidoria.anonimo?null:ouvidoria.contato, unidadeId };
+  ir(`<div class="confirma"><div class="check">⏳</div><h2>Enviando...</h2></div>`);
+  try{
+    const r=await enviar('/manifestacoes', corpo);
+    ir(`<div class="confirma"><div class="check">✅</div><h2>Recebemos sua mensagem!</h2>
+      <p class="sub">Guarde este número para acompanhar:</p>
+      <div class="protocolo">${r.protocolo}</div>
+      <p class="sub">${ouvidoria.anonimo?'Seu envio é anônimo. Anote o número acima caso queira consultar depois.':'A equipe da ouvidoria vai analisar e entrar em contato.'}</p>
+      <button class="botao botao-verde" style="max-width:340px;margin:0 auto;" onclick="telaInicio()">Voltar ao início</button></div>`);
+    falar(`Recebemos sua mensagem. Seu número de protocolo é ${r.protocolo.split('').join(' ')}.`);
+    setTimeout(()=>{ if(app.querySelector('.confirma')) telaInicio(); }, 12000);
+  }catch(_){ telaErroEnvio(enviarOuvidoria); }
+}
+
+/* ---- consultar protocolo ---- */
+function telaConsultarProtocolo(){
+  ir(`<h2>Acompanhar manifestação</h2><p class="sub">Digite o número do protocolo (ex.: OUV-2026-123456).</p>
+    <input type="text" id="prot" placeholder="OUV-...">
+    <div class="nav-baixo">
+      <button class="botao botao-cartao" onclick="telaInicio()">⬅ Voltar</button>
+      <button class="botao botao-verde" onclick="consultarProtocolo()">Consultar</button></div>`);
+}
+async function consultarProtocolo(){
+  const p=document.getElementById('prot').value.trim();
+  if(!p) return;
+  try{
+    const r=await fetch(api(`/manifestacoes/${encodeURIComponent(p)}/status`));
+    if(!r.ok) throw new Error();
+    const m=await r.json();
+    const nomes={recebida:'Recebida',em_analise:'Em análise',respondida:'Respondida',concluida:'Concluída'};
+    ir(`<div class="confirma"><div class="check">📋</div><h2>${m.protocolo}</h2>
+      <p class="protocolo">${nomes[m.status]||m.status}</p>
+      ${m.resposta?`<p class="sub"><b>Resposta:</b> ${m.resposta}</p>`:''}
+      <button class="botao botao-verde" style="max-width:340px;margin:0 auto;" onclick="telaInicio()">Voltar ao início</button></div>`);
+  }catch(_){
+    ir(`<div class="erro-box">Protocolo não encontrado. Confira o número.</div>
+      <button class="botao botao-cartao" onclick="telaConsultarProtocolo()">Tentar de novo</button>`);
+  }
+}
+
+function telaErroEnvio(repetir){
+  ir(`<div class="erro-box">Não conseguimos enviar agora. Verifique a internet e tente de novo.</div>
+    <div class="pilha">
+      <button class="botao botao-acao" id="rep">Tentar enviar de novo</button>
+      <button class="botao botao-suave" onclick="telaInicio()">Voltar ao início</button></div>`);
+  document.getElementById('rep').onclick=repetir;
+}
+
+iniciar();
+</script>
+</body>
+</html>

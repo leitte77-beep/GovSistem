@@ -1,18 +1,26 @@
 """Public API v1 — versioned, rate-limited, documented, only published data."""
 
 import math
+import re
 import uuid
 from datetime import date, datetime
 from typing import Optional
+from urllib.parse import quote, urlparse
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
-from app.core.tenant import require_tenant, resolve_tenant_from_domain
+from app.core.tenant import (
+    _is_shared_or_internal_host,
+    require_tenant,
+    resolve_tenant_from_domain,
+)
 from app.models.edition import Edition
 from app.models.edition_item import EditionItem
 from app.models.enums import EditionStatus
@@ -37,6 +45,46 @@ from .schemas import (
 router = APIRouter(tags=["Public API v1"])
 
 PUBLIC_URL = settings.PUBLIC_URL or "http://localhost:7200"
+limiter = Limiter(key_func=get_remote_address)
+
+
+def _valid_portal_hostname(hostname: str) -> bool:
+    if not hostname or len(hostname) > 253:
+        return False
+    if hostname in {"api", "localhost"}:
+        return True
+    labels = hostname.split(".")
+    return len(labels) >= 2 and all(
+        re.fullmatch(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?", label)
+        for label in labels
+    )
+
+
+def _portal_request_host(request: Request) -> str:
+    raw_host = request.headers.get("host", "")
+    parsed_host = urlparse(f"//{raw_host}")
+    request_hostname = (parsed_host.hostname or "").lower().rstrip(".")
+    if not _valid_portal_hostname(request_hostname):
+        return ""
+    if not _is_shared_or_internal_host(request_hostname):
+        return request_hostname
+
+    for source in (
+        request.headers.get("origin", ""),
+        request.headers.get("referer", ""),
+    ):
+        if not source:
+            continue
+        parsed = urlparse(source)
+        hostname = (parsed.hostname or "").lower().rstrip(".")
+        if (
+            parsed.scheme in {"http", "https"}
+            and parsed.username is None
+            and parsed.password is None
+            and _valid_portal_hostname(hostname)
+        ):
+            return hostname
+    return request_hostname
 
 
 def _public_pdf_path(edition: Edition) -> Optional[str]:
@@ -48,17 +96,38 @@ def _public_pdf_path(edition: Edition) -> Optional[str]:
     return edition.pdf_path
 
 
-def _build_pdf_url(edition: Edition) -> Optional[str]:
+def _is_official_host(request_host: str) -> bool:
+    domain = request_host.split(":")[0].strip().strip(".").lower()
+    base_domain = settings.TENANT_BASE_DOMAIN.strip().strip(".").lower()
+    return bool(
+        base_domain
+        and (domain == base_domain or domain.endswith(f".{base_domain}"))
+    )
+
+
+def _build_download_url(
+    storage_path: str, tenant_slug: str, request_host: str
+) -> str:
+    tenant = quote(tenant_slug.strip(), safe="")
+    path = "/".join(quote(segment, safe="") for segment in storage_path.split("/"))
+    prefix = f"/{tenant}" if _is_official_host(request_host) else ""
+    return f"{prefix}/api/download/{path}"
+
+
+def _build_pdf_url(
+    edition: Edition, tenant_slug: str, request_host: str
+) -> Optional[str]:
     pdf_path = _public_pdf_path(edition)
     if pdf_path:
-        base = settings.PUBLIC_URL or "http://localhost:7200"
-        return f"{base}/api/download/{pdf_path}"
+        return _build_download_url(pdf_path, tenant_slug, request_host)
     return None
 
 
-def _build_attachment_url(att: MatterAttachment) -> Optional[str]:
+def _build_attachment_url(
+    att: MatterAttachment, tenant_slug: str, request_host: str
+) -> Optional[str]:
     if att.file and att.file.storage_path:
-        return f"{PUBLIC_URL}/api/download/{att.file.storage_path}"
+        return _build_download_url(att.file.storage_path, tenant_slug, request_host)
     return None
 
 
@@ -124,7 +193,9 @@ def _pagination_links(path: str, total: int, page: int, page_size: int, params: 
     }
 
 
-def _edition_detail_response(edition: Edition) -> EditionDetail:
+def _edition_detail_response(
+    edition: Edition, tenant_slug: str, request_host: str
+) -> EditionDetail:
     items = [_build_item_public(item) for item in sorted(edition.items or [], key=lambda i: i.position)]
 
     sigs = []
@@ -149,7 +220,7 @@ def _edition_detail_response(edition: Edition) -> EditionDetail:
         pdf_hash=edition.pdf_hash,
         immutability_hash=edition.immutability_hash,
         published_at=edition.published_at,
-        pdf_url=_build_pdf_url(edition),
+        pdf_url=_build_pdf_url(edition, tenant_slug, request_host),
         items=items,
         signatures=sigs,
     )
@@ -160,7 +231,9 @@ def _edition_detail_response(edition: Edition) -> EditionDetail:
     summary="Get current organization by domain",
     description="Returns public organization info based on the request domain/tenant. Returns null/default if no tenant configured.",
 )
+@limiter.limit("60/minute")
 async def v1_get_organization(
+    request: Request,
     tenant: Organization | None = Depends(resolve_tenant_from_domain),
 ):
     if tenant is None:
@@ -195,8 +268,9 @@ async def v1_get_organization(
     "/api/public/v1/editions",
     response_model=EditionListResponse,
     summary="List published editions",
-    description="Returns paginated list of PUBLISHED editions. Ordered by year/number descending.",
+    description="Returns paginated list of PUBLISHED editions. Ordered by publication date descending.",
 )
+@limiter.limit("60/minute")
 async def v1_list_editions(
     request: Request,
     year: Optional[int] = Query(None, description="Filter by year"),
@@ -204,8 +278,16 @@ async def v1_list_editions(
     search: Optional[str] = Query(None, description="Search in title and subtitle"),
     page: int = Query(0, ge=0, description="Page number (0-indexed)"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    tenant: Organization | None = Depends(resolve_tenant_from_domain),
     db: AsyncSession = Depends(get_db),
 ):
+    if tenant is None:
+        params = {"year": year, "type": type, "search": search}
+        pagination = _pagination_links(
+            f"{request.base_url}api/public/v1/editions", 0, page, page_size, params
+        )
+        return EditionListResponse(data=[], pagination=PaginationMeta(**pagination))
+
     query = (
         select(Edition)
         .where(Edition.status == EditionStatus.PUBLISHED)
@@ -214,6 +296,7 @@ async def v1_list_editions(
             selectinload(Edition.signatures),
         )
     )
+    query = query.where(Edition.organization_id == tenant.id)
     if year:
         query = query.where(Edition.year == year)
     if type:
@@ -221,9 +304,16 @@ async def v1_list_editions(
     if search:
         like = f"%{search}%"
         query = query.where(or_(Edition.title.ilike(like), Edition.subtitle.ilike(like)))
-    query = query.order_by(Edition.year.desc(), Edition.number.desc())
+    # Edition numbers are scoped per type (normal/extra/suplementar each have
+    # their own sequence starting at 1), so ordering by number would bury a
+    # brand-new "extra" edition under older "normal" editions with higher
+    # numbers. Publication date reflects true recency across all types.
+    query = query.order_by(Edition.publication_date.desc(), Edition.created_at.desc())
 
-    total_query = select(Edition).where(Edition.status == EditionStatus.PUBLISHED)
+    total_query = select(Edition).where(
+        Edition.status == EditionStatus.PUBLISHED,
+        Edition.organization_id == tenant.id,
+    )
     if year:
         total_query = total_query.where(Edition.year == year)
     if type:
@@ -259,7 +349,9 @@ async def v1_list_editions(
                 verification_code=e.verification_code,
                 item_count=len(e.items or []),
                 signature_count=len(e.signatures or []),
-                pdf_url=_build_pdf_url(e),
+                pdf_url=_build_pdf_url(
+                    e, tenant.slug, _portal_request_host(request)
+                ),
             )
             for e in editions
         ],
@@ -273,18 +365,25 @@ async def v1_list_editions(
     summary="Get edition details by year and number",
     description="Returns full published edition details using the public year/number URL.",
 )
+@limiter.limit("60/minute")
 async def v1_get_edition_by_year_number(
+    request: Request,
     year: int,
     number: int,
+    tenant: Organization | None = Depends(resolve_tenant_from_domain),
     db: AsyncSession = Depends(get_db),
 ):
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Edition not found")
+    conditions = [
+        Edition.year == year,
+        Edition.number == number,
+        Edition.status == EditionStatus.PUBLISHED,
+        Edition.organization_id == tenant.id,
+    ]
     result = await db.execute(
         select(Edition)
-        .where(
-            Edition.year == year,
-            Edition.number == number,
-            Edition.status == EditionStatus.PUBLISHED,
-        )
+        .where(*conditions)
         .options(
             selectinload(Edition.items).selectinload(EditionItem.matter).selectinload(Matter.act_type),
             selectinload(Edition.items).selectinload(EditionItem.matter).selectinload(Matter.org_unit),
@@ -296,7 +395,9 @@ async def v1_get_edition_by_year_number(
     if edition is None:
         raise HTTPException(status_code=404, detail="Edition not found")
 
-    return _edition_detail_response(edition)
+    return _edition_detail_response(
+        edition, tenant.slug, _portal_request_host(request)
+    )
 
 
 @router.get(
@@ -305,18 +406,25 @@ async def v1_get_edition_by_year_number(
     summary="Get edition by year and number",
     description="Returns full edition details including items and signatures, looked up by year and number.",
 )
-async def v1_get_edition_by_year_number(
+@limiter.limit("60/minute")
+async def v1_get_edition_by_year_number_alt(
+    request: Request,
     year: int,
     number: int,
+    tenant: Organization | None = Depends(resolve_tenant_from_domain),
     db: AsyncSession = Depends(get_db),
 ):
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Edition not found")
+    conditions = [
+        Edition.year == year,
+        Edition.number == number,
+        Edition.status == EditionStatus.PUBLISHED,
+        Edition.organization_id == tenant.id,
+    ]
     result = await db.execute(
         select(Edition)
-        .where(
-            Edition.year == year,
-            Edition.number == number,
-            Edition.status == EditionStatus.PUBLISHED,
-        )
+        .where(*conditions)
         .options(
             selectinload(Edition.items).selectinload(EditionItem.matter).selectinload(Matter.act_type),
             selectinload(Edition.items).selectinload(EditionItem.matter).selectinload(Matter.org_unit),
@@ -352,7 +460,9 @@ async def v1_get_edition_by_year_number(
         pdf_hash=edition.pdf_hash,
         immutability_hash=edition.immutability_hash,
         published_at=edition.published_at,
-        pdf_url=_build_pdf_url(edition),
+        pdf_url=_build_pdf_url(
+            edition, tenant.slug, _portal_request_host(request)
+        ),
         items=items,
         signatures=sigs,
     )
@@ -364,13 +474,19 @@ async def v1_get_edition_by_year_number(
     summary="Get edition details",
     description="Returns full edition details including items and signatures.",
 )
+@limiter.limit("60/minute")
 async def v1_get_edition(
+    request: Request,
     edition_id: uuid.UUID,
+    tenant: Organization | None = Depends(resolve_tenant_from_domain),
     db: AsyncSession = Depends(get_db),
 ):
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Edition not found")
+    conditions = [Edition.id == edition_id, Edition.status == EditionStatus.PUBLISHED, Edition.organization_id == tenant.id]
     result = await db.execute(
         select(Edition)
-        .where(Edition.id == edition_id, Edition.status == EditionStatus.PUBLISHED)
+        .where(*conditions)
         .options(
             selectinload(Edition.items).selectinload(EditionItem.matter).selectinload(Matter.act_type),
             selectinload(Edition.items).selectinload(EditionItem.matter).selectinload(Matter.org_unit),
@@ -382,7 +498,9 @@ async def v1_get_edition(
     if edition is None:
         raise HTTPException(status_code=404, detail="Edition not found")
 
-    return _edition_detail_response(edition)
+    return _edition_detail_response(
+        edition, tenant.slug, _portal_request_host(request)
+    )
 
 
 @router.get(
@@ -391,6 +509,7 @@ async def v1_get_edition(
     summary="List published matters",
     description="Returns paginated list of PUBLISHED matters with search and filters.",
 )
+@limiter.limit("30/minute")
 async def v1_list_matters(
     request: Request,
     q: Optional[str] = Query(None, description="Search in title and summary"),
@@ -402,11 +521,19 @@ async def v1_list_matters(
     edition: Optional[int] = Query(None, description="Filter by edition number"),
     page: int = Query(0, ge=0, description="Page number (0-indexed)"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
+    tenant: Organization | None = Depends(resolve_tenant_from_domain),
     db: AsyncSession = Depends(get_db),
 ):
+    if tenant is None:
+        params = {"q": q, "act_type": act_type, "org_unit": org_unit, "year": year}
+        pagination = _pagination_links(
+            f"{request.base_url}api/public/v1/matters", 0, page, page_size, params
+        )
+        return MatterListResponse(data=[], pagination=PaginationMeta(**pagination))
+
     query = (
         select(Matter)
-        .where(Matter.status == "published")
+        .where(Matter.status == "published", Matter.organization_id == tenant.id)
         .options(selectinload(Matter.act_type), selectinload(Matter.org_unit))
     )
     if q:
@@ -428,7 +555,8 @@ async def v1_list_matters(
         query = query.where(Matter.published_at <= datetime.combine(date_to, datetime.max.time()))
     if year or edition is not None:
         subq = select(EditionItem.matter_id).join(Edition).where(
-            Edition.status == EditionStatus.PUBLISHED
+            Edition.status == EditionStatus.PUBLISHED,
+            Edition.organization_id == tenant.id,
         )
         if year:
             subq = subq.where(Edition.year == year)
@@ -490,13 +618,19 @@ async def v1_list_matters(
     summary="Get matter details",
     description="Returns full matter content with sanitized HTML and attachments.",
 )
+@limiter.limit("60/minute")
 async def v1_get_matter(
+    request: Request,
     matter_id: uuid.UUID,
+    tenant: Organization | None = Depends(resolve_tenant_from_domain),
     db: AsyncSession = Depends(get_db),
 ):
+    if tenant is None:
+        raise HTTPException(status_code=404, detail="Matter not found")
+    conditions = [Matter.id == matter_id, Matter.status == "published", Matter.organization_id == tenant.id]
     result = await db.execute(
         select(Matter)
-        .where(Matter.id == matter_id, Matter.status == "published")
+        .where(*conditions)
         .options(
             selectinload(Matter.act_type),
             selectinload(Matter.org_unit),
@@ -516,7 +650,9 @@ async def v1_get_matter(
             filename=att.file.filename if att.file else None,
             mime_type=att.file.mime_type if att.file else None,
             size_bytes=att.file.size_bytes if att.file else None,
-            download_url=_build_attachment_url(att),
+            download_url=_build_attachment_url(
+                att, tenant.slug, _portal_request_host(request)
+            ),
         )
         for att in (matter.attachments or [])
     ]
@@ -541,13 +677,22 @@ async def v1_get_matter(
     description="Validates a verification code against a published edition. "
     "Returns document details and signature certificate info.",
 )
+@limiter.limit("30/minute")
 async def v1_verify(
+    request: Request,
     code: str,
+    tenant: Organization | None = Depends(resolve_tenant_from_domain),
     db: AsyncSession = Depends(get_db),
 ):
+    if tenant is None:
+        return VerifyResult(
+            valid=False,
+            message="Verification code not found or document not published",
+        )
+    conditions = [Edition.verification_code == code, Edition.organization_id == tenant.id]
     result = await db.execute(
         select(Edition)
-        .where(Edition.verification_code == code)
+        .where(*conditions)
         .options(selectinload(Edition.signatures))
     )
     edition = result.scalar_one_or_none()

@@ -1,8 +1,4 @@
-/**
- * Frontend HTML sanitizer.
- * Uses DOMPurify to clean HTML before sending to the API.
- * Alerts the user about removed dangerous content.
- */
+import DOMPurify from "isomorphic-dompurify";
 
 export interface SanitizeResult {
   clean: string;
@@ -33,33 +29,28 @@ export function sanitizeHtml(html: string): SanitizeResult {
     }
   }
 
-  if (typeof window !== "undefined") {
-    const DOMPurify = require("dompurify");
-    const clean = DOMPurify.sanitize(html, {
-      ALLOWED_TAGS: [
-        "p", "br", "div", "span",
-        "h1", "h2", "h3", "h4", "h5", "h6",
-        "ul", "ol", "li",
-        "table", "thead", "tbody", "tfoot", "tr", "th", "td",
-        "caption", "colgroup", "col",
-        "a", "strong", "b", "em", "i", "u", "s", "sub", "sup",
-        "blockquote", "pre", "code",
-        "img", "hr", "dl", "dt", "dd",
-        "abbr", "cite", "del", "ins",
-      ],
-      ALLOWED_ATTR: [
-        "href", "target", "title", "rel",
-        "src", "alt", "width", "height",
-        "colspan", "rowspan", "border",
-        "cellpadding", "cellspacing",
-        "class", "style",
-      ],
-      ALLOWED_URI_REGEXP: /^(?:(?:https?|ftp|mailto|data):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
-    });
-    return { clean, warnings };
-  }
-
-  return { clean: html, warnings };
+  const clean = DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: [
+      "p", "br", "div", "span",
+      "h1", "h2", "h3", "h4", "h5", "h6",
+      "ul", "ol", "li",
+      "table", "thead", "tbody", "tfoot", "tr", "th", "td",
+      "caption", "colgroup", "col",
+      "a", "strong", "b", "em", "i", "u", "s", "sub", "sup",
+      "blockquote", "pre", "code",
+      "img", "hr", "dl", "dt", "dd",
+      "abbr", "cite", "del", "ins",
+    ],
+    ALLOWED_ATTR: [
+      "href", "target", "title", "rel",
+      "src", "alt", "width", "height",
+      "colspan", "rowspan", "border",
+      "cellpadding", "cellspacing",
+      "class", "style",
+    ],
+    ALLOWED_URI_REGEXP: /^(?:(?:https?|ftp|mailto|data):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
+  });
+  return { clean, warnings };
 }
 
 function cleanMsoStyles(style: string): string {

@@ -1,3 +1,12 @@
+/**
+ * Token storage policy:
+ * - access_token: stored in sessionStorage (cleared on tab close, reduces XSS persistence window)
+ * - refresh_token: stored in localStorage (needed for cross-tab refresh; acceptable
+ *   risk because refresh tokens are short-lived and can be revoked server-side)
+ *
+ * TODO: Migrate to httpOnly cookies + CSRF tokens for defense-in-depth.
+ * This requires backend changes to set cookies on /auth/login, /auth/refresh, etc.
+ */
 import type {
   ActType,
   ApiError,
@@ -10,7 +19,10 @@ import type {
 import type { User, UserCreateRequest, UserUpdateRequest } from "@/types/user";
 import type { SystemSetting } from "@/types/setting";
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8001/api/v1";
+const BASE_URL = "/api/v1";
+
+export const SAAS_URL =
+  process.env.NEXT_PUBLIC_SAAS_URL || "https://admin.govsistem.com.br";
 
 class AuthError extends Error {
   constructor() {
@@ -21,7 +33,20 @@ class AuthError extends Error {
 
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
-  return localStorage.getItem("access_token");
+  bootstrapTokenFromQuery();
+  return sessionStorage.getItem("access_token");
+}
+
+export function bootstrapTokenFromQuery(): string | null {
+  if (typeof window === "undefined") return null;
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlToken = urlParams.get("token");
+  if (urlToken) {
+    sessionStorage.setItem("access_token", urlToken);
+    window.history.replaceState({}, "", window.location.pathname);
+    return urlToken;
+  }
+  return null;
 }
 
 function getHeaders(isFormData = false): Record<string, string> {
@@ -63,17 +88,17 @@ async function tryRefreshToken(): Promise<boolean> {
         body: JSON.stringify({ refresh_token: refreshToken }),
       });
       if (!res.ok) {
-        localStorage.removeItem("access_token");
+        sessionStorage.removeItem("access_token");
         localStorage.removeItem("refresh_token");
         window.dispatchEvent(new Event("auth:logout"));
         return false;
       }
       const data = await res.json();
-      localStorage.setItem("access_token", data.access_token);
+      sessionStorage.setItem("access_token", data.access_token);
       localStorage.setItem("refresh_token", data.refresh_token);
       return true;
     } catch {
-      localStorage.removeItem("access_token");
+      sessionStorage.removeItem("access_token");
       localStorage.removeItem("refresh_token");
       window.dispatchEvent(new Event("auth:logout"));
       return false;
@@ -115,6 +140,43 @@ export interface BackupFile {
   filename: string;
   size_bytes: number;
   created_at: string;
+}
+
+export interface GazetteBlock {
+  id: string;
+  type: string;
+  order: number;
+  original_text: string;
+  start_offset: number;
+  end_offset: number;
+  confidence: number;
+  source: string;
+  children: GazetteBlock[];
+  metadata: Record<string, unknown>;
+}
+
+export interface GazetteParseResult {
+  success: boolean;
+  document: {
+    document_type: string;
+    category: string | null;
+    title: string | null;
+    table_of_contents_title: string | null;
+    template: string;
+    confidence: number;
+    blocks: GazetteBlock[];
+    warnings: string[];
+  };
+  rendered_html: string | null;
+  toc: {
+    category: string | null;
+    document_title: string | null;
+    table_of_contents_title: string | null;
+    anchor_id: string | null;
+    order: number;
+  };
+  integrity: { ok: boolean; missing: string[]; added: string[]; messages: string[] };
+  warnings: string[];
 }
 
 export const api = {
@@ -248,6 +310,20 @@ export const api = {
     });
   },
 
+  formatContentWithAI(data: { content: string; act_type?: string; title?: string; summary?: string }) {
+    return request<{ structured_html: string; model: string; notes: string[] }>("/ai/format-content", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  parseGazetteContent(data: { content_text?: string; content_html?: string; use_ai?: boolean }) {
+    return request<GazetteParseResult>("/gazette/parse", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
   deleteAttachment(matterId: string, attachmentId: string) {
     return request<void>(`/matters/${matterId}/attachments/${attachmentId}`, {
       method: "DELETE",
@@ -270,10 +346,12 @@ export const api = {
   },
 
   // Editions
-  listEditions(params?: { year?: number; status?: string }) {
+  listEditions(params?: { year?: number; status?: string; skip?: number; limit?: number }) {
     const q = new URLSearchParams();
     if (params?.year) q.set("year", String(params.year));
     if (params?.status) q.set("status", params.status);
+    if (params?.skip !== undefined) q.set("skip", String(params.skip));
+    if (params?.limit !== undefined) q.set("limit", String(params.limit));
     const qs = q.toString();
     return request<import("../types/edition").EditionListItem[]>(`/editions${qs ? `?${qs}` : ""}`);
   },
@@ -283,13 +361,23 @@ export const api = {
   },
 
   createEdition(data: {
-    number: number; year: number; type: string;
-    title: string; subtitle?: string; publication_date: string;
+    number?: number; year: number; type: string;
+    title?: string; subtitle?: string; publication_date: string;
   }) {
     return request<import("../types/edition").Edition>("/editions", {
       method: "POST",
       body: JSON.stringify(data),
     });
+  },
+
+  getNextEditionNumber(params?: { year?: number; type?: string }) {
+    const q = new URLSearchParams();
+    if (params?.year) q.set("year", String(params.year));
+    if (params?.type) q.set("type", params.type);
+    const qs = q.toString();
+    return request<{ year: number; type: string; next_number: number; auto_numbering: boolean }>(
+      `/editions/next-number${qs ? `?${qs}` : ""}`
+    );
   },
 
   updateEdition(id: string, data: Partial<{ title: string; subtitle: string; publication_date: string }>) {

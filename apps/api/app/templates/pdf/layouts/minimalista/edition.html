@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>DOE {{ edition.year }}/{{ edition.number }}</title>
+<link rel="stylesheet" href="{{ css_path }}">
+</head>
+<body>
+{% set effective_verification_code = verification_code|default(preliminary_code|default(""), true) %}
+
+<article class="document">
+  <div class="template-metadata">{{ organ_name }} {{ edition.title }} {{ edition_type_label }} {{ publication_date }}</div>
+
+  <!-- CAPA -->
+  <header class="cover">
+    <img class="coat-of-arms" src="{{ logo_path }}" alt="Brasão">
+    <h1>DIÁRIO OFICIAL</h1>
+    <h2>{{ organ_name }}</h2>
+
+    <div class="edition-strip">
+      <div>Edição {{ edition.number }}</div>
+      <div>{{ header_date }}</div>
+      <div>Páginas: {{ total_pages }}</div>
+    </div>
+
+    {% if edition.subtitle %}
+    <p class="subtitle">{{ edition.subtitle }}</p>
+    {% endif %}
+
+    <div class="signature-banner">
+      CÓDIGO DE VERIFICAÇÃO: {{ effective_verification_code }}
+    </div>
+  </header>
+
+  <!-- SUMÁRIO -->
+  {% if summary_items is defined and summary_items %}
+  <section class="summary">
+    <div class="section-title"><span>SUMÁRIO</span></div>
+    {% for item in summary_items %}
+    <div class="summary-row">
+      <div>
+        <a href="#{{ item.anchor }}">
+          <strong>{{ item.title }}</strong>
+          {% if item.metadata %}<small>{{ item.metadata }}</small>{% endif %}
+        </a>
+      </div>
+      <a class="summary-dots" href="#{{ item.anchor }}"></a>
+      <strong><a href="#{{ item.anchor }}">{{ "%02d"|format(item.position) }}</a></strong>
+    </div>
+    {% endfor %}
+  </section>
+  {% elif sections %}
+  <section class="summary">
+    <div class="section-title"><span>SUMÁRIO</span></div>
+    {% for section in sections %}
+      {% for matter in section.matters %}
+      <div class="summary-row">
+        <div>
+          <a href="#matter-{{ matter.id }}">
+            <strong>{{ matter.title }}</strong>
+            <small>{{ [matter.act_type, matter.org_unit, section.title]|select|join(" · ") }}</small>
+          </a>
+        </div>
+        <a class="summary-dots" href="#matter-{{ matter.id }}"></a>
+        <strong><a href="#matter-{{ matter.id }}">{{ "%02d"|format(loop.index) }}</a></strong>
+      </div>
+      {% endfor %}
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  <!-- CONTEÚDO -->
+  {% for section in sections %}
+  <div class="section">
+    {% if section.title %}
+    <h2>{{ section.title }}</h2>
+    {% endif %}
+
+    {% for matter in section.matters %}
+    <div class="matter{% if matter.is_landscape %} matter-landscape{% endif %}{% if matter.is_pdf_image_content %} matter-image-content{% endif %}" id="matter-{{ matter.id }}">
+      <div class="matter-title">{{ matter.title }}</div>
+
+      {% if matter.summary %}
+      <div class="matter-summary">{{ matter.summary }}</div>
+      {% endif %}
+
+      <div class="matter-content">
+        {{ matter.content_html | safe }}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+
+  <!-- VALIDAÇÃO -->
+  <footer class="validation-box">
+    <h3>VALIDAÇÃO</h3>
+    <div class="validation-grid">
+      <div>
+        <span>CÓDIGO DE VERIFICAÇÃO</span>
+        <code>{{ effective_verification_code }}</code>
+      </div>
+      {% if edition.pdf_hash %}
+      <div>
+        <span>SHA-256 DO PDF</span>
+        <code>{{ edition.pdf_hash }}</code>
+      </div>
+      {% endif %}
+    </div>
+    <p>Verifique em: {{ verification_url }}/{{ effective_verification_code }}</p>
+  </footer>
+</article>
+
+</body>
+</html>

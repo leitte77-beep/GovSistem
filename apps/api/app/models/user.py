@@ -2,7 +2,7 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -26,10 +26,17 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
     email: Mapped[str] = mapped_column(
         String(255), unique=True, nullable=False, index=True
     )
+    cpf: Mapped[Optional[str]] = mapped_column(
+        String(11), unique=True, nullable=True
+    )
     password_hash: Mapped[Optional[str]] = mapped_column(
         String(255), nullable=True
     )
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    require_password_change: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False,
+        comment="Forces password change on next login (e.g., for default seed users)",
+    )
     mfa_secret: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True, comment="Encrypted TOTP secret"
     )
@@ -37,12 +44,14 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
         Boolean, default=False, nullable=False
     )
     password_changed_at: Mapped[Optional[datetime]] = mapped_column(
-        nullable=True
+        DateTime(timezone=True), nullable=True
     )
     password_failures: Mapped[int] = mapped_column(
         Integer, default=0, nullable=False
     )
-    locked_until: Mapped[Optional[datetime]] = mapped_column(nullable=True)
+    locked_until: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     organization: Mapped[Optional["Organization"]] = relationship(
         "Organization", back_populates="users"

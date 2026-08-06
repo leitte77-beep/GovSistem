@@ -168,7 +168,7 @@ class IcpBrasilValidator:
                     continue
                 try:
                     import httpx
-                    resp = httpx.get(url, timeout=10, verify=False)
+                    resp = httpx.get(url, timeout=10)
                     if resp.status_code != 200:
                         continue
                     crl = load_der_x509_certificate(resp.content)

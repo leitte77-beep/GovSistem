@@ -52,6 +52,7 @@ class UserCreateRequest(BaseModel):
     name: str
     email: str
     password: str
+    cpf: str | None = None
     organization_id: uuid.UUID
     role_names: list[str] = []
 
@@ -59,6 +60,8 @@ class UserCreateRequest(BaseModel):
 class UserUpdateRequest(BaseModel):
     name: str | None = None
     email: str | None = None
+    password: str | None = None
+    cpf: str | None = None
     is_active: bool | None = None
     role_names: list[str] | None = None
 
@@ -67,6 +70,7 @@ class UserOut(BaseModel):
     id: uuid.UUID
     email: str
     name: str
+    cpf: str | None = None
     is_active: bool
     organization_id: uuid.UUID | None
     created_at: datetime
