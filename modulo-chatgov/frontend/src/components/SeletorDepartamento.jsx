@@ -89,13 +89,13 @@ export function SeletorDepartamento({ departamentos, valor, onChange, placeholde
     // Overlay transparente atrás do dropdown — fecha ao clicar fora
     aberto && React.createElement('div', {
       onClick: (e) => { e.stopPropagation(); setAberto(false); },
-      style: { position: 'fixed', inset: 0, zIndex: 39 },
+      style: { position: 'fixed', inset: 0, zIndex: 9999 },
     }),
     aberto && React.createElement('div', {
       role: 'listbox',
       onMouseDown: (e) => e.stopPropagation(),
       style: {
-        position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 40,
+        position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 10000,
         background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radius,
         boxShadow: T.shadowLg || '0 12px 40px rgba(0,0,0,0.16)', overflow: 'hidden',
       },
