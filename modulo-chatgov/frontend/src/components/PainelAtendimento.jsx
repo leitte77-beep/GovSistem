@@ -6,6 +6,7 @@ import { DeptBadge } from './DeptBadge';
 import { ModalParticipantes } from './ModalParticipantes';
 import { ModalTransferir } from './ModalTransferir';
 import { MediaPreview, MediaLightbox } from './MediaPreview';
+import { GaleriaMidias } from './GaleriaMidias';
 import { PainelCidadao } from './PainelCidadao';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
@@ -94,6 +95,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
   const [midias, setMidias] = useState([]);
   const [carregandoMidias, setCarregandoMidias] = useState(false);
   const [galeriaLightbox, setGaleriaLightbox] = useState(null);
+  const [highlightedMsgId, setHighlightedMsgId] = useState(null);
   const [avatarAmpliado, setAvatarAmpliado] = useState(false);
   const [draggingFile, setDraggingFile] = useState(false);
   const [toast, setToast] = useState(null);
@@ -116,6 +118,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
   const audioPreviewRef = useRef(null);
   const audioChunksRef = useRef([]);
   const areaMensagensRef = useRef(null);
+  const rolarParaMensagemRef = useRef(null);
   const inputRef = useRef(null);
   const fileRef = useRef(null);
   const pertoDoFimRef = useRef(true);
@@ -845,6 +848,17 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
     }
   };
 
+  rolarParaMensagemRef.current = (msgId) => {
+    setHighlightedMsgId(msgId);
+    setTimeout(() => {
+      const el = document.getElementById(`chatgov-msg-${msgId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 150);
+    setTimeout(() => setHighlightedMsgId(null), 4000);
+  };
+
   const toggleEtiqueta = (etiquetaId) => {
     const tem = etiquetasConv.some((e) => e.id === etiquetaId);
     if (tem) {
@@ -1438,6 +1452,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
             compacto: ehMobile,
             onSalvarContato: salvarContatoRecebido,
             onIniciarConversa: iniciarConversaComContato,
+            destacado: highlightedMsgId === msg.id,
           }));
           return acc;
         }, []),
@@ -1794,36 +1809,18 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
     showParticipantes && React.createElement(ModalParticipantes, { conversa, onClose: () => setShowParticipantes(false) }),
     showTransferir && React.createElement(ModalTransferir, { conversa, onClose: () => setShowTransferir(false), onTransferido: () => onConversaUpdated?.() }),
 
-    // Galeria de mídia da conversa
-    showGaleria && React.createElement('div', {
-      onClick: () => setShowGaleria(false),
-      style: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 20 },
-    },
-      React.createElement('div', {
-        onClick: (e) => e.stopPropagation(),
-        style: { background: T.surface, borderRadius: 12, width: 'min(720px, 100%)', maxHeight: '85vh', display: 'flex', flexDirection: 'column', overflow: 'hidden', boxShadow: T.shadowMd },
+    showGaleria && React.createElement(GaleriaMidias, {
+      conversa,
+      midias,
+      carregando: carregandoMidias,
+      onFechar: () => setShowGaleria(false),
+      onIrParaMensagem: (midia) => {
+        setShowGaleria(false);
+        setTimeout(() => {
+          rolarParaMensagemRef.current?.(midia.id);
+        }, 200);
       },
-        React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '14px 18px', borderBottom: `1px solid ${T.border}` } },
-          React.createElement('span', { style: { fontWeight: 700, fontSize: 15, color: T.text } }, `Mídias da conversa${midias.length ? ` (${midias.length})` : ''}`),
-          React.createElement('button', { onClick: () => setShowGaleria(false), 'aria-label': 'Fechar', style: { background: 'none', border: 'none', cursor: 'pointer', color: T.textMuted, display: 'flex' } }, React.createElement(X, { size: 20 })),
-        ),
-        React.createElement('div', { style: { padding: 16, overflowY: 'auto' } },
-          carregandoMidias
-            ? React.createElement('div', { style: { textAlign: 'center', padding: 30, color: T.textMuted } }, React.createElement(Loader2, { size: 22, className: 'spin' }))
-            : midias.length === 0
-            ? React.createElement('div', { style: { textAlign: 'center', padding: 30, color: T.textMuted, fontSize: 13 } }, 'Nenhuma mídia trocada nesta conversa.')
-            : React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: 10 } },
-                midias.map((m) => React.createElement('div', {
-                  key: m.id, style: { background: T.surfaceMuted, borderRadius: 8, padding: 6, overflow: 'hidden' },
-                },
-                  React.createElement(MediaPreview, { msg: m, isMe: m.direcao === 'saida', onOpenLightbox: (src, t, mime, nome) => setGaleriaLightbox({ src, tipo: t, mime, nome }) }),
-                  React.createElement('div', { style: { fontSize: 10, color: T.textMuted, marginTop: 4, textAlign: 'center' } }, new Date(m.criado_em).toLocaleDateString('pt-BR')),
-                )),
-              ),
-        ),
-      ),
-    ),
-    galeriaLightbox && React.createElement(MediaLightbox, { src: galeriaLightbox.src, tipo: galeriaLightbox.tipo, mime: galeriaLightbox.mime, nome: galeriaLightbox.nome, onClose: () => setGaleriaLightbox(null) }),
+    }),
     avatarAmpliado && React.createElement(MediaLightbox, {
       src: conversa.contato_avatar_url, tipo: 'imagem', mime: 'image/jpeg', nome: `Foto de ${nome}`,
       onClose: () => setAvatarAmpliado(false),

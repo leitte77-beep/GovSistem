@@ -565,14 +565,26 @@ app.use('/api', rateLimiter);
         return res.status(403).json({ erro: 'Sem acesso a esta conversa' });
       }
       const rows = await db.manyOrNone(
-        `SELECT id, tipo, media_url, media_mime, media_nome, conteudo, direcao, criado_em
-         FROM mensagens
-         WHERE conversa_id = $1 AND tenant_id = $2
-           AND media_url IS NOT NULL AND excluida = false
-         ORDER BY criado_em DESC`,
+        `SELECT m.id, m.tipo, m.media_url, m.media_mime, m.media_nome, m.conteudo,
+                m.direcao, m.criado_em, m.media_tamanho,
+                o.nome AS remetente_nome,
+                c.contato_nome
+         FROM mensagens m
+         LEFT JOIN operadores o ON o.id = m.operador_id AND o.tenant_id = m.tenant_id
+         LEFT JOIN conversas c ON c.id = m.conversa_id AND c.tenant_id = m.tenant_id
+         WHERE m.conversa_id = $1 AND m.tenant_id = $2
+           AND m.media_url IS NOT NULL AND m.excluida = false
+         ORDER BY m.criado_em DESC`,
         [req.params.id, op.tenantId]
       );
-      res.json(rows);
+      // Mapeia remetente: entrada = cidadão, saida = operador
+      const result = rows.map(r => ({
+        ...r,
+        nome_remetente: r.direcao === 'entrada'
+          ? (r.contato_nome || 'Cidadão')
+          : (r.remetente_nome || 'Atendente'),
+      }));
+      res.json(result);
     } catch (err) {
       console.error('[API] midias conversa error:', err.message);
       res.status(500).json({ erro: 'Erro ao buscar mídias' });

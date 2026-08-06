@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Trash2, Reply, Smile, RotateCcw, AlertTriangle, Smartphone, UserRound, Phone, BookUser, MessageSquare, Loader2, Check } from 'lucide-react';
 import { Tick } from './Tick';
 import { T } from '../theme';
@@ -143,7 +143,7 @@ function realcarTermo(texto, termo) {
   return partes;
 }
 
-export function BolhaConversa({ msg, podeExcluir, onExcluir, onResponder, onReagir, onRetry, respondida, nomeContato, compacto, realce, onSalvarContato, onIniciarConversa }) {
+export function BolhaConversa({ msg, podeExcluir, onExcluir, onResponder, onReagir, onRetry, respondida, nomeContato, compacto, realce, onSalvarContato, onIniciarConversa, destacado }) {
   const entrada = msg.direcao === 'entrada';
   const [hover, setHover] = useState(false);
   const [showReacoes, setShowReacoes] = useState(false);
@@ -156,6 +156,24 @@ export function BolhaConversa({ msg, podeExcluir, onExcluir, onResponder, onReag
 
   const abrirLightbox = (src, t, mime, nome) => setLightbox({ src, tipo: t, mime, nome });
   const fecharLightbox = () => setLightbox(null);
+  const bolhaRef = useRef(null);
+
+  useEffect(() => {
+    if (destacado && bolhaRef.current) {
+      const el = bolhaRef.current;
+      el.style.animation = 'none';
+      el.offsetHeight;
+      el.style.animation = 'chatgov-destaque 0.6s ease-out';
+      el.style.background = `${T.primary}15`;
+      el.style.boxShadow = `inset 0 0 0 2px ${T.primary}`;
+      const timer = setTimeout(() => {
+        el.style.background = '';
+        el.style.boxShadow = '';
+        el.style.animation = '';
+      }, 3500);
+      return () => clearTimeout(timer);
+    }
+  }, [destacado]);
 
   // Mensagem excluída: bolha neutra com aviso, sem conteúdo.
   if (msg.excluida) {
@@ -185,6 +203,8 @@ export function BolhaConversa({ msg, podeExcluir, onExcluir, onResponder, onReag
 
   return React.createElement(React.Fragment, null,
     React.createElement('div', {
+      id: `chatgov-msg-${msg.id}`,
+      ref: bolhaRef,
       onMouseEnter: () => setHover(true),
       onMouseLeave: () => setHover(false),
       style: {
@@ -195,6 +215,7 @@ export function BolhaConversa({ msg, podeExcluir, onExcluir, onResponder, onReag
         marginBottom: msg.reacao ? 12 : 4,
         paddingLeft: entrada ? 0 : reserva,
         paddingRight: entrada ? reserva : 0,
+        borderRadius: 8,
       },
     },
       // Ações no hover: reagir, responder e excluir (excluir só p/ mensagens do operador/gestor).

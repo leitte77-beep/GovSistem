@@ -125,3 +125,61 @@ export function agruparMensagens(mensagens) {
   }
   return grupos;
 }
+
+export function formatarTamanho(bytes) {
+  if (!bytes || bytes <= 0) return '';
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+export function classificarMidia(mime) {
+  if (!mime) return 'outros';
+  if (mime.startsWith('image/')) return 'imagens';
+  if (mime.startsWith('video/')) return 'videos';
+  if (mime.startsWith('audio/')) return 'audios';
+  if (mime.includes('pdf') || mime.includes('word') || mime.includes('document') ||
+      mime.includes('sheet') || mime.includes('excel') || mime.includes('presentation') ||
+      mime.includes('text/') || mime.includes('rtf')) return 'documentos';
+  return 'outros';
+}
+
+export function extensaoDoMime(mime) {
+  if (!mime) return '';
+  const mapa = {
+    'image/jpeg': 'JPG', 'image/jpg': 'JPG', 'image/png': 'PNG', 'image/gif': 'GIF',
+    'image/webp': 'WebP', 'image/svg+xml': 'SVG', 'image/bmp': 'BMP',
+    'video/mp4': 'MP4', 'video/webm': 'WebM', 'video/ogg': 'OGV',
+    'audio/mpeg': 'MP3', 'audio/mp3': 'MP3', 'audio/ogg': 'OGG', 'audio/wav': 'WAV', 'audio/webm': 'WebM',
+    'application/pdf': 'PDF',
+    'application/msword': 'DOC', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
+    'application/vnd.ms-excel': 'XLS', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'XLSX',
+    'application/zip': 'ZIP', 'application/x-rar-compressed': 'RAR', 'application/x-7z-compressed': '7Z',
+    'application/x-rar': 'RAR',
+    'text/plain': 'TXT', 'text/csv': 'CSV',
+  };
+  return mapa[mime] || mime.split('/').pop()?.toUpperCase() || '';
+}
+
+export function agruparPorData(midias) {
+  const grupos = [];
+  const hoje = new Date();
+  const ontem = new Date(hoje);
+  ontem.setDate(ontem.getDate() - 1);
+  const inicioSemana = new Date(hoje);
+  inicioSemana.setDate(hoje.getDate() - hoje.getDay());
+
+  for (const m of midias) {
+    const d = new Date(m.criado_em);
+    let chave;
+    if (d.toDateString() === hoje.toDateString()) chave = 'Hoje';
+    else if (d.toDateString() === ontem.toDateString()) chave = 'Ontem';
+    else if (d >= inicioSemana) chave = 'Esta semana';
+    else chave = d.toLocaleDateString('pt-BR', { month: 'long', year: 'numeric' });
+
+    let grupo = grupos.find(g => g.chave === chave);
+    if (!grupo) { grupo = { chave, itens: [] }; grupos.push(grupo); }
+    grupo.itens.push(m);
+  }
+  return grupos;
+}
