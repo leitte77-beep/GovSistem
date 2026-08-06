@@ -6,9 +6,27 @@ import {
 import { T } from '../theme';
 import { extensaoDoMime, formatarTamanho, nomeArquivoDaUrl } from '../utils/arquivo';
 
-const IMG_MAX_W = 420;
-const IMG_MAX_H = 560;
+const IMG_MAX_W = 500;
+const IMG_MAX_H = 600;
 const IMG_TALL_RATIO = 2.2;
+
+// Hash filename pattern: looks like a hex/random hash with no extension
+function ehHash(str) {
+  if (!str) return false;
+  return /^[a-f0-9]{16,}$/i.test(str) || /^[a-f0-9-]{32,}$/i.test(str);
+}
+
+// Friendly display name — never show raw hashes
+function nomeAmigavel(nome, mime) {
+  if (!nome || ehHash(nome)) {
+    if (mime.startsWith('image/')) return 'Imagem recebida';
+    if (mime.startsWith('video/')) return 'V\u00eddeo recebido';
+    if (mime.startsWith('audio/')) return '\u00c1udio recebido';
+    if (mime.includes('pdf')) return 'Documento PDF';
+    return 'Arquivo recebido';
+  }
+  return nome;
+}
 
 function getToken() {
   try {
@@ -42,7 +60,8 @@ function isPdf(mime, url) {
 function midiaInfo(msg) {
   const url = urlVisualizavel(msg.media_url || msg.mediaUrl);
   const mime = (msg.media_mime || msg.mediaMime || '').toLowerCase();
-  const nome = msg.media_nome || msg.mediaNome || nomeArquivoDaUrl(url);
+  const raw = msg.media_nome || msg.mediaNome || nomeArquivoDaUrl(url);
+  const nome = nomeAmigavel(raw, mime);
   const ext = extensaoDoMime(msg.media_mime || msg.mediaMime);
   const ehImagem = mime.startsWith('image/');
   const ehVideo = mime.startsWith('video/');
@@ -514,15 +533,39 @@ function AudioMessage({ info, msg, isMe }) {
 // ─── Video ───
 
 function VideoMessage({ info, msg, isMe, onOpenLightbox }) {
+  const videoRef = useRef(null);
+  const [duration, setDuration] = useState(null);
+
+  const fmtDur = (s) => {
+    if (!s || !isFinite(s)) return '';
+    const m = Math.floor(s / 60);
+    const sec = Math.floor(s % 60);
+    return `${m}:${String(sec).padStart(2, '0')}`;
+  };
+
   return (
     <Card isMe={isMe} onClick={() => onOpenLightbox?.(info.url, 'video', info.mime, info.nome)}>
       <div style={{ position: 'relative', background: '#000' }}>
-        <video src={info.url} preload="metadata" style={{ width: '100%', maxHeight: 320, display: 'block' }} />
+        <video
+          ref={videoRef}
+          src={info.url} preload="metadata"
+          onLoadedMetadata={(e) => setDuration(e.target.duration)}
+          style={{ width: '100%', maxHeight: 320, display: 'block' }}
+        />
+        {duration && (
+          <div style={{
+            position: 'absolute', top: 8, right: 8, padding: '2px 8px',
+            borderRadius: 6, background: 'rgba(0,0,0,0.7)', color: '#fff',
+            fontSize: 11, fontWeight: 600, fontVariantNumeric: 'tabular-nums',
+          }}>
+            {fmtDur(duration)}
+          </div>
+        )}
         <div style={{
-          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          pointerEvents: 'none', background: 'rgba(0,0,0,0.2)',
+          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+          justifyContent: 'center', pointerEvents: 'none', background: 'rgba(0,0,0,0.15)',
         }}>
-          <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Play size={28} color="#fff" style={{ marginLeft: 3 }} />
           </div>
         </div>
@@ -628,7 +671,7 @@ export function MediaLightbox({ src, tipo, mime, nome, onClose, todasMidias, mid
     <div
       role="dialog" aria-label={nome || 'Visualizador'} onClick={onClose}
       style={{
-        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.94)',
+        position: 'fixed', inset: 0, background: '#101010',
         zIndex: 2500, display: 'flex', alignItems: 'center', justifyContent: 'center',
         cursor: isImage && zoom > 1 ? (dragging ? 'grabbing' : 'grab') : 'zoom-out',
       }}
