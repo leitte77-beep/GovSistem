@@ -91,6 +91,7 @@ export function SeletorDepartamento({ departamentos, valor, onChange, placeholde
     // Lista (aberta)
     aberto && React.createElement('div', {
       role: 'listbox',
+      onMouseDown: (e) => e.stopPropagation(),
       style: {
         position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0, zIndex: 40,
         background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radius,
