@@ -18,6 +18,10 @@ export function ThemeProvider(_ref) {
   var isDark = _useState[0];
   var setIsDark = _useState[1];
 
+  var _useStateV = useState(0);
+  var version = _useStateV[0];
+  var bumpVersion = _useStateV[1];
+
   // No mount: aplica tema que veio do anti-FOUC / localStorage
   useEffect(function () {
     applyTheme(isDark);
@@ -26,20 +30,18 @@ export function ThemeProvider(_ref) {
 
   // No clique: atualiza _isDark ANTES do render, depois aplica no DOM
   var toggle = useCallback(function () {
-    setIsDark(function (v) {
-      var next = !v;
-      _setThemeMode(next);  // atualiza módulo → T.* retorna paleta certa no próximo render
-      return next;
-    });
+    _setThemeMode(!isDark);  // atualiza módulo antes do state
+    setIsDark(function (v) { return !v; });
+    bumpVersion(function (v) { return v + 1; }); // força re-render de toda a árvore
     // applyTheme roda no useEffect abaixo (isDark já mudou)
-  }, []);
+  }, [isDark]);
 
   useEffect(function () {
     applyTheme(isDark);
   }, [isDark]);
 
   return React.createElement(ThemeContext.Provider, {
-    value: { isDark: isDark, toggle: toggle, theme: T }
+    value: { isDark: isDark, toggle: toggle, theme: T, version: version }
   }, children);
 }
 
