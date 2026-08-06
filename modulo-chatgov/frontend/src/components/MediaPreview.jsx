@@ -27,7 +27,10 @@ function nomeAmigavel(nome, mime) {
     if (mime.includes('pdf')) return 'Documento PDF';
     return 'Arquivo recebido';
   }
-  return nome;
+  return nome.replace(/_+/g, ' ')
+    .replace(/-+/g, ' - ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function getToken() {
@@ -64,13 +67,14 @@ function midiaInfo(msg) {
   const mime = (msg.media_mime || msg.mediaMime || '').toLowerCase();
   const raw = msg.media_nome || msg.mediaNome || nomeArquivoDaUrl(url);
   const nome = nomeAmigavel(raw, mime);
+  const nomeTitle = nome !== raw ? raw : nome;
   const ext = extensaoDoMime(msg.media_mime || msg.mediaMime);
   const ehImagem = mime.startsWith('image/');
   const ehVideo = mime.startsWith('video/');
   const ehAudio = mime.startsWith('audio/');
   const ehPdf = isPdf(mime, url);
   const tamanho = formatarTamanho(msg.media_tamanho);
-  return { url, mime, nome, ext, ehImagem, ehVideo, ehAudio, ehPdf, tamanho };
+  return { url, mime, nome, nomeTitle, ext, ehImagem, ehVideo, ehAudio, ehPdf, tamanho };
 }
 
 function clampWidth(min, max) {
@@ -264,21 +268,16 @@ function PdfMessage({ info, msg, isMe, onOpenLightbox }) {
   return (
     <Card isMe={isMe} onClick={() => onOpenLightbox?.(info.url, 'pdf', info.mime, nome)}>
       <div style={{
-        height: 150, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        background: 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)', position: 'relative',
+        height: 120, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)',
       }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 48, marginBottom: 4 }}>{'\uD83D\uDCC4'}</div>
-          <div style={{ fontSize: 12, fontWeight: 600, color: '#b91c1c' }}>Documento PDF</div>
-          <div style={{ fontSize: 11, color: '#ef4444', marginTop: 2 }}>Clique para visualizar</div>
-        </div>
+        <span style={{ fontSize: 52 }}>{'\uD83D\uDCC4'}</span>
       </div>
-      <div style={{ padding: '18px 20px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{ padding: '16px 20px 18px', display: 'flex', flexDirection: 'column', gap: 8 }}>
         <div style={{
-          fontSize: 15, fontWeight: 600, color: T.text, lineHeight: 1.35,
-          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-          overflow: 'hidden', wordBreak: 'break-word',
-        }} title={nome}>
+          fontSize: 15, fontWeight: 600, color: T.text, lineHeight: 1.3,
+          maxHeight: 42, overflow: 'hidden', wordBreak: 'break-word',
+        }} title={info.nomeTitle || info.nome}>
           {nome}
         </div>
         <Meta info={info} msg={msg} />
@@ -372,10 +371,9 @@ function ImageMessage({ info, msg, isMe, onOpenLightbox }) {
       </div>
       <div style={{ padding: '16px 20px 18px', display: 'flex', flexDirection: 'column', gap: 6 }}>
         <div style={{
-          fontSize: 14, fontWeight: 600, color: T.text, lineHeight: 1.35,
-          display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-          overflow: 'hidden', wordBreak: 'break-word',
-        }} title={nome}>
+          fontSize: 14, fontWeight: 600, color: T.text, lineHeight: 1.3,
+          maxHeight: 40, overflow: 'hidden', wordBreak: 'break-word',
+        }} title={info.nomeTitle || info.nome}>
           {nome}
         </div>
         <Meta info={info} msg={msg} />
@@ -601,7 +599,7 @@ function GenericFileMessage({ info, msg, isMe }) {
           {icon}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={nome}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={info.nomeTitle || nome}>
             {nome}
           </div>
           <Meta info={info} msg={msg} />
