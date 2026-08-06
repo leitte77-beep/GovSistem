@@ -1,10 +1,14 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   Download, X, Play, Pause, ChevronLeft, ChevronRight, ZoomIn, ZoomOut,
-  RotateCw, MoreVertical, Copy, SkipBack, SkipForward, Eye, ExternalLink,
+  RotateCw, MoreVertical, Copy, SkipBack, SkipForward, Eye, ExternalLink, Check,
 } from 'lucide-react';
 import { T } from '../theme';
 import { extensaoDoMime, formatarTamanho, nomeArquivoDaUrl } from '../utils/arquivo';
+
+const IMG_MAX_W = 420;
+const IMG_MAX_H = 560;
+const IMG_TALL_RATIO = 2.2;
 
 function getToken() {
   try {
@@ -35,8 +39,6 @@ function isPdf(mime, url) {
   return /\.pdf(\?|$)/i.test(url || '');
 }
 
-// ─── Helpers ───
-
 function midiaInfo(msg) {
   const url = urlVisualizavel(msg.media_url || msg.mediaUrl);
   const mime = (msg.media_mime || msg.mediaMime || '').toLowerCase();
@@ -54,50 +56,53 @@ function clampWidth(min, max) {
   return `clamp(${min}px, 100%, ${max}px)`;
 }
 
-function dataRelativa(ts) {
+function dataCompacta(ts) {
   if (!ts) return '';
   try {
     const d = new Date(ts);
     const agora = new Date();
     const dias = Math.floor((agora - d) / 86400000);
     const hora = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-    if (dias <= 0 && d.toDateString() === agora.toDateString()) return `Hoje às ${hora}`;
-    if (dias === 1) return `Ontem às ${hora}`;
+    if (dias <= 0 && d.toDateString() === agora.toDateString()) return `Hoje \u2022 ${hora}`;
+    if (dias === 1) return `Ontem \u2022 ${hora}`;
     if (dias < 7) {
-      const semana = ['Domingo', 'Segunda', 'Terça', 'Quarta', 'Quinta', 'Sexta', 'Sábado'];
-      return `${semana[d.getDay()]} às ${hora}`;
+      const semana = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'S\u00e1b'];
+      return `${semana[d.getDay()]} \u2022 ${hora}`;
     }
-    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: '2-digit' }) + ' ' + hora;
+    return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' }) + ` \u2022 ${hora}`;
   } catch { return ''; }
 }
 
-function iconeFileType(mime) {
-  if (!mime) return '📎';
-  if (mime.startsWith('image/')) return '🖼';
-  if (mime.startsWith('video/')) return '🎬';
-  if (mime.startsWith('audio/')) return '🎵';
-  if (mime.includes('pdf')) return '📄';
-  if (mime.includes('word') || mime.includes('document')) return '📝';
-  if (mime.includes('sheet') || mime.includes('excel')) return '📊';
-  if (mime.includes('zip') || mime.includes('rar') || mime.includes('7z') || mime.includes('compress')) return '🗜';
-  return '📎';
+function iconEmoji(mime) {
+  if (!mime) return '\uD83D\uDCCE';
+  if (mime.startsWith('image/')) return '\uD83D\uDDBC';
+  if (mime.startsWith('video/')) return '\uD83C\uDFAC';
+  if (mime.startsWith('audio/')) return '\uD83C\uDFB5';
+  if (mime.includes('pdf')) return '\uD83D\uDCC4';
+  if (mime.includes('word') || mime.includes('document')) return '\uD83D\uDCDD';
+  if (mime.includes('sheet') || mime.includes('excel')) return '\uD83D\uDCCA';
+  if (mime.includes('zip') || mime.includes('rar') || mime.includes('7z')) return '\uD83D\uDDDC';
+  return '\uD83D\uDCCE';
 }
 
-// ─── Card wrapper com hover ───
+// ─── Card with hover lift ───
 
-function Card({ children, isMe, onClick, hoverable }) {
+function Card({ children, isMe, onClick }) {
   const ref = useRef(null);
-  const handleEnter = () => {
-    if (!hoverable || !ref.current) return;
-    ref.current.style.transform = 'translateY(-1px)';
-    ref.current.style.boxShadow = '0 8px 24px rgba(0,0,0,0.1)';
+  const bg = isMe ? '#EEF5FF' : T.surface;
+  const border = isMe ? '#BFDBFE' : T.border;
+
+  const onEnter = () => {
+    if (!ref.current) return;
+    ref.current.style.transform = 'translateY(-2px)';
+    ref.current.style.boxShadow = '0 8px 28px rgba(0,0,0,0.1)';
     ref.current.style.borderColor = T.primary;
   };
-  const handleLeave = () => {
+  const onLeave = () => {
     if (!ref.current) return;
     ref.current.style.transform = '';
-    ref.current.style.boxShadow = '0 1px 3px rgba(0,0,0,0.06)';
-    ref.current.style.borderColor = isMe ? (T.primary + '40') : T.border;
+    ref.current.style.boxShadow = '0 1px 3px rgba(0,0,0,0.05)';
+    ref.current.style.borderColor = border;
   };
 
   return (
@@ -105,14 +110,13 @@ function Card({ children, isMe, onClick, hoverable }) {
       ref={ref}
       onClick={onClick}
       className="media-card"
-      onMouseEnter={handleEnter}
-      onMouseLeave={handleLeave}
+      onMouseEnter={onEnter}
+      onMouseLeave={onLeave}
       style={{
         width: clampWidth(280, 460), cursor: 'pointer', userSelect: 'none',
-        borderRadius: 14, border: `1.5px solid ${isMe ? T.primary + '40' : T.border}`,
-        background: isMe ? T.primarySoft : T.surface,
-        overflow: 'hidden', transition: 'transform 0.15s, box-shadow 0.15s, border-color 0.15s',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+        borderRadius: 14, border: `1.5px solid ${border}`, background: bg,
+        overflow: 'hidden', transition: 'transform 0.18s, box-shadow 0.18s, border-color 0.18s',
+        boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
       }}
     >
       {children}
@@ -120,65 +124,63 @@ function Card({ children, isMe, onClick, hoverable }) {
   );
 }
 
-// ─── Skeleton ───
+// ─── Skeleton shimmer ───
 
 function Skeleton({ w, h, br = 6 }) {
   return (
     <div style={{
       width: w || '100%', height: h || 14, borderRadius: br,
-      background: T.surfaceMuted || '#e5e7eb',
-      animation: 'skeletonPulse 1.2s ease-in-out infinite',
+      background: `linear-gradient(90deg, ${T.surfaceMuted || '#e5e7eb'} 25%, ${T.surfaceAlt || '#f3f4f6'} 50%, ${T.surfaceMuted || '#e5e7eb'} 75%)`,
+      backgroundSize: '200% 100%',
+      animation: 'shimmer 1.4s ease-in-out infinite',
     }} />
   );
 }
 
-// ─── Metadata ───
+// ─── Metadata single line ───
 
 function Meta({ info, msg }) {
-  const data = dataRelativa(msg.criado_em);
+  const data = dataCompacta(msg.criado_em);
+  const parts = [];
+  if (info.ext) parts.push(info.ext);
+  if (info.tamanho) parts.push(info.tamanho);
+  if (data) parts.push(data);
   return (
-    <div style={{
-      display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center',
-      fontSize: 11.5, color: T.textMuted, marginTop: 2,
-    }}>
-      {info.ext && <span style={{ fontWeight: 500, color: T.textSecondary }}>{info.ext}</span>}
-      {info.tamanho && <span>{info.tamanho}</span>}
-      {info.ehPdf && info.pages && <span>{info.pages} página{info.pages !== 1 ? 's' : ''}</span>}
-      {data && <>
-        <span style={{ color: T.border, fontWeight: 700 }}>·</span>
-        <span>{data}</span>
-      </>}
+    <div style={{ fontSize: 12, color: T.textMuted, marginTop: 3 }}>
+      {parts.join(' \u2022 ')}
     </div>
   );
 }
 
-// ─── Action button ───
+// ─── CTA button ───
 
-function Btn({ label, icon: Icon, onClick }) {
+function Btn({ label, onClick }) {
   return (
     <button
       onClick={(e) => { e.stopPropagation(); onClick?.(); }}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: 5,
-        padding: '5px 10px', borderRadius: 8,
-        border: `1px solid ${T.border}`, background: 'transparent',
-        cursor: 'pointer', fontSize: 12, fontWeight: 600,
-        color: T.textSecondary,
+        padding: '6px 12px', borderRadius: 8,
+        background: T.primary, color: '#fff', border: 'none',
+        cursor: 'pointer', fontSize: 12.5, fontWeight: 600,
+        boxShadow: '0 1px 4px rgba(37,99,235,0.25)',
+        transition: 'box-shadow 0.15s, transform 0.15s',
       }}
+      onMouseEnter={(e) => { e.currentTarget.style.boxShadow = '0 3px 12px rgba(37,99,235,0.35)'; e.currentTarget.style.transform = 'translateY(-1px)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.boxShadow = '0 1px 4px rgba(37,99,235,0.25)'; e.currentTarget.style.transform = ''; }}
     >
-      {Icon && <Icon size={13} />}
+      <Eye size={14} />
       {label}
     </button>
   );
 }
 
-// ─── Menu ───
+// ─── Menu 3 pontos ───
 
-function Menu({ msg, info, compacto, onIrParaMensagem }) {
+function Menu({ msg, info, onIrParaMensagem }) {
   const [aberto, setAberto] = useState(false);
   const ref = useRef(null);
-  const url = info.url;
-  const nome = info.nome;
+  const { url, nome } = info;
 
   useEffect(() => {
     if (!aberto) return;
@@ -188,10 +190,10 @@ function Menu({ msg, info, compacto, onIrParaMensagem }) {
   }, [aberto]);
 
   const itens = [
-    { l: '⬇ Download', a: () => { const a = document.createElement('a'); a.href = url; a.download = nome; a.click(); } },
-    { l: '🔗 Abrir em nova aba', a: () => window.open(url, '_blank', 'noopener') },
-    { l: '📋 Copiar nome', a: () => navigator.clipboard.writeText(nome).catch(() => {}) },
-    ...(onIrParaMensagem ? [{ l: '📌 Ir para mensagem', a: () => onIrParaMensagem(msg) }] : []),
+    { l: 'Baixar', a: () => { const a = document.createElement('a'); a.href = url; a.download = nome; a.click(); } },
+    { l: 'Abrir em nova aba', a: () => window.open(url, '_blank', 'noopener') },
+    { l: 'Copiar nome', a: () => navigator.clipboard.writeText(nome).catch(() => {}) },
+    ...(onIrParaMensagem ? [{ l: 'Ir para mensagem', a: () => onIrParaMensagem(msg) }] : []),
   ];
 
   return (
@@ -205,13 +207,13 @@ function Menu({ msg, info, compacto, onIrParaMensagem }) {
         }}
         className="media-card-menu-btn"
       >
-        <MoreVertical size={compacto ? 14 : 16} />
+        <MoreVertical size={16} />
       </button>
       {aberto && (
         <div style={{
           position: 'absolute', right: 0, bottom: '100%', marginBottom: 4, zIndex: 200,
           background: T.surface, borderRadius: 10, border: `1px solid ${T.border}`,
-          boxShadow: T.shadowMd, minWidth: 190, padding: 4, display: 'flex', flexDirection: 'column',
+          boxShadow: T.shadowMd, minWidth: 190, padding: 4,
         }}>
           {itens.map((item, i) => (
             <button
@@ -237,33 +239,30 @@ function Menu({ msg, info, compacto, onIrParaMensagem }) {
 // ─── PDF ───
 
 function PdfMessage({ info, msg, isMe, onOpenLightbox }) {
-  const [loaded, setLoaded] = useState(false);
   const nome = info.nome;
-
   return (
-    <Card isMe={isMe} hoverable onClick={() => onOpenLightbox?.(info.url, 'pdf', info.mime, nome)}>
-      <div
-        style={{
-          height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexDirection: 'column', gap: 6, background: '#fef2f2', position: 'relative',
-        }}
-      >
-        {!loaded && <Skeleton w={120} h={32} />}
-        <span style={{ fontSize: 40 }}>📄</span>
-        <span style={{ fontSize: 12, fontWeight: 600, color: '#b91c1c' }}>Documento PDF</span>
-        <span style={{ fontSize: 11, color: '#ef4444' }}>Clique para visualizar</span>
+    <Card isMe={isMe} onClick={() => onOpenLightbox?.(info.url, 'pdf', info.mime, nome)}>
+      <div style={{
+        height: 150, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        background: 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)', position: 'relative',
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 48, marginBottom: 4 }}>{'\uD83D\uDCC4'}</div>
+          <div style={{ fontSize: 12, fontWeight: 600, color: '#b91c1c' }}>Documento PDF</div>
+          <div style={{ fontSize: 11, color: '#ef4444', marginTop: 2 }}>Clique para visualizar</div>
+        </div>
       </div>
-      <div style={{ padding: '14px 16px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ padding: '18px 20px 20px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{
-          fontSize: 13.5, fontWeight: 600, color: T.text, lineHeight: 1.35,
+          fontSize: 15, fontWeight: 600, color: T.text, lineHeight: 1.35,
           display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
           overflow: 'hidden', wordBreak: 'break-word',
         }} title={nome}>
           {nome}
         </div>
         <Meta info={info} msg={msg} />
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Btn label="Visualizar" icon={Eye} onClick={() => onOpenLightbox?.(info.url, 'pdf', info.mime, nome)} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
+          <Btn label="Visualizar PDF" onClick={() => onOpenLightbox?.(info.url, 'pdf', info.mime, nome)} />
           <Menu msg={msg} info={info} />
         </div>
       </div>
@@ -276,69 +275,91 @@ function PdfMessage({ info, msg, isMe, onOpenLightbox }) {
 function ImageMessage({ info, msg, isMe, onOpenLightbox }) {
   const [loaded, setLoaded] = useState(false);
   const [erro, setErro] = useState(false);
+  const [dims, setDims] = useState(null);
   const nome = info.nome;
+
+  const handleLoad = (e) => {
+    const img = e.target;
+    setDims({ w: img.naturalWidth, h: img.naturalHeight });
+    setLoaded(true);
+  };
+
+  const ehVertical = dims && dims.h > 0 && (dims.h / dims.w) > IMG_TALL_RATIO;
+  const showTall = loaded && ehVertical;
 
   if (erro) {
     return (
       <div style={{
-        width: clampWidth(280, 460), padding: 40, borderRadius: 12,
+        width: clampWidth(280, IMG_MAX_W), padding: 36, borderRadius: 12,
         border: `1px solid ${T.border}`, background: T.surfaceMuted || T.surfaceAlt,
         textAlign: 'center', color: T.textMuted, fontSize: 13,
       }}>
-        <div style={{ fontSize: 36, marginBottom: 8 }}>🖼</div>
-        Não foi possível carregar a imagem
+        <div style={{ fontSize: 32, marginBottom: 6 }}>{'\uD83D\uDDBC'}</div>
+        N\u00e3o foi poss\u00edvel carregar a imagem
       </div>
     );
   }
 
   return (
-    <Card isMe={isMe} hoverable onClick={() => onOpenLightbox?.(info.url, 'imagem', info.mime, nome)}>
+    <Card isMe={isMe} onClick={() => onOpenLightbox?.(info.url, 'imagem', info.mime, nome)}>
       <div style={{
-        position: 'relative', minHeight: 60,
-        background: '#f3f4f6', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        position: 'relative', background: '#f3f4f6',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
       }}>
         {!loaded && (
-          <div style={{
-            position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
-            justifyContent: 'center', flexDirection: 'column', gap: 8,
-          }}>
-            <Skeleton w="80%" h={200} />
+          <div style={{ width: '100%', padding: '40% 20px' }}>
+            <Skeleton h={260} />
           </div>
         )}
         <img
           src={info.url}
           alt={nome}
-          onLoad={() => setLoaded(true)}
+          onLoad={handleLoad}
           onError={() => setErro(true)}
           style={{
-            width: '100%', maxHeight: 480, objectFit: 'contain',
-            display: loaded ? 'block' : 'none', cursor: 'zoom-in',
+            width: '100%', maxWidth: IMG_MAX_W, maxHeight: showTall ? Math.round(IMG_MAX_H * 0.7) : IMG_MAX_H,
+            objectFit: 'contain', display: loaded ? 'block' : 'none', cursor: 'zoom-in',
+            borderRadius: 0,
           }}
         />
-        {loaded && (
-          <div
-            style={{
-              position: 'absolute', top: 8, right: 8, padding: '4px 8px', borderRadius: 8,
-              background: 'rgba(0,0,0,0.45)', color: '#fff', fontSize: 11, fontWeight: 600,
-              opacity: 0, pointerEvents: 'none',
-            }}
-            className="media-image-hint"
-          >
-            🔍 Clique para ampliar
+        {showTall && (
+          <div style={{
+            position: 'absolute', bottom: 0, left: 0, right: 0,
+            background: 'linear-gradient(transparent, rgba(0,0,0,0.5))',
+            padding: '28px 12px 8px', textAlign: 'center',
+          }}>
+            <span style={{ color: '#fff', fontSize: 11, fontWeight: 600 }}>{'\u2193'} Ver imagem completa</span>
           </div>
         )}
+        {/* Hover overlay */}
+        <div
+          className="media-image-hint"
+          style={{
+            position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+            justifyContent: 'center', background: 'rgba(0,0,0,0.35)', opacity: 0,
+            transition: 'opacity 0.2s', pointerEvents: 'none',
+          }}
+        >
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '8px 18px',
+            borderRadius: 20, background: 'rgba(255,255,255,0.2)',
+            color: '#fff', fontSize: 13, fontWeight: 600,
+          }}>
+            <ZoomIn size={18} /> Ampliar
+          </div>
+        </div>
       </div>
-      <div style={{ padding: '12px 16px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ padding: '16px 20px 18px', display: 'flex', flexDirection: 'column', gap: 6 }}>
         <div style={{
-          fontSize: 13, fontWeight: 600, color: T.text, lineHeight: 1.35,
+          fontSize: 14, fontWeight: 600, color: T.text, lineHeight: 1.35,
           display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
           overflow: 'hidden', wordBreak: 'break-word',
         }} title={nome}>
           {nome}
         </div>
         <Meta info={info} msg={msg} />
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Btn label="Ampliar" icon={ZoomIn} onClick={() => onOpenLightbox?.(info.url, 'imagem', info.mime, nome)} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
+          <Btn label="Ampliar" onClick={() => onOpenLightbox?.(info.url, 'imagem', info.mime, nome)} />
           <Menu msg={msg} info={info} />
         </div>
       </div>
@@ -348,29 +369,33 @@ function ImageMessage({ info, msg, isMe, onOpenLightbox }) {
 
 // ─── Audio ───
 
-function AudioMessage({ info, msg, isMe, compacto }) {
+function AudioMessage({ info, msg, isMe }) {
   const audioRef = useRef(null);
+  const waveRef = useRef(null);
   const [tocando, setTocando] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [velocidade, setVelocidade] = useState(1);
-  const [barras] = useState(() => Array.from({ length: 22 }, () => Math.random() * 0.65 + 0.3));
+  const [ouvido, setOuvido] = useState(false);
+  const [barras] = useState(() => Array.from({ length: 30 }, () => Math.random() * 0.6 + 0.35));
 
   useEffect(() => {
     const a = audioRef.current;
     if (!a) return;
-    const onT = () => setCurrentTime(a.currentTime);
+    const onT = () => {
+      const ct = a.currentTime;
+      setCurrentTime(ct);
+      if (a.duration > 0 && ct / a.duration > 0.8) setOuvido(true);
+    };
     const onD = () => setDuration(a.duration);
-    const onEnd = () => setTocando(false);
     a.addEventListener('timeupdate', onT);
     a.addEventListener('loadedmetadata', onD);
-    a.addEventListener('ended', onEnd);
+    a.addEventListener('ended', () => { setTocando(false); setOuvido(true); });
     a.addEventListener('play', () => setTocando(true));
     a.addEventListener('pause', () => setTocando(false));
     return () => {
       a.removeEventListener('timeupdate', onT);
       a.removeEventListener('loadedmetadata', onD);
-      a.removeEventListener('ended', onEnd);
     };
   }, []);
 
@@ -387,55 +412,89 @@ function AudioMessage({ info, msg, isMe, compacto }) {
     if (a) a.currentTime = Math.min(Math.max(a.currentTime + s, 0), a.duration || 0);
   };
 
+  const seekTo = (e) => {
+    const rect = waveRef.current?.getBoundingClientRect();
+    if (!rect || !duration) return;
+    const x = e.clientX - rect.left;
+    const pct = Math.max(0, Math.min(1, x / rect.width));
+    if (audioRef.current) audioRef.current.currentTime = pct * duration;
+  };
+
   const fmt = (s) => {
-    if (!s || !isFinite(s)) return '00:00';
+    if (!s || !isFinite(s)) return '0:00';
     const m = Math.floor(s / 60);
     const sec = Math.floor(s % 60);
-    return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+    return `${m}:${String(sec).padStart(2, '0')}`;
   };
 
   const progresso = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <Card isMe={isMe} hoverable={false}>
-      <div style={{ padding: '14px 16px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+    <Card isMe={isMe}>
+      <div style={{ padding: '16px 20px 18px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         <audio ref={audioRef} src={info.url} preload="metadata" style={{ display: 'none' }} />
+
+        {/* Estado */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 600 }}>
+            {!tocando && !ouvido && <span style={{ width: 7, height: 7, borderRadius: '50%', background: T.danger, display: 'inline-block' }} />}
+            {ouvido && <Check size={12} color={T.success} />}
+            <span style={{ color: ouvido ? T.success : (tocando ? T.primary : T.danger) }}>
+              {tocando ? 'Reproduzindo' : ouvido ? 'Ouvido' : 'N\u00e3o ouvido'}
+            </span>
+          </span>
+        </div>
+
+        {/* Play + Wave */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <button onClick={(e) => { e.stopPropagation(); skip(-10); }} style={ctrlBtn} title="Retroceder 10s">
+            <SkipBack size={15} />
+          </button>
           <button
             onClick={(e) => { e.stopPropagation(); toggle(); }}
             style={{
-              width: 42, height: 42, borderRadius: '50%', border: 'none', cursor: 'pointer',
-              background: tocando ? T.danger : T.primary, color: '#fff', display: 'flex',
-              alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-              boxShadow: '0 2px 8px rgba(0,0,0,0.15)', transition: 'background 0.15s',
+              width: 44, height: 44, borderRadius: '50%', border: 'none', cursor: 'pointer',
+              background: T.primary, color: '#fff', display: 'flex', alignItems: 'center',
+              justifyContent: 'center', flexShrink: 0,
+              boxShadow: '0 2px 10px rgba(37,99,235,0.3)',
+              transition: 'transform 0.12s',
             }}
+            onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.08)'; }}
+            onMouseLeave={(e) => { e.currentTarget.style.transform = ''; }}
           >
             {tocando ? <Pause size={18} /> : <Play size={18} style={{ marginLeft: 2 }} />}
           </button>
-          <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', gap: 2, height: 34, minWidth: 0 }}>
+          <button onClick={(e) => { e.stopPropagation(); skip(10); }} style={ctrlBtn} title="Avan\u00e7ar 10s">
+            <SkipForward size={15} />
+          </button>
+
+          {/* Wave clic\u00e1vel */}
+          <div
+            ref={waveRef}
+            onClick={(e) => { e.stopPropagation(); seekTo(e); }}
+            style={{
+              flex: 1, display: 'flex', alignItems: 'flex-end', gap: 2, height: 34,
+              minWidth: 0, cursor: 'pointer',
+            }}
+          >
             {barras.map((h, i) => {
               const ativa = (i / barras.length) * 100 <= progresso;
               return (
                 <div key={i} style={{
-                  flex: 1, height: `${Math.max(h * 100, 12)}%`, borderRadius: 2, minWidth: 2,
-                  background: ativa ? (tocando ? T.primary : T.success) : (T.surfaceMuted || '#e5e7eb'),
-                  transition: 'background 0.12s',
+                  flex: 1, height: `${Math.max(h * 100, 10)}%`, borderRadius: 2, minWidth: 2,
+                  background: ativa ? T.primary : (T.surfaceMuted || '#e5e7eb'),
+                  transition: 'background 0.1s',
                 }} />
               );
             })}
           </div>
-          <span style={{ fontSize: 11, color: T.textMuted, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', minWidth: 34, textAlign: 'right' }}>
-            {tocando ? fmt(currentTime) : fmt(duration)}
-          </span>
         </div>
+
+        {/* Controles inferiores */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <div style={{ display: 'flex', gap: 4 }}>
-            <button onClick={(e) => { e.stopPropagation(); skip(-10); }} style={ctrlBtn}><SkipBack size={13} /></button>
-            <button onClick={(e) => { e.stopPropagation(); skip(10); }} style={ctrlBtn}><SkipForward size={13} /></button>
-            <span style={{ fontSize: 11, color: T.textMuted, marginLeft: 2 }}>
-              {fmt(currentTime)} / {fmt(duration)}
-            </span>
-          </div>
+          <span style={{ fontSize: 11.5, color: T.textMuted, fontVariantNumeric: 'tabular-nums' }}>
+            {fmt(currentTime)} / {fmt(duration)}
+          </span>
           <div style={{ display: 'flex', gap: 2 }}>
             {[1, 1.5, 2].map((v) => (
               <button key={v} onClick={(e) => { e.stopPropagation(); setVelocidade(v); }} style={{
@@ -456,25 +515,25 @@ function AudioMessage({ info, msg, isMe, compacto }) {
 
 function VideoMessage({ info, msg, isMe, onOpenLightbox }) {
   return (
-    <Card isMe={isMe} hoverable onClick={() => onOpenLightbox?.(info.url, 'video', info.mime, info.nome)}>
-      <div style={{ position: 'relative', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <Card isMe={isMe} onClick={() => onOpenLightbox?.(info.url, 'video', info.mime, info.nome)}>
+      <div style={{ position: 'relative', background: '#000' }}>
         <video src={info.url} preload="metadata" style={{ width: '100%', maxHeight: 320, display: 'block' }} />
         <div style={{
           position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          pointerEvents: 'none',
+          pointerEvents: 'none', background: 'rgba(0,0,0,0.2)',
         }}>
-          <div style={{ width: 54, height: 54, borderRadius: '50%', background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <Play size={28} color="#fff" style={{ marginLeft: 3 }} />
           </div>
         </div>
       </div>
-      <div style={{ padding: '12px 16px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={info.nome}>
-          🎬 {info.nome}
+      <div style={{ padding: '16px 20px 18px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+        <div style={{ fontSize: 14, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={info.nome}>
+          {'\uD83C\uDFAC'} {info.nome}
         </div>
         <Meta info={info} msg={msg} />
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <Btn label="Reproduzir" icon={Play} onClick={() => onOpenLightbox?.(info.url, 'video', info.mime, info.nome)} />
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
+          <Btn label="Reproduzir" onClick={() => onOpenLightbox?.(info.url, 'video', info.mime, info.nome)} />
           <Menu msg={msg} info={info} />
         </div>
       </div>
@@ -486,19 +545,18 @@ function VideoMessage({ info, msg, isMe, onOpenLightbox }) {
 
 function GenericFileMessage({ info, msg, isMe }) {
   const nome = info.nome;
-  const icon = iconeFileType(info.mime);
-
+  const icon = iconEmoji(info.mime);
   return (
-    <Card isMe={isMe} hoverable onClick={() => window.open(info.url, '_blank', 'noopener')}>
-      <div style={{ padding: '16px', display: 'flex', alignItems: 'center', gap: 14 }}>
+    <Card isMe={isMe} onClick={() => window.open(info.url, '_blank', 'noopener')}>
+      <div style={{ padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 14 }}>
         <div style={{
           width: 50, height: 50, borderRadius: 12, background: T.surfaceMuted || T.surfaceAlt,
-          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 22,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 24,
         }}>
           {icon}
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={nome}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={nome}>
             {nome}
           </div>
           <Meta info={info} msg={msg} />
@@ -515,7 +573,6 @@ export function MediaPreview({ msg, isMe, onOpenLightbox, compacto, onIrParaMens
   const url = urlVisualizavel(msg.media_url || msg.mediaUrl);
   if (!url) return null;
   const info = midiaInfo(msg);
-
   const props = { info, msg, isMe, onOpenLightbox, compacto, onIrParaMensagem };
 
   if (info.ehPdf) return <PdfMessage {...props} />;
@@ -534,7 +591,6 @@ export function MediaLightbox({ src, tipo, mime, nome, onClose, todasMidias, mid
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const imgRef = useRef(null);
 
   useEffect(() => {
     const onKey = (e) => {
@@ -544,10 +600,7 @@ export function MediaLightbox({ src, tipo, mime, nome, onClose, todasMidias, mid
     };
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
-    return () => {
-      document.removeEventListener('keydown', onKey);
-      document.body.style.overflow = '';
-    };
+    return () => { document.removeEventListener('keydown', onKey); document.body.style.overflow = ''; };
   }, [onClose, onNavigate, midiaAtualIdx, todasMidias]);
 
   const isVideo = tipo === 'video' || (mime || '').startsWith('video/');
@@ -608,18 +661,14 @@ export function MediaLightbox({ src, tipo, mime, nome, onClose, todasMidias, mid
 
       {onNavigate && total > 1 && (
         <>
-          {idx > 0 && (
-            <button onClick={(e) => { e.stopPropagation(); onNavigate(idx - 1); reset(); }} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', zIndex: 3, background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '50%', width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}><ChevronLeft size={26} /></button>
-          )}
-          {idx < total - 1 && (
-            <button onClick={(e) => { e.stopPropagation(); onNavigate(idx + 1); reset(); }} style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', zIndex: 3, background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '50%', width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#fff' }}><ChevronRight size={26} /></button>
-          )}
+          {idx > 0 && <button onClick={(e) => { e.stopPropagation(); onNavigate(idx - 1); reset(); }} style={navBtnL}><ChevronLeft size={26} /></button>}
+          {idx < total - 1 && <button onClick={(e) => { e.stopPropagation(); onNavigate(idx + 1); reset(); }} style={navBtnR}><ChevronRight size={26} /></button>}
         </>
       )}
 
       <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', maxWidth: '96vw', maxHeight: '92vh' }}>
         {isImage && (
-          <img ref={imgRef} src={srcAuth} alt={nome || 'Imagem'} draggable={false} onMouseDown={handleMouseDown}
+          <img src={srcAuth} alt={nome || 'Imagem'} draggable={false} onMouseDown={handleMouseDown}
             style={{
               maxWidth: '94vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 4,
               transform: `scale(${zoom}) rotate(${rotate}deg) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
@@ -640,18 +689,30 @@ function LBtn({ children, onClick }) {
       background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none',
       borderRadius: 7, width: 34, height: 34, display: 'flex', alignItems: 'center',
       justifyContent: 'center', cursor: 'pointer',
-    }}>
-      {children}
-    </button>
+    }}>{children}</button>
   );
 }
 
 const ctrlBtn = {
-  display: 'inline-flex', alignItems: 'center', padding: 3, borderRadius: 5,
+  display: 'inline-flex', alignItems: 'center', padding: 4, borderRadius: 6,
   border: 'none', background: 'transparent', cursor: 'pointer', color: T.textMuted,
 };
 
 const spdBtn = {
-  border: 'none', cursor: 'pointer', padding: '2px 6px', borderRadius: 4,
-  fontSize: 11.5, fontVariantNumeric: 'tabular-nums', background: 'transparent',
+  border: 'none', cursor: 'pointer', padding: '3px 7px', borderRadius: 5,
+  fontSize: 12, fontVariantNumeric: 'tabular-nums', background: 'transparent',
+};
+
+const navBtnL = {
+  position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', zIndex: 3,
+  background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '50%',
+  width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center',
+  cursor: 'pointer', color: '#fff',
+};
+
+const navBtnR = {
+  position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', zIndex: 3,
+  background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '50%',
+  width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center',
+  cursor: 'pointer', color: '#fff',
 };
