@@ -1,0 +1,11 @@
+{
+  "frontend": 44001,
+  "api": 44101,
+  "storageConsole": 44201,
+  "storage": 44301,
+  "tiles": 44401,
+  "database": 44500,
+  "redis": 44601,
+  "host": "127.0.0.1",
+  "generatedAt": "2026-08-04T16:47:24.696Z"
+}

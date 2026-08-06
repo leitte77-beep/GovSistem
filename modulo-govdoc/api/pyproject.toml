@@ -1,0 +1,27 @@
+[project]
+name = "govdoc-api"
+version = "1.0.0"
+description = "GovDoc — módulo de gestão, compartilhamento e backup de documentos institucionais"
+requires-python = ">=3.10"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+exclude = [".venv", "alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "W"]
+
+[tool.ruff.lint.per-file-ignores]
+"app/core/config.py" = ["N802", "E501"]
+"app/core/database.py" = ["N806"]
+"app/api/v1/router.py" = ["I001"]
+"scripts/seed.py" = ["E501"]
+"tests/*" = ["E501"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]

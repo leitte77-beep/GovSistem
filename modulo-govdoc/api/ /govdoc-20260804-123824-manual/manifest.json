@@ -1,0 +1,27 @@
+{
+  "versao_formato": 1,
+  "modulo": "govdoc",
+  "tipo": "manual",
+  "job": "7d788462-1dbe-4c87-821f-4ae620ad82b7",
+  "execucao": "3658d926-da10-41fb-abd9-f6bb7e5adeee",
+  "instituicao": "a518b1af-b44c-4a22-bfd8-f879694b2825",
+  "gerado_em": "2026-08-04T12:38:24.077836+00:00",
+  "desde": null,
+  "itens": [
+    {
+      "caminho": "database.json",
+      "sha256": "bbeef05203fc57863ae96233eee0680c50b7743509ec90b96f3c10e6beee7e96",
+      "bytes": 11697
+    },
+    {
+      "caminho": "metadata.json",
+      "sha256": "f4bc1f07ad10822d4568c3e2b8dc05bff925d717dbad5fc82f081c8fcb1f34d5",
+      "bytes": 151
+    }
+  ],
+  "total_bytes": 11848,
+  "total_arquivos": 0,
+  "avisos": [
+    "pg_dump indisponível — o backup contém apenas o dump lógico JSON."
+  ]
+}

@@ -37,6 +37,7 @@ const moduleConfig: Record<string, { icon: string; gradient: string }> = {
   govtask: { icon: "assignment_turned_in", gradient: "from-[#1e3a5f] via-[#1e3a5f] to-[#60a5fa]" },
   govavalia: { icon: "mood", gradient: "from-[#15524c] via-[#15524c] to-[#4ecdc4]" },
   govsocial: { icon: "diversity_3", gradient: "from-[#5b2172] via-[#5b2172] to-[#c77dff]" },
+  govdoc: { icon: "folder_open", gradient: "from-[#312e81] via-[#312e81] to-[#818cf8]" },
 };
 
 export default function DashboardPage() {

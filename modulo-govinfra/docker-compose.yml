@@ -1,0 +1,157 @@
+# GovInfra — Secretaria Municipal de Infraestrutura
+#
+# Suba sempre por `npm run docker:up`: o script resolve as portas livres e grava
+# o `.env.ports` consumido por este compose. Assim nenhum serviço tenta publicar
+# uma porta já usada por outro módulo do sistema.
+#
+#   docker compose -p govinfra --env-file .env.ports -f docker-compose.yml up -d
+#
+# Serviços internos conversam pelo nome (postgres, redis, minio). Só as portas
+# publicadas no host passam pela verificação de conflito.
+#
+# Nunca use `--remove-orphans` aqui: derrubaria contêineres de outros módulos.
+
+name: govinfra
+
+services:
+  postgres:
+    # postgres:16-alpine — mesmo banco dos demais módulos do sistema.
+    # O módulo usa latitude/longitude indexadas (sem tipos geometry), então não
+    # depende de PostGIS. Se o servidor oferecer a extensão, a migration inicial
+    # tenta habilitá-la sem falhar quando ausente.
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-govinfra}
+      POSTGRES_USER: ${POSTGRES_USER:-govinfra_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-govinfra_password}
+    volumes:
+      - govinfra_pgdata:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-44501}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-govinfra_user} -d ${POSTGRES_DB:-govinfra}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks: [govinfra]
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - govinfra_redisdata:/data
+    ports:
+      - "127.0.0.1:${REDIS_HOST_PORT:-44601}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks: [govinfra]
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-govinfra_minio}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-govinfra_minio_secret}
+    volumes:
+      - govinfra_miniodata:/data
+    ports:
+      - "127.0.0.1:${STORAGE_API_PORT:-44301}:9000"
+      - "127.0.0.1:${STORAGE_CONSOLE_PORT:-44201}:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+    networks: [govinfra]
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mc alias set govinfra http://minio:9000 ${S3_ACCESS_KEY:-govinfra_minio} ${S3_SECRET_KEY:-govinfra_minio_secret}
+        mc mb --ignore-existing govinfra/${S3_BUCKET:-govinfra-arquivos}
+        mc anonymous set none govinfra/${S3_BUCKET:-govinfra-arquivos}
+        exit 0
+    networks: [govinfra]
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    env_file:
+      - .env.local
+    environment:
+      APP_ENV: ${APP_ENV:-development}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-govinfra}
+      POSTGRES_USER: ${POSTGRES_USER:-govinfra_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-govinfra_password}
+      DATABASE_URL_OVERRIDE: ""
+      REDIS_URL: redis://redis:6379/0
+      STORAGE_BACKEND: s3
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: ${S3_BUCKET:-govinfra-arquivos}
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-govinfra_minio}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:-govinfra_minio_secret}
+      API_PORT: ${API_PORT:-44101}
+      PUBLIC_URL: ${GOVINFRA_FRONTEND_URL:-http://127.0.0.1:${FRONTEND_PORT:-44001}}
+      CORS_ORIGINS: http://127.0.0.1:${FRONTEND_PORT:-44001},http://localhost:${FRONTEND_PORT:-44001}
+      SAAS_API_URL: ${SAAS_API_URL:-http://host.docker.internal:9009/api/v1}
+      ENABLE_DEV_SAAS_AUTH: ${ENABLE_DEV_SAAS_AUTH:-false}
+      ENABLE_DEV_E2E_AUTH: ${ENABLE_DEV_E2E_AUTH:-false}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "127.0.0.1:${API_PORT:-44101}:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8000/api/govinfra/health/live"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 25s
+    restart: unless-stopped
+    networks: [govinfra]
+
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        VITE_GOVINFRA_API_URL: http://127.0.0.1:${API_PORT:-44101}
+        VITE_ENABLE_SAAS_LOGIN: ${VITE_ENABLE_SAAS_LOGIN:-false}
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-44001}:80"
+    depends_on:
+      - api
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+    networks: [govinfra]
+
+volumes:
+  govinfra_pgdata:
+  govinfra_redisdata:
+  govinfra_miniodata:
+
+networks:
+  govinfra:
+    driver: bridge

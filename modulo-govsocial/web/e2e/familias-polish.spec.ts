@@ -210,9 +210,9 @@ test("renderiza o prontuário honesto nas abas prioritárias", async ({ page }, 
   await page.goto("./familias/carlos");
 
   await expect(page.getByRole("heading", { name: "Carlos Henrique Oliveira Santos" })).toBeVisible();
-  await expect(page.getByText("PBF ativo", { exact: true })).toBeVisible();
-  await expect(page.getByText("Pobreza", { exact: true })).toBeVisible();
-  await expect(page.getByText("A regularizar", { exact: true })).toBeVisible();
+  await expect(page.getByText("PBF ativo", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("Pobreza", { exact: true }).first()).toBeVisible();
+  await expect(page.getByText("A regularizar", { exact: true }).first()).toBeVisible();
   await expect(page.getByRole("button", { name: "Mostrar NIS completo" })).toBeVisible();
   await expect(page.getByRole("tab", { name: /Atendimentos.*3 registros/ })).toBeVisible();
   await expect(page.getByText("sobre: Lucas Lima Oliveira").first()).toBeVisible();

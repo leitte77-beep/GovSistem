@@ -1,0 +1,31 @@
+# Configuração local e segredos
+.env.local
+.env.ports
+.env
+
+# Portas resolvidas em tempo de execução
+.runtime/
+
+# Armazenamento de arquivos e backups locais
+storage/
+backups/
+api/storage/
+api/uploads/
+
+# Python
+api/.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+web/dist/
+web/.vite/
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
