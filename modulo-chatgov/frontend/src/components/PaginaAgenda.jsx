@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Edit3, Check, X, Phone, User, MessageCircle, Trash2, Filter, Grid3X3, List, Plus, Building2 } from 'lucide-react';
+import { Search, Edit3, Check, X, Phone, User, MessageCircle, Trash2, Filter, Grid3X3, List, Plus, Building2, Clock, MessageSquare, Star } from 'lucide-react';
 import { T } from '../theme';
 import { fetchContatos, editarContato, excluirContato, iniciarConversa, fetchDepartamentos } from '../api';
 import { ModalNovaConversa } from './ModalNovaConversa';
@@ -29,6 +29,20 @@ function tempoRelativo(dataStr) {
   return new Date(dataStr).toLocaleDateString('pt-BR');
 }
 
+function statusContato(c) {
+  if (c.total_atendimentos > 10) return { label: 'Frequente', cor: '#7C3AED', bg: 'rgba(124,58,237,0.12)' };
+  if (c.total_atendimentos > 3) return { label: 'Ativo', cor: '#2563EB', bg: 'rgba(37,99,235,0.12)' };
+  if (c.total_atendimentos > 0) return { label: 'Contato', cor: '#16A34A', bg: 'rgba(22,163,74,0.12)' };
+  return { label: 'Novo', cor: '#D97706', bg: 'rgba(217,119,6,0.12)' };
+}
+
+const FILTROS = [
+  { key: 'todos', label: 'Todos' },
+  { key: 'favoritos', label: 'Favoritos' },
+  { key: 'recentes', label: 'Recentes' },
+  { key: 'sem_nome', label: 'Sem nome' },
+];
+
 export function PaginaAgenda({ onSendMessage, breakpoint }) {
   const [contatos, setContatos] = useState([]);
   const [departamentos, setDepartamentos] = useState([]);
@@ -37,7 +51,7 @@ export function PaginaAgenda({ onSendMessage, breakpoint }) {
   const [nomeEdit, setNomeEdit] = useState('');
   const [enviandoId, setEnviandoId] = useState(null);
   const [modoGrade, setModoGrade] = useState(false);
-  const [abaAtiva, setAbaAtiva] = useState('tudo');
+  const [filtroAtivo, setFiltroAtivo] = useState('todos');
   const [excluindoId, setExcluindoId] = useState(null);
   const [showNovaConversa, setShowNovaConversa] = useState(false);
 
@@ -59,9 +73,7 @@ export function PaginaAgenda({ onSendMessage, breakpoint }) {
       await editarContato(id, { nome: nomeEdit.trim() || null });
       setEditandoId(null);
       carregar(busca);
-    } catch (e) {
-      console.error(e);
-    }
+    } catch (e) { console.error(e); }
   };
 
   const iniciarEnvio = async (e, c) => {
@@ -71,101 +83,84 @@ export function PaginaAgenda({ onSendMessage, breakpoint }) {
     try {
       const conv = await iniciarConversa({ telefone: c.telefone });
       if (onSendMessage) onSendMessage(conv);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setEnviandoId(null);
-    }
+    } catch (e) { console.error(e); } finally { setEnviandoId(null); }
   };
 
   const confirmarExclusao = (e, id) => { e.stopPropagation(); setExcluindoId(id); };
   const cancelarExclusao = (e) => { e.stopPropagation(); setExcluindoId(null); };
   const executarExclusao = async (e, id) => {
     e.stopPropagation();
-    try {
-      await excluirContato(id);
-      setExcluindoId(null);
-      carregar(busca);
-    } catch (err) {
-      console.error(err);
-      setExcluindoId(null);
-    }
+    try { await excluirContato(id); setExcluindoId(null); carregar(busca); }
+    catch (err) { console.error(err); setExcluindoId(null); }
   };
 
-  const abas = [
-    { key: 'tudo', label: 'Tudo' },
-    { key: 'favoritos', label: 'Favoritos' },
-    { key: 'recentes', label: 'Recentes' },
-    { key: 'grupos', label: 'Grupos' },
-  ];
   const ehMobile = breakpoint === 'mobile';
   const ehTablet = breakpoint === 'tablet';
 
-  // Ordem alfabética pt-BR (ignora acento/maiúscula); contatos sem nome ao fim.
-  const contatosExibidos = [...contatos].sort((a, b) => {
-    const na = (a.nome || '').trim();
-    const nb = (b.nome || '').trim();
-    if (!na && !nb) return (a.telefone || '').localeCompare(b.telefone || '');
-    if (!na) return 1;
-    if (!nb) return -1;
-    return na.localeCompare(nb, 'pt-BR', { sensitivity: 'base' });
-  });
+  const contatosExibidos = [...contatos]
+    .filter((c) => {
+      if (filtroAtivo === 'favoritos') return false;
+      if (filtroAtivo === 'recentes' && c.ultima_conversa_em) {
+        return (Date.now() - new Date(c.ultima_conversa_em).getTime()) < 7 * 86400000;
+      }
+      if (filtroAtivo === 'sem_nome') return !c.nome || !c.nome.trim();
+      return true;
+    })
+    .sort((a, b) => {
+      const na = (a.nome || '').trim();
+      const nb = (b.nome || '').trim();
+      if (!na && !nb) return (a.telefone || '').localeCompare(b.telefone || '');
+      if (!na) return 1;
+      if (!nb) return -1;
+      return na.localeCompare(nb, 'pt-BR', { sensitivity: 'base' });
+    });
 
   return React.createElement('div', { style: sf.container },
-    /* ── HEADER ── */
     React.createElement('div', { style: { ...sf.header, ...(ehMobile ? sf.headerMobile : null) } },
       React.createElement('div', { style: { ...sf.headerLeft, ...(ehMobile ? sf.headerLeftMobile : null) } },
         React.createElement('h1', { style: sf.title }, 'Contatos'),
-        !ehMobile && React.createElement('div', { style: sf.divider }),
-        React.createElement('nav', { style: { ...sf.tabs, ...(ehMobile ? sf.tabsMobile : null) } },
-          ...abas.map((aba) =>
-            React.createElement('button', {
-              key: aba.key,
-              onClick: () => setAbaAtiva(aba.key),
-              style: {
-                ...sf.tab,
-                color: abaAtiva === aba.key ? T.primary : T.textMuted,
-                borderBottom: abaAtiva === aba.key ? `2px solid ${T.primary}` : '2px solid transparent',
-                fontWeight: abaAtiva === aba.key ? 600 : 400,
-              },
-            }, aba.label),
-          ),
-        ),
+        React.createElement('span', { style: { fontSize: 12, color: T.textMuted, fontWeight: 500, whiteSpace: 'nowrap' } },
+          `${contatosExibidos.length} contatos`),
       ),
       React.createElement('div', { style: { ...sf.headerRight, ...(ehMobile ? sf.headerRightMobile : null) } },
         React.createElement('button', {
           onClick: () => setShowNovaConversa(true),
           style: { ...sf.btnPrimary, ...(ehMobile ? sf.btnPrimaryMobile : null) },
-        },
-          React.createElement(Plus, { size: 17 }),
-          ' Novo contato',
-        ),
+        }, React.createElement(Plus, { size: 17 }), ' Novo contato'),
       ),
     ),
-    /* ── SEARCH BAR ── */
+
     React.createElement('div', { style: { ...sf.toolbar, ...(ehMobile ? sf.toolbarMobile : null) } },
       React.createElement('div', { style: { ...sf.searchWrap, ...(ehMobile ? sf.searchWrapMobile : null) } },
         React.createElement(Search, { size: 18, color: T.textMuted, style: { position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)' } }),
         React.createElement('input', {
-          value: busca,
-          onChange: (e) => setBusca(e.target.value),
+          value: busca, onChange: (e) => setBusca(e.target.value),
           placeholder: 'Pesquisar por nome ou telefone...',
           style: sf.searchInput,
         }),
-      ),
-      React.createElement('button', { style: { ...sf.btnOutlined, ...(ehMobile ? sf.btnToolbarMobile : null) } },
-        React.createElement(Filter, { size: 17 }),
-        ' Filtros',
       ),
       React.createElement('button', {
         onClick: () => setModoGrade(!modoGrade),
         style: sf.btnIcon,
         title: modoGrade ? 'Visualizar em lista' : 'Visualizar em grade',
-      },
-        modoGrade ? React.createElement(List, { size: 20, color: T.textMuted }) : React.createElement(Grid3X3, { size: 20, color: T.textMuted }),
+      }, modoGrade ? React.createElement(List, { size: 20, color: T.textMuted }) : React.createElement(Grid3X3, { size: 20, color: T.textMuted })),
+    ),
+
+    React.createElement('div', { style: { padding: '0 28px 12px', display: 'flex', gap: 8, flexWrap: 'wrap' } },
+      ...FILTROS.map((f) =>
+        React.createElement('button', {
+          key: f.key,
+          onClick: () => setFiltroAtivo(f.key),
+          style: {
+            padding: '6px 14px', borderRadius: 9999, fontSize: 12.5, fontWeight: 600,
+            cursor: 'pointer', border: 'none', transition: 'all 0.15s',
+            background: filtroAtivo === f.key ? T.primary : T.surfaceMuted,
+            color: filtroAtivo === f.key ? '#fff' : T.textSecondary,
+          },
+        }, f.label),
       ),
     ),
-    /* ── CONTENT ── */
+
     React.createElement('div', { style: { ...sf.content, ...(ehMobile ? sf.contentMobile : null) } },
       contatosExibidos.length === 0
         ? React.createElement('div', { style: sf.empty },
@@ -178,122 +173,94 @@ export function PaginaAgenda({ onSendMessage, breakpoint }) {
         : React.createElement('div', {
             style: {
               ...sf.grid,
-              gridTemplateColumns: ehMobile
-                ? '1fr'
-                : modoGrade
-                ? `repeat(auto-fill, minmax(${ehTablet ? 260 : 320}px, 1fr))`
-                : '1fr',
+              gridTemplateColumns: ehMobile ? '1fr' : modoGrade ? `repeat(auto-fill, minmax(${ehTablet ? 260 : 320}px, 1fr))` : '1fr',
             },
           },
-            ...contatosExibidos.map((c, i) => modoGrade ? cardContato(c, i) : linhaContato(c, i)),
+            ...contatosExibidos.map((c, i) => modoGrade ? cardContato(c) : linhaContato(c)),
           ),
     ),
-    /* ── LOAD MORE ── */
-    contatosExibidos.length > 0 && React.createElement('div', { style: { display: 'flex', justifyContent: 'center', padding: '24px 0' } },
-      React.createElement('button', { style: sf.btnOutlined }, 'Carregar mais contatos'),
-    ),
-    /* ── MODAL NOVA CONVERSA ── */
+
     showNovaConversa && React.createElement(ModalNovaConversa, {
       departamentos,
       onClose: () => setShowNovaConversa(false),
-      onCriada: (conv) => {
-        setShowNovaConversa(false);
-        carregar(busca);
-        if (onSendMessage && conv?.id) onSendMessage(conv);
-      },
+      onCriada: (conv) => { setShowNovaConversa(false); carregar(busca); if (onSendMessage && conv?.id) onSendMessage(conv); },
     }),
   );
 
-  /* ──────── CARD RENDER ──────── */
-  function cardContato(c, i) {
-    return React.createElement('div', {
-      key: c.id,
-      style: sf.card,
-    },
-      /* avatar + info */
+  function cardContato(c) {
+    const st = statusContato(c);
+    const ultimaData = c.ultima_conversa_em ? tempoRelativo(c.ultima_conversa_em) : null;
+
+    return React.createElement('div', { key: c.id, style: sf.card },
       React.createElement('div', { style: sf.cardTop },
-        React.createElement(Avatar, { nome: c.nome || c.telefone, url: c.avatar_url, tamanho: 52, isNumber: !c.nome }),
+        React.createElement(Avatar, { nome: c.nome || c.telefone, url: c.avatar_url, tamanho: 44, isNumber: !c.nome }),
         React.createElement('div', { style: { flex: 1, minWidth: 0 } },
           editandoId === c.id
             ? React.createElement('div', { style: { display: 'flex', gap: 4, alignItems: 'center' } },
                 React.createElement('input', {
-                  value: nomeEdit,
-                  onChange: (e) => setNomeEdit(e.target.value),
+                  value: nomeEdit, onChange: (e) => setNomeEdit(e.target.value),
                   onKeyDown: (e) => { if (e.key === 'Enter') salvar(c.id); if (e.key === 'Escape') setEditandoId(null); },
-                  autoFocus: true,
-                  style: sf.editInput,
+                  autoFocus: true, style: sf.editInput,
                 }),
-                React.createElement('button', { onClick: () => salvar(c.id), style: { ...sf.actionBtn, background: T.success, color: '#fff' } },
-                  React.createElement(Check, { size: 14 }),
-                ),
-                React.createElement('button', { onClick: () => setEditandoId(null), style: { ...sf.actionBtn, background: T.surfaceMuted } },
-                  React.createElement(X, { size: 14 }),
-                ),
+                React.createElement('button', { onClick: () => salvar(c.id), style: { ...sf.actionBtn, background: T.success, color: '#fff' } }, React.createElement(Check, { size: 14 })),
+                React.createElement('button', { onClick: () => setEditandoId(null), style: { ...sf.actionBtn, background: T.surfaceMuted } }, React.createElement(X, { size: 14 })),
               )
             : React.createElement('div', {
                 style: { fontSize: 15, fontWeight: 700, color: c.nome ? T.text : T.textMuted, cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
-                onClick: (e) => iniciarEdicao(e, c),
-                title: 'Clique para editar',
+                onClick: (e) => iniciarEdicao(e, c), title: 'Clique para editar',
               }, c.nome || c.telefone || 'Sem nome'),
-          React.createElement('div', { style: { fontSize: 12, color: T.textMuted, display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 } },
-            React.createElement(Phone, { size: 11 }),
-            formatarTelefone(c.telefone) || 'Sem telefone',
+          React.createElement('div', { style: { fontSize: 12.5, color: T.textSecondary, display: 'flex', alignItems: 'center', gap: 4, marginTop: 3 } },
+            React.createElement(Phone, { size: 11 }), formatarTelefone(c.telefone) || 'Sem telefone',
           ),
-          React.createElement('div', { style: { fontSize: 12, color: T.textMuted, display: 'flex', alignItems: 'center', gap: 4, marginTop: 1 } },
-            React.createElement(Building2, { size: 11 }),
-            'Prefeitura Municipal',
-          ),
-        ),
-        !editandoId && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 2, marginLeft: 8 } },
-          React.createElement('button', {
-            onClick: (e) => iniciarEnvio(e, c),
-            disabled: editandoId === c.id || excluindoId === c.id,
-            style: { ...sf.actionBtn, background: T.primary, color: '#fff', opacity: editandoId === c.id ? 0.6 : 1 },
-            title: 'Enviar mensagem',
-          }, React.createElement(MessageCircle, { size: 15 })),
-          React.createElement('button', {
-            onClick: (e) => iniciarEdicao(e, c),
-            style: sf.actionBtnIcon,
-            title: 'Editar nome',
-          }, React.createElement(Edit3, { size: 15, color: T.textSecondary })),
-          excluindoId === c.id
-            ? React.createElement('div', { style: { display: 'flex', gap: 2 } },
-                React.createElement('button', {
-                  onClick: (e) => executarExclusao(e, c.id),
-                  style: { ...sf.actionBtn, background: T.danger, color: '#fff' },
-                }, React.createElement(Check, { size: 15 })),
-                React.createElement('button', {
-                  onClick: (e) => cancelarExclusao(e),
-                  style: { ...sf.actionBtn, background: T.surfaceMuted },
-                }, React.createElement(X, { size: 15 })),
-              )
-            : React.createElement('button', {
-                onClick: (e) => confirmarExclusao(e, c.id),
-                style: sf.actionBtnIcon,
-                title: 'Arquivar contato',
-              }, React.createElement(Trash2, { size: 15, color: T.textSecondary })),
         ),
       ),
-      /* footer */
-      React.createElement('div', { style: sf.cardFooter },
-        React.createElement('span', { style: { ...sf.badge, background: T.successSoft, color: T.success } },
-          React.createElement('span', { style: { width: 6, height: 6, borderRadius: '50%', background: T.success } }),
-          ' Contato',
-        ),
+
+      React.createElement('div', { style: sf.cardBody },
+        React.createElement('span', {
+          style: { display: 'inline-flex', alignItems: 'center', gap: 5, padding: '2px 10px', borderRadius: 9999, fontSize: 11, fontWeight: 600, background: st.bg, color: st.cor },
+        }, st.label),
         React.createElement('span', { style: { fontSize: 11, color: T.textMuted } },
-          c.criado_em ? `Desde ${new Date(c.criado_em).toLocaleDateString('pt-BR')}` : '',
-        ),
+          c.criado_em ? `Desde ${new Date(c.criado_em).toLocaleDateString('pt-BR')}` : ''),
+      ),
+
+      ultimaData && React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, padding: '8px 10px', background: T.surfaceAlt, borderRadius: 8, fontSize: 11.5, color: T.textSecondary } },
+        React.createElement(Clock, { size: 12, color: T.textMuted }),
+        React.createElement('span', null, `Último atendimento: ${ultimaData}`),
+        c.total_atendimentos > 0 && React.createElement('span', { style: { marginLeft: 'auto', fontWeight: 600, color: T.text } },
+          `${c.total_atendimentos} atendimento${c.total_atendimentos > 1 ? 's' : ''}`),
+      ),
+
+      React.createElement('div', { style: sf.cardActions },
+        React.createElement('button', {
+          onClick: (e) => iniciarEnvio(e, c),
+          disabled: editandoId === c.id || excluindoId === c.id,
+          style: { ...sf.btnPrimary, fontSize: 12, padding: '7px 14px', opacity: editandoId === c.id ? 0.6 : 1 },
+          title: 'Enviar mensagem',
+        }, React.createElement(MessageCircle, { size: 14 }), ' Conversar'),
+        React.createElement('button', { onClick: (e) => iniciarEdicao(e, c), style: sf.btnSec, title: 'Editar nome' },
+          React.createElement(Edit3, { size: 14 }), ' Editar'),
+        excluindoId === c.id
+          ? React.createElement('div', { style: { display: 'flex', gap: 4, marginLeft: 'auto' } },
+              React.createElement('button', { onClick: (e) => executarExclusao(e, c.id), style: { ...sf.actionBtn, background: T.danger, color: '#fff' } }, React.createElement(Check, { size: 14 })),
+              React.createElement('button', { onClick: (e) => cancelarExclusao(e), style: { ...sf.actionBtn, background: T.surfaceMuted } }, React.createElement(X, { size: 14 })),
+            )
+          : React.createElement('button', {
+              onClick: (e) => confirmarExclusao(e, c.id),
+              style: { marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 4, border: 'none', background: 'transparent', color: T.textMuted, cursor: 'pointer', fontSize: 12, fontWeight: 500, padding: '5px 10px', borderRadius: 6 },
+              title: 'Excluir contato',
+              onMouseEnter: (e) => { e.currentTarget.style.background = T.dangerSoft; e.currentTarget.style.color = T.danger; },
+              onMouseLeave: (e) => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.color = T.textMuted; },
+            }, React.createElement(Trash2, { size: 13 }), ' Excluir'),
       ),
     );
   }
 
-  /* ──────── LIST ROW ──────── */
-  function linhaContato(c, i) {
-    return React.createElement('div', {
-      key: c.id,
-      style: sf.row,
-    },
-      React.createElement(Avatar, { nome: c.nome || c.telefone, url: c.avatar_url, tamanho: 40, isNumber: !c.nome }),
+  function linhaContato(c) {
+    const st = statusContato(c);
+    const ultimaData = c.ultima_conversa_em ? tempoRelativo(c.ultima_conversa_em) : null;
+
+    return React.createElement('div', { key: c.id, style: sf.row },
+      React.createElement(Avatar, { nome: c.nome || c.telefone, url: c.avatar_url, tamanho: 36, isNumber: !c.nome }),
       React.createElement('div', { style: { flex: 1, minWidth: 0 } },
         editandoId === c.id
           ? React.createElement('div', { style: { display: 'flex', gap: 4, alignItems: 'center' } },
@@ -303,100 +270,72 @@ export function PaginaAgenda({ onSendMessage, breakpoint }) {
                 autoFocus: true,
                 style: { fontSize: 14, fontWeight: 600, padding: '4px 8px', border: `2px solid ${T.primary}`, borderRadius: T.radiusSm, color: T.text, background: T.surface, outline: 'none', width: '100%' },
               }),
-              React.createElement('button', { onClick: () => salvar(c.id), style: { ...sf.actionBtn, background: T.success, color: '#fff' } },
-                React.createElement(Check, { size: 14 }),
-              ),
-              React.createElement('button', { onClick: () => setEditandoId(null), style: { ...sf.actionBtn, background: T.surfaceMuted } },
-                React.createElement(X, { size: 14 }),
-              ),
+              React.createElement('button', { onClick: () => salvar(c.id), style: { ...sf.actionBtn, background: T.success, color: '#fff' } }, React.createElement(Check, { size: 14 })),
+              React.createElement('button', { onClick: () => setEditandoId(null), style: { ...sf.actionBtn, background: T.surfaceMuted } }, React.createElement(X, { size: 14 })),
             )
-          : React.createElement('div', { style: { fontSize: 14, fontWeight: 600, color: c.nome ? T.text : T.textMuted, cursor: 'pointer' }, onClick: (e) => iniciarEdicao(e, c) },
-              c.nome || c.telefone || 'Sem nome'),
-        React.createElement('div', { style: { fontSize: 12, color: T.textMuted } }, formatarTelefone(c.telefone)),
+          : React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+              React.createElement('div', { style: { fontSize: 14, fontWeight: 600, color: c.nome ? T.text : T.textMuted, cursor: 'pointer' }, onClick: (e) => iniciarEdicao(e, c) },
+                c.nome || c.telefone || 'Sem nome'),
+              React.createElement('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '1px 7px', borderRadius: 9999, fontSize: 10, fontWeight: 600, background: st.bg, color: st.cor } }, st.label),
+            ),
+        React.createElement('div', { style: { fontSize: 12, color: T.textSecondary, marginTop: 1 } },
+          formatarTelefone(c.telefone) + (ultimaData ? `  •  Último: ${ultimaData}` : '')),
       ),
-      React.createElement('div', { style: { display: 'flex', gap: 4 } },
+      React.createElement('div', { style: { display: 'flex', gap: 4, alignItems: 'center' } },
         excluindoId === c.id
-          ? React.createElement('div', { style: { display: 'flex', gap: 4 } },
+          ? React.createElement(React.Fragment, null,
               React.createElement('button', { onClick: (e) => executarExclusao(e, c.id), style: { ...sf.actionBtn, background: T.danger, color: '#fff' } }, React.createElement(Check, { size: 14 })),
               React.createElement('button', { onClick: (e) => cancelarExclusao(e), style: { ...sf.actionBtn, background: T.surfaceMuted } }, React.createElement(X, { size: 14 })),
             )
           : React.createElement(React.Fragment, null,
               React.createElement('button', { onClick: (e) => iniciarEnvio(e, c), disabled: enviandoId === c.id, style: { ...sf.actionBtn, background: T.primary, color: '#fff', opacity: enviandoId === c.id ? 0.6 : 1 }, title: 'Enviar mensagem' },
-                React.createElement(MessageCircle, { size: 14 }),
-              ),
+                React.createElement(MessageCircle, { size: 14 })),
               React.createElement('button', { onClick: (e) => iniciarEdicao(e, c), style: sf.actionBtnIcon },
-                React.createElement(Edit3, { size: 14, color: T.textSecondary }),
-              ),
+                React.createElement(Edit3, { size: 14, color: T.textSecondary })),
               React.createElement('button', { onClick: (e) => confirmarExclusao(e, c.id), style: sf.actionBtnIcon },
-                React.createElement(Trash2, { size: 14, color: T.textSecondary }),
-              ),
+                React.createElement(Trash2, { size: 14, color: T.textSecondary })),
             ),
       ),
     );
   }
 }
 
-/* ──────── STYLES ──────── */
 const sf = {
   container: { flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', height: '100%', background: T.bg, overflow: 'hidden' },
-
   header: { padding: '14px 28px', background: T.surface, borderBottom: `1px solid ${T.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
   headerMobile: { padding: '16px 16px 12px', flexDirection: 'column', alignItems: 'stretch', gap: 12 },
-  headerLeft: { display: 'flex', alignItems: 'center', gap: 16 },
-  headerLeftMobile: { alignItems: 'flex-start', gap: 10, minWidth: 0 },
+  headerLeft: { display: 'flex', alignItems: 'center', gap: 12 },
+  headerLeftMobile: { alignItems: 'flex-start', gap: 8, minWidth: 0 },
   title: { fontSize: 20, fontWeight: 800, letterSpacing: -0.5, color: T.text, whiteSpace: 'nowrap' },
-  divider: { width: 1, height: 24, background: T.border },
-  tabs: { display: 'flex', gap: 24 },
-  tabsMobile: { width: '100%', gap: 18, overflowX: 'auto', paddingBottom: 2, WebkitOverflowScrolling: 'touch' },
-  tab: { fontSize: 13, fontWeight: 500, background: 'none', border: 'none', cursor: 'pointer', padding: '6px 0', transition: 'all 0.15s', flexShrink: 0 },
   headerRight: { display: 'flex', alignItems: 'center', gap: 12 },
   headerRightMobile: { width: '100%' },
 
-  toolbar: { padding: '16px 28px', display: 'flex', gap: 12, alignItems: 'center' },
-  toolbarMobile: { padding: '12px 16px', flexWrap: 'wrap', alignItems: 'stretch' },
+  toolbar: { padding: '16px 28px 8px', display: 'flex', gap: 12, alignItems: 'center' },
+  toolbarMobile: { padding: '12px 16px 8px', flexWrap: 'wrap', alignItems: 'stretch' },
   searchWrap: { flex: 1, position: 'relative' },
   searchWrapMobile: { flex: '1 0 100%' },
   searchInput: { width: '100%', height: 42, padding: '0 16px 0 40px', border: `1px solid ${T.border}`, borderRadius: T.radius, fontSize: 13, color: T.text, background: T.surface, outline: 'none', boxSizing: 'border-box' },
 
-  content: { flex: 1, overflowY: 'auto', padding: '0 28px 16px' },
-  contentMobile: { padding: '0 16px 16px' },
-  grid: { display: 'grid', gap: 16, paddingBottom: 8 },
+  content: { flex: 1, overflowY: 'auto', padding: '8px 28px 16px' },
+  contentMobile: { padding: '8px 16px 16px' },
+  grid: { display: 'grid', gap: 12, paddingBottom: 8 },
 
   card: {
-    background: T.surface,
-    borderRadius: T.radiusLg,
+    background: T.surface, borderRadius: T.radiusLg,
     border: `1px solid ${T.border}`,
-    padding: 18,
-    display: 'flex',
-    flexDirection: 'column',
-    gap: 14,
+    padding: '16px 18px 14px',
+    display: 'flex', flexDirection: 'column', gap: 10,
     transition: 'box-shadow 0.15s, border-color 0.15s',
     cursor: 'default',
-    position: 'relative',
-    overflow: 'hidden',
+    position: 'relative', overflow: 'hidden',
   },
-  cardTop: { display: 'flex', alignItems: 'flex-start', gap: 14 },
+  cardTop: { display: 'flex', alignItems: 'flex-start', gap: 12 },
   editInput: { fontSize: 14, fontWeight: 600, padding: '4px 8px', border: `2px solid ${T.primary}`, borderRadius: T.radiusSm, color: T.text, background: T.surface, outline: 'none', flex: 1, minWidth: 0 },
-  cardFooter: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 14, borderTop: `1px solid ${T.border}` },
-  badge: { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '2px 10px', borderRadius: 9999, fontSize: 11, fontWeight: 600 },
+  cardBody: { display: 'flex', justifyContent: 'space-between', alignItems: 'center' },
+  cardActions: { display: 'flex', alignItems: 'center', gap: 6, paddingTop: 8, borderTop: `1px solid ${T.border}` },
 
   row: {
-    display: 'flex', alignItems: 'center', padding: '12px 16px', background: T.surface, borderRadius: T.radius, border: `1px solid ${T.border}`, gap: 12,
-  },
-
-  addCard: {
-    minHeight: 170,
-    border: `2px dashed ${T.border}`,
-    borderRadius: T.radiusLg,
-    background: T.surfaceAlt,
-    display: 'flex',
-    flexDirection: 'column',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 10,
-    cursor: 'pointer',
-    color: T.textMuted,
-    borderStyle: 'dashed',
+    display: 'flex', alignItems: 'center', padding: '12px 16px', background: T.surface, borderRadius: T.radius, border: `1px solid ${T.border}`, gap: 12, marginBottom: 6,
   },
 
   btnPrimary: {
@@ -406,21 +345,13 @@ const sf = {
     padding: '9px 18px', fontSize: 13, fontWeight: 600,
     cursor: 'pointer', whiteSpace: 'nowrap',
   },
-  btnPrimaryMobile: {
-    width: '100%',
-    justifyContent: 'center',
-    minHeight: 40,
-  },
-  btnOutlined: {
-    display: 'flex', alignItems: 'center', gap: 6,
-    background: T.surface, color: T.textMuted,
-    border: `1px solid ${T.border}`, borderRadius: T.radius,
-    padding: '9px 14px', fontSize: 13, fontWeight: 500,
+  btnPrimaryMobile: { width: '100%', justifyContent: 'center', minHeight: 40 },
+  btnSec: {
+    display: 'flex', alignItems: 'center', gap: 4,
+    background: T.surfaceAlt, color: T.textSecondary,
+    border: `1px solid ${T.border}`, borderRadius: T.radiusSm,
+    padding: '7px 12px', fontSize: 12, fontWeight: 500,
     cursor: 'pointer', whiteSpace: 'nowrap',
-  },
-  btnToolbarMobile: {
-    flex: '1 1 0',
-    justifyContent: 'center',
   },
   btnIcon: {
     width: 42, height: 42,
@@ -428,33 +359,8 @@ const sf = {
     background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radius,
     cursor: 'pointer',
   },
+  actionBtn: { width: 30, height: 30, borderRadius: T.radiusSm, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  actionBtnIcon: { width: 38, height: 38, background: 'transparent', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: T.radiusSm },
 
-  actionBtn: {
-    width: 30, height: 30,
-    borderRadius: T.radiusSm, border: 'none',
-    cursor: 'pointer',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-  },
-  actionBtnIcon: {
-    width: 44, height: 44,
-    background: 'transparent', border: 'none',
-    cursor: 'pointer',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    borderRadius: T.radiusSm,
-  },
-
-  empty: {
-    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-    padding: 64, color: T.textMuted, gridColumn: '1 / -1',
-  },
-
-  fab: {
-    position: 'fixed', bottom: 28, right: 28,
-    width: 52, height: 52, borderRadius: '50%',
-    background: T.primary, color: '#fff',
-    border: 'none', cursor: 'pointer',
-    display: 'flex', alignItems: 'center', justifyContent: 'center',
-    boxShadow: '0 4px 16px rgba(37,99,235,0.35)',
-    zIndex: 40,
-  },
+  empty: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 64, color: T.textMuted, gridColumn: '1 / -1' },
 };
