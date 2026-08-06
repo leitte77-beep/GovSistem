@@ -55,8 +55,6 @@ function BotaoRail({ view, ativo, onClick, badge, somenteIcone }) {
   const iconName = NAV_ICONS[view]?.icon;
   const label = NAV_LABELS[view];
   const filled = ativo;
-  const corTexto = filled ? '#111827' : T.railText;
-  const corFundoHover = filled ? T.primarySoft : T.surfaceAlt;
 
   return React.createElement('button', {
     onClick: () => onClick(view),
@@ -67,7 +65,7 @@ function BotaoRail({ view, ativo, onClick, badge, somenteIcone }) {
       gap: 10, padding: somenteIcone ? '0' : '0 10px',
       borderRadius: 8,
       background: filled ? T.primarySoft : 'transparent',
-      color: corTexto,
+      color: filled ? T.primary : T.railText,
       border: 'none',
       borderLeft: filled && !somenteIcone ? `4px solid ${T.primary}` : `4px solid transparent`,
       cursor: 'pointer',
@@ -78,10 +76,16 @@ function BotaoRail({ view, ativo, onClick, badge, somenteIcone }) {
       boxSizing: 'border-box',
     },
     onMouseEnter: (e) => {
-      if (!filled) { e.target.style.background = corFundoHover; e.target.style.color = '#111827'; }
+      if (!filled) {
+        e.currentTarget.style.background = T.hover || T.primarySoft;
+        e.currentTarget.style.color = T.text;
+      }
     },
     onMouseLeave: (e) => {
-      if (!filled) { e.target.style.background = 'transparent'; e.target.style.color = T.railText; }
+      if (!filled) {
+        e.currentTarget.style.background = 'transparent';
+        e.currentTarget.style.color = T.railText;
+      }
     },
   },
     React.createElement('span', {
@@ -101,8 +105,8 @@ function BotaoRail({ view, ativo, onClick, badge, somenteIcone }) {
     badge > 0 && React.createElement('span', {
       style: {
         flexShrink: 0,
-        background: filled ? T.primary : '#E5E7EB',
-        color: filled ? '#fff' : '#6B7280',
+        background: filled ? T.primary : T.surfaceMuted,
+        color: filled ? '#fff' : T.textSecondary,
         borderRadius: 9999, minWidth: 20, height: 20,
         fontSize: 11, fontWeight: 700,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -309,7 +313,7 @@ export function RailNavegacao({ view, onChange, isAdmin, verRelatorios, notifCou
         }, 'shield'),
       ),
       React.createElement('div', null,
-        React.createElement('div', { style: { fontWeight: 700, fontSize: 15, color: '#111827', lineHeight: '20px' } }, 'ChatGov'),
+        React.createElement('div', { style: { fontWeight: 700, fontSize: 15, color: T.text, lineHeight: '20px' } }, 'ChatGov'),
         React.createElement('div', { style: { fontSize: 10, color: T.textMuted, fontWeight: 500 } }, 'Central de Atendimento'),
       ),
     ),
@@ -489,7 +493,7 @@ export function RailNavegacao({ view, onChange, isAdmin, verRelatorios, notifCou
           ),
           React.createElement('div', { style: { flex: 1, minWidth: 0 } },
             React.createElement('div', {
-              style: { fontSize: 13, fontWeight: 600, color: '#111827', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
+              style: { fontSize: 13, fontWeight: 600, color: T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' },
             }, op?.nome || 'Usuário'),
             React.createElement('div', { style: { fontSize: 11, color: T.textMuted, fontWeight: 500 } }, papel),
           ),
