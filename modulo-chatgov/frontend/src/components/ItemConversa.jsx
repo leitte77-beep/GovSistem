@@ -46,7 +46,7 @@ function formatarPreview(msg, direcao, tipo) {
   if (!msg) return '';
 
   if (isEntrada) return `\uD83D\uDC64 ${msg}`;
-  if (isSaida) return `\uD83D\uDCAC Voc\u00ea: ${msg}`;
+  if (direcao === 'saida') return `\uD83D\uDCAC Voc\u00ea: ${msg}`;
   return msg;
 }
 
