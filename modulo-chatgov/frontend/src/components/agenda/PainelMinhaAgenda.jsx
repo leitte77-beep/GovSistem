@@ -155,10 +155,11 @@ export function PainelMinhaAgenda({ onAbrirConversa, breakpoint }) {
 
       React.createElement('div', {
         style: {
-          width: '100%', maxWidth: 560, minHeight: 260,
-          background: T.surface, border: `1px solid ${T.border}`,
-          borderRadius: T.radiusLg, boxShadow: T.shadow,
-          padding: ehMobile ? 20 : 28,
+          width: '100%', maxWidth: 660, minHeight: 300,
+          background: `linear-gradient(180deg, rgba(255,255,255,0.03) 0%, transparent 80%), ${T.surface}`,
+          border: '1px solid rgba(255,255,255,0.10)',
+          borderRadius: 18, boxShadow: '0 20px 60px rgba(0,0,0,0.35)',
+          padding: ehMobile ? 22 : 32,
         },
       },
         React.createElement('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 14 } },
