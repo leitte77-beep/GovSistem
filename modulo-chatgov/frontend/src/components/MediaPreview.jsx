@@ -395,7 +395,12 @@ function AudioMessage({ info, msg, isMe }) {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [velocidade, setVelocidade] = useState(1);
-  const [ouvido, setOuvido] = useState(false);
+  const [ouvido, setOuvido] = useState(() => {
+    try {
+      const ouvidos = JSON.parse(localStorage.getItem('chatgov_audios_ouvidos') || '[]');
+      return ouvidos.includes(msg.id);
+    } catch { return false; }
+  });
   const [barras] = useState(() => Array.from({ length: 30 }, () => Math.random() * 0.6 + 0.35));
 
   useEffect(() => {
@@ -404,7 +409,16 @@ function AudioMessage({ info, msg, isMe }) {
     const onT = () => {
       const ct = a.currentTime;
       setCurrentTime(ct);
-      if (a.duration > 0 && ct / a.duration > 0.8) setOuvido(true);
+      if (a.duration > 0 && ct / a.duration > 0.8 && !ouvido) {
+        setOuvido(true);
+        try {
+          const ouvidos = JSON.parse(localStorage.getItem('chatgov_audios_ouvidos') || '[]');
+          if (!ouvidos.includes(msg.id)) {
+            ouvidos.push(msg.id);
+            localStorage.setItem('chatgov_audios_ouvidos', JSON.stringify(ouvidos.slice(-500)));
+          }
+        } catch {}
+      }
     };
     const onD = () => setDuration(a.duration);
     a.addEventListener('timeupdate', onT);
