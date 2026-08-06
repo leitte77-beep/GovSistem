@@ -683,8 +683,18 @@ function DocumentMessage({ info, msg, isMe, onOpenLightbox }) {
   const label = documentLabel(info.mime);
   const ehSimples = !isDocumentMime(info.mime);
 
+  const baixar = (e) => {
+    e?.stopPropagation();
+    const a = document.createElement('a');
+    a.href = info.url;
+    a.download = info.nomeTitle || nome;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
   if (ehSimples) {
-    return React.createElement(Card, { isMe, onClick: () => window.open(info.url, '_blank', 'noopener') },
+    return React.createElement(Card, { isMe, onClick: baixar },
       React.createElement('div', { style: { padding: '18px 20px', display: 'flex', alignItems: 'center', gap: 14 } },
         React.createElement('div', { style: { width: 50, height: 50, borderRadius: 12, background: T.surfaceMuted || T.surfaceAlt, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontSize: 24 } }, icon),
         React.createElement('div', { style: { flex: 1, minWidth: 0 } },
@@ -699,7 +709,7 @@ function DocumentMessage({ info, msg, isMe, onOpenLightbox }) {
     );
   }
 
-  return React.createElement(Card, { isMe, onClick: () => window.open(info.url, '_blank', 'noopener') },
+  return React.createElement(Card, { isMe, onClick: baixar },
     React.createElement('div', {
       style: { height: 110, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: grad },
     },
@@ -713,11 +723,7 @@ function DocumentMessage({ info, msg, isMe, onOpenLightbox }) {
       }, nome),
       React.createElement(Meta, { info, msg }),
       React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 2 } },
-        React.createElement(Btn, {
-          label: 'Visualizar',
-          onClick: () => window.open(info.url, '_blank', 'noopener'),
-        }),
-        React.createElement(BtnBaixar, { info }),
+        React.createElement(Btn, { label: 'Baixar', onClick: baixar, icon: Download }),
         React.createElement('div', { style: { flex: 1 } }),
         React.createElement(Menu, { msg, info }),
       ),
