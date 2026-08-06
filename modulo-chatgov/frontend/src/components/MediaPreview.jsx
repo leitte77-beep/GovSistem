@@ -629,19 +629,26 @@ export function MediaPreview({ msg, isMe, onOpenLightbox, compacto, onIrParaMens
 
 // ─── Lightbox ───
 
-export function MediaLightbox({ src, tipo, mime, nome, onClose, todasMidias, midiaAtualIdx, onNavigate }) {
+export function MediaLightbox({ src, tipo, mime, nome, onClose, todasMidias, midiaAtualIdx, onNavigate, msg }) {
   const srcAuth = urlVisualizavel(src);
   const [zoom, setZoom] = useState(1);
   const [rotate, setRotate] = useState(0);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [dragging, setDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [pdfPagina, setPdfPagina] = useState(1);
+  const [videoTime, setVideoTime] = useState(0);
+  const [videoDur, setVideoDur] = useState(0);
+  const [videoPlaying, setVideoPlaying] = useState(false);
+  const videoRef = useRef(null);
+  const [visivel, setVisivel] = useState(false);
 
+  useEffect(() => { requestAnimationFrame(() => setVisivel(true)); }, []);
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === 'Escape') onClose();
-      if (e.key === 'ArrowLeft' && onNavigate && midiaAtualIdx > 0) onNavigate(midiaAtualIdx - 1);
-      if (e.key === 'ArrowRight' && onNavigate && todasMidias && midiaAtualIdx < todasMidias.length - 1) onNavigate(midiaAtualIdx + 1);
+      if (e.key === 'ArrowLeft' && onNavigate && midiaAtualIdx > 0) { onNavigate(midiaAtualIdx - 1); reset(); }
+      if (e.key === 'ArrowRight' && onNavigate && todasMidias && midiaAtualIdx < todasMidias.length - 1) { onNavigate(midiaAtualIdx + 1); reset(); }
     };
     document.addEventListener('keydown', onKey);
     document.body.style.overflow = 'hidden';
@@ -651,6 +658,11 @@ export function MediaLightbox({ src, tipo, mime, nome, onClose, todasMidias, mid
   const isVideo = tipo === 'video' || (mime || '').startsWith('video/');
   const isImage = tipo === 'image' || tipo === 'imagem' || (mime || '').startsWith('image/');
   const ehPdf = isPdf(mime, src);
+  const total = todasMidias?.length || 0;
+  const idx = midiaAtualIdx ?? 0;
+  const ext = extensaoDoMime(mime);
+  const tamanho = formatarTamanho(msg?.media_tamanho);
+  const dataStr = dataCompacta(msg?.criado_em);
 
   const handleWheel = (e) => {
     if (!isImage) return;
@@ -664,79 +676,216 @@ export function MediaLightbox({ src, tipo, mime, nome, onClose, todasMidias, mid
     setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
   };
 
-  const reset = () => { setZoom(1); setPan({ x: 0, y: 0 }); setRotate(0); };
+  const reset = () => { setZoom(1); setPan({ x: 0, y: 0 }); setRotate(0); setPdfPagina(1); };
 
-  const total = todasMidias?.length || 0;
-  const idx = midiaAtualIdx ?? 0;
+  const fmtDur = (s) => {
+    if (!s || !isFinite(s)) return '0:00';
+    const m = Math.floor(s / 60);
+    return `${m}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+  };
+
+  const toggleVideo = () => {
+    const v = videoRef.current;
+    if (!v) return;
+    v.paused ? v.play() : v.pause();
+  };
+
+  const seekVideo = (e) => {
+    const v = videoRef.current;
+    const rect = e.currentTarget.getBoundingClientRect();
+    if (!v || !videoDur) return;
+    const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    v.currentTime = pct * videoDur;
+  };
+
+  const metaParts = [ext, tamanho, dataStr].filter(Boolean);
 
   return (
     <div
       role="dialog" aria-label={nome || 'Visualizador'} onClick={onClose}
       style={{
-        position: 'fixed', inset: 0, background: '#101010',
+        position: 'fixed', inset: 0, background: '#111315',
         zIndex: 2500, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexDirection: 'column', opacity: visivel ? 1 : 0,
+        transition: 'opacity 0.2s ease-out',
         cursor: isImage && zoom > 1 ? (dragging ? 'grabbing' : 'grab') : 'zoom-out',
       }}
       onWheel={handleWheel}
       onMouseMove={(e) => { if (dragging) setPan({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y }); }}
       onMouseUp={() => setDragging(false)}
     >
+      {/* ── Premium header ── */}
       <div onClick={(e) => e.stopPropagation()} style={{
-        position: 'absolute', top: 0, left: 0, right: 0, height: 52,
-        background: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center',
-        justifyContent: 'space-between', padding: '0 14px', zIndex: 2,
+        position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10,
+        background: 'rgba(17,19,21,0.92)', backdropFilter: 'blur(12px)',
+        borderBottom: '1px solid rgba(255,255,255,0.06)',
+        padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12,
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ color: '#fff', fontSize: 13, fontWeight: 600, maxWidth: 350, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{nome}</span>
-          {total > 1 && <span style={{ color: 'rgba(255,255,255,0.6)', fontSize: 11 }}>{idx + 1}/{total}</span>}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#E5E7EB', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {!isVideo && iconEmoji(mime)}{' '}{nome}
+          </div>
+          {metaParts.length > 0 && (
+            <div style={{ fontSize: 11.5, color: 'rgba(255,255,255,0.45)', marginTop: 2 }}>
+              {metaParts.join(' \u2022 ')}{total > 1 ? ` \u2022 ${idx + 1}/${total}` : ''}
+            </div>
+          )}
         </div>
-        <div style={{ display: 'flex', gap: 3 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {/* PDF page nav */}
+          {ehPdf && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <LBtn onClick={() => setPdfPagina((p) => Math.max(1, p - 1))}><ChevronLeft size={15} /></LBtn>
+              <input
+                type="number"
+                value={pdfPagina}
+                onChange={(e) => setPdfPagina(Math.max(1, parseInt(e.target.value) || 1))}
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                  width: 44, textAlign: 'center', background: 'rgba(255,255,255,0.08)',
+                  border: '1px solid rgba(255,255,255,0.12)', borderRadius: 6,
+                  color: '#fff', fontSize: 12, padding: '4px 2px', outline: 'none',
+                }}
+              />
+              <LBtn onClick={() => setPdfPagina((p) => p + 1)}><ChevronRight size={15} /></LBtn>
+            </div>
+          )}
+          {/* Image tools */}
           {isImage && (
             <>
-              <LBtn onClick={() => setZoom((z) => Math.min(z + 0.25, 5))}><ZoomIn size={15} /></LBtn>
               <LBtn onClick={() => setZoom((z) => Math.max(z - 0.25, 0.25))}><ZoomOut size={15} /></LBtn>
+              <span style={{ color: 'rgba(255,255,255,0.5)', fontSize: 11, minWidth: 38, textAlign: 'center', fontWeight: 600 }}>{Math.round(zoom * 100)}%</span>
+              <LBtn onClick={() => setZoom((z) => Math.min(z + 0.25, 5))}><ZoomIn size={15} /></LBtn>
               <LBtn onClick={() => setRotate((r) => r - 90)}><RotateCw size={15} /></LBtn>
-              {zoom !== 1 && <LBtn onClick={reset}><span style={{ fontSize: 11, fontWeight: 700 }}>1:1</span></LBtn>}
+              {zoom !== 1 && <LBtn onClick={reset}><span style={{ fontSize: 10, fontWeight: 700 }}>1:1</span></LBtn>}
             </>
           )}
-          <a href={srcAuth} download={nome} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}><LBtn><Download size={15} /></LBtn></a>
+          <a href={srcAuth} download={nome} target="_blank" rel="noopener noreferrer" style={{ textDecoration: 'none' }}>
+            <LBtn><Download size={15} /></LBtn>
+          </a>
           <LBtn onClick={onClose}><X size={17} /></LBtn>
         </div>
       </div>
 
+      {/* Navigation arrows */}
       {onNavigate && total > 1 && (
         <>
-          {idx > 0 && <button onClick={(e) => { e.stopPropagation(); onNavigate(idx - 1); reset(); }} style={navBtnL}><ChevronLeft size={26} /></button>}
-          {idx < total - 1 && <button onClick={(e) => { e.stopPropagation(); onNavigate(idx + 1); reset(); }} style={navBtnR}><ChevronRight size={26} /></button>}
+          {idx > 0 && (
+            <button onClick={(e) => { e.stopPropagation(); onNavigate(idx - 1); reset(); }} style={navBtnL}>
+              <ChevronLeft size={28} />
+            </button>
+          )}
+          {idx < total - 1 && (
+            <button onClick={(e) => { e.stopPropagation(); onNavigate(idx + 1); reset(); }} style={navBtnR}>
+              <ChevronRight size={28} />
+            </button>
+          )}
         </>
       )}
 
-      <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', maxWidth: '96vw', maxHeight: '92vh' }}>
+      {/* Content area */}
+      <div onClick={(e) => e.stopPropagation()} style={{
+        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        width: '100%', padding: '60px 16px 16px', overflow: 'auto',
+      }}>
         {isImage && (
-          <img src={srcAuth} alt={nome || 'Imagem'} draggable={false} onMouseDown={handleMouseDown}
+          <img src={srcAuth} alt={nome || 'Imagem'} draggable={false} onMouseDown={handleMouseDown} onDoubleClick={() => zoom > 1 ? reset() : setZoom(2)}
             style={{
-              maxWidth: '94vw', maxHeight: '90vh', objectFit: 'contain', borderRadius: 4,
+              maxWidth: '92vw', maxHeight: '86vh', objectFit: 'contain', borderRadius: 6,
               transform: `scale(${zoom}) rotate(${rotate}deg) translate(${pan.x / zoom}px, ${pan.y / zoom}px)`,
-              transition: dragging ? 'none' : 'transform 0.2s ease-out',
+              transition: dragging ? 'none' : 'transform 0.2s ease-out', boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
             }}
           />
         )}
-        {isVideo && <video src={srcAuth} controls autoPlay style={{ maxWidth: '94vw', maxHeight: '90vh', borderRadius: 6, background: '#000' }} />}
-        {ehPdf && <iframe src={srcAuth} title={nome || 'PDF'} style={{ width: '92vw', maxWidth: 1300, height: '92vh', background: '#fff', border: 'none', borderRadius: 6 }} />}
+        {isVideo && (
+          <div style={{ position: 'relative', maxWidth: '90vw', maxHeight: '82vh', borderRadius: 8, overflow: 'hidden', boxShadow: '0 8px 40px rgba(0,0,0,0.5)' }}>
+            <video
+              ref={videoRef}
+              src={srcAuth}
+              autoPlay
+              onTimeUpdate={(e) => setVideoTime(e.target.currentTime)}
+              onLoadedMetadata={(e) => setVideoDur(e.target.duration)}
+              onPlay={() => setVideoPlaying(true)}
+              onPause={() => setVideoPlaying(false)}
+              onClick={toggleVideo}
+              style={{ display: 'block', maxWidth: '90vw', maxHeight: '78vh', cursor: 'pointer' }}
+            />
+            {/* Custom controls overlay */}
+            <div onClick={(e) => e.stopPropagation()} style={{
+              position: 'absolute', bottom: 0, left: 0, right: 0,
+              background: 'linear-gradient(transparent, rgba(0,0,0,0.75))',
+              padding: '28px 14px 10px', display: 'flex', flexDirection: 'column', gap: 6,
+            }}>
+              {/* Progress bar */}
+              <div
+                onClick={seekVideo}
+                style={{
+                  width: '100%', height: 4, borderRadius: 2, background: 'rgba(255,255,255,0.2)',
+                  cursor: 'pointer', position: 'relative',
+                }}
+              >
+                <div style={{
+                  width: videoDur > 0 ? `${(videoTime / videoDur) * 100}%` : '0%',
+                  height: '100%', borderRadius: 2, background: '#fff', transition: 'width 0.1s linear',
+                }} />
+              </div>
+              {/* Controls row */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <button onClick={toggleVideo} style={LBtnStyle}>
+                    {videoPlaying ? <Pause size={15} /> : <Play size={15} style={{ marginLeft: 1 }} />}
+                  </button>
+                  <span style={{ color: '#fff', fontSize: 12, fontVariantNumeric: 'tabular-nums' }}>
+                    {fmtDur(videoTime)} / {fmtDur(videoDur)}
+                  </span>
+                </div>
+                <a href={srcAuth} download={nome} style={{ textDecoration: 'none' }}>
+                  <button style={LBtnStyle}><Download size={15} /></button>
+                </a>
+              </div>
+            </div>
+          </div>
+        )}
+        {ehPdf && (
+          <iframe
+            src={`${srcAuth}#page=${pdfPagina}`}
+            title={nome || 'PDF'}
+            style={{
+              width: '90vw', maxWidth: 1300, height: '86vh',
+              background: '#fff', border: 'none', borderRadius: 8,
+              boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
+            }}
+          />
+        )}
       </div>
+
+      {/* Footer with sender info */}
+      {msg && (msg.direcao || dataStr) && (
+        <div onClick={(e) => e.stopPropagation()} style={{
+          position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 10,
+          padding: '8px 18px', display: 'flex', justifyContent: 'center', gap: 16,
+          background: 'rgba(17,19,21,0.85)', borderTop: '1px solid rgba(255,255,255,0.05)',
+        }}>
+          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.35)' }}>
+            {dataStr && `${dataStr}`}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
 
 function LBtn({ children, onClick }) {
   return (
-    <button onClick={onClick} style={{
-      background: 'rgba(255,255,255,0.1)', color: '#fff', border: 'none',
-      borderRadius: 7, width: 34, height: 34, display: 'flex', alignItems: 'center',
-      justifyContent: 'center', cursor: 'pointer',
-    }}>{children}</button>
+    <button onClick={onClick} style={LBtnStyle}>{children}</button>
   );
 }
+
+const LBtnStyle = {
+  background: 'rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.8)', border: 'none',
+  borderRadius: 7, width: 34, height: 34, display: 'flex', alignItems: 'center',
+  justifyContent: 'center', cursor: 'pointer', transition: 'background 0.12s',
+};
 
 const ctrlBtn = {
   display: 'inline-flex', alignItems: 'center', padding: 4, borderRadius: 6,
@@ -749,15 +898,15 @@ const spdBtn = {
 };
 
 const navBtnL = {
-  position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', zIndex: 3,
-  background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '50%',
-  width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center',
-  cursor: 'pointer', color: '#fff',
+  position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)', zIndex: 5,
+  background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12,
+  width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center',
+  cursor: 'pointer', color: 'rgba(255,255,255,0.6)', transition: 'background 0.12s',
 };
 
 const navBtnR = {
-  position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', zIndex: 3,
-  background: 'rgba(255,255,255,0.1)', border: 'none', borderRadius: '50%',
-  width: 42, height: 42, display: 'flex', alignItems: 'center', justifyContent: 'center',
-  cursor: 'pointer', color: '#fff',
+  position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', zIndex: 5,
+  background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 12,
+  width: 44, height: 44, display: 'flex', alignItems: 'center', justifyContent: 'center',
+  cursor: 'pointer', color: 'rgba(255,255,255,0.6)', transition: 'background 0.12s',
 };
