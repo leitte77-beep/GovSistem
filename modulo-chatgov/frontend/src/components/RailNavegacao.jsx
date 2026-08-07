@@ -11,6 +11,7 @@ const NAV_ICONS = {
   contatos:      { icon: 'contacts',       lucide: null },
   interno:       { icon: 'groups',         lucide: null },
   protocolos:    { icon: 'description',    lucide: null },
+  'config-protocolos': { icon: 'settings', lucide: null },
   relatorios:    { icon: 'monitoring',     lucide: null },
   notificacoes:  { icon: 'notifications',  lucide: null },
   configuracoes: { icon: 'settings',       lucide: null },
@@ -24,6 +25,7 @@ const NAV_LABELS = {
   contatos:      'Contatos',
   interno:       'Equipe',
   protocolos:    'Protocolos',
+  'config-protocolos': 'Config. Protocolos',
   relatorios:    'Relatórios',
   notificacoes:  'Notificações',
   configuracoes: 'Configurações',
@@ -37,7 +39,7 @@ const SECOES = [
   },
   {
     titulo: 'Gestão',
-    itens: ['protocolos', 'dashboard', 'relatorios'],
+    itens: ['protocolos', 'config-protocolos', 'dashboard', 'relatorios'],
   },
   {
     titulo: 'Sistema',

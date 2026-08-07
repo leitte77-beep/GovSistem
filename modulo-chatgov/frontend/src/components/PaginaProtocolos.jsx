@@ -1,303 +1,700 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Loader2, RefreshCw, Search, X, FileText, Clock, User, Building2, Hash } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import {
+  FileText, Search, X, ChevronLeft, ChevronRight,
+  Clock, AlertCircle, MessageSquare, Paperclip, AlertTriangle, Lock,
+  Loader2, CheckSquare, Square, User, Inbox,
+  CheckCircle2, Plus, Eye, RefreshCw,
+} from 'lucide-react';
 import { T } from '../theme';
-import { fetchProtocolos, fetchProtocolo, atualizarStatusProtocolo, fetchDepartamentos } from '../api';
 
-// Status canônicos do protocolo. 'concluido' e 'cancelado' fecham o protocolo no backend
-// (atualizarStatusProtocolo grava fechado_em); 'aberto' e 'em_andamento' mantêm-no em aberto.
-const STATUS_PROT = {
-  aberto: { label: 'Aberto', cor: T.warning, bg: T.warningSoft },
-  em_andamento: { label: 'Em andamento', cor: T.primary, bg: T.primarySoft },
-  concluido: { label: 'Concluído', cor: T.success, bg: T.successSoft },
-  encerrado: { label: 'Encerrado', cor: T.textSecondary, bg: T.surfaceMuted },
-  cancelado: { label: 'Cancelado', cor: T.danger, bg: T.dangerSoft },
+var STATUS_BADGE = {
+  ABERTO: { label: 'Aberto', cor: T.warning, bg: T.warningSoft },
+  EM_TRIAGEM: { label: 'Em triagem', cor: '#3B82F6', bg: '#DBEAFE' },
+  DISTRIBUIDO: { label: 'Distribuído', cor: '#7C3AED', bg: '#EDE9FE' },
+  RECEBIDO: { label: 'Recebido', cor: '#0D9488', bg: '#CCFBF1' },
+  EM_ANALISE: { label: 'Em análise', cor: T.primary, bg: T.primarySoft },
+  AGUARDANDO_CIDADAO: { label: 'Aguardando cidadão', cor: '#F59E0B', bg: '#FEF3C7' },
+  PENDENTE: { label: 'Pendente', cor: '#F59E0B', bg: '#FEF3C7' },
+  CONCLUIDO: { label: 'Concluído', cor: T.success, bg: T.successSoft },
+  CANCELADO: { label: 'Cancelado', cor: T.danger, bg: T.dangerSoft },
+  ARQUIVADO: { label: 'Arquivado', cor: '#6B7280', bg: '#F3F4F6' },
 };
 
-const STATUS_INFO = (s) => STATUS_PROT[s] || { label: s || '—', cor: T.textMuted, bg: T.surfaceMuted };
+var PRIORIDADE_COR = { BAIXA: T.success, NORMAL: T.textMuted, ALTA: T.warning, URGENTE: T.danger };
+var PRIORIDADE_LABEL = { BAIXA: 'Baixa', NORMAL: 'Normal', ALTA: 'Alta', URGENTE: 'Urgente' };
 
-// Próximos status oferecidos no detalhe (fluxo de atendimento).
-const TRANSICOES = ['aberto', 'em_andamento', 'concluido', 'cancelado'];
+var ORIGEM_LABEL = {
+  whatsapp: 'WhatsApp', portal: 'Portal', presencial: 'Presencial',
+  telefone: 'Telefone', email: 'E-mail', interno: 'Interno',
+  app: 'App', api: 'API', assistente_virtual: 'Assistente',
+};
+
+var STATUS_OPTIONS = [
+  '', 'ABERTO', 'EM_TRIAGEM', 'DISTRIBUIDO', 'RECEBIDO', 'EM_ANALISE',
+  'AGUARDANDO_CIDADAO', 'PENDENTE', 'CONCLUIDO', 'CANCELADO', 'ARQUIVADO',
+];
+
+var TAMANHOS_PAGINA = [10, 20, 50, 100];
 
 function formatarData(iso) {
   if (!iso) return '—';
-  const d = new Date(iso);
-  if (isNaN(d)) return '—';
-  return d.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  var d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' });
 }
 
-function Badge({ status }) {
-  const info = STATUS_INFO(status);
-  return React.createElement('span', {
-    style: {
-      display: 'inline-flex', alignItems: 'center', padding: '2px 10px', borderRadius: 999,
-      fontSize: 11.5, fontWeight: 700, color: info.cor, background: info.bg, whiteSpace: 'nowrap',
-    },
-  }, info.label);
+function formatarDataCompleta(iso) {
+  if (!iso) return '—';
+  var d = new Date(iso);
+  if (isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
-// ─── Painel de detalhe (drawer à direita / overlay no mobile) ───────────────
-function DetalheProtocolo({ numero, ehMobile, onClose, onChanged }) {
-  const [proto, setProto] = useState(null);
-  const [carregando, setCarregando] = useState(true);
-  const [erro, setErro] = useState('');
-  const [novoStatus, setNovoStatus] = useState('');
-  const [descricao, setDescricao] = useState('');
-  const [salvando, setSalvando] = useState(false);
+function mascararCPF(valor) {
+  if (!valor) return '—';
+  var s = String(valor).replace(/\D/g, '');
+  if (s.length === 11) return s.slice(0, 3) + '.***.***-' + s.slice(9);
+  if (s.length === 14) return s.slice(0, 2) + '.***.***/****-' + s.slice(10);
+  return valor;
+}
 
-  const carregar = useCallback(async () => {
+function prazoAtrasado(prazoEm, status) {
+  if (!prazoEm || status === 'CONCLUIDO' || status === 'CANCELADO') return false;
+  return new Date(prazoEm) < new Date();
+}
+
+function prazoProximo(prazoEm, status) {
+  if (!prazoEm || status === 'CONCLUIDO' || status === 'CANCELADO') return false;
+  var agora = new Date();
+  var prazo = new Date(prazoEm);
+  if (prazo <= agora) return false;
+  var diffMs = prazo.getTime() - agora.getTime();
+  var diffHoras = diffMs / (1000 * 60 * 60);
+  return diffHoras <= 48;
+}
+
+function totalFiltrosAtivos(filtros, busca) {
+  var n = 0;
+  if (filtros.status) n++;
+  if (filtros.prioridade) n++;
+  if (filtros.origem) n++;
+  if (filtros.atrasados) n++;
+  if (filtros.proximos_prazo) n++;
+  if (busca) n++;
+  return n;
+}
+
+var DASH_CARDS = [
+  { key: 'aguardando_triagem', label: 'Aguardando triagem', icon: Inbox, color: T.warning, filter: { status: 'EM_TRIAGEM' } },
+  { key: 'em_andamento', label: 'Em andamento', icon: Clock, color: T.primary, filter: { status: 'EM_ANALISE' } },
+  { key: 'aguardando_cidadao', label: 'Aguardando cidadão', icon: User, color: '#F59E0B', filter: { status: 'AGUARDANDO_CIDADAO' } },
+  { key: 'proximos_prazo', label: 'Próximos do prazo', icon: AlertCircle, color: '#D97706', filter: { proximos_prazo: true } },
+  { key: 'atrasados', label: 'Atrasados', icon: AlertTriangle, color: T.danger, filter: { atrasados: true } },
+  { key: 'concluidos_periodo', label: 'Concluídos no período', icon: CheckCircle2, color: T.success, filter: { status: 'CONCLUIDO' } },
+];
+
+export function PaginaProtocolos({ breakpoint, onAbrirProtocolo, onCriarProtocolo }) {
+  var ehMobile = breakpoint === 'mobile';
+  var ehTablet = breakpoint === 'tablet';
+
+  var [lista, setLista] = useState([]);
+  var [total, setTotal] = useState(0);
+  var [dashboard, setDashboard] = useState(null);
+  var [carregando, setCarregando] = useState(true);
+  var [erro, setErro] = useState('');
+  var [pagina, setPagina] = useState(0);
+  var [tamanhoPagina, setTamanhoPagina] = useState(10);
+  var [filtros, setFiltros] = useState({ status: '', prioridade: '', origem: '', atrasados: false, proximos_prazo: false });
+  var [busca, setBusca] = useState('');
+  var [buscaTemp, setBuscaTemp] = useState('');
+  var [activeCard, setActiveCard] = useState(null);
+
+  var carregar = useCallback(async function () {
     setCarregando(true);
     setErro('');
     try {
-      const p = await fetchProtocolo(numero);
-      setProto(p);
-      setNovoStatus(p.status || '');
+      var authRaw = localStorage.getItem('chatgov_auth');
+      var token = '';
+      try { token = JSON.parse(authRaw || '{}').token || ''; } catch (e) { token = ''; }
+
+      var params = new URLSearchParams();
+      if (filtros.status) params.set('status', filtros.status);
+      if (filtros.prioridade) params.set('prioridade', filtros.prioridade);
+      if (filtros.origem) params.set('origem', filtros.origem);
+      if (filtros.atrasados) params.set('atrasados', 'true');
+      if (filtros.proximos_prazo) params.set('proximos_prazo', 'true');
+      if (busca) params.set('busca', busca);
+      params.set('limite', String(tamanhoPagina));
+      params.set('offset', String(pagina * tamanhoPagina));
+
+      var headers = token ? { Authorization: 'Bearer ' + token, Accept: 'application/json' } : { Accept: 'application/json' };
+
+      var [respLista, respDash] = await Promise.all([
+        fetch('/api/v1/protocols?' + params.toString(), { headers: headers }).then(function (r) {
+          if (!r.ok) throw new Error('Erro ' + r.status + ' ao carregar protocolos');
+          return r.json();
+        }),
+        fetch('/api/v1/protocols/dashboard', { headers: headers }).then(function (r) {
+          if (!r.ok) return null;
+          return r.json();
+        }).catch(function () { return null; }),
+      ]);
+
+      var dados = respLista;
+      if (Array.isArray(dados)) {
+        // Formato legado (array puro, sem total): não há como saber o total
+        // real, então paginamos só com o que veio.
+        setLista(dados);
+        setTotal(pagina * tamanhoPagina + dados.length);
+      } else if (dados && Array.isArray(dados.data)) {
+        setLista(dados.data);
+        setTotal(dados.total || dados.data.length);
+      } else if (dados && Array.isArray(dados.protocolos)) {
+        setLista(dados.protocolos);
+        setTotal(dados.total || dados.protocolos.length);
+      } else {
+        setLista([]);
+        setTotal(0);
+      }
+      setDashboard(respDash);
     } catch (e) {
-      setErro(e.message || 'Erro ao carregar protocolo.');
+      setErro(e.message || 'Erro ao carregar protocolos');
+      setLista([]);
+      setTotal(0);
     } finally {
       setCarregando(false);
     }
-  }, [numero]);
+  }, [filtros.status, filtros.prioridade, filtros.origem, filtros.atrasados, filtros.proximos_prazo, busca, pagina, tamanhoPagina]);
 
-  useEffect(() => { carregar(); }, [carregar]);
+  useEffect(function () { carregar(); }, [carregar]);
 
-  const aplicarStatus = async () => {
-    if (!proto || !novoStatus) return;
-    setSalvando(true);
-    setErro('');
-    try {
-      await atualizarStatusProtocolo(proto.id, { status: novoStatus, descricao: descricao.trim() || undefined });
-      setDescricao('');
-      await carregar();
-      onChanged && onChanged();
-    } catch (e) {
-      setErro(e.message || 'Erro ao atualizar status.');
-    } finally {
-      setSalvando(false);
+  var totalPaginas = Math.max(1, Math.ceil(total / tamanhoPagina));
+  var inicioExibindo = total === 0 ? 0 : pagina * tamanhoPagina + 1;
+  var fimExibindo = Math.min((pagina + 1) * tamanhoPagina, total);
+
+  var handleCardClick = useCallback(function (cardKey) {
+    setPagina(0);
+    if (activeCard === cardKey) {
+      setActiveCard(null);
+      setFiltros({ status: '', prioridade: '', origem: '', atrasados: false, proximos_prazo: false });
+      return;
     }
+    setActiveCard(cardKey);
+    var cardDef = DASH_CARDS.find(function (c) { return c.key === cardKey; });
+    if (cardDef && cardDef.filter) {
+      var f = cardDef.filter;
+      setFiltros({
+        status: f.status || '',
+        prioridade: f.prioridade || '',
+        origem: f.origem || '',
+        atrasados: !!f.atrasados,
+        proximos_prazo: !!f.proximos_prazo,
+      });
+    }
+  }, [activeCard]);
+
+  var handleLimparFiltros = useCallback(function () {
+    setFiltros({ status: '', prioridade: '', origem: '', atrasados: false, proximos_prazo: false });
+    setBusca('');
+    setBuscaTemp('');
+    setActiveCard(null);
+    setPagina(0);
+  }, []);
+
+  var handleBuscaSubmit = useCallback(function (e) {
+    e.preventDefault();
+    setBusca(buscaTemp);
+    setPagina(0);
+  }, [buscaTemp]);
+
+  var handleStatusChange = useCallback(function (e) {
+    setFiltros(function (f) { return Object.assign({}, f, { status: e.target.value }); });
+    setActiveCard(null);
+    setPagina(0);
+  }, []);
+
+  var handlePrioridadeChange = useCallback(function (e) {
+    setFiltros(function (f) { return Object.assign({}, f, { prioridade: e.target.value }); });
+    setActiveCard(null);
+    setPagina(0);
+  }, []);
+
+  var handleOrigemChange = useCallback(function (e) {
+    setFiltros(function (f) { return Object.assign({}, f, { origem: e.target.value }); });
+    setActiveCard(null);
+    setPagina(0);
+  }, []);
+
+  var handleAtrasadosToggle = useCallback(function () {
+    setFiltros(function (f) { return Object.assign({}, f, { atrasados: !f.atrasados }); });
+    setActiveCard(null);
+    setPagina(0);
+  }, []);
+
+  var handleTamanhoPagina = useCallback(function (e) {
+    setTamanhoPagina(Number(e.target.value));
+    setPagina(0);
+  }, []);
+
+  var nFiltros = totalFiltrosAtivos(filtros, busca);
+
+  var dashValues = dashboard && dashboard.totais ? dashboard.totais : (dashboard || {});
+
+  var inputBase = {
+    padding: '7px 10px',
+    borderRadius: T.radiusSm,
+    border: '1px solid ' + T.borderStrong,
+    fontSize: 12.5,
+    color: T.text,
+    background: T.surface,
+    outline: 'none',
+    fontFamily: T.font,
+    boxSizing: 'border-box',
   };
 
-  const painelStyle = ehMobile
-    ? { position: 'fixed', inset: 0, zIndex: 200, background: T.surface, display: 'flex', flexDirection: 'column' }
-    : { width: 420, minWidth: 420, height: '100%', background: T.surface, borderLeft: `1px solid ${T.borderStrong}`, display: 'flex', flexDirection: 'column', flexShrink: 0 };
+  var btnBase = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+    padding: '7px 12px',
+    borderRadius: T.radiusSm,
+    border: '1px solid ' + T.borderStrong,
+    fontSize: 12,
+    fontWeight: 600,
+    cursor: 'pointer',
+    background: T.surface,
+    color: T.textSecondary,
+    fontFamily: T.font,
+    whiteSpace: 'nowrap',
+    transition: 'all 0.15s',
+  };
 
-  const linhaInfo = (Icone, rotulo, valor) => React.createElement('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 10 } },
-    React.createElement(Icone, { size: 15, style: { color: T.textMuted, marginTop: 2, flexShrink: 0 } }),
-    React.createElement('div', { style: { minWidth: 0 } },
-      React.createElement('div', { style: { fontSize: 11, color: T.textMuted, fontWeight: 600 } }, rotulo),
-      React.createElement('div', { style: { fontSize: 13.5, color: T.text, fontWeight: 600, wordBreak: 'break-word' } }, valor || '—'),
-    ),
-  );
+  var thStyle = {
+    padding: '8px 10px',
+    fontSize: 11,
+    fontWeight: 700,
+    color: T.textMuted,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    textAlign: 'left',
+    borderBottom: '1px solid ' + T.borderStrong,
+    background: T.surfaceAlt,
+    whiteSpace: 'nowrap',
+    position: 'sticky',
+    top: 0,
+    zIndex: 1,
+  };
 
-  return React.createElement('div', { style: painelStyle },
-    // Cabeçalho do drawer
+  var tdStyle = {
+    padding: '10px',
+    fontSize: 13,
+    color: T.text,
+    borderBottom: '1px solid ' + T.border,
+    verticalAlign: 'middle',
+    whiteSpace: 'nowrap',
+  };
+
+  function colunasVisiveis() {
+    if (ehMobile) return ['checkbox', 'numero', 'solicitante', 'status', 'prazo', 'acoes'];
+    if (ehTablet) return ['checkbox', 'numero', 'solicitante', 'cpf', 'servico', 'setor', 'status', 'prioridade', 'prazo', 'acoes'];
+    return ['checkbox', 'numero', 'solicitante', 'cpf', 'servico', 'setor', 'responsavel', 'status', 'prioridade', 'prazo', 'origem', 'acoes'];
+  }
+
+  function renderCabecalhoColuna(col) {
+    var mapa = {
+      checkbox: React.createElement('div', { style: { width: 28 } }),
+      numero: 'Nº',
+      solicitante: 'Solicitante',
+      cpf: 'CPF/CNPJ',
+      servico: 'Serviço',
+      setor: 'Setor',
+      responsavel: 'Responsável',
+      status: 'Status',
+      prioridade: 'Prior.',
+      prazo: 'Prazo',
+      origem: 'Origem',
+      acoes: React.createElement('span', { style: { textAlign: 'center', display: 'block' } }, 'Ações'),
+    };
+    return React.createElement('th', { key: col, style: Object.assign({}, thStyle, col === 'acoes' ? { textAlign: 'center' } : {}) }, mapa[col]);
+  }
+
+  function renderCelulaProtocolo(p, col, isSelected) {
+    var rowBg = isSelected ? T.primarySoft : 'transparent';
+
+    if (col === 'checkbox') {
+      return React.createElement('td', { key: col, style: Object.assign({}, tdStyle, { width: 28, background: rowBg }) },
+        React.createElement(isSelected ? CheckSquare : Square, { size: 17, style: { color: isSelected ? T.primary : T.textMuted, cursor: 'pointer' } }),
+      );
+    }
+
+    if (col === 'numero') {
+      var indicadores = [];
+      if (prazoAtrasado(p.prazo_em, p.status_operacional)) {
+        indicadores.push(React.createElement('span', { key: 'red', style: { width: 7, height: 7, borderRadius: '50%', background: T.danger, display: 'inline-block', flexShrink: 0 } }));
+      } else if (prazoProximo(p.prazo_em, p.status_operacional)) {
+        indicadores.push(React.createElement('span', { key: 'orange', style: { width: 7, height: 7, borderRadius: '50%', background: T.warning, display: 'inline-block', flexShrink: 0 } }));
+      }
+      if (p.tem_mensagens_nao_lidas) {
+        indicadores.push(React.createElement(MessageSquare, { key: 'msg', size: 13, style: { color: T.primary, flexShrink: 0 } }));
+      }
+      if (p.tem_documentos_novos) {
+        indicadores.push(React.createElement(Paperclip, { key: 'doc', size: 13, style: { color: T.textMuted, flexShrink: 0 } }));
+      }
+      if (p.tem_pendencias) {
+        indicadores.push(React.createElement(AlertTriangle, { key: 'pend', size: 13, style: { color: T.warning, flexShrink: 0 } }));
+      }
+      if (p.nivel_acesso === 'restrito' || p.nivel_acesso === 'sigiloso') {
+        indicadores.push(React.createElement(Lock, { key: 'lock', size: 12, style: { color: T.danger, flexShrink: 0 } }));
+      }
+      if (p.origem === 'whatsapp') {
+        indicadores.push(React.createElement(MessageSquare, { key: 'wa', size: 13, style: { color: T.whatsappGreen, flexShrink: 0 } }));
+      }
+      return React.createElement('td', { key: col, style: Object.assign({}, tdStyle, { background: rowBg }) },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 5 } },
+          React.createElement('span', { style: { fontWeight: 700, fontVariantNumeric: 'tabular-nums', fontFamily: "'JetBrains Mono', 'Fira Code', monospace", fontSize: 13 } }, p.numero || '—'),
+          indicadores.length > 0 && React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 3 } }, indicadores),
+        ),
+      );
+    }
+
+    if (col === 'solicitante') {
+      // O nome vem do cidadão (protocolo externo) ou do contato do WhatsApp.
+      // Protocolo interno não tem solicitante externo — dizemos isso em vez
+      // de exibir um traço solto.
+      var nomeSolicitante = p.solicitante_nome || p.cidadao_nome || p.contato_nome || null;
+      var ehInterno = p.externo === false;
+      var conteudoSolicitante = nomeSolicitante
+        ? nomeSolicitante
+        : React.createElement('span', { style: { color: T.textMuted, fontStyle: 'italic' } },
+            ehInterno ? (p.departamento_nome || 'Protocolo interno') : 'Sem solicitante');
+
+      return React.createElement('td', {
+        key: col,
+        title: nomeSolicitante || (ehInterno ? 'Protocolo interno' : 'Protocolo externo sem solicitante vinculado'),
+        style: Object.assign({}, tdStyle, { background: rowBg, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis' }),
+      }, conteudoSolicitante);
+    }
+
+    if (col === 'cpf') {
+      return React.createElement('td', { key: col, style: Object.assign({}, tdStyle, { background: rowBg, fontVariantNumeric: 'tabular-nums' }) },
+        mascararCPF(p.solicitante_documento || p.cidadao_cpf || p.cidadao_cnpj || p.contato_cpf),
+      );
+    }
+
+    if (col === 'servico') {
+      return React.createElement('td', { key: col, style: Object.assign({}, tdStyle, { background: rowBg, maxWidth: 160, overflow: 'hidden', textOverflow: 'ellipsis' }) },
+        p.servico_nome || '—',
+      );
+    }
+
+    if (col === 'setor') {
+      return React.createElement('td', { key: col, style: Object.assign({}, tdStyle, { background: rowBg, maxWidth: 150, overflow: 'hidden', textOverflow: 'ellipsis' }) },
+        p.setor_atual_nome || '—',
+      );
+    }
+
+    if (col === 'responsavel') {
+      return React.createElement('td', { key: col, style: Object.assign({}, tdStyle, { background: rowBg }) },
+        p.responsavel_nome || '—',
+      );
+    }
+
+    if (col === 'status') {
+      var badge = STATUS_BADGE[p.status_operacional] || { label: p.status_operacional || '—', cor: T.textMuted, bg: T.surfaceMuted };
+      return React.createElement('td', { key: col, style: Object.assign({}, tdStyle, { background: rowBg }) },
+        React.createElement('span', {
+          style: { display: 'inline-flex', padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, color: badge.cor, background: badge.bg, whiteSpace: 'nowrap' },
+        }, badge.label),
+      );
+    }
+
+    if (col === 'prioridade') {
+      var cor = PRIORIDADE_COR[p.prioridade] || T.textMuted;
+      return React.createElement('td', { key: col, style: Object.assign({}, tdStyle, { background: rowBg }) },
+        React.createElement('span', { style: { fontSize: 11.5, fontWeight: 700, color: cor } }, PRIORIDADE_LABEL[p.prioridade] || p.prioridade || '—'),
+      );
+    }
+
+    if (col === 'prazo') {
+      var atrasado = prazoAtrasado(p.prazo_em, p.status_operacional);
+      var proximo = prazoProximo(p.prazo_em, p.status_operacional);
+      var prazoColor = atrasado ? T.danger : proximo ? T.warning : T.text;
+      return React.createElement('td', { key: col, style: Object.assign({}, tdStyle, { background: rowBg }) },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 4 } },
+          atrasado && React.createElement(AlertCircle, { size: 13, style: { color: T.danger } }),
+          React.createElement('span', { style: { fontSize: 12.5, fontWeight: atrasado ? 700 : 500, color: prazoColor } }, formatarData(p.prazo_em)),
+        ),
+      );
+    }
+
+    if (col === 'origem') {
+      var origemLabel = ORIGEM_LABEL[p.origem] || p.origem || '—';
+      return React.createElement('td', { key: col, style: Object.assign({}, tdStyle, { background: rowBg }) },
+        React.createElement('span', {
+          style: { fontSize: 11, color: T.textMuted, background: T.surfaceMuted, padding: '2px 7px', borderRadius: 4, fontWeight: 600 },
+        }, origemLabel),
+      );
+    }
+
+    if (col === 'acoes') {
+      return React.createElement('td', { key: col, style: Object.assign({}, tdStyle, { background: rowBg, textAlign: 'center' }) },
+        React.createElement('button', {
+          onClick: function (ev) { ev.stopPropagation(); onAbrirProtocolo && onAbrirProtocolo(p); },
+          title: 'Abrir protocolo',
+          style: {
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+            padding: '4px 10px', border: '1px solid ' + T.borderStrong, borderRadius: T.radiusSm,
+            background: 'transparent', color: T.primary, cursor: 'pointer', fontSize: 11.5, fontWeight: 600,
+            fontFamily: T.font,
+          },
+        },
+          React.createElement(Eye, { size: 14 }),
+          !ehMobile && 'Abrir',
+        ),
+      );
+    }
+
+    return React.createElement('td', { key: col, style: Object.assign({}, tdStyle, { background: rowBg }) }, '');
+  }
+
+  var colunas = colunasVisiveis();
+
+  return React.createElement('div', {
+    style: { flex: 1, height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden', background: T.bg },
+  },
+    // ── CABEÇALHO ──
     React.createElement('div', {
-      style: { display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: `1px solid ${T.border}`, flexShrink: 0 },
+      style: { padding: ehMobile ? '12px 14px' : '16px 20px', borderBottom: '1px solid ' + T.border, background: T.surface, flexShrink: 0 },
     },
-      React.createElement(FileText, { size: 18, style: { color: T.primary } }),
-      React.createElement('span', { style: { fontSize: 15, fontWeight: 700, color: T.text, flex: 1 } }, proto ? proto.numero : 'Protocolo'),
-      React.createElement('button', {
-        onClick: onClose, 'aria-label': 'Fechar',
-        style: { display: 'flex', alignItems: 'center', justifyContent: 'center', width: 32, height: 32, borderRadius: '50%', border: 'none', background: 'transparent', color: T.textSecondary, cursor: 'pointer' },
-      }, React.createElement(X, { size: 18 })),
+      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 } },
+        React.createElement(FileText, { size: 22, style: { color: T.primary } }),
+        React.createElement('h2', { style: { fontSize: 20, fontWeight: 700, color: T.text, margin: 0, flex: 1 } }, 'Protocolos'),
+        onCriarProtocolo && React.createElement('button', {
+          onClick: onCriarProtocolo,
+          style: { display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: T.radiusSm, border: 'none', background: T.primary, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: T.font },
+        },
+          React.createElement(Plus, { size: 16 }),
+          !ehMobile && 'Novo protocolo',
+        ),
+      ),
+      // Dashboard cards
+      React.createElement('div', {
+        style: { display: 'grid', gridTemplateColumns: 'repeat(' + Math.min(DASH_CARDS.length, ehMobile ? 3 : 6) + ', 1fr)', gap: 8 },
+      },
+        DASH_CARDS.map(function (c) {
+          var isActive = activeCard === c.key;
+          var valor = dashValues[c.key] !== undefined ? dashValues[c.key] : (dashValues[c.key.replace(/_/g, '')] !== undefined ? dashValues[c.key.replace(/_/g, '')] : 0);
+          return React.createElement('div', {
+            key: c.key,
+            onClick: function () { handleCardClick(c.key); },
+            style: {
+              padding: '10px 12px',
+              borderRadius: T.radius,
+              cursor: 'pointer',
+              background: isActive ? T.primarySoft : T.surfaceAlt,
+              border: '1px solid ' + (isActive ? T.primary : T.border),
+              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+              transition: 'border-color 0.15s, background 0.15s',
+              minWidth: 0,
+            },
+          },
+            React.createElement(c.icon, { size: 16, style: { color: c.color } }),
+            React.createElement('span', { style: { fontSize: 18, fontWeight: 800, color: T.text, lineHeight: 1 } }, valor),
+            React.createElement('span', { style: { fontSize: 10.5, color: T.textMuted, fontWeight: 600, textAlign: 'center', lineHeight: 1.3 } }, c.label),
+          );
+        }),
+      ),
     ),
 
-    React.createElement('div', { style: { flex: 1, overflowY: 'auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 16 } },
-      erro && React.createElement('div', { role: 'alert', style: { padding: '10px 12px', background: T.dangerSoft, color: T.danger, borderRadius: T.radiusSm, fontSize: 13 } }, erro),
+    // ── FILTROS ──
+    React.createElement('div', {
+      style: { padding: ehMobile ? '8px 14px' : '8px 20px', display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center', borderBottom: '1px solid ' + T.border, background: T.surface, flexShrink: 0 },
+    },
+      React.createElement('form', {
+        onSubmit: handleBuscaSubmit,
+        style: { position: 'relative', flex: '1 1 200px', minWidth: 160 },
+      },
+        React.createElement(Search, { size: 14, style: { position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: T.textMuted, zIndex: 1 } }),
+        React.createElement('input', {
+          value: buscaTemp,
+          onChange: function (e) { setBuscaTemp(e.target.value); },
+          placeholder: 'Buscar por nº, nome, CPF, assunto...',
+          style: Object.assign({}, inputBase, { width: '100%', paddingLeft: 28 }),
+        }),
+        buscaTemp && React.createElement('button', {
+          type: 'button',
+          onClick: function () { setBuscaTemp(''); setBusca(''); setPagina(0); },
+          style: { position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: T.textMuted, display: 'flex' },
+        }, React.createElement(X, { size: 14 })),
+      ),
 
-      carregando
-        ? React.createElement('div', { style: { textAlign: 'center', padding: 40, color: T.textMuted } }, React.createElement(Loader2, { size: 24, className: 'spin' }))
-        : proto && React.createElement(React.Fragment, null,
-            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
-              React.createElement(Badge, { status: proto.status }),
-              proto.prioridade && proto.prioridade !== 'normal' && React.createElement('span', { style: { fontSize: 11.5, color: T.textMuted, fontWeight: 600 } }, `Prioridade: ${proto.prioridade}`),
-            ),
+      React.createElement('select', { value: filtros.status, onChange: handleStatusChange, style: Object.assign({}, inputBase, { maxWidth: 150 }) },
+        React.createElement('option', { value: '' }, 'Todos os status'),
+        STATUS_OPTIONS.filter(Boolean).map(function (s) {
+          var label = STATUS_BADGE[s] ? STATUS_BADGE[s].label : s;
+          return React.createElement('option', { key: s, value: s }, label);
+        }),
+      ),
 
-            proto.assunto && React.createElement('div', { style: { fontSize: 14, color: T.text, fontWeight: 600 } }, proto.assunto),
+      React.createElement('select', { value: filtros.prioridade, onChange: handlePrioridadeChange, style: Object.assign({}, inputBase, { maxWidth: 115 }) },
+        React.createElement('option', { value: '' }, 'Prioridade'),
+        React.createElement('option', { value: 'BAIXA' }, 'Baixa'),
+        React.createElement('option', { value: 'NORMAL' }, 'Normal'),
+        React.createElement('option', { value: 'ALTA' }, 'Alta'),
+        React.createElement('option', { value: 'URGENTE' }, 'Urgente'),
+      ),
 
-            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
-              linhaInfo(User, 'Cidadão', proto.contato_nome || proto.contato_telefone),
-              proto.contato_telefone && linhaInfo(Hash, 'Telefone', proto.contato_telefone),
-              linhaInfo(Building2, 'Departamento', proto.departamento_nome),
-              linhaInfo(User, 'Atendente', proto.operador_nome),
-              linhaInfo(Clock, 'Aberto em', formatarData(proto.aberto_em)),
-              proto.fechado_em && linhaInfo(Clock, 'Fechado em', formatarData(proto.fechado_em)),
-            ),
+      React.createElement('select', { value: filtros.origem, onChange: handleOrigemChange, style: Object.assign({}, inputBase, { maxWidth: 130 }) },
+        React.createElement('option', { value: '' }, 'Origem'),
+        Object.keys(ORIGEM_LABEL).map(function (k) { return React.createElement('option', { key: k, value: k }, ORIGEM_LABEL[k]); }),
+      ),
 
-            // Alterar status
-            React.createElement('div', { style: { borderTop: `1px solid ${T.border}`, paddingTop: 14, display: 'flex', flexDirection: 'column', gap: 8 } },
-              React.createElement('div', { style: { fontSize: 12, fontWeight: 700, color: T.textSecondary, textTransform: 'uppercase' } }, 'Alterar status'),
-              React.createElement('select', {
-                value: novoStatus, onChange: (e) => setNovoStatus(e.target.value),
-                style: { padding: '8px 10px', borderRadius: T.radiusSm, border: `1px solid ${T.borderStrong}`, fontSize: 13, color: T.text, background: T.surface, outline: 'none', fontFamily: 'inherit' },
-              },
-                TRANSICOES.map((s) => React.createElement('option', { key: s, value: s }, STATUS_INFO(s).label)),
-              ),
-              React.createElement('textarea', {
-                value: descricao, onChange: (e) => setDescricao(e.target.value),
-                placeholder: 'Observação do andamento (opcional)', rows: 2,
-                style: { padding: '8px 10px', borderRadius: T.radiusSm, border: `1px solid ${T.borderStrong}`, fontSize: 13, color: T.text, background: T.surface, outline: 'none', fontFamily: 'inherit', resize: 'vertical' },
-              }),
-              React.createElement('button', {
-                onClick: aplicarStatus, disabled: salvando || novoStatus === proto.status,
+      React.createElement('button', {
+        onClick: handleAtrasadosToggle,
+        style: Object.assign({}, btnBase, {
+          background: filtros.atrasados ? T.dangerSoft : T.surface,
+          color: filtros.atrasados ? T.danger : T.textSecondary,
+          borderColor: filtros.atrasados ? T.danger : T.borderStrong,
+          fontWeight: 700,
+        }),
+      }, 'Atrasados'),
+
+      nFiltros > 0 && React.createElement('button', {
+        onClick: handleLimparFiltros,
+        style: Object.assign({}, btnBase, { color: T.danger, borderColor: T.danger, gap: 4 }),
+      },
+        React.createElement(X, { size: 13 }),
+        'Limpar' + (nFiltros > 0 ? ' (' + nFiltros + ')' : ''),
+      ),
+    ),
+
+    // ── PAGINAÇÃO (topo) ──
+    React.createElement('div', {
+      style: { padding: ehMobile ? '6px 14px' : '8px 20px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', borderBottom: '1px solid ' + T.border, background: T.surface, flexShrink: 0, fontSize: 12.5, color: T.textMuted },
+    },
+      React.createElement('span', null, 'Mostrando ' + inicioExibindo + '-' + fimExibindo + ' de ' + total + ' protocolos'),
+      React.createElement('span', { style: { marginLeft: 'auto' } }),
+      React.createElement('select', { value: String(tamanhoPagina), onChange: handleTamanhoPagina, style: Object.assign({}, inputBase, { fontSize: 11.5, padding: '4px 6px' }) },
+        TAMANHOS_PAGINA.map(function (n) { return React.createElement('option', { key: n, value: String(n) }, n + ' por página'); }),
+      ),
+      React.createElement('button', {
+        onClick: function () { if (pagina > 0) setPagina(pagina - 1); },
+        disabled: pagina === 0,
+        style: Object.assign({}, btnBase, { padding: '4px 8px', opacity: pagina === 0 ? 0.4 : 1, cursor: pagina === 0 ? 'default' : 'pointer' }),
+      }, React.createElement(ChevronLeft, { size: 15 })),
+      React.createElement('button', {
+        onClick: function () { if (pagina < totalPaginas - 1) setPagina(pagina + 1); },
+        disabled: pagina >= totalPaginas - 1,
+        style: Object.assign({}, btnBase, { padding: '4px 8px', opacity: pagina >= totalPaginas - 1 ? 0.4 : 1, cursor: pagina >= totalPaginas - 1 ? 'default' : 'pointer' }),
+      }, React.createElement(ChevronRight, { size: 15 })),
+    ),
+
+    // ── CONTEÚDO PRINCIPAL ──
+    React.createElement('div', { style: { flex: 1, overflowY: 'auto', overflowX: 'auto', minHeight: 0 } },
+      erro && React.createElement('div', {
+        style: { margin: 16, padding: '14px 18px', background: T.dangerSoft, color: T.danger, borderRadius: T.radiusSm, fontSize: 13, display: 'flex', alignItems: 'center', gap: 10 },
+      },
+        React.createElement(AlertCircle, { size: 18 }),
+        React.createElement('span', { style: { flex: 1 } }, erro),
+        React.createElement('button', {
+          onClick: function () { carregar(); },
+          style: { display: 'flex', alignItems: 'center', gap: 4, padding: '5px 12px', background: T.danger, color: '#fff', border: 'none', borderRadius: T.radiusSm, fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: T.font },
+        },
+          React.createElement(RefreshCw, { size: 13 }),
+          'Tentar novamente',
+        ),
+      ),
+
+      carregando && lista.length === 0
+        ? React.createElement('div', { style: { padding: 40 } },
+            [1, 2, 3, 4, 5, 6, 7, 8].map(function (i) {
+              return React.createElement('div', {
+                key: i,
                 style: {
-                  alignSelf: 'flex-start', padding: '8px 16px', borderRadius: T.radiusSm, border: 'none',
-                  background: (salvando || novoStatus === proto.status) ? T.surfaceMuted : T.primary,
-                  color: (salvando || novoStatus === proto.status) ? T.textMuted : '#fff',
-                  fontSize: 13, fontWeight: 600, cursor: (salvando || novoStatus === proto.status) ? 'default' : 'pointer',
-                  display: 'flex', alignItems: 'center', gap: 6,
+                  height: 56,
+                  margin: '0 16px 8px',
+                  borderRadius: T.radiusSm,
+                  background: T.surface,
+                  opacity: 1 - i * 0.1,
+                  animation: 'none',
                 },
-              }, salvando && React.createElement(Loader2, { size: 14, className: 'spin' }), 'Registrar andamento'),
+              });
+            }),
+          )
+        : lista.length === 0 && !carregando
+        ? React.createElement('div', {
+            style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 60, gap: 12 },
+          },
+            React.createElement(FileText, { size: 48, style: { color: T.borderStrong } }),
+            React.createElement('div', { style: { fontSize: 16, fontWeight: 600, color: T.text } }, 'Nenhum protocolo encontrado'),
+            React.createElement('div', { style: { fontSize: 13, color: T.textMuted, textAlign: 'center', maxWidth: 360 } },
+              'Não há protocolos que correspondam aos filtros atuais. Tente ajustar os critérios de busca ou criar um novo protocolo.',
             ),
-
-            // Timeline de andamentos
-            React.createElement('div', { style: { borderTop: `1px solid ${T.border}`, paddingTop: 14 } },
-              React.createElement('div', { style: { fontSize: 12, fontWeight: 700, color: T.textSecondary, textTransform: 'uppercase', marginBottom: 12 } }, 'Acompanhamento'),
-              (proto.andamentos || []).length === 0
-                ? React.createElement('div', { style: { fontSize: 13, color: T.textMuted } }, 'Sem andamentos registrados.')
-                : React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 0 } },
-                    (proto.andamentos || []).map((a, i, arr) => React.createElement('div', { key: a.id, style: { display: 'flex', gap: 12 } },
-                      // Trilho + marcador
-                      React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 } },
-                        React.createElement('div', { style: { width: 11, height: 11, borderRadius: '50%', background: STATUS_INFO(a.status).cor, marginTop: 3 } }),
-                        i < arr.length - 1 && React.createElement('div', { style: { width: 2, flex: 1, background: T.border, minHeight: 16 } }),
-                      ),
-                      React.createElement('div', { style: { paddingBottom: 16, minWidth: 0 } },
-                        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
-                          React.createElement(Badge, { status: a.status }),
-                          React.createElement('span', { style: { fontSize: 11.5, color: T.textMuted } }, formatarData(a.criado_em)),
-                        ),
-                        a.descricao && React.createElement('div', { style: { fontSize: 13, color: T.text, marginTop: 4, wordBreak: 'break-word' } }, a.descricao),
-                        a.operador_nome && React.createElement('div', { style: { fontSize: 11.5, color: T.textMuted, marginTop: 2 } }, `por ${a.operador_nome}`),
-                      ),
-                    )),
-                  ),
+            onCriarProtocolo && React.createElement('button', {
+              onClick: onCriarProtocolo,
+              style: { display: 'flex', alignItems: 'center', gap: 6, padding: '8px 18px', borderRadius: T.radiusSm, border: 'none', background: T.primary, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: T.font, marginTop: 4 },
+            },
+              React.createElement(Plus, { size: 16 }),
+              'Novo protocolo',
+            ),
+          )
+        : React.createElement('table', {
+            style: {
+              width: '100%',
+              borderCollapse: 'collapse',
+              tableLayout: ehMobile ? 'auto' : 'fixed',
+            },
+          },
+            React.createElement('thead', null,
+              React.createElement('tr', null,
+                colunas.map(function (col) { return renderCabecalhoColuna(col); }),
+              ),
+            ),
+            React.createElement('tbody', null,
+              lista.map(function (p) {
+                var isSelected = activeCard !== null; // simplified: highlight when a dashboard card is active
+                return React.createElement('tr', {
+                  key: p.id || p.numero,
+                  onClick: function () { onAbrirProtocolo && onAbrirProtocolo(p); },
+                  style: {
+                    cursor: 'pointer',
+                    transition: 'background 0.1s',
+                    background: isSelected ? T.primarySoft : 'transparent',
+                  },
+                  onMouseEnter: function (e) { if (!isSelected) e.currentTarget.style.background = T.surfaceAlt; },
+                  onMouseLeave: function (e) { if (!isSelected) e.currentTarget.style.background = 'transparent'; },
+                },
+                  colunas.map(function (col) { return renderCelulaProtocolo(p, col, isSelected); }),
+                );
+              }),
             ),
           ),
     ),
-  );
-}
 
-// ─── Página principal ───────────────────────────────────────────────────────
-export function PaginaProtocolos({ breakpoint }) {
-  const ehMobile = breakpoint === 'mobile';
-  const [lista, setLista] = useState([]);
-  const [departamentos, setDepartamentos] = useState([]);
-  const [carregando, setCarregando] = useState(true);
-  const [erro, setErro] = useState('');
-  const [filtroStatus, setFiltroStatus] = useState('');
-  const [filtroDepto, setFiltroDepto] = useState('');
-  const [busca, setBusca] = useState('');
-  const [buscaAtiva, setBuscaAtiva] = useState('');
-  const [selecionado, setSelecionado] = useState(null); // número do protocolo aberto
-
-  const carregar = useCallback(async () => {
-    setCarregando(true);
-    setErro('');
-    try {
-      const params = {};
-      if (filtroStatus) params.status = filtroStatus;
-      if (filtroDepto) params.departamento_id = filtroDepto;
-      if (buscaAtiva) params.busca = buscaAtiva;
-      setLista(await fetchProtocolos(params));
-    } catch (e) {
-      setErro(e.message || 'Erro ao carregar protocolos.');
-    } finally {
-      setCarregando(false);
-    }
-  }, [filtroStatus, filtroDepto, buscaAtiva]);
-
-  useEffect(() => { carregar(); }, [carregar]);
-
-  useEffect(() => {
-    fetchDepartamentos().then(setDepartamentos).catch(() => {});
-  }, []);
-
-  const inputBase = {
-    padding: '8px 10px', borderRadius: T.radiusSm, border: `1px solid ${T.borderStrong}`,
-    fontSize: 13, color: T.text, background: T.surface, outline: 'none', fontFamily: 'inherit',
-  };
-
-  const conteudo = React.createElement('div', {
-    style: { flex: 1, minWidth: 0, height: '100%', overflowY: 'auto', overflowX: 'hidden', background: T.bg, padding: ehMobile ? 14 : 20 },
-  },
-    // Cabeçalho
-    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 } },
-      React.createElement(FileText, { size: 22, style: { color: T.primary } }),
-      React.createElement('h2', { style: { fontSize: 20, fontWeight: 700, color: T.text, margin: 0, flex: 1 } }, 'Protocolos'),
+    // ── PAGINAÇÃO (rodapé) ──
+    lista.length > 0 && React.createElement('div', {
+      style: { padding: ehMobile ? '6px 14px' : '8px 20px', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', borderTop: '1px solid ' + T.border, background: T.surface, flexShrink: 0, fontSize: 12.5, color: T.textMuted },
+    },
+      React.createElement('span', null, 'Página ' + (pagina + 1) + ' de ' + totalPaginas),
+      React.createElement('span', { style: { marginLeft: 'auto' } }),
       React.createElement('button', {
-        onClick: carregar, disabled: carregando, 'aria-label': 'Atualizar',
-        style: { display: 'flex', alignItems: 'center', gap: 6, padding: '8px 14px', borderRadius: T.radiusSm, border: 'none', background: T.primary, color: '#fff', fontSize: 13, fontWeight: 600, cursor: carregando ? 'default' : 'pointer' },
-      }, React.createElement(RefreshCw, { size: 14, className: carregando ? 'spin' : undefined }), !ehMobile && 'Atualizar'),
-    ),
-
-    // Filtros
-    React.createElement('div', { style: { display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 } },
-      React.createElement('form', {
-        onSubmit: (e) => { e.preventDefault(); setBuscaAtiva(busca.trim()); },
-        style: { position: 'relative', flex: '1 1 220px', minWidth: 180 },
+        onClick: function () { if (pagina > 0) setPagina(pagina - 1); },
+        disabled: pagina === 0,
+        style: Object.assign({}, btnBase, { padding: '4px 10px', opacity: pagina === 0 ? 0.4 : 1, cursor: pagina === 0 ? 'default' : 'pointer' }),
       },
-        React.createElement(Search, { size: 15, style: { position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: T.textMuted } }),
-        React.createElement('input', {
-          value: busca, onChange: (e) => setBusca(e.target.value),
-          placeholder: 'Buscar nº, cidadão ou CPF…',
-          style: { ...inputBase, width: '100%', boxSizing: 'border-box', paddingLeft: 32 },
-        }),
+        React.createElement(ChevronLeft, { size: 15 }),
+        ehMobile ? null : 'Anterior',
       ),
-      React.createElement('select', { value: filtroStatus, onChange: (e) => setFiltroStatus(e.target.value), style: inputBase },
-        React.createElement('option', { value: '' }, 'Todos os status'),
-        Object.keys(STATUS_PROT).map((s) => React.createElement('option', { key: s, value: s }, STATUS_PROT[s].label)),
-      ),
-      React.createElement('select', { value: filtroDepto, onChange: (e) => setFiltroDepto(e.target.value), style: inputBase },
-        React.createElement('option', { value: '' }, 'Todos os setores'),
-        departamentos.map((d) => React.createElement('option', { key: d.id, value: d.id }, d.secretaria_nome ? `${d.secretaria_nome} › ${d.nome}` : d.nome)),
+      React.createElement('span', { style: { fontSize: 12, color: T.text } }, pagina + 1 + ' / ' + totalPaginas),
+      React.createElement('button', {
+        onClick: function () { if (pagina < totalPaginas - 1) setPagina(pagina + 1); },
+        disabled: pagina >= totalPaginas - 1,
+        style: Object.assign({}, btnBase, { padding: '4px 10px', opacity: pagina >= totalPaginas - 1 ? 0.4 : 1, cursor: pagina >= totalPaginas - 1 ? 'default' : 'pointer' }),
+      },
+        ehMobile ? null : 'Próximo',
+        React.createElement(ChevronRight, { size: 15 }),
       ),
     ),
-
-    erro && React.createElement('div', { role: 'alert', style: { padding: '10px 14px', background: T.dangerSoft, color: T.danger, borderRadius: T.radiusSm, fontSize: 13, marginBottom: 14 } }, erro),
-
-    carregando && lista.length === 0
-      ? React.createElement('div', { style: { textAlign: 'center', padding: 60, color: T.textMuted } }, React.createElement(Loader2, { size: 26, className: 'spin' }))
-      : lista.length === 0
-      ? React.createElement('div', { style: { textAlign: 'center', padding: 60, color: T.textMuted, fontSize: 14 } },
-          React.createElement(FileText, { size: 40, style: { color: T.borderStrong, marginBottom: 12 } }),
-          React.createElement('div', null, 'Nenhum protocolo encontrado.'),
-        )
-      : React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8, maxWidth: '100%' } },
-          lista.map((p) => React.createElement('button', {
-            key: p.id,
-            onClick: () => setSelecionado(p.numero),
-            style: {
-              display: 'flex', alignItems: 'flex-start', gap: 12, textAlign: 'left', width: '100%',
-              padding: '12px 14px', borderRadius: T.radius, cursor: 'pointer',
-              background: selecionado === p.numero ? T.primarySoft : T.surface,
-              border: `1px solid ${selecionado === p.numero ? T.primary : T.border}`,
-              flexWrap: 'wrap', minWidth: 0, boxSizing: 'border-box',
-            },
-          },
-            React.createElement('div', { style: { flex: 1, minWidth: 0 } },
-              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
-                React.createElement('span', { style: { fontSize: 14, fontWeight: 700, color: T.text, fontVariantNumeric: 'tabular-nums' } }, p.numero),
-                React.createElement(Badge, { status: p.status }),
-                React.createElement('span', { style: { fontSize: 10.5, color: T.textMuted, flexShrink: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, formatarData(p.aberto_em)),
-              ),
-              React.createElement('div', { style: { fontSize: 13, color: T.textSecondary, marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } },
-                (p.contato_nome || p.contato_telefone || 'Cidadão'),
-                p.departamento_nome ? ` · ${p.departamento_nome}` : '',
-                p.assunto ? ` · ${p.assunto}` : '',
-              ),
-            ),
-          )),
-        ),
-  );
-
-  // Layout: master-detail no desktop, overlay no mobile.
-  return React.createElement('div', { style: { display: 'flex', flex: 1, minHeight: 0, height: '100%', width: '100%' } },
-    conteudo,
-    selecionado && React.createElement(DetalheProtocolo, {
-      numero: selecionado,
-      ehMobile,
-      onClose: () => setSelecionado(null),
-      onChanged: carregar,
-    }),
   );
 }

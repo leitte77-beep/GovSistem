@@ -5,11 +5,15 @@ import { PainelAtendimento } from './components/PainelAtendimento';
 import { PainelChatInternoAvancado } from './components/PainelChatInternoAvancado';
 import { CentroNotificacoes } from './components/CentroNotificacoes';
 import { PaginaConfiguracoes } from './components/PaginaConfiguracoes';
-import { PaginaRelatorios } from './components/PaginaRelatorios';
+import { PaginaRelatoriosProtocolos } from './components/PaginaRelatoriosProtocolos';
 import { PaginaProtocolos } from './components/PaginaProtocolos';
 import { PaginaAgenda } from './components/PaginaAgenda';
 import { PaginaDashboard } from './components/PaginaDashboard';
 import { TelaQR } from './components/TelaQR';
+import { ModalGerarProtocolo } from './components/ModalGerarProtocolo';
+import { PainelDetalheProtocolo } from './components/PainelDetalheProtocolo';
+import { PaginaProtocoloDetalhe } from './components/PaginaProtocoloDetalhe';
+import { PaginaConfigProtocolos } from './components/PaginaConfigProtocolos';
 import { AgendaCompleta } from './components/agenda/AgendaCompleta';
 import { ModalResumoLogin } from './components/agenda/ModalResumoLogin';
 import { PopupLembrete } from './components/agenda/PopupLembrete';
@@ -34,7 +38,7 @@ export function ChatGov() {
     // `agenda` saiu da lista de propósito: a chave mudou de significado (era a
     // lista de contatos, virou a de compromissos). Quem tinha a antiga salva
     // cai no fallback em vez de aterrissar numa tela que não pediu.
-    const VIEWS_VALIDAS = ['atendimento', 'compromissos', 'contatos', 'interno', 'protocolos', 'relatorios', 'notificacoes', 'configuracoes'];
+    const VIEWS_VALIDAS = ['atendimento', 'compromissos', 'contatos', 'interno', 'protocolos', 'config-protocolos', 'relatorios', 'notificacoes', 'configuracoes'];
     if (isAdmin) VIEWS_VALIDAS.push('dashboard');
     try {
       const salva = localStorage.getItem('chatgov_view');
@@ -47,6 +51,11 @@ export function ChatGov() {
   const [recarregar, setRecarregar] = useState(0);
   const [notifCount, setNotifCount] = useState(0);
   const [waStatus, setWaStatus] = useState({ status: 'desconectado', numero: null });
+
+  // Protocolo
+  const [showGerarProtocolo, setShowGerarProtocolo] = useState(false);
+  const [protocoloDetalhe, setProtocoloDetalhe] = useState(null);
+  const [protocoloDetalheFull, setProtocoloDetalheFull] = useState(null);
 
   useNotificacoesDesktop({ conversaAtivaId: conversaAtiva?.id });
 
@@ -164,6 +173,30 @@ export function ChatGov() {
 
   const handleConversaUpdated = useCallback(() => setRecarregar((n) => n + 1), []);
 
+  const handleGerarProtocoloConversa = useCallback(() => setShowGerarProtocolo(true), []);
+  const handleProtocoloCriado = useCallback((proto) => {
+    setShowGerarProtocolo(false);
+    if (proto) setProtocoloDetalhe(proto);
+    handleConversaUpdated();
+  }, [handleConversaUpdated]);
+  const handleAbrirProtocolo = useCallback((proto, full) => {
+    if (typeof proto === 'string') {
+      // Buscar pelo número
+      const token = JSON.parse(localStorage.getItem('chatgov_auth') || '{}').token;
+      fetch(`/api/v1/protocols?busca=${encodeURIComponent(proto)}&limite=1`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }).then(r => r.json()).then(lista => {
+        if (lista && lista.length > 0) {
+          if (full) setProtocoloDetalheFull(lista[0]);
+          else setProtocoloDetalhe(lista[0]);
+        }
+      }).catch(() => {});
+    } else if (proto?.id) {
+      if (full) setProtocoloDetalheFull(proto);
+      else setProtocoloDetalhe(proto);
+    }
+  }, []);
+
   // A conversa selecionada chega da lista como um retrato do instante do clique.
   // Setor, responsável e status mudam depois (encaminhar, assumir, devolver,
   // reabrir), e o painel precisa desses campos frescos — senão continua exibindo
@@ -257,11 +290,19 @@ export function ChatGov() {
         )
       : view === 'relatorios'
       ? React.createElement('div', { style: pageShellStyle },
-          React.createElement(PaginaRelatorios),
+          React.createElement(PaginaRelatoriosProtocolos, { breakpoint }),
         )
       : view === 'protocolos'
       ? React.createElement('div', { style: pageShellStyle },
-          React.createElement(PaginaProtocolos, { breakpoint }),
+          React.createElement(PaginaProtocolos, {
+            breakpoint,
+            onAbrirProtocolo: handleAbrirProtocolo,
+            onCriarProtocolo: () => setShowGerarProtocolo(true),
+          }),
+        )
+      : view === 'config-protocolos' && isAdmin
+      ? React.createElement('div', { style: pageShellStyle },
+          React.createElement(PaginaConfigProtocolos, { breakpoint }),
         )
       : view === 'notificacoes'
       ? React.createElement('div', { style: pageShellStyle },
@@ -319,6 +360,7 @@ export function ChatGov() {
                     // anterior do mesmo contato.
                     onAbrirConversa: (convId) => handleSelectConversa({ id: convId }),
                     onEncerrada: fecharConversa,
+                    onGerarProtocolo: handleGerarProtocoloConversa,
                   })
                 : React.createElement(PainelChatInternoAvancado, {
                     canal: canalAtivo,
@@ -347,6 +389,7 @@ export function ChatGov() {
                     breakpoint,
                     onAbrirConversa: (convId) => handleSelectConversa({ id: convId }),
                     onEncerrada: fecharConversa,
+                    onGerarProtocolo: handleGerarProtocoloConversa,
                   })
                 : React.createElement(PainelChatInternoAvancado, { canal: canalAtivo, breakpoint }),
             ),
@@ -371,6 +414,33 @@ export function ChatGov() {
       onConcluir: lembretes.concluir,
       onAbrirConversa: abrirConversaPorId,
       breakpoint,
+    }),
+
+    showGerarProtocolo && React.createElement(ModalGerarProtocolo, {
+      conversa: view === 'atendimento' ? conversaAtiva : null,
+      onClose: () => setShowGerarProtocolo(false),
+      onCriado: handleProtocoloCriado,
+    }),
+
+    protocoloDetalheFull && React.createElement('div', {
+      style: { position: 'fixed', inset: 0, zIndex: 250, background: T.bg, overflow: 'hidden' },
+    },
+      React.createElement(PaginaProtocoloDetalhe, {
+        protocoloId: protocoloDetalheFull.id,
+        onVoltar: () => setProtocoloDetalheFull(null),
+        onAtualizado: handleConversaUpdated,
+        breakpoint,
+      }),
+    ),
+
+    protocoloDetalhe && React.createElement(PainelDetalheProtocolo, {
+      protocolo: protocoloDetalhe,
+      onClose: () => setProtocoloDetalhe(null),
+      onAtualizado: handleConversaUpdated,
+      onAbrirCompleto: (p) => {
+        setProtocoloDetalhe(null);
+        setProtocoloDetalheFull(p);
+      },
     }),
   );
 }

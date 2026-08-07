@@ -76,6 +76,17 @@ services:
     networks:
       - chatgov-network
 
+  portal:
+    image: nginx:alpine
+    volumes:
+      - ./portal-cidadao/dist:/usr/share/nginx/html:ro
+      - ./portal-cidadao/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "3052:80"
+    restart: unless-stopped
+    networks:
+      - chatgov-network
+
 networks:
   chatgov-network:
     driver: bridge

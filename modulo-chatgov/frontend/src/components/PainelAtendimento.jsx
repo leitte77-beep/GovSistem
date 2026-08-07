@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Send, Paperclip, Smile, ShieldCheck, Clock, User, UserPlus, CheckCircle2, Building2, MessageSquare, Tag, StickyNote, ChevronDown, ChevronRight, Archive, Trash2, ArrowRightLeft, Undo2, UserCheck, X, MoreVertical, ArrowDown, Loader2, Mic, Square, Play, Pause, RotateCcw, Images, Mail, Search, ArrowLeft, CalendarPlus } from 'lucide-react';
+import { Send, Paperclip, Smile, ShieldCheck, Clock, User, UserPlus, CheckCircle2, Building2, MessageSquare, Tag, StickyNote, ChevronDown, ChevronRight, Archive, Trash2, ArrowRightLeft, Undo2, UserCheck, X, MoreVertical, ArrowDown, Loader2, Mic, Square, Play, Pause, RotateCcw, Images, Mail, Search, ArrowLeft, CalendarPlus, FileText, Copy, Check, Pen } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { BolhaConversa } from './BolhaConversa';
 import { DeptBadge } from './DeptBadge';
@@ -49,7 +49,7 @@ function aplicarVariaveis(texto, conversa) {
     .replace(/\{\{\s*data\s*\}\}/gi, new Date().toLocaleDateString('pt-BR'));
 }
 
-export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onVoltar, onAbrirConversa, onEncerrada }) {
+export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onVoltar, onAbrirConversa, onEncerrada, onGerarProtocolo, onAbrirProtocolo }) {
   const { socket, connected } = useSocket();
   const { auth } = useAuth();
   const ehMobile = breakpoint === 'mobile';
@@ -128,6 +128,17 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
   const pertoDoFimRef = useRef(true);
   const dragCounterRef = useRef(0);
   const envioEmCursoRef = useRef(false);
+  const [protocolos, setProtocolos] = useState([]);
+  const [carregandoProtocolos, setCarregandoProtocolos] = useState(false);
+  const [showProtocolos, setShowProtocolos] = useState(false);
+  const [showVincularProtocolo, setShowVincularProtocolo] = useState(false);
+  const [protocoloBusca, setProtocoloBusca] = useState('');
+  const [protocolosBusca, setProtocolosBusca] = useState([]);
+  const [buscandoProtocolos, setBuscandoProtocolos] = useState(false);
+  const [vincularCarregando, setVincularCarregando] = useState(null);
+  const [protocoloCriado, setProtocoloCriado] = useState(null);
+  const [protocoloCopiado, setProtocoloCopiado] = useState(false);
+  const protocolosAnterioresRef = useRef(-1);
 
   const novaChaveEnvio = () => (
     globalThis.crypto?.randomUUID?.()
@@ -274,7 +285,27 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
     };
   }, [conversa?.id, socket]);
 
-  // Carrega o lote anterior (scroll infinito) preservando a posição visual.
+  // ── Protocolos vinculados ────────────────────────────────────────
+  useEffect(() => {
+    if (!conversa?.id) { setProtocolos([]); setShowProtocolos(false); return; }
+    setCarregandoProtocolos(true);
+    var token = (function () { try { return JSON.parse(localStorage.getItem('chatgov_auth') || '{}').token; } catch (e) { return null; } })();
+    fetch('/api/v1/protocols/conversation/' + conversa.id, { headers: token ? { Authorization: 'Bearer ' + token } : {} })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
+      .then(function (data) {
+        var lista = Array.isArray(data) ? data : (data.protocolos || data.data || []);
+        setProtocolos(lista);
+        if (protocolosAnterioresRef.current >= 0 && lista.length > protocolosAnterioresRef.current) {
+          var item = lista[0];
+          if (item) { setProtocoloCriado(item); setTimeout(function () { setProtocoloCriado(null); }, 10000); }
+        }
+        protocolosAnterioresRef.current = lista.length;
+      })
+      .catch(function () { setProtocolos([]); })
+      .finally(function () { setCarregandoProtocolos(false); });
+  }, [conversa?.id]);
+
+  // ── Carrega o lote anterior (scroll infinito) ──────────────────
   const carregarMais = useCallback(() => {
     if (carregandoMais || !temMais || mensagens.length === 0) return;
     const area = areaMensagensRef.current;
@@ -370,6 +401,64 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
     pertoDoFimRef.current = true;
     setNovasAbaixo(0);
   }, []);
+
+  // ── Protocolos ────────────────────────────────────────────────────
+
+  const fetchProtocolos = useCallback(function () {
+    if (!conversa?.id) return;
+    setCarregandoProtocolos(true);
+    var token = (function () { try { return JSON.parse(localStorage.getItem('chatgov_auth') || '{}').token; } catch (e) { return null; } })();
+    fetch('/api/v1/protocols/conversation/' + conversa.id, { headers: token ? { Authorization: 'Bearer ' + token } : {} })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
+      .then(function (data) {
+        var lista = Array.isArray(data) ? data : (data.protocolos || data.data || []);
+        setProtocolos(lista);
+        if (protocolosAnterioresRef.current >= 0 && lista.length > protocolosAnterioresRef.current) {
+          var item = lista[0];
+          if (item) { setProtocoloCriado(item); setTimeout(function () { setProtocoloCriado(null); }, 10000); }
+        }
+        protocolosAnterioresRef.current = lista.length;
+      })
+      .catch(function () { setProtocolos([]); })
+      .finally(function () { setCarregandoProtocolos(false); });
+  }, [conversa?.id]);
+
+  var timerBuscaRef = useRef(null);
+
+  var aoDigitarProtocolo = useCallback(function (valor) {
+    setProtocoloBusca(valor);
+    if (timerBuscaRef.current) clearTimeout(timerBuscaRef.current);
+    if (!valor || valor.trim().length < 2) { setProtocolosBusca([]); setBuscandoProtocolos(false); return; }
+    setBuscandoProtocolos(true);
+    timerBuscaRef.current = setTimeout(function () {
+      var token = (function () { try { return JSON.parse(localStorage.getItem('chatgov_auth') || '{}').token; } catch (e) { return null; } })();
+      fetch('/api/v1/protocols?q=' + encodeURIComponent(valor.trim()) + '&limit=10', { headers: token ? { Authorization: 'Bearer ' + token } : {} })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
+        .then(function (data) { setProtocolosBusca(Array.isArray(data) ? data : (data.protocolos || data.data || [])); })
+        .catch(function () { setProtocolosBusca([]); })
+        .finally(function () { setBuscandoProtocolos(false); });
+    }, 350);
+  }, []);
+
+  var vincularProtocolo = useCallback(function (protocoloId) {
+    setVincularCarregando(protocoloId);
+    var token = (function () { try { return JSON.parse(localStorage.getItem('chatgov_auth') || '{}').token; } catch (e) { return null; } })();
+    fetch('/api/v1/conversations/' + conversa.id + '/link-protocol', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + (token || '') },
+      body: JSON.stringify({ protocolo_id: protocoloId }),
+    })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r); })
+      .then(function () {
+        setShowVincularProtocolo(false);
+        setProtocoloBusca('');
+        setProtocolosBusca([]);
+        fetchProtocolos();
+        notificar('Protocolo vinculado com sucesso.', 'sucesso');
+      })
+      .catch(function () { notificar('Erro ao vincular protocolo.', 'erro'); })
+      .finally(function () { setVincularCarregando(null); });
+  }, [conversa?.id, fetchProtocolos, notificar]);
 
   // ── Gravação de áudio ───────────────────────────────────────────
 
@@ -1242,6 +1331,12 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
         title: 'Buscar nesta conversa',
         style: { ...acaoBtn, padding: '7px 9px', color: showBusca ? T.primary : T.textSecondary, borderColor: showBusca ? T.primary : undefined },
       }, React.createElement(Search, { size: 16 })),
+      // Gerar protocolo a partir da conversa
+      onGerarProtocolo && React.createElement('button', {
+        onClick: onGerarProtocolo,
+        'aria-label': 'Gerar protocolo', title: 'Gerar protocolo a partir desta conversa',
+        style: { ...acaoBtn, padding: '7px 9px', color: conversa?.protocolo_numero ? T.success : T.textSecondary, borderColor: conversa?.protocolo_numero ? T.success : undefined },
+      }, React.createElement(FileText, { size: 16 })),
       // Ficha do cidadão: alterna o painel lateral direito.
       React.createElement('button', {
         onClick: () => setShowCidadao((v) => {
@@ -1311,6 +1406,150 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
         ),
       ),
       ), // fecha o Fragment da barra de ações desktop (!ehCompacto)
+    ),
+
+    // ── Protocolos vinculados à conversa ─────────────────────────────
+    React.createElement('div', { style: { flexShrink: 0, borderBottom: '1px solid ' + T.border, background: T.surface } },
+      React.createElement('button', {
+        onClick: function () { setShowProtocolos(function (v) { return !v; }); },
+        'aria-expanded': showProtocolos,
+        style: { display: 'flex', alignItems: 'center', gap: 8, width: '100%', padding: '7px 16px', border: 'none', background: 'transparent', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: T.textSecondary },
+      },
+        React.createElement(FileText, { size: 14, color: protocolos.length > 0 ? T.primary : T.textMuted }),
+        React.createElement('span', { style: { flex: 1, textAlign: 'left' } },
+          'Protocolos',
+          protocolos.length > 0 && React.createElement('span', { style: { marginLeft: 6, fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 999, background: T.primarySoft, color: T.primary } }, String(protocolos.length))
+        ),
+        showProtocolos ? React.createElement(ChevronDown, { size: 14, color: T.textMuted }) : React.createElement(ChevronRight, { size: 14, color: T.textMuted }),
+      ),
+      showProtocolos && React.createElement('div', { style: { padding: '0 16px 10px', background: T.surfaceAlt } },
+        carregandoProtocolos && React.createElement('div', { style: { padding: '10px 0', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: T.textMuted } },
+          React.createElement(Loader2, { size: 14, className: 'spin' }), 'Carregando...'),
+        !carregandoProtocolos && protocolos.length > 0 && React.createElement('div', { style: { paddingTop: 4, display: 'flex', flexDirection: 'column', gap: 3 } },
+          protocolos.map(function (p, i) {
+            var numero = p.numero || p.protocolo_numero || p.protocolo || (p.id ? '#' + String(p.id).padStart(6, '0') : 'N/A');
+            var statusLabel = p.status || p.estado || '';
+            var statusColor = (statusLabel === 'ABERTO' || statusLabel === 'aberto') ? T.warning
+              : (statusLabel === 'CONCLUIDO' || statusLabel === 'concluido' || statusLabel === 'fechado') ? T.success
+              : (statusLabel === 'CANCELADO' || statusLabel === 'cancelado') ? T.danger
+              : T.textMuted;
+            var assunto = p.assunto || p.descricao || p.titulo || '';
+            return React.createElement('button', {
+              key: p.id || i,
+              onClick: function () { onAbrirProtocolo && onAbrirProtocolo(p); },
+              title: 'Abrir protocolo ' + numero,
+              style: { display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '8px 10px', border: 'none', borderRadius: T.radiusSm, background: 'transparent', cursor: 'pointer', textAlign: 'left', fontSize: 12.5, color: T.text, transition: 'background 0.15s' },
+              onMouseEnter: function (e) { e.currentTarget.style.background = T.surface; },
+              onMouseLeave: function (e) { e.currentTarget.style.background = 'transparent'; },
+            },
+              React.createElement('span', { style: { fontFamily: 'ui-monospace,SFMono-Regular,monospace', fontSize: 12, fontWeight: 700, color: T.primary, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } }, '#' + String(numero).replace(/^#/, '')),
+              statusLabel && React.createElement('span', { style: { fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 999, background: statusColor + '20', color: statusColor, flexShrink: 0 } }, statusLabel),
+              React.createElement('span', { style: { flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: T.textSecondary, fontSize: 11.5 } }, assunto),
+              React.createElement(Pen, { size: 12, color: T.textMuted, style: { flexShrink: 0 } }),
+            );
+          }),
+        ),
+        !carregandoProtocolos && protocolos.length === 0 && React.createElement('div', { style: { padding: '8px 0 4px', fontSize: 12, color: T.textMuted } }, 'Nenhum protocolo vinculado.'),
+        React.createElement('div', { style: { display: 'flex', gap: 8, marginTop: 8 } },
+          React.createElement('button', {
+            onClick: function () { setShowVincularProtocolo(function (v) { return !v; }); },
+            style: { display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: '1px solid ' + T.borderStrong, borderRadius: T.radiusSm, background: T.surface, cursor: 'pointer', fontSize: 11.5, fontWeight: 600, color: T.textSecondary },
+          }, React.createElement(Search, { size: 13 }), showVincularProtocolo ? 'Fechar busca' : 'Vincular protocolo existente'),
+          onGerarProtocolo && React.createElement('button', {
+            onClick: onGerarProtocolo,
+            style: { display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: '1px solid ' + T.primary, borderRadius: T.radiusSm, background: T.primarySoft, cursor: 'pointer', fontSize: 11.5, fontWeight: 700, color: T.primary },
+          }, React.createElement(FileText, { size: 13 }), 'Criar protocolo'),
+        ),
+        showVincularProtocolo && React.createElement('div', { style: { marginTop: 8 } },
+          React.createElement('div', { style: { position: 'relative', marginBottom: 6 } },
+            React.createElement(Search, { size: 13, color: T.textMuted, style: { position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' } }),
+            React.createElement('input', {
+              value: protocoloBusca,
+              onChange: function (e) { aoDigitarProtocolo(e.target.value); },
+              placeholder: 'Buscar por n\u00famero ou assunto...',
+              autoFocus: true,
+              style: { width: '100%', boxSizing: 'border-box', fontSize: 12.5, padding: '7px 10px 7px 30px', border: '1px solid ' + T.border, borderRadius: T.radiusSm, color: T.text, background: T.surface, outline: 'none' },
+              onKeyDown: function (e) { if (e.key === 'Escape') { setShowVincularProtocolo(false); setProtocoloBusca(''); setProtocolosBusca([]); } },
+            }),
+          ),
+          buscandoProtocolos && React.createElement('div', { style: { padding: '8px 0', display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: T.textMuted } },
+            React.createElement(Loader2, { size: 14, className: 'spin' }), 'Buscando...'),
+          !buscandoProtocolos && protocoloBusca.trim().length >= 2 && protocolosBusca.length === 0 && React.createElement('div', { style: { padding: '6px 0', fontSize: 12, color: T.textMuted } }, 'Nenhum protocolo encontrado.'),
+          protocolosBusca.map(function (p, i) {
+            var jahVinculado = protocolos.some(function (vp) { return vp.id === p.id; });
+            var numero = p.numero || p.protocolo_numero || p.protocolo || (p.id ? '#' + String(p.id).padStart(6, '0') : 'N/A');
+            var statusLabel = p.status || p.estado || '';
+            var statusColor = (statusLabel === 'ABERTO' || statusLabel === 'aberto') ? T.warning
+              : (statusLabel === 'CONCLUIDO' || statusLabel === 'concluido' || statusLabel === 'fechado') ? T.success
+              : (statusLabel === 'CANCELADO' || statusLabel === 'cancelado') ? T.danger
+              : T.textMuted;
+            var assunto = p.assunto || p.descricao || p.titulo || '';
+            return React.createElement('button', {
+              key: p.id || i,
+              onClick: function () { if (!jahVinculado && !vincularCarregando) vincularProtocolo(p.id); },
+              disabled: jahVinculado || vincularCarregando === p.id,
+              title: jahVinculado ? 'Já vinculado' : 'Vincular protocolo ' + numero,
+              style: { display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '7px 10px', border: 'none', borderRadius: T.radiusSm, background: 'transparent', cursor: jahVinculado ? 'default' : 'pointer', textAlign: 'left', fontSize: 12.5, color: jahVinculado ? T.textMuted : T.text, opacity: jahVinculado ? 0.6 : 1, transition: 'background 0.15s' },
+              onMouseEnter: function (e) { if (!jahVinculado) e.currentTarget.style.background = T.surface; },
+              onMouseLeave: function (e) { e.currentTarget.style.background = 'transparent'; },
+            },
+              vincularCarregando === p.id ? React.createElement(Loader2, { size: 14, color: T.primary, className: 'spin' })
+                : jahVinculado ? React.createElement(CheckCircle2, { size: 14, color: T.success })
+                : React.createElement(FileText, { size: 14, color: T.primary }),
+              React.createElement('span', { style: { fontFamily: 'ui-monospace,SFMono-Regular,monospace', fontSize: 12, fontWeight: 700, color: jahVinculado ? T.textMuted : T.primary, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' } }, '#' + String(numero).replace(/^#/, '')),
+              statusLabel && React.createElement('span', { style: { fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 999, background: statusColor + '20', color: statusColor, flexShrink: 0 } }, statusLabel),
+              React.createElement('span', { style: { flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: T.textSecondary, fontSize: 11.5 } }, assunto),
+              jahVinculado && React.createElement('span', { style: { fontSize: 10, color: T.textMuted, flexShrink: 0 } }, 'vinculado'),
+            );
+          }),
+        ),
+      ),
+    ),
+
+    // ── Notificação de protocolo criado ──────────────────────────────
+    protocoloCriado && React.createElement('div', {
+      style: { padding: '10px 16px', background: T.successSoft, borderBottom: '1px solid ' + T.border, display: 'flex', alignItems: 'center', gap: 10, flexShrink: 0 },
+    },
+      React.createElement(CheckCircle2, { size: 16, color: T.success }),
+      React.createElement('div', { style: { flex: 1, minWidth: 0 } },
+        React.createElement('div', { style: { fontSize: 12.5, fontWeight: 700, color: T.text } }, 'Protocolo criado com sucesso'),
+        React.createElement('div', { style: { fontSize: 11.5, color: T.textSecondary, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginTop: 2 } },
+          React.createElement('span', { style: { whiteSpace: 'nowrap' } },
+            React.createElement('strong', { style: { fontFamily: 'ui-monospace,SFMono-Regular,monospace', fontVariantNumeric: 'tabular-nums', color: T.text } }, '#' + String(protocoloCriado.numero || protocoloCriado.protocolo_numero || protocoloCriado.protocolo || protocoloCriado.id || 'N/A').replace(/^#/, '')),
+          ),
+          (protocoloCriado.codigo_acesso || protocoloCriado.access_code) && React.createElement('span', { style: { whiteSpace: 'nowrap' } },
+            'Código: ',
+            React.createElement('strong', { style: { fontFamily: 'ui-monospace,SFMono-Regular,monospace', color: T.text } }, protocoloCriado.codigo_acesso || protocoloCriado.access_code),
+          ),
+        ),
+      ),
+      (protocoloCriado.codigo_acesso || protocoloCriado.access_code) && React.createElement('button', {
+        onClick: function () {
+          var codigo = protocoloCriado.codigo_acesso || protocoloCriado.access_code;
+          if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(codigo).then(function () {
+              setProtocoloCopiado(true);
+              setTimeout(function () { setProtocoloCopiado(false); }, 2000);
+            }).catch(function () {});
+          }
+        },
+        title: 'Copiar código de acesso',
+        style: { display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '1px solid ' + T.borderStrong, borderRadius: T.radiusSm, background: T.surface, cursor: 'pointer', fontSize: 11, fontWeight: 600, color: T.textSecondary, flexShrink: 0 },
+      },
+        protocoloCopiado ? React.createElement(Check, { size: 14, color: T.success })
+          : React.createElement(Copy, { size: 14, color: T.textMuted }),
+        protocoloCopiado ? 'Copiado' : 'Copiar',
+      ),
+      onAbrirProtocolo && React.createElement('button', {
+        onClick: function () { setProtocoloCriado(null); onAbrirProtocolo(protocoloCriado); },
+        title: 'Abrir protocolo',
+        style: { display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '1px solid ' + T.primary, borderRadius: T.radiusSm, background: T.primarySoft, cursor: 'pointer', fontSize: 11, fontWeight: 700, color: T.primary, flexShrink: 0 },
+      }, 'Abrir'),
+      React.createElement('button', {
+        onClick: function () { setProtocoloCriado(null); },
+        'aria-label': 'Fechar notificação',
+        style: { background: 'none', border: 'none', cursor: 'pointer', color: T.textMuted, padding: 4, display: 'flex', flexShrink: 0 },
+      }, React.createElement(X, { size: 14 })),
     ),
 
     // Banner de transferência pendente para mim (aceitar/recusar)
@@ -1759,6 +1998,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
       acaoSheetItem(Tag, 'Etiquetas', () => { setShowAcoes(false); setShowEtiquetas(true); }),
       acaoSheetItem(Building2, 'Encaminhar para setor', () => { setShowAcoes(false); if (!showEncaminhar) abrirEncaminhar(); }),
       acaoSheetItem(CheckCircle2, 'Resolver conversa', () => { setShowAcoes(false); resolver(); }, T.success),
+      onGerarProtocolo && acaoSheetItem(FileText, 'Gerar protocolo', () => { setShowAcoes(false); onGerarProtocolo(); }),
       acaoSheetItem(CalendarPlus, 'Criar lembrete', () => { setShowAcoes(false); setShowNovoCompromisso(true); }),
       acaoSheetItem(Images, 'Ver mídias', () => { setShowAcoes(false); abrirGaleria(); }),
       acaoSheetItem(Mail, 'Marcar como não lida', () => { setShowAcoes(false); marcarNaoLida(); }),

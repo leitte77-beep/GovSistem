@@ -12,6 +12,7 @@ import { iniciarGateway, buscarAvatarContato } from './realtime/gateway.js';
 import { createStorage } from './storage/index.js';
 import { authMiddleware, requirePapel } from './auth/middleware.js';
 import { rateLimiter } from './auth/ratelimit.js';
+import { securityHeaders, sanitizeInput, cacheControlPublico } from './middleware/security.js';
 import { seedDemoData } from './migrations/seed.js';
 import { encrypt } from './services/encryption.js';
 import { getConfigChatbot } from './services/chatbot.js';
@@ -24,6 +25,7 @@ import { registrarRespostaNPS, calcularNPS, npsPorSetor, npsPorAtendente } from 
 import rotasEvolucoes from './routes/evolucoes.js';
 import rotasAgenda from './routes/agenda.js';
 import { iniciarLimpezaConversas } from './services/limpeza-conversas.js';
+import { iniciarWorkerNotificacoes } from './services/worker-notificacoes-protocolo.js';
 import { ensureTenantProvisioned } from './services/provisionamento.js';
 import devSaasRouter from './auth/dev-saas.js';
 import operacaoV2Router from './routes/operacao-v2.js';
@@ -31,7 +33,11 @@ import { normalizePhone } from './domain/phone.js';
 import { hasPermission, PERMISSIONS, requirePermission } from './auth/permissions.js';
 import { protectSensitiveFields } from './domain/privacy.js';
 import { transitionProtocol } from './services/status-transitions.js';
+import { seedProtocolos } from './services/seed-protocolos.js';
 import administracaoV2Router from './routes/administracao-v2.js';
+import protocolosRouter from './routes/protocolos.js';
+import protocolosPublicosRouter from './routes/protocolos-publicos.js';
+import protocolosAdminRouter from './routes/protocolos-admin.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -148,13 +154,23 @@ async function main() {
     console.warn('[Boot] Seed skipped:', err.message);
   }
 
+  try {
+    const tenant = await db.oneOrNone('SELECT id FROM tenants WHERE ativo = true ORDER BY criado_em LIMIT 1');
+    if (tenant) await seedProtocolos(tenant.id);
+  } catch (err) {
+    console.warn('[Boot] Seed protocolos skipped:', err.message);
+  }
+
   const wa = new WhatsAppManager();
   const storage = createStorage();
 
   const app = express();
+  app.locals.whatsapp = wa;
   const server = createServer(app);
 
   app.use(cors({ origin: config.corsOrigin || '*', credentials: true }));
+  app.use(securityHeaders);
+  app.use(sanitizeInput);
   app.use(express.json({ limit: '50mb' }));
   app.use(express.urlencoded({ extended: true }));
 
@@ -254,11 +270,16 @@ app.post('/api/internal/sync-user', async (req, res) => {
   }
 });
 
-app.use('/api', authMiddleware);
-app.use('/api', rateLimiter);
+  // Rotas públicas de protocolo (portal do cidadão) — antes do authMiddleware
+  app.use('/api/v1/public', protocolosPublicosRouter);
+
+  app.use('/api', authMiddleware);
+  app.use('/api', rateLimiter);
 
   app.use('/api/v2', operacaoV2Router);
   app.use('/api/v2/admin', administracaoV2Router);
+  app.use('/api/v1/protocols', protocolosRouter);
+  app.use('/api/v1/admin/protocols', protocolosAdminRouter);
   app.use('/api/evolucoes', rotasEvolucoes);
   app.use('/api/agenda', rotasAgenda);
 
@@ -3050,6 +3071,9 @@ app.use('/api', rateLimiter);
     }
 
     iniciarLimpezaConversas(storage);
+    // Drena a fila de notificações de protocolo (comprovantes, avisos de
+    // pendência, prazo etc.). Sem isso os registros ficam presos em "pendente".
+    iniciarWorkerNotificacoes(() => wa);
   });
 
   process.on('SIGTERM', async () => {

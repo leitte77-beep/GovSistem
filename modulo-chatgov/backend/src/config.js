@@ -18,6 +18,10 @@ export const config = {
   uploadsDir: process.env.UPLOADS_DIR || './uploads',
   internalApiKey: process.env.INTERNAL_API_KEY || 'chatgov-internal-key-change-me',
 
+  // Endereço do portal do cidadão, usado nas mensagens de comprovante.
+  // Estava fixo no código em vários pontos.
+  portalUrl: (process.env.PORTAL_CIDADAO_URL || 'https://prot.govsistem.com.br').replace(/\/+$/, ''),
+
   // Rotina que trata conversas abertas onde a última mensagem foi nossa (saída)
   // e o cidadão não respondeu há mais de N horas.
   //  - ativo:    liga/desliga a rotina (LIMPEZA_CONVERSAS_ATIVO=false desativa)
