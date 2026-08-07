@@ -34,7 +34,44 @@ export const api = {
   mensagensProtocolo: (id) => req(`/protocols/${id}/messages`),
   enviarMensagem: (id, conteudo) => req(`/protocols/${id}/messages`, { method: 'POST', body: { conteudo } }),
   documentosProtocolo: (id) => req(`/protocols/${id}/documents`),
-  downloadDocumento: (id, docId) => req(`/protocols/${id}/documents/${docId}/download`),
+  timelineProtocolo: (id) => req(`/protocols/${id}/timeline`),
+
+  // Download devolve o arquivo, não JSON: precisa ser tratado como blob e
+  // salvo pelo navegador. Passar por req() fazia res.json() estourar.
+  baixarDocumento: async (id, docId, nomeArquivo) => {
+    const res = await fetch(`${API}/protocols/${id}/documents/${docId}/download`, {
+      headers: { Authorization: `Bearer ${getToken()}` },
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.erro || 'Não foi possível baixar o documento');
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = nomeArquivo || 'documento';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
+
+  // Envio de documento pelo cidadão (multipart, sem Content-Type manual:
+  // o navegador precisa definir o boundary).
+  enviarDocumento: async (id, file, onProgresso) => {
+    const formData = new FormData();
+    formData.append('arquivo', file);
+    const res = await fetch(`${API}/protocols/${id}/documents/upload`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${getToken()}` },
+      body: formData,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.erro || 'Não foi possível enviar o documento');
+    if (onProgresso) onProgresso(data);
+    return data;
+  },
 
   // Catálogo e solicitação
   servicos: () => req('/services', { auth: false }),

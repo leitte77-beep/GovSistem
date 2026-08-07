@@ -182,6 +182,32 @@ checa "download do documento liberado funciona" 200 \
 VAZA_CAMINHO=$(curl -s "$PORTAL/api/v1/public/protocols/$PROTO_PUB/documents" -H "$PAUTH" | grep -c nome_interno)
 checa "portal não expõe caminho físico do arquivo" 0 "$VAZA_CAMINHO"
 
+# O cidadão envia documento pelo portal e precisa ver o que enviou.
+# Conteudo unico por arquivo: documentos identicos sao deduplicados por hash
+printf '%%PDF-1.4\n%% cidadao %s\ntrailer<</Root 1 0 R>>\n%%%%EOF\n' "$RANDOM" > /tmp/e2e-cidadao.pdf
+ENVIO=$(curl -s -X POST "$PORTAL/api/v1/public/protocols/$PROTO_PUB/documents/upload" \
+  -H "$PAUTH" -F "arquivo=@/tmp/e2e-cidadao.pdf")
+DOC_CID=$(echo "$ENVIO" | campo id)
+[ -n "$DOC_CID" ] && verde "cidadão consegue enviar documento pelo portal" || vermelho "envio pelo cidadão falhou: $ENVIO"
+checa "documento do cidadão entra para análise" em_analise "$(echo "$ENVIO" | campo status)"
+
+VISTOS=$(curl -s "$PORTAL/api/v1/public/protocols/$PROTO_PUB/documents" -H "$PAUTH" \
+  | python3 -c "import json,sys;print(len(json.load(sys.stdin)))")
+[ "${VISTOS:-0}" -ge 2 ] && verde "cidadão vê o documento que enviou" || vermelho "documento enviado não aparece para o cidadão"
+
+SERVIDOR_VE=$(api GET "/protocols/$PID/documents" \
+  | python3 -c "import json,sys;print(sum(1 for d in json.load(sys.stdin) if d.get('origem')=='cidadao'))")
+[ "${SERVIDOR_VE:-0}" -ge 1 ] && verde "setor recebe o documento enviado pelo cidadão" || vermelho "setor não recebeu o documento"
+
+# Nome com acento não pode chegar como mojibake (multer entrega latin1).
+printf '%%PDF-1.4\n%% acento %s\ntrailer<</Root 1 0 R>>\n%%%%EOF\n' "$RANDOM" > "/tmp/certidão e2e.pdf"
+NOME=$(curl -s -X POST "$API/protocols/$PID/documents/upload" -H "$AUTH" \
+  -F "arquivo=@/tmp/certidão e2e.pdf" | campo nome_amigavel)
+checa "nome de arquivo com acento é preservado" "certidão e2e.pdf" "$NOME"
+
+checa "linha do tempo pública responde" 200 \
+  "$(curl -s -o /dev/null -w '%{http_code}' "$PORTAL/api/v1/public/protocols/$PROTO_PUB/timeline" -H "$PAUTH")"
+
 secao "9. Comprovante"
 
 REC=$(curl -s "$API/protocols/$PID/receipt" -H "$AUTH")

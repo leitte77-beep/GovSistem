@@ -359,7 +359,7 @@ router.post('/protocols/:id/documents/upload', sessaoPublicaMiddleware, uploadUn
     );
 
     await db.none(
-      `UPDATE protocolo_documentos SET status = 'aguardando_analise' WHERE id = $1`,
+      `UPDATE protocolo_documentos SET status = 'em_analise' WHERE id = $1`,
       [doc.id]
     );
 
@@ -378,7 +378,7 @@ router.post('/protocols/:id/documents/upload', sessaoPublicaMiddleware, uploadUn
       nome_amigavel: doc.nome_amigavel,
       mime_type: doc.mime_type,
       tamanho_bytes: doc.tamanho_bytes,
-      status: 'aguardando_analise',
+      status: 'em_analise',
       criado_em: doc.criado_em,
     });
   } catch (err) {

@@ -471,7 +471,7 @@ export async function listarProtocolos(tenantId, {
             (SELECT COUNT(*)::int FROM protocolo_pendencias pp
              WHERE pp.protocolo_id = p.id AND pp.status = 'pendente') AS pendencias_abertas,
             (SELECT COUNT(*)::int FROM protocolo_documentos pd
-             WHERE pd.protocolo_id = p.id AND pd.status = 'aguardando_analise') AS docs_novos,
+             WHERE pd.protocolo_id = p.id AND pd.status = 'em_analise') AS docs_novos,
             (SELECT mv.criado_em FROM protocolo_movimentacoes mv
              WHERE mv.protocolo_id = p.id ORDER BY mv.criado_em DESC LIMIT 1) AS ultima_movimentacao_em,
             (SELECT mv.tipo FROM protocolo_movimentacoes mv
@@ -797,9 +797,10 @@ export async function registrarDocumento(tenantId, protocoloId, {
   return doc;
 }
 
+// Espelha o CHECK ck_protdoc_status da migration 024.
 const STATUS_DOC_VALIDOS = Object.freeze([
-  'recebido', 'aguardando_analise', 'aprovado', 'rejeitado',
-  'liberado_cidadao', 'arquivado',
+  'recebido', 'em_analise', 'aprovado', 'rejeitado', 'substituido',
+  'emitido', 'assinado', 'liberado_cidadao', 'restrito', 'arquivado',
 ]);
 
 export async function alterarStatusDocumento(tenantId, documentoId, {
@@ -848,9 +849,14 @@ export async function alterarStatusDocumento(tenantId, documentoId, {
 
 // Critério único de "documento visível ao cidadão" — usado tanto na
 // listagem quanto no download, para que não divirjam.
+// Inclui o que a prefeitura liberou e o que o próprio cidadão enviou: sem
+// isso ele não via os arquivos que acabara de anexar e reenviava tudo.
 export const SQL_DOC_VISIVEL_CIDADAO = `
-  d.nivel_acesso IN ('publico','restrito_cidadao')
-  AND d.status IN ('liberado_cidadao','aprovado')
+  (
+    (d.nivel_acesso IN ('publico','restrito_cidadao')
+     AND d.status IN ('liberado_cidadao','aprovado'))
+    OR (d.origem = 'cidadao' AND d.status <> 'rejeitado')
+  )
 `;
 
 export async function listarDocumentosProtocolo(tenantId, protocoloId, { publicos = false } = {}) {
@@ -863,7 +869,7 @@ export async function listarDocumentosProtocolo(tenantId, protocoloId, { publico
   // portal; na visão pública devolvemos apenas o que a tela precisa.
   const colunas = publicos
     ? `d.id, d.protocolo_id, d.nome_amigavel, d.mime_type, d.tamanho_bytes,
-       d.tipo_documental, d.status, d.versao, d.criado_em, d.liberado_em`
+       d.tipo_documental, d.status, d.origem, d.versao, d.criado_em, d.liberado_em`
     : `d.*, o.nome AS enviado_por_nome`;
 
   return db.manyOrNone(
@@ -878,8 +884,10 @@ export async function listarDocumentosProtocolo(tenantId, protocoloId, { publico
 
 export function documentoVisivelAoCidadao(doc) {
   if (!doc) return false;
-  return ['publico', 'restrito_cidadao'].includes(doc.nivel_acesso)
+  const liberado = ['publico', 'restrito_cidadao'].includes(doc.nivel_acesso)
     && ['liberado_cidadao', 'aprovado'].includes(doc.status);
+  const proprio = doc.origem === 'cidadao' && doc.status !== 'rejeitado';
+  return liberado || proprio;
 }
 
 // ──────────────────────────────────────────────

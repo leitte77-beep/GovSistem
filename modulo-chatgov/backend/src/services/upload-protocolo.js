@@ -122,10 +122,31 @@ export function validarConteudoArquivo(buffer, mimeDeclarado) {
   }
 }
 
+/**
+ * O multer entrega o nome do arquivo do multipart em latin1, então nomes com
+ * acento chegam como "homologaÃ§Ã£o.pdf". Reinterpreta os bytes como UTF-8
+ * quando isso produz um texto válido; caso contrário mantém o original.
+ */
+export function corrigirNomeArquivo(nome) {
+  const original = String(nome || 'arquivo');
+  if (!/[À-ÿ]/.test(original)) return original;
+
+  try {
+    const convertido = Buffer.from(original, 'latin1').toString('utf8');
+    if (convertido.includes('�')) return original;
+    // Só aceita a conversão se ela realmente resolveu um mojibake.
+    return Buffer.from(convertido, 'utf8').toString('latin1') === original
+      ? convertido
+      : original;
+  } catch {
+    return original;
+  }
+}
+
 export async function salvarArquivoProtocolo(tenantId, protocoloId, file, enviadoPor, opcoes = {}) {
   const buffer = file.buffer;
   const mime = file.mimetype;
-  const nomeOriginal = file.originalname || 'arquivo';
+  const nomeOriginal = corrigirNomeArquivo(file.originalname);
 
   // O tipo declarado pelo cliente já passou pelo fileFilter; aqui confirmamos
   // que o conteúdo corresponde de fato ao que foi declarado.
