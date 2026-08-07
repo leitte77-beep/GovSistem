@@ -69,7 +69,17 @@ function formatarCNPJ(valor) {
 }
 
 function formatarTelefone(valor) {
-  var d = (valor || '').replace(/\D/g, '').slice(0, 11);
+  var d = (valor || '').replace(/\D/g, '');
+
+  // O telefone vindo da conversa já traz o código do país (ex.: 554499885588).
+  // Sem remover o "55" aqui, o corte em 11 dígitos descartava o último número
+  // e o DDD virava "55" — o cadastro ficava com um telefone inexistente e a
+  // mensagem do protocolo não chegava ao cidadão.
+  if ((d.length === 12 || d.length === 13) && d.indexOf('55') === 0) {
+    d = d.slice(2);
+  }
+  d = d.slice(0, 11);
+
   if (d.length <= 2) return d;
   if (d.length <= 6) return '(' + d.slice(0, 2) + ') ' + d.slice(2);
   if (d.length <= 10) return '(' + d.slice(0, 2) + ') ' + d.slice(2, 6) + '-' + d.slice(6);
@@ -465,14 +475,64 @@ export function ModalGerarProtocolo({ conversa, onClose, onCriado }) {
           }
           // Criação aceita: libera a chave para uma eventual próxima criação.
           idempotencyRef.current = null;
-          setSucesso(data);
-          if (onCriado) onCriado(data);
+          return enviarAnexos(data.id).then(function (falhas) {
+            setSucesso(data);
+            if (falhas.length > 0) {
+              setErroGeral('Protocolo criado, mas estes anexos não foram enviados: ' + falhas.join(', '));
+            }
+            if (onCriado) onCriado(data);
+          });
         });
       })
       .catch(function (e) {
         setErroGeral(e.message);
       })
       .finally(function () { setEnviando(false); });
+  }
+
+  // Os arquivos escolhidos na etapa Documentos ficavam apenas no estado do
+  // formulário: a criação envia JSON e nunca chegava a subir os anexos.
+  // Depois de criar o protocolo, cada arquivo vai em uma requisição própria.
+  function enviarAnexos(protocoloId) {
+    if (!protocoloId || files.length === 0) return Promise.resolve([]);
+
+    var falhas = [];
+    var sequencia = files.reduce(function (anterior, f) {
+      return anterior.then(function () {
+        var formData = new FormData();
+        formData.append('arquivo', f._file);
+        formData.append('tipo_documental', f.tipo || 'documento');
+        // "Público" na etapa de documentos significa visível ao cidadão.
+        formData.append('nivel_acesso', f.visibilidade === 'publico' ? 'restrito_cidadao' : 'restrito_setor');
+
+        return fetch('/api/v1/protocols/' + protocoloId + '/documents/upload', {
+          method: 'POST',
+          headers: { Authorization: 'Bearer ' + inputToken() },
+          body: formData,
+        }).then(function (r) {
+          if (!r.ok) {
+            return r.json().catch(function () { return {}; }).then(function (d) {
+              falhas.push(f.name + (d.erro ? ' (' + d.erro + ')' : ''));
+            });
+          }
+          // Documento marcado como público já entra liberado no portal.
+          if (f.visibilidade === 'publico') {
+            return r.json().then(function (doc) {
+              return fetch('/api/v1/protocols/' + protocoloId + '/documents/' + doc.id + '/visibility', {
+                method: 'POST',
+                headers: apiHeaders(),
+                body: JSON.stringify({ visivel_cidadao: true }),
+              }).catch(function () {});
+            }).catch(function () {});
+          }
+          return null;
+        }).catch(function () {
+          falhas.push(f.name);
+        });
+      });
+    }, Promise.resolve());
+
+    return sequencia.then(function () { return falhas; });
   }
 
   // Reenvia número + código de acesso ao cidadão pelo WhatsApp. O código não

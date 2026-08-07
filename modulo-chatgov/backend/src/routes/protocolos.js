@@ -173,24 +173,34 @@ router.post('/', requirePermission(PERMISSIONS.PROTOCOLOS_CREATE), async (req, r
     const querWhatsApp = req.body.enviar_whatsapp === true || enviar_senha === true;
     if (querWhatsApp && (normalizado.telefone || contato_id || cidadaoId)) {
       try {
-        // O telefone pode não vir no payload (ex.: criação a partir de uma
-        // conversa, onde só temos contato_id). Busca no contato/cidadão.
-        let numero = normalizado.telefone ? normalizado.telefone.replace(/\D/g, '') : null;
-        let nome = normalizado.nome;
+        // De onde tirar o número de destino, em ordem de confiabilidade:
+        // 1) o contato da conversa de WhatsApp, cujo número já provou existir
+        //    na rede (é por ele que a conversa acontece);
+        // 2) o telefone informado agora no formulário;
+        // 3) o telefone do cadastro do cidadão, que pode ter sido digitado
+        //    errado em algum atendimento anterior.
+        // Antes o cadastro do cidadão vinha primeiro e um número inválido ali
+        // impedia a entrega mesmo com a conversa aberta ao lado.
+        const dono = await db.oneOrNone(
+          `SELECT ct.telefone AS telefone_contato, ct.wa_jid,
+                  c.telefone AS telefone_cidadao,
+                  COALESCE(ct.nome, c.nome_social, c.nome) AS nome
+           FROM (SELECT $1::uuid AS cid, $2::uuid AS ctid, $3::uuid AS convid) src
+           LEFT JOIN cidadaos c ON c.id = src.cid AND c.tenant_id = $4
+           LEFT JOIN conversas cv ON cv.id = src.convid AND cv.tenant_id = $4
+           LEFT JOIN contatos ct ON ct.id = COALESCE(src.ctid, cv.contato_id) AND ct.tenant_id = $4`,
+          [cidadaoId || null, contato_id || null, conversa_id || null, op.tenantId]
+        );
 
-        if (!numero || !nome) {
-          const dono = await db.oneOrNone(
-            `SELECT COALESCE(c.telefone, ct.telefone) AS telefone,
-                    COALESCE(c.nome, ct.nome) AS nome
-             FROM (SELECT $1::uuid AS cid, $2::uuid AS ctid) src
-             LEFT JOIN cidadaos c ON c.id = src.cid AND c.tenant_id = $3
-             LEFT JOIN contatos ct ON ct.id = src.ctid AND ct.tenant_id = $3`,
-            [cidadaoId || null, contato_id || null, op.tenantId]
-          );
-          numero = numero || (dono?.telefone ? String(dono.telefone).replace(/\D/g, '') : null);
-          nome = nome || dono?.nome || 'cidadão';
-        }
-        nome = nome || 'cidadão';
+        const soDigitos = (v) => (v ? String(v).replace(/\D/g, '') : null);
+        const doJid = dono?.wa_jid ? String(dono.wa_jid).split('@')[0].split(':')[0] : null;
+
+        const numero = soDigitos(doJid)
+          || soDigitos(dono?.telefone_contato)
+          || soDigitos(normalizado.telefone)
+          || soDigitos(dono?.telefone_cidadao);
+
+        const nome = normalizado.nome || dono?.nome || 'cidadão';
         const mensagem = `Olá, ${nome}. Sua solicitação foi registrada.\n\n` +
           `Protocolo: ${proto.numero}` +
           (senha ? `\nCódigo de acesso: ${senha}` : '') +
@@ -710,19 +720,26 @@ router.post('/:id/send-whatsapp-access', requirePermission(PERMISSIONS.PROTOCOLO
     }
     // O telefone pode estar no cidadão (protocolo de balcão/portal) ou no
     // contato do WhatsApp — antes só o contato era consultado.
+    // Mesma ordem de confiabilidade da criação: o contato da conversa vem
+    // antes do telefone do cadastro, que pode estar digitado errado.
     const proto = await db.oneOrNone(
       `SELECT p.numero, p.id,
-              COALESCE(cid.nome_social, cid.nome, co.nome) AS nome,
-              COALESCE(cid.telefone, co.telefone) AS telefone
+              COALESCE(co.nome, cid.nome_social, cid.nome) AS nome,
+              co.wa_jid, co.telefone AS telefone_contato,
+              cid.telefone AS telefone_cidadao
        FROM protocolos p
        LEFT JOIN cidadaos cid ON cid.id = p.cidadao_id
-       LEFT JOIN contatos co ON co.id = p.contato_id
+       LEFT JOIN conversas cv ON cv.id = p.conversa_id
+       LEFT JOIN contatos co ON co.id = COALESCE(p.contato_id, cv.contato_id)
        WHERE p.id = $1 AND p.tenant_id = $2 AND p.deleted_at IS NULL`,
       [req.params.id, req.operador.tenantId]
     );
     if (!proto) return res.status(404).json({ erro: 'Protocolo não encontrado' });
 
-    const telefone = String(proto.telefone || '').replace(/\D/g, '');
+    const doJid = proto.wa_jid ? String(proto.wa_jid).split('@')[0].split(':')[0] : null;
+    const telefone = String(
+      doJid || proto.telefone_contato || proto.telefone_cidadao || ''
+    ).replace(/\D/g, '');
     if (!telefone) {
       return res.status(422).json({
         erro: 'O solicitante deste protocolo não possui telefone cadastrado.',
