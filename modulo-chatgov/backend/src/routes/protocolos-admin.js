@@ -312,13 +312,18 @@ router.get('/citizens', requirePermission(PERMISSIONS.PROTOCOLOS_VIEW), async (r
               OR c.email ILIKE $2)
          AND c.deleted_at IS NULL
        UNION ALL
-       SELECT co.id::text AS id, co.nome, NULL AS nome_social, co.cpf, NULL AS cnpj, co.telefone, NULL AS email,
+       -- co.id sem cast: com ::text o UNION quebrava ("UNION types uuid and
+       -- text cannot be matched"), já que o ramo de cima devolve uuid.
+       SELECT co.id, co.nome, NULL::text AS nome_social, co.cpf, NULL::text AS cnpj,
+              co.telefone, NULL::text AS email,
               'fisica' AS tipo_pessoa, co.id AS contato_id, co.criado_em,
               co.nome AS contato_nome, co.telefone AS contato_telefone, co.wa_jid AS contato_wa_jid,
               'contato' AS origem
        FROM contatos co
        WHERE co.tenant_id = $1
-         AND (co.nome ILIKE $2 OR co.telefone ILIKE $2 OR co.cpf ILIKE $3)
+         AND (co.nome ILIKE $2
+              OR REPLACE(REPLACE(REPLACE(co.telefone, ' ', ''), '-', ''), '(', '') ILIKE $3
+              OR REPLACE(REPLACE(REPLACE(co.cpf, '.', ''), '-', ''), '/', '') ILIKE $3)
          AND NOT EXISTS (SELECT 1 FROM cidadaos c WHERE c.contato_id = co.id AND c.tenant_id = $1)
        ORDER BY nome
        LIMIT 20`,
