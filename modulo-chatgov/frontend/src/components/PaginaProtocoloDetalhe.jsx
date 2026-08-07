@@ -227,6 +227,8 @@ export function PaginaProtocoloDetalhe(_a) {
   var [showRelacionar, setShowRelacionar] = useState(false);
   var [showAtribuir, setShowAtribuir] = useState(false);
   var [uploadingDoc, setUploadingDoc] = useState(false);
+  // Falha de upload/download precisa aparecer na tela, não só no console.
+  var [erroDoc, setErroDoc] = useState('');
   var [expandirEvento, setExpandirEvento] = useState(null);
   var [copiado, setCopiado] = useState(false);
 
@@ -408,20 +410,57 @@ export function PaginaProtocoloDetalhe(_a) {
     var files = e.target.files;
     if (!files || files.length === 0) return;
     setUploadingDoc(true);
-    var formData = new FormData();
-    Array.from(files).forEach(function (f) { formData.append('file', f); });
-    fetch('/api/v1/protocols/' + protocoloId + '/documents', { method: 'POST', headers: { Authorization: 'Bearer ' + token() }, body: formData })
-      .then(function (r) { if (r.ok) carregarDetalhes(); })
-      .catch(function () {})
-      .finally(function () { setUploadingDoc(false); });
+    setErroDoc('');
+
+    // O endpoint de upload é /documents/upload e espera o campo "arquivo",
+    // um arquivo por requisição. Antes o envio ia para /documents (que só
+    // aceita JSON) no campo "file", e falhava sem qualquer aviso na tela.
+    var envios = Array.from(files).map(function (f) {
+      var formData = new FormData();
+      formData.append('arquivo', f);
+      return fetch('/api/v1/protocols/' + protocoloId + '/documents/upload', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token() },
+        body: formData,
+      }).then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (data) {
+          if (!r.ok) throw new Error(data.erro || ('Falha ao enviar ' + f.name));
+          return data;
+        });
+      });
+    });
+
+    Promise.all(envios)
+      .then(function () { carregarDetalhes(); })
+      .catch(function (err) { setErroDoc(err.message); })
+      .finally(function () {
+        setUploadingDoc(false);
+        if (e.target) e.target.value = '';
+      });
   };
 
+  // O download exige o cabeçalho de autorização, então não dá para apontar
+  // um <a href> direto para a URL: buscamos o arquivo e salvamos o blob.
   var downloadDocumento = function (doc) {
-    var url = '/api/v1/protocols/' + protocoloId + '/documents/' + doc.id + '/download';
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = doc.nome_amigavel || 'documento';
-    a.click();
+    setErroDoc('');
+    fetch('/api/v1/protocols/' + protocoloId + '/documents/' + doc.id + '/download', {
+      headers: { Authorization: 'Bearer ' + token() },
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error('Não foi possível baixar o documento');
+        return r.blob();
+      })
+      .then(function (blob) {
+        var url = URL.createObjectURL(blob);
+        var a = document.createElement('a');
+        a.href = url;
+        a.download = doc.nome_amigavel || 'documento';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      })
+      .catch(function (err) { setErroDoc(err.message); });
   };
 
   var alternarVisibilidadeDoc = function (doc) {
@@ -713,6 +752,15 @@ export function PaginaProtocoloDetalhe(_a) {
 
   function AbaDocumentos() {
     return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
+      erroDoc && React.createElement('div', {
+        style: {
+          padding: '8px 12px', borderRadius: T.radiusSm, marginBottom: 4,
+          background: T.dangerSoft || 'rgba(220,38,38,0.10)',
+          border: '1px solid ' + (T.danger || '#dc2626'),
+          color: T.danger || '#dc2626', fontSize: 12,
+        },
+      }, erroDoc),
+
       // Área de upload
       React.createElement('div', {
         onClick: function () { if (fileInputRef.current) fileInputRef.current.click(); },

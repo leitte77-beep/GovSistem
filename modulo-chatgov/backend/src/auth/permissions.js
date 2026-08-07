@@ -34,6 +34,9 @@ export const PERMISSIONS = Object.freeze({
   PROTOCOLOS_DOC_DELETE: 'protocolos.documento.excluir',
   PROTOCOLOS_DOC_SIGN: 'protocolos.documento.assinar',
   PROTOCOLOS_DOC_EMIT: 'protocolos.documento.emitir',
+  // Tornar um documento visível ao cidadão no portal — decidir o que sai da
+  // prefeitura é diferente de apenas aprovar o documento internamente.
+  PROTOCOLOS_DOC_RELEASE: 'protocolos.documento.liberar',
 
   // Protocolos — Tramitação
   PROTOCOLOS_FORWARD: 'protocolos.tramitar',
@@ -99,6 +102,7 @@ const ROLE_PERMISSIONS = Object.freeze({
     'protocolos.documento.anexar', 'protocolos.documento.visualizar',
     'protocolos.documento.baixar', 'protocolos.documento.aprovar',
     'protocolos.documento.rejeitar', 'protocolos.documento.assinar',
+    'protocolos.documento.liberar',
     'protocolos.tramitar', 'protocolos.receber', 'protocolos.devolver',
     'protocolos.atribuir', 'protocolos.concluir', 'protocolos.reabrir',
     'protocolos.arquivar', 'protocolos.alterar_prioridade',
@@ -112,7 +116,7 @@ const ROLE_PERMISSIONS = Object.freeze({
     'protocolos.visualizar', 'protocolos.criar',
     'protocolos.mensagem_publica', 'protocolos.anotacao_interna',
     'protocolos.documento.anexar', 'protocolos.documento.visualizar',
-    'protocolos.documento.baixar',
+    'protocolos.documento.baixar', 'protocolos.documento.liberar',
     'protocolos.tramitar', 'protocolos.receber',
     'protocolos.concluir', 'protocolos.reabrir',
     'protocolos.pendencia.criar',

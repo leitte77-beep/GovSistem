@@ -13,6 +13,7 @@ import {
 } from '../services/protocolo-v2.js';
 import { buscarOuCriarCidadao } from '../services/cidadao.js';
 import { validarCriacaoProtocolo } from '../domain/protocolo-validacao.js';
+import { transitionProtocol } from '../services/status-transitions.js';
 import { config } from '../config.js';
 import QRCode from 'qrcode';
 
@@ -846,6 +847,270 @@ router.get('/documents/:docId/download', requirePermission(PERMISSIONS.PROTOCOLO
     res.set('Content-Type', result.doc.mime_type);
     res.set('Content-Disposition', `attachment; filename="${encodeURIComponent(result.doc.nome_amigavel)}"`);
     res.send(result.buffer);
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+// ─── Ciclo de vida (concluir / cancelar / reabrir / arquivar) ──
+//
+// A tela de detalhe já chamava estes caminhos, mas eles não existiam: os
+// botões respondiam 404 e o erro era engolido pelo cliente. As transições
+// passam pela máquina de estados, que recusa mudanças inválidas.
+async function transicionar(req, res, { alvo, tipoMovimento, exigeJustificativa, rotulo }) {
+  if (!UUID_RE.test(req.params.id)) {
+    return res.status(400).json({ erro: 'ID inválido' });
+  }
+
+  const justificativa = String(req.body?.justificativa || req.body?.motivo || '').trim();
+  if (exigeJustificativa && !justificativa) {
+    return res.status(422).json({
+      erro: `Informe o motivo para ${rotulo}.`,
+      erros: [{ campo: 'justificativa', mensagem: 'Este campo é obrigatório.' }],
+    });
+  }
+
+  try {
+    const proto = await transitionProtocol({
+      tenantId: req.operador.tenantId,
+      protocoloId: req.params.id,
+      targetStatus: alvo,
+      operadorId: req.operador.id,
+      justificativa: justificativa || null,
+      origem: 'painel',
+      ip: req.ip,
+    });
+
+    await db.none(
+      `INSERT INTO protocolo_movimentacoes
+        (tenant_id, protocolo_id, tipo, operador_id, status_posterior,
+         observacao, justificativa, visivel_cidadao)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, true)`,
+      [req.operador.tenantId, req.params.id, tipoMovimento, req.operador.id, alvo,
+        req.body?.observacao || rotulo.charAt(0).toUpperCase() + rotulo.slice(1),
+        justificativa || null]
+    ).catch((e) => console.error('[historico transicao]', e.message));
+
+    await db.none(
+      `INSERT INTO auditoria (tenant_id, operador_id, acao, detalhe, entidade, entidade_id, ip)
+       VALUES ($1, $2, $3, $4, 'protocolo', $5, $6)`,
+      [req.operador.tenantId, req.operador.id, `protocolo.${tipoMovimento}`,
+        { status: alvo, justificativa: justificativa || null }, req.params.id, req.ip]
+    ).catch(() => {});
+
+    res.json(proto);
+  } catch (err) {
+    if (/não encontrado/i.test(err.message)) {
+      return res.status(404).json({ erro: 'Protocolo não encontrado' });
+    }
+    // Transição recusada pela máquina de estados é erro do cliente.
+    if (/transi|inválid/i.test(err.message)) {
+      return res.status(422).json({ erro: err.message });
+    }
+    console.error(`[POST /${tipoMovimento}]`, err.message);
+    res.status(500).json({ erro: err.message });
+  }
+}
+
+router.post('/:id/complete', requirePermission(PERMISSIONS.PROTOCOLOS_COMPLETE), (req, res) =>
+  transicionar(req, res, {
+    alvo: 'CONCLUIDO', tipoMovimento: 'conclusao', rotulo: 'concluir o protocolo',
+  }));
+
+router.post('/:id/cancel', requirePermission(PERMISSIONS.PROTOCOLOS_CANCEL), (req, res) =>
+  transicionar(req, res, {
+    alvo: 'CANCELADO', tipoMovimento: 'cancelamento',
+    exigeJustificativa: true, rotulo: 'cancelar o protocolo',
+  }));
+
+router.post('/:id/reopen', requirePermission(PERMISSIONS.PROTOCOLOS_REOPEN), (req, res) =>
+  transicionar(req, res, {
+    alvo: 'EM_ANDAMENTO', tipoMovimento: 'reabertura',
+    exigeJustificativa: true, rotulo: 'reabrir o protocolo',
+  }));
+
+// Alias em POST do PATCH /:id/status — a tela usa POST. Também aceita
+// alteração isolada de prioridade, que não é uma transição de status.
+router.post('/:id/status', requirePermission(PERMISSIONS.PROTOCOLOS_EDIT), async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.id)) {
+      return res.status(400).json({ erro: 'ID inválido' });
+    }
+
+    if (req.body.prioridade && !req.body.status && !req.body.status_operacional) {
+      const PRIORIDADES = ['BAIXA', 'NORMAL', 'ALTA', 'URGENTE'];
+      const nova = String(req.body.prioridade).toUpperCase();
+      if (!PRIORIDADES.includes(nova)) {
+        return res.status(422).json({ erro: 'Prioridade inválida.' });
+      }
+
+      const anterior = await db.oneOrNone(
+        'SELECT prioridade FROM protocolos WHERE id = $1 AND tenant_id = $2',
+        [req.params.id, req.operador.tenantId]
+      );
+      if (!anterior) return res.status(404).json({ erro: 'Protocolo não encontrado' });
+
+      const proto = await db.one(
+        `UPDATE protocolos SET prioridade = $3, atualizado_em = now()
+         WHERE id = $1 AND tenant_id = $2 RETURNING *`,
+        [req.params.id, req.operador.tenantId, nova]
+      );
+
+      await db.none(
+        `INSERT INTO protocolo_movimentacoes
+          (tenant_id, protocolo_id, tipo, operador_id, observacao)
+         VALUES ($1, $2, 'alteracao_prioridade', $3, $4)`,
+        [req.operador.tenantId, req.params.id, req.operador.id,
+          `Prioridade alterada de ${anterior.prioridade} para ${nova}`]
+      ).catch(() => {});
+
+      return res.json(proto);
+    }
+
+    const alvo = String(req.body.status_operacional || req.body.status || '').toUpperCase();
+    // "ARQUIVADO" não existe na máquina de estados atual; o equivalente
+    // operacional é concluir o protocolo.
+    const MAPA = { ARQUIVADO: 'CONCLUIDO' };
+    const destino = MAPA[alvo] || alvo;
+
+    const proto = await transitionProtocol({
+      tenantId: req.operador.tenantId,
+      protocoloId: req.params.id,
+      targetStatus: destino,
+      operadorId: req.operador.id,
+      justificativa: req.body.justificativa || null,
+      origem: 'painel',
+      ip: req.ip,
+    });
+    res.json(proto);
+  } catch (err) {
+    if (/não encontrado/i.test(err.message)) {
+      return res.status(404).json({ erro: 'Protocolo não encontrado' });
+    }
+    res.status(422).json({ erro: err.message });
+  }
+});
+
+// ─── Documentos: ações usadas pela tela de detalhe ────────────
+router.post('/:id/documents/:docId/status', requirePermission(PERMISSIONS.PROTOCOLOS_DOC_APPROVE), async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.docId)) {
+      return res.status(400).json({ erro: 'ID inválido' });
+    }
+    // A tela envia APROVADO/REJEITADO em maiúsculas.
+    const MAPA = {
+      APROVADO: 'aprovado', REJEITADO: 'rejeitado',
+      LIBERADO: 'liberado_cidadao', ARQUIVADO: 'arquivado',
+    };
+    const bruto = String(req.body.status || '').toUpperCase();
+    const status = MAPA[bruto] || String(req.body.status || '').toLowerCase();
+
+    const doc = await alterarStatusDocumento(req.operador.tenantId, req.params.docId, {
+      status,
+      rejeitadoMotivo: req.body.rejeitado_motivo || req.body.motivo,
+    });
+    res.json(doc);
+  } catch (err) {
+    const ehRegra = /inválido|Informe o motivo|não encontrado/i.test(err.message);
+    res.status(ehRegra ? 400 : 500).json({ erro: err.message });
+  }
+});
+
+// Liga/desliga a visibilidade do documento para o cidadão. É o que faz o
+// anexo aparecer (ou sumir) na aba Documentos do portal.
+router.post('/:id/documents/:docId/visibility', requirePermission(PERMISSIONS.PROTOCOLOS_DOC_RELEASE), async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.docId)) {
+      return res.status(400).json({ erro: 'ID inválido' });
+    }
+    const liberar = req.body.visivel_cidadao !== false;
+
+    const doc = await alterarStatusDocumento(req.operador.tenantId, req.params.docId, {
+      status: liberar ? 'liberado_cidadao' : 'recebido',
+      nivelAcesso: liberar ? 'restrito_cidadao' : 'restrito_setor',
+    });
+
+    await db.none(
+      `INSERT INTO protocolo_movimentacoes
+        (tenant_id, protocolo_id, tipo, operador_id, observacao, visivel_cidadao)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [req.operador.tenantId, doc.protocolo_id,
+        liberar ? 'documento_liberado' : 'documento_removido', req.operador.id,
+        `${liberar ? 'Documento liberado ao cidadão' : 'Documento retirado do portal'}: ${doc.nome_amigavel}`,
+        liberar]
+    ).catch(() => {});
+
+    await db.none(
+      `INSERT INTO auditoria (tenant_id, operador_id, acao, detalhe, entidade, entidade_id, ip)
+       VALUES ($1, $2, $3, $4, 'protocolo_documento', $5, $6)`,
+      [req.operador.tenantId, req.operador.id,
+        liberar ? 'documento.liberado' : 'documento.restrito',
+        { documento: doc.nome_amigavel }, doc.id, req.ip]
+    ).catch(() => {});
+
+    res.json({ ...doc, visivel_cidadao: liberar });
+  } catch (err) {
+    res.status(/não encontrado/i.test(err.message) ? 404 : 500).json({ erro: err.message });
+  }
+});
+
+// Download com o id do protocolo no caminho — forma usada pela tela.
+router.get('/:id/documents/:docId/download', requirePermission(PERMISSIONS.PROTOCOLOS_DOC_DOWNLOAD), async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.docId)) {
+      return res.status(400).json({ erro: 'ID inválido' });
+    }
+    const result = await obterArquivoDocumento(req.operador.tenantId, req.params.docId);
+    if (!result || result.doc.protocolo_id !== req.params.id) {
+      return res.status(404).json({ erro: 'Documento não encontrado' });
+    }
+
+    await db.none(
+      `INSERT INTO protocolo_documento_downloads
+        (tenant_id, documento_id, baixado_por, ip, user_agent)
+       VALUES ($1,$2,$3,$4,$5)`,
+      [req.operador.tenantId, req.params.docId, req.operador.nome, req.ip, req.get('user-agent')]
+    ).catch(() => {});
+
+    res.set('Content-Type', result.doc.mime_type);
+    res.set('Content-Disposition', `attachment; filename="${encodeURIComponent(result.doc.nome_amigavel)}"`);
+    res.send(result.buffer);
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+// ─── Remoções usadas pela tela ────────────────────────────────
+router.delete('/:id/pending-items/:pendId', requirePermission(PERMISSIONS.PROTOCOLOS_PENDING_CREATE), async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.pendId)) {
+      return res.status(400).json({ erro: 'ID inválido' });
+    }
+    const pend = await db.oneOrNone(
+      `UPDATE protocolo_pendencias SET status = 'cancelada'
+       WHERE id = $1 AND tenant_id = $2 AND protocolo_id = $3
+       RETURNING *`,
+      [req.params.pendId, req.operador.tenantId, req.params.id]
+    );
+    if (!pend) return res.status(404).json({ erro: 'Pendência não encontrada' });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ erro: err.message });
+  }
+});
+
+router.delete('/:id/relations/:relId', requirePermission(PERMISSIONS.PROTOCOLOS_LINK), async (req, res) => {
+  try {
+    if (!UUID_RE.test(req.params.relId)) {
+      return res.status(400).json({ erro: 'ID inválido' });
+    }
+    const rel = await db.oneOrNone(
+      `DELETE FROM protocolo_relacoes
+       WHERE id = $1 AND tenant_id = $2 RETURNING id`,
+      [req.params.relId, req.operador.tenantId]
+    );
+    if (!rel) return res.status(404).json({ erro: 'Vínculo não encontrado' });
+    res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ erro: err.message });
   }
