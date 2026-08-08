@@ -64,3 +64,14 @@ export type DashboardActivityItem = {
   acao: string;
   ator?: string | null;
 };
+
+export type RecommendationScopeOut = {
+  rmaFechado: boolean;
+  diasAteFimDoMes: number;
+  mesAtual: string;
+  nisPendentes: number;
+  semAtendimento90d: number;
+  agendamentosHoje: number;
+  aniversariantesSemana: number;
+  encaminhamentosPrazo: number;
+};

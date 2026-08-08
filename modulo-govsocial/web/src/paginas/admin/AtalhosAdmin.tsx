@@ -4,6 +4,7 @@ import { Plus } from "lucide-react";
 import { Tabela } from "@/ui/Tabela";
 import { http } from "@/nucleo/http/clienteHttp";
 import type { Coluna } from "@/ui/Tabela";
+import { Modal } from "@/ui/Modal";
 
 interface AtalhoExterno {
   id: string;
@@ -71,11 +72,13 @@ export default function AtalhosAdmin() {
         vazio={<span className="text-ink-soft">Nenhum atalho externo configurado.</span>}
       />
 
-      {formulario && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setFormulario(null)}>
-          <div className="w-full max-w-md rounded-cartao bg-surface p-6 shadow-elevado" onClick={(e) => e.stopPropagation()}>
-            <h2 className="mb-4 text-lg font-semibold">{formulario.id ? "Editar atalho" : "Novo atalho"}</h2>
-            <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); }}>
+      <Modal
+        aberto={!!formulario}
+        aoFechar={() => setFormulario(null)}
+        titulo={formulario?.id ? "Editar atalho" : "Novo atalho"}
+      >
+        {formulario && (
+        <form className="space-y-3" onSubmit={(e) => { e.preventDefault(); }}>
               <label className="block">
                 <span className="text-sm font-medium">Nome</span>
                 <input className="mt-1 w-full rounded-input border border-ink-soft/20 bg-surface px-3 py-2 text-sm" value={formulario.data.label} onChange={(e) => setFormulario({ ...formulario, data: { ...formulario.data, label: e.target.value } })} required />
@@ -106,10 +109,9 @@ export default function AtalhosAdmin() {
                   Salvar
                 </button>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
+        </form>
+        )}
+      </Modal>
     </div>
   );
 }

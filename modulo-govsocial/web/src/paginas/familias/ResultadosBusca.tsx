@@ -15,7 +15,8 @@ import { idade } from "@/nucleo/datas";
 import type { ErroApi } from "@/nucleo/http/problemDetails";
 import type { UnifiedSearchItem, FamilyListItem } from "@/tipos/pessoas";
 
-function formatarDataCadastro(dataStr: string): string {
+function formatarDataCadastro(dataStr: string | null | undefined): string {
+  if (!dataStr) return "—";
   const d = new Date(dataStr);
   return d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" });
 }

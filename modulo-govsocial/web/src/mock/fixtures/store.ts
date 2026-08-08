@@ -80,7 +80,7 @@ function familiasDaPessoa(personId: string) {
   const saida: { family_id: string; codigo: number; territorio: string | null }[] = [];
   for (const f of familias) {
     if (f.membros.some((m) => m.person_id === personId && m.status === "ATIVO")) {
-      saida.push({ family_id: f.id, codigo: f.codigo, territorio: f.territorio });
+      saida.push({ family_id: f.id, codigo: f.codigo, territorio: f.territorio ?? null });
     }
   }
   return saida;

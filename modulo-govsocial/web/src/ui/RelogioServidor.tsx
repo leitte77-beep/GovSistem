@@ -7,7 +7,6 @@ export function RelogioServidor() {
   const [data, setData] = useState<string>("");
 
   useEffect(() => {
-    let intervalo: ReturnType<typeof setInterval>;
     let deslocamento = 0;
 
     async function sincronizar() {
@@ -37,7 +36,7 @@ export function RelogioServidor() {
     }
 
     sincronizar();
-    intervalo = setInterval(() => atualizar(deslocamento), 30_000);
+    const intervalo = setInterval(() => atualizar(deslocamento), 30_000);
 
     return () => clearInterval(intervalo);
   }, []);

@@ -1,7 +1,7 @@
 /** Módulo Habitacional — Programas e Demandas */
 import { useState } from "react";
 import { Building2 } from "lucide-react";
-import { useProgramasHabitacionais, useDemandas, servicoHabitacional } from "@/nucleo/api/servicosFase2";
+import { useProgramasHabitacionais, useDemandas, servicoHabitacional, type DemandaClassificada } from "@/nucleo/api/servicosFase2";
 import { Skeleton } from "@/ui/Skeleton";
 import { EstadoVazio } from "@/ui/EstadoVazio";
 
@@ -9,7 +9,7 @@ export default function HabitacaoPainel() {
   const [aba, setAba] = useState<"programas" | "demandas" | "classificacao">("programas");
   const { data: programas, isLoading: carregandoProg } = useProgramasHabitacionais();
   const { data: demandas, isLoading: carregandoDem } = useDemandas();
-  const [classificacao, setClassificacao] = useState<any[]>([]);
+  const [classificacao, setClassificacao] = useState<DemandaClassificada[]>([]);
   const [carregandoClass, setCarregandoClass] = useState(false);
 
   const carregarClassificacao = async () => {
@@ -66,7 +66,7 @@ export default function HabitacaoPainel() {
             <table className="w-full text-sm border">
               <thead><tr className="bg-gray-100"><th className="p-2">#</th><th>Família</th><th>Responsável</th><th>Tipo</th><th>Membros</th><th>Pontuação</th></tr></thead>
               <tbody>
-                {classificacao.map((c: any) => (
+                {classificacao.map((c: DemandaClassificada) => (
                   <tr key={c.demanda_id} className="border-t">
                     <td className="p-2 font-bold">{c.posicao}</td><td className="p-2">{c.familia_codigo}</td>
                     <td className="p-2">{c.responsavel}</td><td className="p-2">{c.tipo_demanda}</td>

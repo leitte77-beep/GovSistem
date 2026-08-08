@@ -27,6 +27,11 @@ export type ItemTrilha = {
   caseFileId: string | null;
   sigilosoReforcado: boolean;
   podeLerEvolucao: boolean;
+  /** Nome de quem o evento se refere (ex.: membro atendido) — usado em
+   *  conteúdo de exemplo/visualização; nunca vem do payload de rede. */
+  sobre?: string;
+  /** Conteúdo de exemplo para pré-visualização (telas de histórico/mock). */
+  conteudoExemplo?: { texto: string };
 };
 
 export type MesTrilha = { chave: string; rotulo: string; itens: ItemTrilha[] };
@@ -60,7 +65,7 @@ export function montarTrilha(
       tipo: tipoEventoDe(t.service_type_code, t.tipo),
       tipoAtendimento: t.tipo,
       serviceCode: t.service_type_code,
-      unitId: t.unit_id,
+      unitId: t.unit_id ?? "",
       unitNome: null,
       daPropriaUnidade: true,
       attendanceId: t.attendance_id,
@@ -87,7 +92,7 @@ export function montarTrilha(
       tipoAtendimento: r.tipo,
       serviceCode: r.service_type_code,
       unitId: r.unit_id,
-      unitNome: r.unit_nome,
+      unitNome: r.unit_nome ?? null,
       daPropriaUnidade: false,
       attendanceId: null,
       caseFileId: null,

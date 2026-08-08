@@ -1,7 +1,10 @@
 import { expect, test } from "@playwright/test";
-import { FAMILIA, SERVICOS, UNIDADES, instalarMocks } from "./atendimento.fixtures";
+import { instalarMocks } from "./atendimento.fixtures";
 
-async function preencherFormulario(page, { servico = "PAIF", texto = "Família acompanhada no CRAS. Demanda apresentada e orientações fornecidas." } = {}) {
+async function preencherFormulario(
+  page: import("@playwright/test").Page,
+  { servico = "PAIF", texto = "Família acompanhada no CRAS. Demanda apresentada e orientações fornecidas." } = {},
+) {
   const combobox = page.getByRole("combobox", { name: "Serviço" });
   await combobox.click();
   await combobox.fill(servico);
@@ -31,9 +34,10 @@ test.describe("Registrar atendimento", () => {
     const lista = page.getByRole("listbox", { name: "Serviços disponíveis" });
     await expect(lista).toBeVisible();
     const caixa = await lista.boundingBox();
-    expect(caixa.x).toBeGreaterThanOrEqual(0);
-    expect(caixa.y).toBeGreaterThanOrEqual(0);
-    expect(caixa.x + caixa.width).toBeLessThanOrEqual(1366);
+    expect(caixa).not.toBeNull();
+    expect(caixa!.x).toBeGreaterThanOrEqual(0);
+    expect(caixa!.y).toBeGreaterThanOrEqual(0);
+    expect(caixa!.x + caixa!.width).toBeLessThanOrEqual(1366);
     await expect(lista.getByRole("option").first()).toContainText("ABORD");
     await expect(lista.getByRole("option").first()).toContainText("Serviço Especializado em Abordagem Social");
 
@@ -128,22 +132,25 @@ test.describe("Registrar atendimento", () => {
 
     const rascunho = await page.evaluate(async () => {
       const abrir = () =>
-        new Promise((resolve, reject) => {
+        new Promise<IDBDatabase>((resolve, reject) => {
           const req = indexedDB.open("govsocial", 1);
           req.onsuccess = () => resolve(req.result);
           req.onerror = () => reject(req.error);
         });
       const db = await abrir();
-      return new Promise((resolve, reject) => {
+      return new Promise<{ chave: string; dados: { evolucao?: string }; atualizadoEm: unknown } | null>((resolve, reject) => {
         const tx = db.transaction("rascunhos", "readonly");
         const get = tx.objectStore("rascunhos").get("e2e-admin|atendimento|2");
-        get.onsuccess = () => resolve(get.result ? { chave: get.result.chave, dados: get.result.dados, atualizadoEm: get.result.atualizadoEm } : null);
+        get.onsuccess = () => {
+          const r = get.result as { chave: string; dados: { evolucao?: string }; atualizadoEm: unknown } | undefined;
+          resolve(r ? { chave: r.chave, dados: r.dados, atualizadoEm: r.atualizadoEm } : null);
+        };
         get.onerror = () => reject(get.error);
       });
     });
     expect(rascunho).not.toBeNull();
-    expect(rascunho.dados.evolucao).toContain("Registro inicial");
-    expect(rascunho.dados.tipo).toBe("FAMILIAR");
+    expect(rascunho!.dados.evolucao).toContain("Registro inicial");
+    expect((rascunho!.dados as { tipo?: string }).tipo).toBe("FAMILIAR");
 
     await testInfo.attach("autosave-status", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
   });
@@ -169,7 +176,7 @@ test.describe("Registrar atendimento", () => {
     await expect(modal.getByRole("button", { name: "Conceder benefício" })).toBeVisible();
     await expect(modal.getByRole("button", { name: "Agendar retorno" })).toBeVisible();
 
-    const enviados = await page.evaluate(() => window.__atendimentos);
+    const enviados = await page.evaluate<{ tipo: string; member_ids: string[]; evolution_text?: string; sigiloso_reforcado: boolean; professional_ids: string[] }[]>(() => window.__atendimentos as never[]);
     expect(enviados).toHaveLength(1);
     expect(enviados[0].tipo).toBe("FAMILIAR");
     expect(enviados[0].member_ids).toEqual(["p2"]);
@@ -204,7 +211,7 @@ test.describe("Registrar atendimento", () => {
     await preencherFormulario(page);
     await page.getByRole("button", { name: "Finalizar atendimento" }).click();
     await expect(page.getByRole("dialog", { name: "Atendimento finalizado" })).toBeVisible();
-    const enviados = await page.evaluate(() => window.__atendimentos);
+    const enviados = await page.evaluate<{ tipo: string; member_ids: string[]; evolution_text?: string; sigiloso_reforcado: boolean; professional_ids: string[] }[]>(() => window.__atendimentos as never[]);
     expect(enviados[0].sigiloso_reforcado).toBe(true);
   });
 
@@ -234,7 +241,7 @@ test.describe("Registrar atendimento", () => {
     await expect(modal.getByRole("button", { name: "Continuar mesmo assim" })).toBeVisible();
     await modal.getByRole("button", { name: "Continuar mesmo assim" }).click();
     await expect(page.getByRole("dialog", { name: "Atendimento finalizado" })).toBeVisible();
-    const enviados = await page.evaluate(() => window.__atendimentos);
+    const enviados = await page.evaluate<{ tipo: string; member_ids: string[]; evolution_text?: string; sigiloso_reforcado: boolean; professional_ids: string[] }[]>(() => window.__atendimentos as never[]);
     expect(enviados).toHaveLength(1);
   });
 
@@ -300,7 +307,7 @@ test.describe("Registrar atendimento", () => {
     await editorRodape.scrollIntoViewIfNeeded();
     const rodapeBox = await editorRodape.boundingBox();
     const barraBox = await barra.boundingBox();
-    expect(rodapeBox.y + rodapeBox.height).toBeLessThanOrEqual(barraBox.y + 1);
+    expect(rodapeBox!.y + rodapeBox!.height).toBeLessThanOrEqual(barraBox!.y + 1);
 
     // estado salvo continua visível na barra
     await expect(page.getByText(/Rascunho salvo às \d{2}:\d{2}/).last()).toBeVisible({ timeout: 8000 });
@@ -317,7 +324,7 @@ test.describe("Registrar atendimento", () => {
     await dados.scrollIntoViewIfNeeded();
     const boxDados = await dados.boundingBox();
     const boxParticipantes = await participantes.boundingBox();
-    expect(boxParticipantes.y).toBeGreaterThan(boxDados.y + boxDados.height - 2);
+    expect(boxParticipantes!.y).toBeGreaterThan(boxDados!.y + boxDados!.height - 2);
 
     const semOverflow = await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth);
     expect(semOverflow).toBe(true);
@@ -328,8 +335,8 @@ test.describe("Registrar atendimento", () => {
     const lista = page.getByRole("listbox", { name: "Serviços disponíveis" });
     await expect(lista).toBeVisible();
     const caixa = await lista.boundingBox();
-    expect(caixa.x).toBeGreaterThanOrEqual(0);
-    expect(caixa.x + caixa.width).toBeLessThanOrEqual(1024);
+    expect(caixa!.x).toBeGreaterThanOrEqual(0);
+    expect(caixa!.x + caixa!.width).toBeLessThanOrEqual(1024);
 
     await testInfo.attach("janela-estreita", { body: await page.screenshot({ fullPage: true }), contentType: "image/png" });
   });

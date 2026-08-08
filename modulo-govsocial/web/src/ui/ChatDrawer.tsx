@@ -84,7 +84,9 @@ export function ChatDrawer() {
           setDigitando(data.user_name);
           setTimeout(() => setDigitando(null), 3000);
         }
-      } catch {}
+      } catch {
+        // Sem rede: o status de "digitando" expira naturalmente.
+      }
     };
 
     return () => ws.close();

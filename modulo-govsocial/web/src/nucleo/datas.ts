@@ -1,5 +1,10 @@
 /** Formatação de datas — API em ISO 8601 UTC; exibição local (§15). */
 
+/** Data/hora atual (relógio local do dispositivo). */
+export function agora(): Date {
+  return new Date();
+}
+
 export function formatarData(iso: string | null | undefined): string {
   if (!iso) return "—";
   const d = new Date(iso);
@@ -30,4 +35,13 @@ export function idade(dataNascimento: string | null | undefined): number | null 
   const m = hoje.getMonth() - nasc.getMonth();
   if (m < 0 || (m === 0 && hoje.getDate() < nasc.getDate())) anos--;
   return anos >= 0 ? anos : null;
+}
+
+/** Data por extenso curta: "quarta, 22 de jul. de 2026" (pt-BR). */
+export function dataPorExtensoCurta(d: Date): string {
+  const diaSemana = d
+    .toLocaleDateString("pt-BR", { weekday: "long" })
+    .replace("-feira", "");
+  const mes = d.toLocaleDateString("pt-BR", { month: "short" });
+  return `${diaSemana}, ${d.getDate()} de ${mes} de ${d.getFullYear()}`;
 }

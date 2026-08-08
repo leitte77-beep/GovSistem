@@ -34,6 +34,9 @@ export const servicoPessoas = {
   criar: (corpo: PersonCreate) => http.post<PersonCreateResult>("/persons", corpo),
   atualizar: (id: string, corpo: PersonUpdate) =>
     http.patch<PersonOut>(`/persons/${id}`, corpo),
+  /** Revela CPF/NIS sob demanda (endpoint dedicado e auditado no backend). */
+  revelarCampo: (id: string, campo: "cpf" | "nis") =>
+    http.get<{ value: string }>(`/persons/${id}/reveal/${campo}`, { semCache: true }),
 };
 
 export const servicoFamilias = {

@@ -30,7 +30,7 @@ export default function RelatoriosPainel() {
 
   const duplicar = useMutation({
     mutationFn: async (id: string) => {
-      const r = await http.get<RelatorioResumo & { fonte_dados: any; colunas: any; filtros: any; agrupamentos: any; ordenacao: any; layout: any }>(`/reports/${id}`);
+      const r = await http.get<RelatorioResumo & { fonte_dados?: unknown; colunas?: unknown; filtros?: unknown; agrupamentos?: unknown; ordenacao?: unknown; layout?: unknown }>(`/reports/${id}`);
       return http.post(`/reports`, { ...r, nome: `${r.nome} (cópia)`, compartilhado: false });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["relatorios"] }),

@@ -5,6 +5,7 @@ import { http } from "@/nucleo/http/clienteHttp";
 import { avisar } from "@/ui/Toast";
 import { Botao } from "@/ui/Botao";
 import { Chip } from "@/ui/Chip";
+import { Modal } from "@/ui/Modal";
 
 interface TipoBeneficio {
   id: string;
@@ -147,13 +148,12 @@ export default function TiposBeneficioAdmin() {
         </div>
       )}
 
-      {(criando || editando) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setCriando(false); setEditando(null); }}>
-          <div className="w-full max-w-lg rounded-cartao bg-surface p-6 shadow-elevado max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <h2 className="mb-4 text-lg font-semibold">
-              {editando ? "Editar tipo de benefício" : "Novo tipo de benefício"}
-            </h2>
-            <FormularioBeneficio
+      <Modal
+        aberto={!!(criando || editando)}
+        aoFechar={() => { setCriando(false); setEditando(null); }}
+        titulo={editando ? "Editar tipo de benefício" : "Novo tipo de benefício"}
+      >
+        <FormularioBeneficio
               inicial={editando}
               aoSalvar={(dados) => {
                 if (editando) {
@@ -165,9 +165,7 @@ export default function TiposBeneficioAdmin() {
               aoCancelar={() => { setCriando(false); setEditando(null); }}
               salvando={criarMut.isPending || editarMut.isPending}
             />
-          </div>
-        </div>
-      )}
+      </Modal>
     </div>
   );
 }

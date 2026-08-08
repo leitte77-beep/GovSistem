@@ -3,6 +3,7 @@ import { useState, useEffect } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { ArrowLeft, Plus, Eye, Download, Save } from "lucide-react";
 import { http } from "@/nucleo/http/clienteHttp";
+import { Modal } from "@/ui/Modal";
 
 interface CampoDicionario { tabela: string; label: string; campos: { campo: string; titulo: string }[] }
 
@@ -10,8 +11,8 @@ interface ColunaConfig { campo: string; titulo: string; alinhamento?: string; la
 interface FiltroConfig { campo: string; titulo: string; tipo: string; obrigatorio?: boolean; valor_padrao?: string }
 interface RelatorioFull { id: string; nome: string; descricao: string | null; grupo: string | null;
   fonte_dados: { tipo: string; sql?: string; tabelas?: string[] };
-  colunas: ColunaConfig[]; filtros: FiltroConfig[] | null; agrupamentos: any[] | null;
-  ordenacao: any[] | null; layout: any; compartilhado: boolean;
+  colunas: ColunaConfig[]; filtros: FiltroConfig[] | null; agrupamentos: Array<Record<string, unknown>> | null;
+  ordenacao: Array<Record<string, unknown>> | null; layout: Record<string, unknown>; compartilhado: boolean;
 }
 
 export default function ConstrutorRelatorio() {
@@ -27,7 +28,7 @@ export default function ConstrutorRelatorio() {
   const [colunas, setColunas] = useState<ColunaConfig[]>([]);
   const [filtros, setFiltros] = useState<FiltroConfig[]>([]);
   const [visualizando, setVisualizando] = useState(false);
-  const [dadosVisualizacao, setDadosVisualizacao] = useState<any>(null);
+  const [dadosVisualizacao, setDadosVisualizacao] = useState<{ dados: Array<Record<string, unknown>>; colunas: ColunaConfig[]; total: number } | null>(null);
 
   const { data: dicionario = [] } = useQuery<CampoDicionario[]>({
     queryKey: ["report-dictionary"],
@@ -57,10 +58,12 @@ export default function ConstrutorRelatorio() {
         fonte_dados: { tipo: "sql", sql }, colunas, filtros: filtros.length > 0 ? filtros : null,
         layout: { orientacao: "retrato", tamanho: "A4", zebrado: true },
         compartilhado: false };
-      if (isNovo) return http.post("/reports", body);
-      return http.patch(`/reports/${id}`, body);
+      const criado = isNovo
+        ? await http.post<{ id: string }>("/reports", body)
+        : await http.patch<{ id: string }>(`/reports/${id}`, body);
+      return criado;
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: { id?: string }) => {
       qc.invalidateQueries({ queryKey: ["relatorios"] });
       if (isNovo) navigate(`/relatorios/${data.id}`);
     },
@@ -68,7 +71,7 @@ export default function ConstrutorRelatorio() {
 
   const executar = async (formato: string) => {
     try {
-      const result = await http.post<any>(`/reports/${id}/execute?formato=${formato}`, {});
+      const result = await http.post<{ dados: Array<Record<string, unknown>>; colunas: ColunaConfig[]; total: number }>(`/reports/${id}/execute?formato=${formato}`, {});
       if (formato === "json") setDadosVisualizacao({ dados: result.dados, colunas: result.colunas, total: result.total });
       else {
         const blob = await http.postBlob(`/reports/${id}/execute?formato=${formato}`, {});
@@ -76,7 +79,7 @@ export default function ConstrutorRelatorio() {
         const a = document.createElement("a"); a.href = url; a.download = `${nome}.${formato}`; a.click();
         URL.revokeObjectURL(url);
       }
-    } catch (e: any) { alert("Erro ao executar: " + (e?.message || "desconhecido")); }
+    } catch (e: unknown) { alert("Erro ao executar: " + (e instanceof Error ? e.message : "desconhecido")); }
   };
 
   const adicionarColuna = (campo: CampoDicionario["campos"][0]) => {
@@ -149,20 +152,18 @@ export default function ConstrutorRelatorio() {
         </div>
       </div>
 
-      {visualizando && dadosVisualizacao && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setVisualizando(false)}>
-          <div className="w-full max-w-5xl max-h-[90vh] overflow-auto rounded-cartao bg-white p-6 shadow-elevado" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold">{nome}</h2>
-              <span className="text-sm text-ink-soft">{dadosVisualizacao.total} registros</span>
-            </div>
-            <table className="w-full text-sm border-collapse">
-              <thead><tr>{dadosVisualizacao.colunas.map((c: any) => <th key={c.campo} className="border-b px-3 py-2 text-left text-xs font-semibold uppercase text-ink-soft">{c.titulo}</th>)}</tr></thead>
-              <tbody>{dadosVisualizacao.dados.slice(0, 500).map((d: any, i: number) => <tr key={i} className="border-b border-ink-soft/10">{dadosVisualizacao.colunas.map((c: any) => <td key={c.campo} className="px-3 py-1.5">{d[c.campo]}</td>)}</tr>)}</tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      <Modal
+        aberto={visualizando && !!dadosVisualizacao}
+        aoFechar={() => setVisualizando(false)}
+        titulo={nome}
+      >
+        {dadosVisualizacao && (
+          <table className="w-full text-sm border-collapse">
+            <thead><tr>{dadosVisualizacao.colunas.map((c: { campo: string; titulo: string }) => <th key={c.campo} className="border-b px-3 py-2 text-left text-xs font-semibold uppercase text-ink-soft">{c.titulo}</th>)}</tr></thead>
+            <tbody>{dadosVisualizacao.dados.slice(0, 500).map((d: Record<string, unknown>, i: number) => <tr key={i} className="border-b border-ink-soft/10">{dadosVisualizacao.colunas.map((c: { campo: string; titulo: string }) => <td key={c.campo} className="px-3 py-1.5">{String(d[c.campo] ?? "")}</td>)}</tr>)}</tbody>
+          </table>
+        )}
+      </Modal>
     </div>
   );
 }

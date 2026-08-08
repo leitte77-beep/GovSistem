@@ -14,7 +14,7 @@ export default function QuestionarioLista() {
   const [descricao, setDescricao] = useState("");
 
   const criarMut = useMutation({
-    mutationFn: (corpo: any) => servicoQuestionarios.criar(corpo),
+    mutationFn: (corpo: { nome: string; descricao: string | null; questoes: unknown[] }) => servicoQuestionarios.criar(corpo),
     onSuccess: () => { setMostrarForm(false); setNome(""); setDescricao(""); qc.invalidateQueries({ queryKey: ["questionarios"] }); },
   });
 

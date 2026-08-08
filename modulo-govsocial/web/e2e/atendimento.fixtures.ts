@@ -56,13 +56,20 @@ export const SERVICOS = [
 
 export const UNIDADES = [{ id: "u1", nome: "CRAS Norte", is_active: true }];
 
-export async function instalarMocks(page, { trilha } = {}) {
+declare global {
+  interface Window {
+    __atendimentos: unknown[];
+    __trilha: unknown[];
+  }
+}
+
+export async function instalarMocks(page: import("@playwright/test").Page, { trilha = [] as unknown[] } = {}) {
   await page.addInitScript(
     ({ familia, servicos, unidades, trilha }) => {
       window.__atendimentos = [];
       window.__trilha = trilha ?? [];
       localStorage.setItem("govsocial-tema", "claro");
-      const codificar = (valor) => btoa(JSON.stringify(valor)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+      const codificar = (valor: unknown) => btoa(JSON.stringify(valor)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
       sessionStorage.setItem(
         "govsocial.access_token",
         `${codificar({ alg: "none", typ: "JWT" })}.${codificar({ sub: "e2e-admin", roles: ["ADMIN"], organization_id: "00000000-0000-0000-0000-000000000001", exp: 4102444800 })}.mock`,
@@ -71,7 +78,7 @@ export async function instalarMocks(page, { trilha } = {}) {
         const url = new URL(typeof entrada === "string" ? entrada : entrada instanceof URL ? entrada.href : entrada.url, location.href);
         const p = url.pathname;
         const metodo = (init?.method ?? "GET").toUpperCase();
-        const json = (corpo, status = 200) =>
+        const json = (corpo: unknown, status = 200) =>
           Promise.resolve(new Response(JSON.stringify(corpo), { status, headers: { "Content-Type": "application/json" } }));
         if (p.endsWith("/service-types")) return json(servicos);
         if (p.endsWith("/units")) return json(unidades);
@@ -92,7 +99,7 @@ export async function instalarMocks(page, { trilha } = {}) {
               id: "cf1",
               family_id: familia.id,
               unit_id: "u1",
-              service_type_code: JSON.parse(init?.body ?? "{}").service_type_code ?? "PAIF",
+              service_type_code: JSON.parse(String(init?.body ?? "{}")).service_type_code ?? "PAIF",
               status: "ATIVO",
               acolhida_data: null,
               aberto_em: "2026-01-01",
@@ -104,7 +111,7 @@ export async function instalarMocks(page, { trilha } = {}) {
         if (tl && metodo === "GET") return json(window.__trilha ?? []);
         const att = p.match(/\/case-files\/([0-9a-zA-Z-]+)\/attendances$/);
         if (att && metodo === "POST") {
-          const body = JSON.parse(init?.body ?? "{}");
+          const body = JSON.parse(String(init?.body ?? "{}"));
           window.__atendimentos.push(body);
           return json(
             {

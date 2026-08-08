@@ -5,6 +5,7 @@ import { Plus, ArrowLeft } from "lucide-react";
 import { Tabela } from "@/ui/Tabela";
 import { http } from "@/nucleo/http/clienteHttp";
 import type { Coluna } from "@/ui/Tabela";
+import { Modal } from "@/ui/Modal";
 
 interface CatalogoEntry {
   slug: string;
@@ -67,20 +68,20 @@ export default function ListaDominio() {
       <Tabela colunas={COLUNAS} dados={data} chaveLinha={(r) => r.id} caption={label} carregando={isLoading} totalRegistros={data.length}
         vazio={<span className="text-ink-soft">Nenhum registro cadastrado.</span>} />
 
-      {(novo || editando) && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => { setNovo(false); setEditando(null); }}>
-          <div className="w-full max-w-sm rounded-cartao bg-surface p-6 shadow-elevado" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-3 text-lg font-semibold">{editando ? "Editar" : "Novo registro"}</h3>
-            <input className="w-full rounded-input border border-ink-soft/20 bg-surface px-3 py-2 text-sm" value={editando ? editando.descricao : valor}
-              onChange={(e) => editando ? setEditando({ ...editando, descricao: e.target.value }) : setValor(e.target.value)} autoFocus
-              onKeyDown={(e) => { if (e.key === "Enter") { const v = editando ? editando.descricao : valor; if (editando) atualizar.mutate({ id: editando.id, descricao: v }); else criar.mutate(v); } }} />
-            <div className="mt-3 flex justify-end gap-2">
-              <button onClick={() => { setNovo(false); setEditando(null); }} className="rounded-input border px-3 py-1.5 text-sm">Cancelar</button>
-              <button onClick={() => { const v = editando ? editando.descricao : valor; if (editando) atualizar.mutate({ id: editando.id, descricao: v }); else criar.mutate(v); }} className="rounded-input bg-primary px-3 py-1.5 text-sm font-semibold text-white">Salvar</button>
-            </div>
-          </div>
+      <Modal
+        aberto={!!(novo || editando)}
+        aoFechar={() => { setNovo(false); setEditando(null); }}
+        titulo={editando ? "Editar" : "Novo registro"}
+        tamanho="sm"
+      >
+        <input className="w-full rounded-input border border-ink-soft/20 bg-surface px-3 py-2 text-sm" value={editando ? editando.descricao : valor}
+          onChange={(e) => editando ? setEditando({ ...editando, descricao: e.target.value }) : setValor(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Enter") { const v = editando ? editando.descricao : valor; if (editando) atualizar.mutate({ id: editando.id, descricao: v }); else criar.mutate(v); } }} />
+        <div className="mt-3 flex justify-end gap-2">
+          <button onClick={() => { setNovo(false); setEditando(null); }} className="rounded-input border px-3 py-1.5 text-sm">Cancelar</button>
+          <button onClick={() => { const v = editando ? editando.descricao : valor; if (editando) atualizar.mutate({ id: editando.id, descricao: v }); else criar.mutate(v); }} className="rounded-input bg-primary px-3 py-1.5 text-sm font-semibold text-white">Salvar</button>
         </div>
-      )}
+      </Modal>
     </div>
   );
 }

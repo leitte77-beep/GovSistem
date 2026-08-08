@@ -27,9 +27,9 @@ function HeatmapLayer({ pontos }: { pontos: [number, number, number][] }) {
   const map = useMap();
   useEffect(() => {
     if (pontos.length === 0) return;
-    const heat = (L as any).heatLayer(pontos, { radius: 25, blur: 15, maxZoom: 17, max: 1.0 });
+    const heat = (L as unknown as { heatLayer: (pts: unknown[], opts: Record<string, unknown>) => { addTo: (m: unknown) => void } }).heatLayer(pontos, { radius: 25, blur: 15, maxZoom: 17, max: 1.0 });
     heat.addTo(map);
-    return () => { map.removeLayer(heat); };
+    return () => { map.removeLayer(heat as unknown as import("leaflet").Layer); };
   }, [map, pontos]);
   return null;
 }

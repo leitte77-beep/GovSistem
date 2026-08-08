@@ -122,7 +122,7 @@ function LinhaEvento({ item }: { item: ItemTrilha }) {
             buscar={() =>
               servicoProntuario.obterAtendimento(item.caseFileId!, item.attendanceId!)
             }
-            extrairTexto={(a) => a.evolution_text}
+            extrairTexto={(a) => a.evolution_text ?? null}
             estaRestrito={(a) => a.evolution_restrita}
           />
         ) : (

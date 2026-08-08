@@ -4,6 +4,7 @@ import type {
   DashboardOverviewOut,
   IndicatorsOut,
   MapItem,
+  RecommendationScopeOut,
   TerritoryItem,
   TimeSeriesItem,
   DashboardActivityItem,
@@ -35,4 +36,8 @@ export const servicoDashboard = {
 
   activity: (limit = 10) =>
     http.get<DashboardActivityItem[]>(`/dashboard/activity?limit=${limit}`),
+
+  escopoRecomendacoes: () =>
+    http.get<RecommendationScopeOut>("/dashboard/recommendation-scope"),
 };
+

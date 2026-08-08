@@ -5,7 +5,7 @@ import { servicoImportacao } from "@/nucleo/api/servicosFase2";
 
 export default function ImportarDados() {
   const [tipo, setTipo] = useState<"SICON" | "SIBEC">("SICON");
-  const [resultado, setResultado] = useState<any>(null);
+  const [resultado, setResultado] = useState<{ novos?: number; atualizados?: number; conflitos?: number; erros?: number } | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [carregando, setCarregando] = useState(false);
 
@@ -15,10 +15,10 @@ export default function ImportarDados() {
     setCarregando(true);
     setErro(null);
     try {
-      const res = tipo === "SICON" ? await servicoImportacao.uploadSicon(file) : await servicoImportacao.uploadSibec(file);
+      const res = (tipo === "SICON" ? await servicoImportacao.uploadSicon(file) : await servicoImportacao.uploadSibec(file)) as { novos?: number; atualizados?: number; conflitos?: number; erros?: number };
       setResultado(res);
-    } catch (err: any) {
-      setErro(err?.detail || err?.message || "Erro na importação");
+    } catch (err: unknown) {
+      setErro(err instanceof Error ? err.message : "Erro na importação");
     }
     setCarregando(false);
   };

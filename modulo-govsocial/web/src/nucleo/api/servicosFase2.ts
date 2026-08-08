@@ -2,6 +2,39 @@
 import { useQuery } from "@tanstack/react-query";
 import { http } from "@/nucleo/http/clienteHttp";
 
+
+export interface DemandaClassificada {
+  demanda_id: string;
+  posicao: number;
+  familia_codigo: string;
+  responsavel: string;
+  tipo_demanda: string;
+  total_membros: number;
+  pontuacao: number;
+}
+
+export interface ImportJobResumo {
+  id: string;
+  status: string;
+  total_linhas?: number;
+  novos?: number;
+  atualizados?: number;
+  erros?: number;
+}
+
+export interface ExportadorItem {
+  id: string;
+  nome: string;
+  descricao?: string | null;
+}
+
+export interface LimiteBeneficioItem {
+  id: string;
+  benefit_type_code: string;
+  quantidade_maxima?: number | null;
+  valor_maximo?: number | null;
+}
+
 // ─── DOMICÍLIO ──────────────────────────────────────
 
 export interface DadosDomicilio {
@@ -66,12 +99,12 @@ export function useVulnerabilidades(familyId: string) {
 
 // ─── QUESTIONÁRIOS ─────────────────────────────────
 
-export interface QuestionarioOut { id: string; nome: string; descricao: string | null; questoes: { id: string; enunciado: string; tipo: string; obrigatorio: boolean; opcoes: any }[]; }
+export interface QuestionarioOut { id: string; nome: string; descricao: string | null; questoes: { id: string; enunciado: string; tipo: string; obrigatorio: boolean; opcoes: unknown[] }[]; }
 export const servicoQuestionarios = {
   listar: () => http.get<QuestionarioOut[]>("/questionarios"),
-  criar: (corpo: any) => http.post<QuestionarioOut>("/questionarios", corpo),
-  responder: (familyId: string, corpo: any) => http.post(`/families/${familyId}/questionarios/responder`, corpo),
-  historico: (familyId: string) => http.get<any[]>(`/families/${familyId}/questionarios`),
+  criar: (corpo: { nome: string; descricao?: string | null; questoes?: unknown[] }) => http.post<QuestionarioOut>("/questionarios", corpo),
+  responder: (familyId: string, corpo: { questionario_id: string; respostas: unknown }) => http.post(`/families/${familyId}/questionarios/responder`, corpo),
+  historico: (familyId: string) => http.get<unknown[]>(`/families/${familyId}/questionarios`),
 };
 
 export function useQuestionarios() {
@@ -80,14 +113,14 @@ export function useQuestionarios() {
 
 // ─── HABITACIONAL ──────────────────────────────────
 
-export interface ProgramaHabitacional { id: string; nome: string; esfera: string; criterios: any; ativo: boolean; }
+export interface ProgramaHabitacional { id: string; nome: string; esfera: string; criterios: Record<string, unknown> | null; ativo: boolean; }
 export interface DemandaHabitacional { id: string; family_id: string; tipo_demanda: string; status: string; pontuacao: number | null; programa?: ProgramaHabitacional; }
 export const servicoHabitacional = {
   listarProgramas: (esfera?: string) => http.get<ProgramaHabitacional[]>(`/programas-habitacionais${esfera ? `?esfera=${esfera}` : ""}`),
-  criarPrograma: (corpo: any) => http.post<ProgramaHabitacional>("/programas-habitacionais", corpo),
+  criarPrograma: (corpo: { nome: string; esfera: string; criterios?: Record<string, unknown> }) => http.post<ProgramaHabitacional>("/programas-habitacionais", corpo),
   listarDemandas: (params?: string) => http.get<DemandaHabitacional[]>(`/demandas-habitacionais${params ? `?${params}` : ""}`),
-  criarDemanda: (corpo: any) => http.post<DemandaHabitacional>("/demandas-habitacionais", corpo),
-  classificar: (programaId?: string) => http.get<any[]>(`/demandas-habitacionais/classificacao${programaId ? `?programa_id=${programaId}` : ""}`),
+  criarDemanda: (corpo: { family_id: string; tipo_demanda: string; programa_id?: string | null }) => http.post<DemandaHabitacional>("/demandas-habitacionais", corpo),
+  classificar: (programaId?: string) => http.get<DemandaClassificada[]>(`/demandas-habitacionais/classificacao${programaId ? `?programa_id=${programaId}` : ""}`),
 };
 
 export function useProgramasHabitacionais(esfera?: string) {
@@ -156,26 +189,26 @@ export function useContagemNotificacoes() {
 export const servicoImportacao = {
   uploadSicon: (file: File) => { const fd = new FormData(); fd.append("file", file); return http.post("/sicon/import", fd); },
   uploadSibec: (file: File) => { const fd = new FormData(); fd.append("file", file); return http.post("/sibec/import", fd); },
-  jobsSicon: () => http.get<any[]>("/sicon/jobs"),
-  jobsSibec: () => http.get<any[]>("/sibec/jobs"),
-  siconFamilia: (familyId: string) => http.get<any>(`/sicon/family/${familyId}`),
-  sibecFamilia: (familyId: string) => http.get<any>(`/sibec/family/${familyId}`),
+  jobsSicon: () => http.get<ImportJobResumo[]>("/sicon/jobs"),
+  jobsSibec: () => http.get<ImportJobResumo[]>("/sibec/jobs"),
+  siconFamilia: (familyId: string) => http.get<Record<string, unknown>>(`/sicon/family/${familyId}`),
+  sibecFamilia: (familyId: string) => http.get<Record<string, unknown>>(`/sibec/family/${familyId}`),
 };
 
 // ─── EXPORTADOR ────────────────────────────────────
 
 export const servicoExportador = {
-  listar: () => http.get<any[]>("/data-exports"),
+  listar: () => http.get<ExportadorItem[]>("/data-exports"),
   executar: (id: string, params?: Record<string, string>) => http.postBlob(`/data-exports/${id}/execute`, params || {}),
 };
 
 // ─── LIMITES BENEFÍCIO ─────────────────────────────
 
 export const servicoLimites = {
-  listar: (code?: string) => http.get<any[]>(`/limites-beneficio${code ? `?benefit_type_code=${code}` : ""}`),
-  criar: (corpo: any) => http.post<any>("/limites-beneficio", corpo),
+  listar: (code?: string) => http.get<LimiteBeneficioItem[]>(`/limites-beneficio${code ? `?benefit_type_code=${code}` : ""}`),
+  criar: (corpo: { benefit_type_code: string; quantidade_maxima?: number | null; valor_maximo?: number | null }) => http.post<LimiteBeneficioItem>("/limites-beneficio", corpo),
   verificar: (familyId: string, code: string, valor: number) =>
-    http.get<any>(`/beneficios/verificar-limite?family_id=${familyId}&benefit_type_code=${code}&valor=${valor}`),
+    http.get<{ permitido: boolean; motivo?: string }>(`/beneficios/verificar-limite?family_id=${familyId}&benefit_type_code=${code}&valor=${valor}`),
 };
 
 // ─── QUICK FAMILY ──────────────────────────────────

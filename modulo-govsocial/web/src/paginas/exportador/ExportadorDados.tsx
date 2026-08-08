@@ -1,7 +1,7 @@
 /** Exportador de Dados — execução de consultas SQL parametrizadas */
 import { useState } from "react";
 import { Download, Database } from "lucide-react";
-import { servicoExportador } from "@/nucleo/api/servicosFase2";
+import { servicoExportador, type ExportadorItem } from "@/nucleo/api/servicosFase2";
 import { useQuery } from "@tanstack/react-query";
 import { Skeleton } from "@/ui/Skeleton";
 import { EstadoVazio } from "@/ui/EstadoVazio";
@@ -36,7 +36,7 @@ export default function ExportadorDados() {
         <EstadoVazio titulo="Nenhum exportador configurado" descricao="O administrador deve cadastrar exportadores de dados." />
       ) : (
         <div className="space-y-2">
-          {data.map((exp: any) => (
+          {data.map((exp: ExportadorItem) => (
             <div key={exp.id} className="border rounded-lg p-4 flex justify-between items-center">
               <div>
                 <div className="font-medium">{exp.nome}</div>

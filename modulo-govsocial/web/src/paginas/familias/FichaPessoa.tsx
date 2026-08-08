@@ -529,7 +529,7 @@ function FichaHeader({
           </Botao>
           {menuAberto && (
             <>
-              <div className="fixed inset-0 z-10" onClick={() => setMenuAberto(false)} />
+              <button type="button" aria-label="Fechar menu" tabIndex={-1} className="fixed inset-0 z-10 cursor-default" onClick={() => setMenuAberto(false)} />
               <div className="absolute right-0 top-10 z-20 min-w-48 rounded-xl border border-outline-variant/30 bg-surface p-1.5 shadow-xl">
                 <button type="button" onClick={() => { setMenuAberto(false); /* TODO: modal definir responsável */ navigate(`/familias/${familia.id}?aba=membros`); }} className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-sm text-ink hover:bg-primary-soft">
                   <Star className="h-4 w-4" /> Definir como responsável
@@ -594,7 +594,7 @@ function Campo({ label, valor }: { label: string; valor: string | null | undefin
   );
 }
 
-function ChipBooleano({ label, ativo }: { label: string; ativo: boolean | null }) {
+function ChipBooleano({ label, ativo }: { label: string; ativo: boolean | null | undefined }) {
   if (ativo === null) return <Campo label={label} valor={null} />;
   return (
     <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${ativo ? "text-[var(--ga-chip-pbf-text)]" : "text-[var(--ga-chip-neutral-text)]"}`}
@@ -605,7 +605,7 @@ function ChipBooleano({ label, ativo }: { label: string; ativo: boolean | null }
 }
 
 function DocumentoFicha({ label, mascarado, revelado, carregando, aoAlternar, irregular }: {
-  label: string; mascarado: string | null; revelado: string | null; carregando: boolean;
+  label: string; mascarado: string | null | undefined; revelado: string | null; carregando: boolean;
   aoAlternar: (visivel: boolean) => void; irregular: boolean;
 }) {
   const exibindo = revelado ?? mascarado;

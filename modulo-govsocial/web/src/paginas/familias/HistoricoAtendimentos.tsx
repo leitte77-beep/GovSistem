@@ -333,7 +333,7 @@ export function HistoricoAtendimentos({
   const { tem } = usePermissoes();
 
   const prontuariosQ = useProntuariosDaFamilia(familia.id);
-  const prontuarios = prontuariosQ.data ?? [];
+  const prontuarios = useMemo(() => prontuariosQ.data ?? [], [prontuariosQ.data]);
 
   const membros = familia.membros.filter((m) => m.status === "ATIVO");
 
@@ -408,7 +408,7 @@ export function HistoricoAtendimentos({
       }
     });
     return itens;
-  }, [prontuarios, ...timelinesQ.map((q) => q.data)]);
+  }, [prontuarios, timelinesQ]);
 
   const tipoServicoQ = useTiposServico();
 
@@ -1254,7 +1254,7 @@ function LinhaTabela({
   const podeLer = item.pode_ler_evolucao;
 
   /* R6: situação */
-  const sit = resolveSituacao((item as Record<string, string | undefined>).situacao);
+  const sit = resolveSituacao((item as unknown as Record<string, string | undefined>).situacao);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" || e.key === " ") {
@@ -1364,7 +1364,7 @@ function CartaoMobile({
   const textoRegistro = (item as Record<string, unknown>).evolution_text as string | undefined;
   const temRegistro = textoRegistro && textoRegistro.trim().length > 0;
   const podeLer = item.pode_ler_evolucao;
-  const sit = resolveSituacao((item as Record<string, string | undefined>).situacao);
+  const sit = resolveSituacao((item as unknown as Record<string, string | undefined>).situacao);
 
   return (
     <div

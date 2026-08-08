@@ -10,7 +10,7 @@ interface FiltroSalvo {
   compartilhado: boolean;
 }
 
-export function useFiltrosSalvos(entidade: string) {
+function useFiltrosSalvos(entidade: string) {
   const qc = useQueryClient();
   const chave = ["saved-filters", entidade];
 

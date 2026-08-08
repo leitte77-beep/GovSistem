@@ -26,7 +26,8 @@ export type Capacidade =
   | "questionario.gerir"
   | "habitacao.gerir"
   | "exportador.gerir"
-  | "ivs.visualizar" | "ivs.alterar" | "estoque.gerir" | "teleatendimento.realizar";
+  | "ivs.visualizar" | "ivs.alterar" | "estoque.gerir" | "teleatendimento.realizar"
+  | "pii:reveal";
 
 export type ItemMenu =
   | "inicio"
@@ -66,6 +67,7 @@ const CAPACIDADES: Record<Papel, Capacidade[]> = {
     "ivs.visualizar",
     "ivs.alterar",
     "teleatendimento.realizar",
+    "pii:reveal",
   ],
   suporte_govassist: ["administracao.gerir", "auditoria.ler"],
   gestor_municipal: [
@@ -82,6 +84,7 @@ const CAPACIDADES: Record<Papel, Capacidade[]> = {
     "habitacao.gerir",
     "exportador.gerir",
     "estoque.gerir",
+    "pii:reveal",
   ],
   coordenador_unidade: [
     "familia.ler",
@@ -98,6 +101,7 @@ const CAPACIDADES: Record<Papel, Capacidade[]> = {
     "questionario.gerir",
     "habitacao.gerir",
     "estoque.gerir",
+    "pii:reveal",
   ],
   tecnico_superior: [
     "familia.ler",
@@ -109,9 +113,10 @@ const CAPACIDADES: Record<Papel, Capacidade[]> = {
     "grupo.gerir",
     "frequencia.registrar",
     "habitacao.gerir",
+    "pii:reveal",
   ],
   tecnico_medio: ["familia.ler", "familia.cadastrar", "grupo.gerir", "frequencia.registrar"],
-  recepcao: ["familia.ler", "familia.cadastrar"],
+  recepcao: ["familia.ler", "familia.cadastrar", "pii:reveal"],
   vigilancia: ["familia.ler", "vigilancia.ver", "auditoria.ler"],
   conselho: [],
 };
