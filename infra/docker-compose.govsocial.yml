@@ -38,7 +38,7 @@ services:
 
   govsocial-web:
     build:
-      context: ../modulo-govsocial
+      context: ../modulo-govsocial/web
       dockerfile: Dockerfile
     image: infra-govsocial-web:latest
     ports:

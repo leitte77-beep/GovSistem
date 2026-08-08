@@ -1,7 +1,12 @@
 node_modules
 dist
-.env
-.env.local
-playwright-report
+dist-build
 test-results
-*.tsbuildinfo
+playwright-report
+storybook-static
+coverage
+.git
+.env
+.env.*
+!.env.production
+*.local

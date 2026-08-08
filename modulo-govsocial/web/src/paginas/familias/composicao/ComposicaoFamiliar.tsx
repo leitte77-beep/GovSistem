@@ -749,9 +749,11 @@ export function ComposicaoFamiliar({
           familia,
         ),
       ),
-    // pessoasQ muda de identidade a cada render; dependemos dos dados em si.
+    // pessoasQ muda de identidade a cada render; as instâncias são estáveis
+    // por queryKey no TanStack Query — a dependência da lista inteira evita o
+    // aviso de tamanho variável do React.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [ativos, concessoesPorPessoa, familia, ...pessoasQ.map((q) => q.data), ...pessoasQ.map((q) => q.isLoading)],
+    [ativos, concessoesPorPessoa, familia, pessoasQ],
   );
 
   const resumo = useMemo(() => resumoDe(derivados), [derivados]);

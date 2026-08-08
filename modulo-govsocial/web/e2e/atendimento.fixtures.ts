@@ -63,9 +63,12 @@ declare global {
   }
 }
 
-export async function instalarMocks(page: import("@playwright/test").Page, { trilha = [] as unknown[] } = {}) {
+export async function instalarMocks(
+  page: import("@playwright/test").Page,
+  { trilha = [] as unknown[], caseFiles = [] as unknown[] } = {},
+) {
   await page.addInitScript(
-    ({ familia, servicos, unidades, trilha }) => {
+    ({ familia, servicos, unidades, trilha, caseFiles }) => {
       window.__atendimentos = [];
       window.__trilha = trilha ?? [];
       localStorage.setItem("govsocial-tema", "claro");
@@ -92,7 +95,7 @@ export async function instalarMocks(page: import("@playwright/test").Page, { tri
           });
         if (/\/families\/[0-9a-zA-Z-]+$/.test(p) && metodo === "GET") return json(familia);
         if (p.endsWith("/families") && metodo === "GET") return json([]);
-        if (p.endsWith("/case-files") && metodo === "GET") return json([]);
+        if (p.endsWith("/case-files") && metodo === "GET") return json(caseFiles);
         if (p.endsWith("/case-files") && metodo === "POST")
           return json(
             {
@@ -136,6 +139,6 @@ export async function instalarMocks(page: import("@playwright/test").Page, { tri
         return json({ detail: "nao mockado" }, 404);
       };
     },
-    { familia: FAMILIA, servicos: SERVICOS, unidades: UNIDADES, trilha },
+    { familia: FAMILIA, servicos: SERVICOS, unidades: UNIDADES, trilha, caseFiles },
   );
 }

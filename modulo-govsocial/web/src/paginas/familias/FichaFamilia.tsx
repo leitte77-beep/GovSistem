@@ -286,7 +286,7 @@ function AbaTrilha({ familyId, lotacoes }: { familyId: string; lotacoes: string[
     });
     return itens;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prontuarios, ...timelinesQ.map((q) => q.data)]);
+  }, [prontuarios, timelinesQ]);
 
   const meses = useMemo(
     () => montarTrilha(itensTimeline, redeQ.data ?? [], new Set(lotacoes)),
