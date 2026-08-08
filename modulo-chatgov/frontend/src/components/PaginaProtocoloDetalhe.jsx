@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   FileText, MessageSquare, Paperclip, ArrowRightLeft, AlertCircle,
-  History, User, Link2, Shield, Send, Loader2, Eye, Clock,
+  History, User, Link2, Shield, Send, Loader2, Eye, Download, Clock,
   Tag, MoreVertical, Hand, UserPlus, CheckCircle, ChevronDown, Plus,
   Search, Info, Edit, Inbox, XCircle, Lock, Unlock, Check, Globe,
   MessageCircle, Phone, AtSign, AlertTriangle, Upload, Flag, RefreshCw,
@@ -9,6 +9,7 @@ import {
   ArrowLeft, Users, Archive, ChevronRight, X,
 } from 'lucide-react';
 import { T } from '../theme';
+import './PaginaProtocoloDetalhe.css';
 
 var STATUS_PROT = {
   ABERTO: { label: 'Aberto', cor: T.warning, bg: T.warningSoft },
@@ -214,6 +215,7 @@ export function PaginaProtocoloDetalhe(_a) {
   var [canalMsg, setCanalMsg] = useState('portal');
   var [textoAnotacao, setTextoAnotacao] = useState('');
   var [enviandoAnot, setEnviandoAnot] = useState(false);
+  var [mostrarAnotacao, setMostrarAnotacao] = useState(false);
 
   var [historico, setHistorico] = useState([]);
   var [documentos, setDocumentos] = useState([]);
@@ -293,7 +295,15 @@ export function PaginaProtocoloDetalhe(_a) {
 
   function callApi(method, path, body) {
     return fetch(path, { method: method, headers: authHeaders(), body: body ? JSON.stringify(body) : undefined })
-      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json().catch(function () { return {}; }); });
+      .then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (dados) {
+          // O motivo da recusa vem no corpo ("Transição inválida: ...").
+          // Trocar isso por "HTTP 422" escondia exatamente o que o atendente
+          // precisa ler para saber o que fazer.
+          if (!r.ok) throw new Error(dados.erro || 'HTTP ' + r.status);
+          return dados;
+        });
+      });
   }
 
   function copiarNumero() {
@@ -343,32 +353,51 @@ export function PaginaProtocoloDetalhe(_a) {
   var concluirProtocolo = function () {
     callApi('POST', '/api/v1/protocols/' + protocoloId + '/complete', {})
       .then(function () { notificarAtualizacao(); })
-      .catch(function () {});
+      .catch(function (err) { setErro(err.message); });
   };
 
+  // Cancelar e reabrir exigem motivo no backend; sem ele a chamada voltava 422
+  // e o clique não fazia nada.
   var cancelarProtocolo = function () {
-    if (!window.confirm('Tem certeza que deseja cancelar este protocolo?')) return;
-    callApi('POST', '/api/v1/protocols/' + protocoloId + '/cancel', {})
+    var motivo = window.prompt('Informe o motivo do cancelamento:');
+    if (!motivo || !motivo.trim()) return;
+    callApi('POST', '/api/v1/protocols/' + protocoloId + '/cancel', { justificativa: motivo.trim() })
       .then(function () { notificarAtualizacao(); })
-      .catch(function () {});
+      .catch(function (err) { setErro(err.message); });
   };
 
   var reabrirProtocolo = function () {
-    callApi('POST', '/api/v1/protocols/' + protocoloId + '/reopen', {})
+    var motivo = window.prompt('Informe o motivo da reabertura:');
+    if (!motivo || !motivo.trim()) return;
+    callApi('POST', '/api/v1/protocols/' + protocoloId + '/reopen', { justificativa: motivo.trim() })
       .then(function () { notificarAtualizacao(); })
-      .catch(function () {});
+      .catch(function (err) { setErro(err.message); });
   };
 
   var arquivarProtocolo = function () {
     callApi('POST', '/api/v1/protocols/' + protocoloId + '/status', { status: 'ARQUIVADO' })
       .then(function () { notificarAtualizacao(); })
-      .catch(function () {});
+      .catch(function (err) { setErro(err.message); });
+  };
+
+  // Muda a situação do protocolo e registra um andamento visível para o cidadão
+  // no portal. `observacao` é o texto que ele lê.
+  var alterarSituacao = function (destino, observacao) {
+    setErro('');
+    setShowMaisAcoes(false);
+    callApi('POST', '/api/v1/protocols/' + protocoloId + '/status', {
+      status_operacional: destino,
+      observacao: observacao,
+      justificativa: observacao,
+    })
+      .then(function () { notificarAtualizacao(); })
+      .catch(function (err) { setErro(err.message); });
   };
 
   var alterarPrioridade = function (nova) {
     callApi('POST', '/api/v1/protocols/' + protocoloId + '/status', { prioridade: nova })
       .then(function () { notificarAtualizacao(); })
-      .catch(function () {});
+      .catch(function (err) { setErro(err.message); });
   };
 
   var executarEncaminhamento = function () {
@@ -463,6 +492,23 @@ export function PaginaProtocoloDetalhe(_a) {
       .catch(function (err) { setErroDoc(err.message); });
   };
 
+  // Visualizar: abre o arquivo em nova aba para preview inline (PDF, imagens, etc.)
+  var visualizarDocumento = function (doc) {
+    setErroDoc('');
+    fetch('/api/v1/protocols/' + protocoloId + '/documents/' + doc.id + '/download', {
+      headers: { Authorization: 'Bearer ' + token() },
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error('Não foi possível visualizar o documento');
+        return r.blob();
+      })
+      .then(function (blob) {
+        var url = URL.createObjectURL(blob);
+        window.open(url, '_blank', 'noopener,noreferrer');
+      })
+      .catch(function (err) { setErroDoc(err.message); });
+  };
+
   var alternarVisibilidadeDoc = function (doc) {
     callApi('POST', '/api/v1/protocols/' + protocoloId + '/documents/' + doc.id + '/visibility', { visivel_cidadao: !doc.visivel_cidadao })
       .then(function () { carregarDetalhes(); })
@@ -470,15 +516,17 @@ export function PaginaProtocoloDetalhe(_a) {
   };
 
   var aprovarDoc = function (doc) {
+    setErroDoc('');
     callApi('POST', '/api/v1/protocols/' + protocoloId + '/documents/' + doc.id + '/status', { status: 'APROVADO' })
       .then(function () { carregarDetalhes(); })
-      .catch(function () {});
+      .catch(function (err) { setErroDoc(err.message); });
   };
 
   var rejeitarDoc = function (doc) {
+    setErroDoc('');
     callApi('POST', '/api/v1/protocols/' + protocoloId + '/documents/' + doc.id + '/status', { status: 'REJEITADO' })
       .then(function () { carregarDetalhes(); })
-      .catch(function () {});
+      .catch(function (err) { setErroDoc(err.message); });
   };
 
   var adicionarRelacionamento = function () {
@@ -533,27 +581,7 @@ export function PaginaProtocoloDetalhe(_a) {
 
     return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
 
-      // Status + Prioridade + SLA
-      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
-        React.createElement(BadgeStatus, { status: proto.status_operacional }),
-        proto.status_operacional === 'PENDENTE' && proto.status_pendente_motivo && React.createElement('span', {
-          style: { fontSize: 11, color: T.textSecondary },
-        }, '\u2014 ' + proto.status_pendente_motivo),
-        React.createElement(BadgePrioridade, { prioridade: proto.prioridade }),
-        slaStatus && React.createElement('span', {
-          style: { display: 'inline-flex', alignItems: 'center', gap: 4, padding: '3px 8px', borderRadius: 999, fontSize: 10.5, fontWeight: 700, color: slaColors[slaStatus], background: slaBg[slaStatus], marginLeft: 'auto' },
-        }, React.createElement(Clock, { size: 11 }), 'SLA: ' + slaLabels[slaStatus]),
-      ),
-
-      proto.assunto && React.createElement('div', {
-        style: { fontSize: 15, fontWeight: 700, color: T.text, lineHeight: 1.3 },
-      }, proto.assunto),
-
-      proto.descricao && React.createElement('div', {
-        style: { fontSize: 13, color: T.textSecondary, lineHeight: 1.6, whiteSpace: 'pre-wrap' },
-      }, proto.descricao),
-
-      React.createElement('div', { style: { borderTop: '1px solid ' + T.border, paddingTop: 14 } },
+      React.createElement('div', null,
         React.createElement(SectionTitle, { text: 'Informa\u00e7\u00f5es do Protocolo' }),
         React.createElement('div', { style: { display: 'grid', gridTemplateColumns: ehMobile ? '1fr' : '1fr 1fr', gap: 10 } },
           React.createElement(CampoSimples, { rotulo: 'Servi\u00e7o', valor: proto.servico_nome || proto.categoria_nome }),
@@ -647,104 +675,175 @@ export function PaginaProtocoloDetalhe(_a) {
 
   function AbaMensagens() {
     var canalAtual = CANAIS_ENVIO.find(function (c) { return c.id === canalMsg; }) || CANAIS_ENVIO[0];
+
+    var gruposPorData = [];
+    if (mensagens.length > 0) {
+      var grupos = {};
+      mensagens.forEach(function (m) {
+        var data = formatarData(m.criado_em);
+        if (!grupos[data]) grupos[data] = [];
+        grupos[data].push(m);
+      });
+      gruposPorData = Object.keys(grupos).map(function (d) { return { data: d, msgs: grupos[d] }; });
+    }
+
+    var hoje = formatarData(new Date().toISOString());
+    var ontemD = new Date(); ontemD.setDate(ontemD.getDate() - 1);
+    var ontem = formatarData(ontemD.toISOString());
+
+    function rotuloData(data) {
+      if (data === hoje) return 'Hoje';
+      if (data === ontem) return 'Ontem';
+      return data;
+    }
+
+    function renderBubble(m) {
+      var iconeCanal;
+      switch (m.canal) {
+        case 'whatsapp': iconeCanal = MessageCircle; break;
+        case 'email': iconeCanal = AtSign; break;
+        case 'portal': iconeCanal = Globe; break;
+        default: iconeCanal = null;
+      }
+      var isEntrada = m.direcao === 'entrada';
+      var isSaida = !isEntrada;
+      var bg = isEntrada ? '#f8fafc' : T.primarySoft;
+      var align = isEntrada ? 'flex-start' : 'flex-end';
+      var borderColor = isEntrada ? '#e2e8f0' : '#bfdbfe';
+
+      return React.createElement('div', {
+        key: m.id,
+        style: { display: 'flex', alignItems: 'flex-end', gap: 7, alignSelf: align, maxWidth: '88%', flexDirection: isEntrada ? 'row' : 'row-reverse' },
+      },
+        React.createElement('div', {
+          style: { width: 26, height: 26, borderRadius: '50%', background: isEntrada ? '#e2e8f0' : T.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, alignSelf: 'flex-end', marginBottom: 1 },
+        }, React.createElement(isEntrada ? User : MessageSquare, { size: 13, style: { color: isEntrada ? '#64748b' : '#fff' } })),
+        React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: isEntrada ? 'flex-start' : 'flex-end', maxWidth: '100%' } },
+          React.createElement('div', {
+            style: {
+              padding: '10px 14px', borderRadius: 12, fontSize: 13, lineHeight: 1.55,
+              background: bg, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+              border: '1px solid ' + borderColor,
+              borderBottomLeftRadius: isEntrada ? 4 : 12,
+              borderBottomRightRadius: isEntrada ? 12 : 4,
+              boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+              color: T.text,
+            },
+          }, m.conteudo),
+          React.createElement('div', {
+            style: { display: 'flex', alignItems: 'center', gap: 5, fontSize: 10.5, color: T.textMuted, marginTop: 4, paddingLeft: isEntrada ? 2 : 0, paddingRight: isEntrada ? 0 : 2 },
+          },
+            m.autor_nome && React.createElement('span', { style: { fontWeight: 600, color: T.text } }, m.autor_nome),
+            iconeCanal && React.createElement(iconeCanal, { size: 10, style: { opacity: 0.6 } }),
+            React.createElement('span', null, formatarDataHora(m.criado_em).split(', ').pop()),
+            isSaida && React.createElement(Check, { size: 11, style: { color: T.success, opacity: 0.7 } }),
+          ),
+        ),
+      );
+    }
+
     return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', height: '100%' } },
-      React.createElement('div', { style: { flex: 1, overflowY: 'auto', paddingBottom: 12 } },
+
+      React.createElement('div', { style: { flex: 1, overflowY: 'auto', paddingBottom: 16 } },
         mensagens.length === 0
-          ? React.createElement('div', { style: { textAlign: 'center', padding: 30, color: T.textMuted, fontSize: 12.5 } },
-              React.createElement(MessageSquare, { size: 32, style: { display: 'block', margin: '0 auto 12px', opacity: 0.4 } }),
-              'Nenhuma mensagem registrada',
+          ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 48, gap: 10 } },
+              React.createElement('div', { style: { width: 56, height: 56, borderRadius: '50%', background: T.primarySoft, display: 'flex', alignItems: 'center', justifyContent: 'center' } },
+                React.createElement(MessageSquare, { size: 26, style: { color: T.primary, opacity: 0.7 } }),
+              ),
+              React.createElement('div', { style: { fontSize: 14, fontWeight: 600, color: T.text } }, 'Nenhuma mensagem ainda'),
+              React.createElement('div', { style: { fontSize: 12, color: T.textMuted, textAlign: 'center', maxWidth: 280 } },
+                'As mensagens trocadas com o cidad\u00e3o aparecer\u00e3o aqui. Use o campo abaixo para iniciar uma conversa.',
+              ),
             )
-          : React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
-              mensagens.map(function (m) {
-                var canalIcon;
-                var CanalIconComp;
-                switch (m.canal) {
-                  case 'whatsapp': CanalIconComp = MessageCircle; break;
-                  case 'email': CanalIconComp = AtSign; break;
-                  case 'portal': CanalIconComp = Globe; break;
-                  default: CanalIconComp = null;
-                }
-                canalIcon = CanalIconComp ? React.createElement(CanalIconComp, { size: 10 }) : null;
-                var isEntrada = m.direcao === 'entrada';
-                var bg = isEntrada ? T.surfaceAlt : T.primarySoft;
-                var align = isEntrada ? 'flex-start' : 'flex-end';
-                return React.createElement('div', {
-                  key: m.id,
-                  style: { display: 'flex', flexDirection: 'column', alignSelf: align, maxWidth: '88%' },
-                },
-                  React.createElement('div', {
-                    style: {
-                      padding: '9px 13px', borderRadius: T.radiusSm, fontSize: 12.5,
-                      background: bg, lineHeight: 1.5, whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                      borderBottomLeftRadius: isEntrada ? 2 : T.radiusSm,
-                      borderBottomRightRadius: isEntrada ? T.radiusSm : 2,
-                    },
-                  }, React.createElement('div', { style: { color: T.text } }, m.conteudo)),
-                  React.createElement('div', {
-                    style: { display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: T.textMuted, marginTop: 3, paddingLeft: isEntrada ? 4 : 0, paddingRight: isEntrada ? 0 : 4, alignSelf: align === 'flex-end' ? 'flex-end' : 'flex-start' },
-                  },
-                    canalIcon,
-                    formatarDataHora(m.criado_em),
-                    m.autor_nome ? ' \u00b7 ' + m.autor_nome : (m.operador_nome ? ' \u00b7 ' + m.operador_nome : ''),
+          : React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
+              gruposPorData.map(function (g) {
+                return React.createElement('div', { key: g.data, style: { display: 'flex', flexDirection: 'column', gap: 5 } },
+                  React.createElement('div', { style: { textAlign: 'center', padding: '6px 0' } },
+                    React.createElement('span', { style: { fontSize: 10.5, fontWeight: 600, color: T.textMuted, background: T.surfaceAlt, padding: '3px 10px', borderRadius: 999 } }, rotuloData(g.data)),
                   ),
+                  g.msgs.map(function (m) { return renderBubble(m); }),
                 );
               }),
             ),
       ),
 
-      // Input mensagem pública
-      React.createElement('div', { style: { borderTop: '1px solid ' + T.border, paddingTop: 10 } },
-        React.createElement('div', { style: { display: 'flex', gap: 6, marginBottom: 6 } },
+      // ── ENVIAR MENSAGEM ──
+      React.createElement('div', { style: { borderTop: '2px solid ' + T.border, paddingTop: 12 } },
+
+        React.createElement('div', { style: { display: 'flex', gap: 4, marginBottom: 8, background: T.surfaceAlt, borderRadius: 10, padding: 3 } },
           CANAIS_ENVIO.map(function (c) {
             var ativo = canalMsg === c.id;
             return React.createElement('button', {
               key: c.id, onClick: function () { setCanalMsg(c.id); }, title: c.label,
               style: {
-                display: 'inline-flex', alignItems: 'center', gap: 3, padding: '4px 8px', borderRadius: 999,
-                border: '1px solid ' + (ativo ? T.primary : T.borderStrong),
-                background: ativo ? T.primarySoft : 'transparent',
+                flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                padding: '6px 4px', borderRadius: 8, border: 'none',
+                background: ativo ? T.surface : 'transparent',
                 color: ativo ? T.primary : T.textMuted,
-                fontSize: 10.5, fontWeight: ativo ? 600 : 500, cursor: 'pointer', fontFamily: 'inherit',
+                fontSize: 11, fontWeight: ativo ? 700 : 500, cursor: 'pointer', fontFamily: 'inherit',
+                boxShadow: ativo ? '0 1px 3px rgba(0,0,0,0.08)' : 'none',
+                transition: 'all 0.15s',
               },
-            }, React.createElement(c.Icone, { size: 11 }), c.label);
+            }, React.createElement(c.Icone, { size: 12 }), c.label);
           }),
         ),
-        React.createElement('div', { style: { display: 'flex', gap: 6 } },
-          React.createElement('input', {
-            value: textoMsg, onChange: function (e) { setTextoMsg(e.target.value); },
-            onKeyDown: function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarMensagem(); } },
-            placeholder: 'Mensagem vis\u00edvel ao cidad\u00e3o...',
-            style: Object.assign({}, inputBaseStyle, { flex: 1, margin: 0 }),
-          }),
+
+        React.createElement('div', { style: { display: 'flex', gap: 8 } },
+          React.createElement('div', { style: { flex: 1, position: 'relative' } },
+            React.createElement('div', { style: { position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: T.primary, display: 'flex', zIndex: 1 } },
+              React.createElement(canalAtual.Icone, { size: 14 }),
+            ),
+            React.createElement('input', {
+              value: textoMsg, onChange: function (e) { setTextoMsg(e.target.value); },
+              onKeyDown: function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarMensagem(); } },
+              placeholder: 'Digite sua mensagem...',
+              style: Object.assign({}, inputBaseStyle, { flex: 1, margin: 0, paddingLeft: 32, background: T.surface, borderRadius: 10, border: '1px solid ' + T.borderStrong }),
+            }),
+          ),
           React.createElement('button', {
             onClick: enviarMensagem, disabled: enviandoMsg || !textoMsg.trim(),
-            style: Object.assign({}, btnBaseStyle, { padding: '8px 14px', background: (enviandoMsg || !textoMsg.trim()) ? T.surfaceMuted : T.primary, color: '#fff', cursor: (enviandoMsg || !textoMsg.trim()) ? 'default' : 'pointer' }),
-          }, enviandoMsg ? React.createElement(Loader2, { size: 14 }) : React.createElement(Send, { size: 14 })),
+            style: {
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+              padding: '9px 16px', borderRadius: 10, border: 'none',
+              background: (enviandoMsg || !textoMsg.trim()) ? T.surfaceMuted : T.primary,
+              color: '#fff', fontSize: 12, fontWeight: 600, cursor: (enviandoMsg || !textoMsg.trim()) ? 'default' : 'pointer',
+              fontFamily: 'inherit', transition: 'all 0.15s', boxShadow: (enviandoMsg || !textoMsg.trim()) ? 'none' : '0 1px 3px rgba(37,99,235,0.3)',
+            },
+          }, enviandoMsg ? React.createElement(Loader2, { size: 15 }) : React.createElement(Send, { size: 15 })),
         ),
       ),
 
-      // Separador
-      React.createElement('div', { style: { margin: '16px 0 8px', borderTop: '2px dashed ' + T.borderStrong } }),
+      // ── ANOTAÇÃO INTERNA (colapsável) ──
+      React.createElement('div', { style: { marginTop: 12 } },
+        React.createElement('button', {
+          onClick: function () { setMostrarAnotacao(!mostrarAnotacao); },
+          style: {
+            display: 'flex', alignItems: 'center', gap: 6, width: '100%', padding: '7px 0',
+            border: 'none', background: 'transparent', cursor: 'pointer', fontFamily: 'inherit',
+            fontSize: 11, fontWeight: 600, color: mostrarAnotacao ? T.warning : T.textMuted,
+          },
+        },
+          React.createElement(AlertCircle, { size: 12, style: { color: T.warning } }),
+          'Anota\u00e7\u00e3o interna',
+          React.createElement('span', { style: { fontSize: 10, color: T.textMuted, fontWeight: 400 } }, '(vis\u00edvel apenas para servidores)'),
+          React.createElement('span', { style: { marginLeft: 'auto', transform: mostrarAnotacao ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s', display: 'flex' } },
+            React.createElement(ChevronDown, { size: 13 }),
+          ),
+        ),
 
-      // Anotação interna
-      React.createElement('div', { style: { paddingTop: 4 } },
-        React.createElement('div', { style: { fontSize: 11, fontWeight: 600, color: T.warning, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 4 } },
-          React.createElement(AlertCircle, { size: 12 }), 'Anota\u00e7\u00e3o interna (n\u00e3o vis\u00edvel ao cidad\u00e3o)',
-        ),
-        React.createElement('div', { style: { display: 'flex', gap: 6, marginBottom: 6 } },
-          React.createElement('input', {
-            value: textoAnotacao, onChange: function (e) { setTextoAnotacao(e.target.value); },
-            onKeyDown: function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarAnotacao(); } },
-            placeholder: 'Registrar anota\u00e7\u00e3o interna...',
-            style: Object.assign({}, inputBaseStyle, { flex: 1, margin: 0, border: '1px dashed ' + T.warning, background: T.warningSoft + '80' }),
-          }),
-          React.createElement('button', {
-            onClick: enviarAnotacao, disabled: enviandoAnot || !textoAnotacao.trim(),
-            style: Object.assign({}, btnBaseStyle, { padding: '8px 14px', background: T.warningSoft, color: T.warning, border: '1px dashed ' + T.warning, cursor: (enviandoAnot || !textoAnotacao.trim()) ? 'default' : 'pointer' }),
-          }, enviandoAnot ? React.createElement(Loader2, { size: 14 }) : React.createElement(Send, { size: 13 })),
-        ),
-        React.createElement('div', { style: { fontSize: 10, color: T.textMuted } },
-          'Esta anota\u00e7\u00e3o ser\u00e1 vis\u00edvel somente para servidores autorizados.',
+        mostrarAnotacao && React.createElement('div', { style: { padding: '10px 12px', borderRadius: 10, background: T.warningSoft + '80', border: '1px dashed ' + T.warning + '55', marginTop: 4 } },
+          React.createElement('div', { style: { display: 'flex', gap: 8 } },
+            React.createElement('input', {
+              value: textoAnotacao, onChange: function (e) { setTextoAnotacao(e.target.value); },
+              onKeyDown: function (e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarAnotacao(); } },
+              placeholder: 'Registrar anota\u00e7\u00e3o interna...',
+              style: Object.assign({}, inputBaseStyle, { flex: 1, margin: 0, border: '1px solid ' + T.warning + '44', background: 'rgba(255,255,255,0.7)', borderRadius: 8 }),
+            }),
+            React.createElement('button', {
+              onClick: enviarAnotacao, disabled: enviandoAnot || !textoAnotacao.trim(),
+              style: Object.assign({}, btnBaseStyle, { padding: '9px 14px', background: T.warning, color: '#fff', border: 'none', borderRadius: 8, cursor: (enviandoAnot || !textoAnotacao.trim()) ? 'default' : 'pointer', opacity: (enviandoAnot || !textoAnotacao.trim()) ? 0.5 : 1 }),
+            }, enviandoAnot ? React.createElement(Loader2, { size: 13 }) : React.createElement(Send, { size: 13 })),
+          ),
         ),
       ),
     );
@@ -793,6 +892,7 @@ export function PaginaProtocoloDetalhe(_a) {
           )
         : React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6 } },
             React.createElement('div', {
+              className: 'protocolo-document-header',
               style: { display: 'grid', gridTemplateColumns: '1fr 70px 70px 80px 60px', gap: 6, padding: '6px 10px', fontSize: 10, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.3px' },
             },
               React.createElement('span', null, 'Nome / Enviado por'),
@@ -804,6 +904,7 @@ export function PaginaProtocoloDetalhe(_a) {
             documentos.map(function (d) {
               return React.createElement('div', {
                 key: d.id,
+                className: 'protocolo-document-row',
                 style: { display: 'grid', gridTemplateColumns: '1fr 70px 70px 80px 60px', gap: 6, padding: '10px', borderRadius: T.radiusSm, background: T.surfaceAlt, border: '1px solid ' + T.border, alignItems: 'center', fontSize: 12 },
               },
                 React.createElement('div', { style: { minWidth: 0 } },
@@ -827,8 +928,8 @@ export function PaginaProtocoloDetalhe(_a) {
                     : React.createElement('span', { style: { display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10.5, fontWeight: 600, color: T.textMuted, padding: '1px 6px', borderRadius: 4, background: T.surfaceMuted } },
                         React.createElement(Lock, { size: 10 }), 'Interno'),
                 ),
-                React.createElement('div', { style: { display: 'flex', gap: 2, justifyContent: 'flex-end' } },
-                  React.createElement('button', { title: 'Visualizar', onClick: function () { downloadDocumento(d); }, style: Object.assign({}, btnBaseStyle, { padding: '4px 6px', background: 'transparent', color: T.textMuted, fontSize: 11 }) }, React.createElement(Eye, { size: 14 })),
+                React.createElement('div', { className: 'protocolo-document-actions', style: { display: 'flex', gap: 2, justifyContent: 'flex-end' } },
+                  React.createElement('button', { title: 'Visualizar', onClick: function () { visualizarDocumento(d); }, style: Object.assign({}, btnBaseStyle, { padding: '4px 6px', background: 'transparent', color: T.textMuted, fontSize: 11 }) }, React.createElement(Eye, { size: 14 })),
                   React.createElement('button', { title: 'Baixar', onClick: function () { downloadDocumento(d); }, style: Object.assign({}, btnBaseStyle, { padding: '4px 6px', background: 'transparent', color: T.textMuted, fontSize: 11 }) }, React.createElement(Download, { size: 14 })),
                   d.status !== 'APROVADO' && React.createElement('button', { title: 'Aprovar', onClick: function () { aprovarDoc(d); }, style: Object.assign({}, btnBaseStyle, { padding: '4px 6px', background: 'transparent', color: T.success, fontSize: 11 }) }, React.createElement(Check, { size: 14 })),
                   d.status !== 'REJEITADO' && React.createElement('button', { title: 'Rejeitar', onClick: function () { rejeitarDoc(d); }, style: Object.assign({}, btnBaseStyle, { padding: '4px 6px', background: 'transparent', color: T.danger, fontSize: 11 }) }, React.createElement(X, { size: 14 })),
@@ -1005,6 +1106,7 @@ export function PaginaProtocoloDetalhe(_a) {
 
   // ── RENDER ──
   return React.createElement('div', {
+    className: 'protocolo-page',
     style: {
       width: '100%', height: '100%', background: T.bg,
       display: 'flex', flexDirection: 'column', overflow: 'hidden',
@@ -1012,6 +1114,7 @@ export function PaginaProtocoloDetalhe(_a) {
   },
     // ── TOP HEADER ──
     React.createElement('div', {
+      className: 'protocolo-topbar',
       style: {
         padding: ehMobile ? '10px 12px' : '14px 24px',
         background: T.surface, borderBottom: '1px solid ' + T.border,
@@ -1021,11 +1124,12 @@ export function PaginaProtocoloDetalhe(_a) {
       // Back button
       React.createElement('button', {
         onClick: onVoltar,
+        className: 'protocolo-back',
         style: Object.assign({}, btnBaseStyle, { padding: '6px 10px', background: T.surfaceAlt, color: T.textSecondary, fontSize: 11.5 }),
       }, React.createElement(ArrowLeft, { size: 16 }), !ehMobile && 'Voltar'),
 
       // Protocol number
-      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+      React.createElement('div', { className: 'protocolo-identity', style: { display: 'flex', alignItems: 'center', gap: 8 } },
         React.createElement(FileText, { size: 20, style: { color: T.primary } }),
         React.createElement('span', {
           style: { fontSize: 16, fontWeight: 800, color: T.text, fontFamily: "'JetBrains Mono', 'Fira Code', monospace", fontVariantNumeric: 'tabular-nums' },
@@ -1045,7 +1149,7 @@ export function PaginaProtocoloDetalhe(_a) {
       React.createElement('div', { style: { flex: 1 } }),
 
       // Action buttons row
-      !ehMobile && React.createElement('div', { style: { display: 'flex', gap: 4, flexWrap: 'wrap' } },
+      !ehMobile && React.createElement('div', { className: 'protocolo-header-actions', style: { display: 'flex', gap: 4, flexWrap: 'wrap' } },
         naoAtribuido && React.createElement('button', {
           onClick: assumirProtocolo, title: 'Assumir',
           style: Object.assign({}, btnBaseStyle, { background: T.primarySoft, color: T.primary }),
@@ -1076,6 +1180,17 @@ export function PaginaProtocoloDetalhe(_a) {
           style: Object.assign({}, btnBaseStyle, { background: T.surfaceAlt, color: T.textSecondary }),
         }, React.createElement(AlertCircle, { size: 13 }), 'Solicitar'),
 
+        // Só faz sentido enquanto o protocolo ainda não avançou: é o clique que
+        // leva o cidadão de "Solicitação recebida" para "Em análise".
+        proto && (proto.status_operacional === 'ABERTO' || proto.status_operacional === 'PENDENTE')
+          && React.createElement('button', {
+            onClick: function () {
+              alterarSituacao('EM_ANDAMENTO', 'Sua solicitação está em análise pelo setor responsável.');
+            },
+            title: 'Dar andamento (o cidadão passa a ver "Em análise")',
+            style: Object.assign({}, btnBaseStyle, { background: T.primarySoft, color: T.primary }),
+          }, React.createElement(RefreshCw, { size: 13 }), 'Dar andamento'),
+
         React.createElement('button', {
           onClick: concluirProtocolo, title: 'Concluir',
           style: Object.assign({}, btnBaseStyle, { background: T.successSoft, color: T.success }),
@@ -1093,6 +1208,7 @@ export function PaginaProtocoloDetalhe(_a) {
               padding: '4px 0', boxShadow: T.shadowMd, zIndex: 100, minWidth: 200,
             },
           },
+            React.createElement(ActionMenuItem, { label: 'Aguardando cidadão', Icone: User, onClick: function () { alterarSituacao('PENDENTE', 'Aguardando uma resposta ou documento seu para prosseguir.'); } }),
             React.createElement(ActionMenuItem, { label: 'Alterar prioridade para Alta', Icone: Flag, onClick: function () { alterarPrioridade('ALTA'); setShowMaisAcoes(false); } }),
             React.createElement(ActionMenuItem, { label: 'Alterar prioridade para Urgente', Icone: AlertCircle, onClick: function () { alterarPrioridade('URGENTE'); setShowMaisAcoes(false); } }),
             React.createElement(ActionMenuItem, { label: 'Alterar prioridade para Baixa', Icone: ChevronDown, onClick: function () { alterarPrioridade('BAIXA'); setShowMaisAcoes(false); } }),
@@ -1107,6 +1223,7 @@ export function PaginaProtocoloDetalhe(_a) {
 
     // ── MOBILE ACTION BAR ──
     ehMobile && React.createElement('div', {
+      className: 'protocolo-mobile-actions',
       style: { padding: '8px 12px', background: T.surfaceAlt, borderBottom: '1px solid ' + T.border, display: 'flex', gap: 4, overflowX: 'auto', flexShrink: 0 },
     },
       naoAtribuido && React.createElement('button', { onClick: assumirProtocolo, style: Object.assign({}, btnBaseStyle, { background: T.primarySoft, color: T.primary, fontSize: 10.5, padding: '5px 8px' }) }, React.createElement(Hand, { size: 12 }), 'Assumir'),
@@ -1114,6 +1231,12 @@ export function PaginaProtocoloDetalhe(_a) {
       React.createElement('button', { onClick: function () { setShowEncaminhar(true); }, style: Object.assign({}, btnBaseStyle, { background: T.surfaceAlt, color: T.textSecondary, fontSize: 10.5, padding: '5px 8px' }) }, React.createElement(ArrowRightLeft, { size: 12 })),
       React.createElement('button', { onClick: function () { setAba('mensagens'); }, style: Object.assign({}, btnBaseStyle, { background: T.surfaceAlt, color: T.textSecondary, fontSize: 10.5, padding: '5px 8px' }) }, React.createElement(MessageSquare, { size: 12 })),
       React.createElement('button', { onClick: function () { if (fileInputRef.current) fileInputRef.current.click(); }, style: Object.assign({}, btnBaseStyle, { background: T.surfaceAlt, color: T.textSecondary, fontSize: 10.5, padding: '5px 8px' }) }, React.createElement(Paperclip, { size: 12 })),
+      proto && (proto.status_operacional === 'ABERTO' || proto.status_operacional === 'PENDENTE')
+        && React.createElement('button', {
+          onClick: function () { alterarSituacao('EM_ANDAMENTO', 'Sua solicitação está em análise pelo setor responsável.'); },
+          title: 'Dar andamento',
+          style: Object.assign({}, btnBaseStyle, { background: T.primarySoft, color: T.primary, fontSize: 10.5, padding: '5px 8px' }),
+        }, React.createElement(RefreshCw, { size: 12 })),
       React.createElement('button', { onClick: concluirProtocolo, style: Object.assign({}, btnBaseStyle, { background: T.successSoft, color: T.success, fontSize: 10.5, padding: '5px 8px' }) }, React.createElement(CheckCircle, { size: 12 })),
       React.createElement('div', { style: { position: 'relative' }, ref: maisAcoesRef },
         React.createElement('button', { onClick: function () { setShowMaisAcoes(!showMaisAcoes); }, style: Object.assign({}, btnBaseStyle, { background: T.surfaceAlt, color: T.textSecondary, fontSize: 10.5, padding: '5px 8px' }) }, React.createElement(MoreVertical, { size: 12 })),
@@ -1129,14 +1252,39 @@ export function PaginaProtocoloDetalhe(_a) {
       ),
     ),
 
+    proto && React.createElement('section', { className: 'protocolo-summary', 'aria-label': 'Resumo do protocolo' },
+      React.createElement('div', { className: 'protocolo-summary-title' },
+        React.createElement('span', null, 'Assunto'),
+        React.createElement('strong', null, proto.assunto || proto.servico_nome || proto.categoria_nome || 'Sem assunto informado'),
+        proto.descricao && React.createElement('p', null, proto.descricao),
+      ),
+      React.createElement('div', { className: 'protocolo-summary-fact' },
+        React.createElement(Building2, { size: 17 }),
+        React.createElement('span', null, 'Setor atual'),
+        React.createElement('strong', null, proto.setor_atual_nome || proto.departamento_nome || 'Não definido'),
+      ),
+      React.createElement('div', { className: 'protocolo-summary-fact' },
+        React.createElement(User, { size: 17 }),
+        React.createElement('span', null, 'Responsável'),
+        React.createElement('strong', null, proto.responsavel_nome || proto.operador_nome || 'Não atribuído'),
+      ),
+      React.createElement('div', { className: 'protocolo-summary-fact' },
+        React.createElement(Clock, { size: 17 }),
+        React.createElement('span', null, 'Prazo'),
+        React.createElement('strong', null, proto.prazo_em ? formatarData(proto.prazo_em) : 'Sem prazo definido'),
+      ),
+    ),
+
     // ── TABS BAR ──
     React.createElement('div', {
+      className: 'protocolo-tabs',
       style: { padding: '0 24px', background: T.surface, borderBottom: '1px solid ' + T.border, display: 'flex', gap: 0, overflowX: 'auto', flexShrink: 0 },
     },
       ABAS.map(function (a) {
         var isActive = aba === a.id;
         return React.createElement('button', {
           key: a.id, onClick: function () { setAba(a.id); }, title: a.label,
+          className: isActive ? 'is-active' : '',
           style: {
             display: 'inline-flex', alignItems: 'center', gap: 5, padding: '10px 14px',
             border: 'none', background: 'transparent',
@@ -1151,9 +1299,11 @@ export function PaginaProtocoloDetalhe(_a) {
 
     // ── MAIN CONTENT ──
     React.createElement('div', {
+      className: 'protocolo-scroll-area',
       style: { flex: 1, overflowY: 'auto', minHeight: 0 },
     },
       React.createElement('div', {
+        className: 'protocolo-content-grid',
         style: {
           maxWidth: 1200, margin: '0 auto', padding: ehMobile ? '12px' : '20px 24px',
           display: 'flex', gap: 20, flexDirection: ehMobile ? 'column' : 'row', minHeight: '100%',
@@ -1175,8 +1325,8 @@ export function PaginaProtocoloDetalhe(_a) {
                 React.createElement(Loader2, { size: 32, style: { color: T.textMuted } }),
                 React.createElement('div', { style: { marginTop: 14, fontSize: 13, color: T.textMuted } }, 'Carregando...'),
               )
-            : React.createElement('div', { style: { background: T.surface, borderRadius: T.radius, padding: 20, boxShadow: T.shadowMd } },
-                React.createElement(AbaAtual),
+            : React.createElement('div', { className: 'protocolo-main-card', style: { background: T.surface, borderRadius: T.radius, padding: 20, boxShadow: T.shadowMd } },
+                AbaAtual(),
               ),
         ),
 

@@ -16,6 +16,8 @@ export async function runMigrations() {
     join(__dirname, '023_agenda_pessoal.sql'),
     join(__dirname, '024_protocolo_digital.sql'),
     join(__dirname, '025_protocolo_correcoes.sql'),
+    join(__dirname, '027_cidadao_reset_senha.sql'),
+    join(__dirname, '028_sessao_conta_sem_protocolo.sql'),
   ];
 
   for (const path of migrations) {

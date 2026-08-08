@@ -17,6 +17,7 @@ const LEGACY_PROTOCOLO = {
   PENDENTE: 'pendente',
   CONCLUIDO: 'concluido',
   CANCELADO: 'cancelado',
+  ARQUIVADO: 'arquivado',
 };
 
 export async function transitionConversation({
@@ -79,8 +80,8 @@ export async function transitionProtocol({
 
     const updated = await tx.one(
       `UPDATE protocolos SET status_operacional = $1, status = $2, atualizado_em = now(),
-         fechado_em = CASE WHEN $1 IN ('CONCLUIDO','CANCELADO') THEN now() ELSE NULL END,
-         motivo_reabertura = CASE WHEN $3 = 'CONCLUIDO' AND $1 = 'EM_ANDAMENTO' THEN $4 ELSE motivo_reabertura END
+         fechado_em = CASE WHEN $1 IN ('CONCLUIDO','CANCELADO','ARQUIVADO') THEN now() ELSE NULL END,
+         motivo_reabertura = CASE WHEN $3 IN ('CONCLUIDO','CANCELADO','ARQUIVADO') AND $1 = 'EM_ANDAMENTO' THEN $4 ELSE motivo_reabertura END
        WHERE id = $5 AND tenant_id = $6 RETURNING *`,
       [target, LEGACY_PROTOCOLO[target], from, justificativa || null, protocoloId, tenantId]
     );

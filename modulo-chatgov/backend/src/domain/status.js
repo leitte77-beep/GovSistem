@@ -14,6 +14,7 @@ export const PROTOCOLO_STATUS = Object.freeze({
   PENDENTE: 'PENDENTE',
   CONCLUIDO: 'CONCLUIDO',
   CANCELADO: 'CANCELADO',
+  ARQUIVADO: 'ARQUIVADO',
 });
 
 // Resolver direto da fila é rotina no balcão: o atendente lê a mensagem, vê que
@@ -34,8 +35,9 @@ const PROTOCOLO_TRANSITIONS = Object.freeze({
   ABERTO: ['EM_ANDAMENTO', 'PENDENTE', 'CONCLUIDO', 'CANCELADO'],
   EM_ANDAMENTO: ['PENDENTE', 'CONCLUIDO', 'CANCELADO'],
   PENDENTE: ['EM_ANDAMENTO', 'CONCLUIDO', 'CANCELADO'],
-  CONCLUIDO: ['EM_ANDAMENTO'],
-  CANCELADO: [],
+  CONCLUIDO: ['EM_ANDAMENTO', 'ARQUIVADO'],
+  CANCELADO: ['EM_ANDAMENTO', 'ARQUIVADO'],
+  ARQUIVADO: ['EM_ANDAMENTO'],
 });
 
 export const LEGACY_CONVERSA_STATUS = Object.freeze({
@@ -52,6 +54,7 @@ export const LEGACY_PROTOCOLO_STATUS = Object.freeze({
   concluido: 'CONCLUIDO',
   encerrado: 'CONCLUIDO',
   cancelado: 'CANCELADO',
+  arquivado: 'ARQUIVADO',
 });
 
 export function normalizeStatus(entity, value) {
@@ -76,7 +79,8 @@ export function assertTransition(entity, from, to, context = {}) {
   if (entity === 'conversa' && target === 'RESOLVIDA' && !context.operadorId && context.origem !== 'automacao') {
     throw new Error('Uma conversa só pode ser resolvida com atendente responsável');
   }
-  if (entity === 'protocolo' && current === 'CONCLUIDO' && target === 'EM_ANDAMENTO' && !context.justificativa?.trim()) {
+  if (entity === 'protocolo' && ['CONCLUIDO', 'CANCELADO', 'ARQUIVADO'].includes(current)
+      && target === 'EM_ANDAMENTO' && !context.justificativa?.trim()) {
     throw new Error('A reabertura exige justificativa');
   }
   return target;

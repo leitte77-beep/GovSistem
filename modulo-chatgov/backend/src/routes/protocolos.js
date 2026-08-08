@@ -324,6 +324,12 @@ router.get('/:id/messages', requirePermission(PERMISSIONS.PROTOCOLOS_VIEW), asyn
        ORDER BY m.criado_em ASC`,
       [req.params.id, req.operador.tenantId]
     );
+    // Marcar como lidas as mensagens de entrada ao acessar a listagem
+    db.none(
+      `UPDATE protocolo_mensagens SET lida = true, lida_em = now()
+       WHERE protocolo_id = $1 AND tenant_id = $2 AND direcao = 'entrada' AND lida = false`,
+      [req.params.id, req.operador.tenantId]
+    ).catch(() => {});
     res.json(rows);
   } catch (err) {
     res.status(500).json({ erro: err.message });
@@ -874,6 +880,16 @@ router.get('/documents/:docId/download', requirePermission(PERMISSIONS.PROTOCOLO
 // A tela de detalhe já chamava estes caminhos, mas eles não existiam: os
 // botões respondiam 404 e o erro era engolido pelo cliente. As transições
 // passam pela máquina de estados, que recusa mudanças inválidas.
+// Texto que o cidadão lê na linha do tempo quando o atendente muda a situação.
+const ROTULO_PUBLICO_STATUS = {
+  EM_ANDAMENTO: 'Sua solicitação está em análise pelo setor responsável.',
+  PENDENTE: 'Aguardando uma resposta ou documento seu para prosseguir.',
+  ABERTO: 'Solicitação recebida e aguardando análise.',
+  CONCLUIDO: 'Solicitação concluída.',
+  CANCELADO: 'Solicitação cancelada.',
+  ARQUIVADO: 'Protocolo arquivado.',
+};
+
 async function transicionar(req, res, { alvo, tipoMovimento, exigeJustificativa, rotulo }) {
   if (!UUID_RE.test(req.params.id)) {
     return res.status(400).json({ erro: 'ID inválido' });
@@ -946,6 +962,11 @@ router.post('/:id/reopen', requirePermission(PERMISSIONS.PROTOCOLOS_REOPEN), (re
     exigeJustificativa: true, rotulo: 'reabrir o protocolo',
   }));
 
+router.post('/:id/archive', requirePermission(PERMISSIONS.PROTOCOLOS_COMPLETE), (req, res) =>
+  transicionar(req, res, {
+    alvo: 'ARQUIVADO', tipoMovimento: 'arquivamento', rotulo: 'arquivar o protocolo',
+  }));
+
 // Alias em POST do PATCH /:id/status — a tela usa POST. Também aceita
 // alteração isolada de prioridade, que não é uma transição de status.
 router.post('/:id/status', requirePermission(PERMISSIONS.PROTOCOLOS_EDIT), async (req, res) => {
@@ -985,9 +1006,13 @@ router.post('/:id/status', requirePermission(PERMISSIONS.PROTOCOLOS_EDIT), async
     }
 
     const alvo = String(req.body.status_operacional || req.body.status || '').toUpperCase();
-    // "ARQUIVADO" não existe na máquina de estados atual; o equivalente
-    // operacional é concluir o protocolo.
-    const MAPA = { ARQUIVADO: 'CONCLUIDO' };
+    // A tela nomeia estados que a máquina não conhece ("dar andamento",
+    // "aguardando o cidadão", "arquivar"). Traduzimos aqui em vez de recusar,
+    // senão o clique morre em 422 sem o atendente entender o motivo.
+    const MAPA = {
+      EM_ANALISE: 'EM_ANDAMENTO',
+      AGUARDANDO_CIDADAO: 'PENDENTE',
+    };
     const destino = MAPA[alvo] || alvo;
 
     const proto = await transitionProtocol({
@@ -999,6 +1024,20 @@ router.post('/:id/status', requirePermission(PERMISSIONS.PROTOCOLOS_EDIT), async
       origem: 'painel',
       ip: req.ip,
     });
+
+    // Sem esta linha a mudança de situação só existia em eventos_status, que o
+    // portal não lê: o cidadão via a etapa avançar sem nenhuma explicação na
+    // aba Andamento.
+    await db.none(
+      `INSERT INTO protocolo_movimentacoes
+        (tenant_id, protocolo_id, tipo, operador_id, status_posterior,
+         observacao, justificativa, visivel_cidadao, ip)
+       VALUES ($1, $2, 'alteracao_status', $3, $4, $5, $6, true, $7)`,
+      [req.operador.tenantId, req.params.id, req.operador.id, destino,
+        req.body.observacao || ROTULO_PUBLICO_STATUS[destino] || `Situação alterada para ${destino}`,
+        req.body.justificativa || null, req.ip]
+    ).catch((e) => console.error('[historico status]', e.message));
+
     res.json(proto);
   } catch (err) {
     if (/não encontrado/i.test(err.message)) {
@@ -1026,6 +1065,42 @@ router.post('/:id/documents/:docId/status', requirePermission(PERMISSIONS.PROTOC
       status,
       rejeitadoMotivo: req.body.rejeitado_motivo || req.body.motivo,
     });
+
+    // Registrar movimentação
+    const tipoMov = status === 'aprovado' ? 'documento_aprovado' : status === 'rejeitado' ? 'documento_rejeitado' : null;
+    if (tipoMov) {
+      await db.none(
+        `INSERT INTO protocolo_movimentacoes (tenant_id, protocolo_id, tipo, operador_id, observacao)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [req.operador.tenantId, req.params.id, tipoMov, req.operador.id,
+         `${status === 'aprovado' ? 'Documento aprovado' : 'Documento rejeitado'}: ${doc.nome_amigavel}`]
+      ).catch(() => {});
+    }
+
+    // Notificar cidadão via WhatsApp se for externo
+    if (tipoMov) {
+      const proto = await db.oneOrNone(
+        `SELECT p.externo, cid.telefone, cid.nome
+         FROM protocolos p
+         LEFT JOIN cidadaos cid ON cid.id = p.cidadao_id
+         WHERE p.id = $1 AND p.tenant_id = $2`,
+        [req.params.id, req.operador.tenantId]
+      );
+      if (proto && proto.externo !== false && proto.telefone) {
+        const acao = status === 'aprovado' ? 'aprovado' : 'rejeitado';
+        const motivo = status === 'rejeitado' && req.body.rejeitado_motivo
+          ? '\nMotivo: ' + req.body.rejeitado_motivo : '';
+        enfileirarNotificacao(req.operador.tenantId, req.params.id, {
+          canal: 'whatsapp',
+          destinatario: proto.telefone,
+          assunto: 'Documento ' + acao,
+          conteudo: 'Olá' + (proto.nome ? ' ' + proto.nome.split(' ')[0] : '') +
+            '! O documento "' + doc.nome_amigavel + '" do protocolo ' + (await db.oneOrNone('SELECT numero FROM protocolos WHERE id = $1', [req.params.id]).then(r => r?.numero || '#' + req.params.id.slice(0,8))) +
+            ' foi ' + acao + ' pela equipe.' + motivo,
+        }).catch(() => {});
+      }
+    }
+
     res.json(doc);
   } catch (err) {
     const ehRegra = /inválido|Informe o motivo|não encontrado/i.test(err.message);

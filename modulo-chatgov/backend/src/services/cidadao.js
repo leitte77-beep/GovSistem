@@ -1,8 +1,13 @@
 import db from '../db.js';
+import crypto from 'crypto';
+
+function gerarCodigo() {
+  return crypto.randomInt(100000, 999999).toString();
+}
 
 export async function buscarOuCriarCidadao(tenantId, {
   nome, nomeSocial, cpf, cnpj, dataNascimento, telefone, email,
-  tipoPessoa, contatoId,
+  tipoPessoa, contatoId, casarPorEmail = false,
 }) {
   let cidadao = null;
 
@@ -26,6 +31,16 @@ export async function buscarOuCriarCidadao(tenantId, {
     cidadao = await db.oneOrNone(
       'SELECT * FROM cidadaos WHERE tenant_id = $1 AND telefone = $2 AND deleted_at IS NULL',
       [tenantId, telefone]
+    );
+  }
+
+  // Só no cadastro do portal: e-mail é o identificador da conta, então casar
+  // por ele evita duplicar quem já apareceu por outro canal. Em solicitação
+  // avulsa não vale, porque a família costuma compartilhar um e-mail.
+  if (!cidadao && casarPorEmail && email) {
+    cidadao = await db.oneOrNone(
+      'SELECT * FROM cidadaos WHERE tenant_id = $1 AND lower(email) = lower($2) AND deleted_at IS NULL ORDER BY criado_em LIMIT 1',
+      [tenantId, email]
     );
   }
 
@@ -146,11 +161,20 @@ export async function criarEndereco(tenantId, cidadaoId, {
 // Conta do cidadão (portal)
 // ──────────────────────────────────────────────
 
+export async function buscarContaPorEmail(tenantId, email) {
+  return db.oneOrNone(
+    'SELECT * FROM cidadao_contas WHERE tenant_id = $1 AND email = $2',
+    [tenantId, (email || '').toLowerCase().trim()]
+  );
+}
+
+// Devolve null quando o e-mail já tem conta (o DO NOTHING não retorna linha).
+// db.one estourava nesse caso e virava 500 no lugar de "e-mail já cadastrado".
 export async function criarContaCidadao(tenantId, cidadaoId, email, senha) {
   const bcrypt = await import('bcrypt');
   const hash = await bcrypt.default.hash(senha, 10);
 
-  const conta = await db.one(
+  const conta = await db.oneOrNone(
     `INSERT INTO cidadao_contas
       (tenant_id, cidadao_id, email, senha_hash)
      VALUES ($1, $2, $3, $4)
@@ -183,16 +207,72 @@ export async function autenticarCidadao(tenantId, email, senha) {
   return conta;
 }
 
+// O vínculo principal é `p.cidadao_id`; o contato só entra como reforço, para
+// alcançar protocolos abertos pelo WhatsApp. O JOIN por contato sozinho deixava
+// a lista vazia para quem se cadastrou pelo portal (contato_id nulo).
 export async function listarProtocolosDoCidadao(tenantId, cidadaoId) {
   return db.manyOrNone(
-    `SELECT p.*, d.nome AS setor_atual_nome,
+    `SELECT p.*, d.nome AS setor_atual_nome, sv.nome AS servico_nome,
             (SELECT COUNT(*)::int FROM protocolo_pendencias pp
              WHERE pp.protocolo_id = p.id AND pp.status = 'pendente') AS pendencias_abertas
      FROM protocolos p
-     JOIN cidadaos c ON c.contato_id = p.contato_id
+     JOIN cidadaos c ON c.id = $1 AND c.tenant_id = $2
      LEFT JOIN departamentos d ON d.id = p.setor_atual_id
-     WHERE c.id = $1 AND p.tenant_id = $2 AND p.externo = true AND p.deleted_at IS NULL
+     LEFT JOIN protocolo_servicos sv ON sv.id = p.servico_id
+     WHERE p.tenant_id = $2 AND p.externo = true AND p.deleted_at IS NULL
+       AND (p.cidadao_id = c.id OR (c.contato_id IS NOT NULL AND p.contato_id = c.contato_id))
      ORDER BY p.aberto_em DESC`,
     [cidadaoId, tenantId]
   );
+}
+
+// ──────────────────────────────────────────────
+// Recuperação de senha
+// ──────────────────────────────────────────────
+
+export async function gerarTokenRecuperacaoSenha(tenantId, email) {
+  const conta = await db.oneOrNone(
+    `SELECT cc.*, c.nome FROM cidadao_contas cc
+     JOIN cidadaos c ON c.id = cc.cidadao_id
+     WHERE cc.tenant_id = $1 AND cc.email = $2 AND cc.conta_ativa = true AND cc.deleted_at IS NULL`,
+    [tenantId, email.toLowerCase().trim()]
+  );
+  if (!conta) return null;
+
+  const token = gerarCodigo();
+  const expiraEm = new Date(Date.now() + 30 * 60 * 1000); // 30 minutos
+
+  await db.none(
+    `UPDATE cidadao_contas SET reset_token = $1, reset_token_expira_em = $2, atualizado_em = now()
+     WHERE id = $3`,
+    [token, expiraEm, conta.id]
+  );
+
+  return { email: conta.email, nome: conta.nome, token, expiraEm };
+}
+
+export async function redefinirSenhaComToken(tenantId, email, token, novaSenha) {
+  if (!novaSenha || novaSenha.length < 6) {
+    throw new Error('A senha deve ter pelo menos 6 caracteres.');
+  }
+
+  const conta = await db.oneOrNone(
+    `SELECT * FROM cidadao_contas
+     WHERE tenant_id = $1 AND email = $2 AND reset_token = $3
+       AND reset_token_expira_em > now() AND conta_ativa = true AND deleted_at IS NULL`,
+    [tenantId, email.toLowerCase().trim(), token]
+  );
+  if (!conta) throw new Error('Código inválido ou expirado. Solicite um novo.');
+
+  const bcrypt = await import('bcrypt');
+  const hash = await bcrypt.default.hash(novaSenha, 10);
+
+  await db.none(
+    `UPDATE cidadao_contas
+     SET senha_hash = $1, reset_token = NULL, reset_token_expira_em = NULL, atualizado_em = now()
+     WHERE id = $2`,
+    [hash, conta.id]
+  );
+
+  return { ok: true };
 }

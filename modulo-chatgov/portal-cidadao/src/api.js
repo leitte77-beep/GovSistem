@@ -74,11 +74,20 @@ export const api = {
   },
 
   // Catálogo e solicitação
-  servicos: () => req('/services', { auth: false }),
+  servicos: (tenantSlug) => {
+    const qs = tenantSlug ? `?tenant=${encodeURIComponent(tenantSlug)}` : '';
+    return req(`/services${qs}`, { auth: false });
+  },
   detalhesServico: (id) => req(`/services/${id}`, { auth: false }),
   criarSolicitacao: (body) => req('/protocols', { method: 'POST', body, auth: false }),
+  tenants: () => req('/tenants', { auth: false }),
 
   // Autenticação do cidadão
+  registrar: (dados) => req('/auth/register', { method: 'POST', body: dados, auth: false }),
   login: (email, senha) => req('/auth/login', { method: 'POST', body: { email, senha }, auth: false }),
+  forgotPassword: (email) => req('/auth/forgot-password', { method: 'POST', body: { email }, auth: false }),
+  resetPassword: (email, token, novaSenha) => req('/auth/reset-password', { method: 'POST', body: { email, token, nova_senha: novaSenha }, auth: false }),
   meusProtocolos: () => req('/my/protocols'),
+  minhaConta: () => req('/my/account'),
+  criarSolicitacaoLogado: (body) => req('/my/protocols', { method: 'POST', body }),
 };

@@ -3,7 +3,7 @@ import {
   FileText, Search, X, ChevronLeft, ChevronRight,
   Clock, AlertCircle, MessageSquare, Paperclip, AlertTriangle, Lock,
   Loader2, CheckSquare, Square, User, Inbox,
-  CheckCircle2, Plus, Eye, RefreshCw,
+  CheckCircle2, Plus, Eye, RefreshCw, Archive, RotateCcw,
 } from 'lucide-react';
 import { T } from '../theme';
 
@@ -93,7 +93,7 @@ var DASH_CARDS = [
   { key: 'concluidos_periodo', label: 'Concluídos no período', icon: CheckCircle2, color: T.success, filter: { status: 'CONCLUIDO' } },
 ];
 
-export function PaginaProtocolos({ breakpoint, onAbrirProtocolo, onCriarProtocolo }) {
+export function PaginaProtocolos({ breakpoint, onAbrirProtocolo, onCriarProtocolo, refreshKey }) {
   var ehMobile = breakpoint === 'mobile';
   var ehTablet = breakpoint === 'tablet';
 
@@ -108,6 +108,9 @@ export function PaginaProtocolos({ breakpoint, onAbrirProtocolo, onCriarProtocol
   var [busca, setBusca] = useState('');
   var [buscaTemp, setBuscaTemp] = useState('');
   var [activeCard, setActiveCard] = useState(null);
+  var [selecionados, setSelecionados] = useState([]);
+  var [processandoIds, setProcessandoIds] = useState([]);
+  var [feedback, setFeedback] = useState(null);
 
   var carregar = useCallback(async function () {
     setCarregando(true);
@@ -164,9 +167,13 @@ export function PaginaProtocolos({ breakpoint, onAbrirProtocolo, onCriarProtocol
     } finally {
       setCarregando(false);
     }
-  }, [filtros.status, filtros.prioridade, filtros.origem, filtros.atrasados, filtros.proximos_prazo, busca, pagina, tamanhoPagina]);
+  }, [filtros.status, filtros.prioridade, filtros.origem, filtros.atrasados, filtros.proximos_prazo, busca, pagina, tamanhoPagina, refreshKey]);
 
   useEffect(function () { carregar(); }, [carregar]);
+
+  useEffect(function () {
+    setSelecionados([]);
+  }, [pagina, tamanhoPagina, filtros.status, filtros.prioridade, filtros.origem, filtros.atrasados, filtros.proximos_prazo, busca]);
 
   var totalPaginas = Math.max(1, Math.ceil(total / tamanhoPagina));
   var inicioExibindo = total === 0 ? 0 : pagina * tamanhoPagina + 1;
@@ -238,6 +245,96 @@ export function PaginaProtocolos({ breakpoint, onAbrirProtocolo, onCriarProtocol
 
   var nFiltros = totalFiltrosAtivos(filtros, busca);
 
+  function getAuthHeaders() {
+    var token = '';
+    try { token = JSON.parse(localStorage.getItem('chatgov_auth') || '{}').token || ''; } catch (e) {}
+    return { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token };
+  }
+
+  async function chamarAcaoProtocolo(p, acao, motivo) {
+    var caminhos = { concluir: 'complete', arquivar: 'archive', reabrir: 'reopen' };
+    var resposta = await fetch('/api/v1/protocols/' + p.id + '/' + caminhos[acao], {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(motivo ? { justificativa: motivo } : {}),
+    });
+    var dados = await resposta.json().catch(function () { return {}; });
+    if (!resposta.ok) throw new Error(dados.erro || 'Não foi possível atualizar o protocolo.');
+    return dados;
+  }
+
+  async function executarAcaoIndividual(p, acao) {
+    var motivo = '';
+    if (acao === 'reabrir') {
+      motivo = window.prompt('Informe o motivo da reabertura:') || '';
+      if (!motivo.trim()) return;
+    } else {
+      var verbo = acao === 'arquivar' ? 'arquivar' : 'concluir';
+      if (!window.confirm('Deseja ' + verbo + ' o protocolo ' + (p.numero || '') + '?')) return;
+    }
+
+    setProcessandoIds(function (ids) { return ids.concat([p.id]); });
+    setFeedback(null);
+    try {
+      await chamarAcaoProtocolo(p, acao, motivo.trim());
+      setFeedback({ tipo: 'sucesso', texto: acao === 'reabrir' ? 'Protocolo reaberto.' : acao === 'arquivar' ? 'Protocolo arquivado.' : 'Protocolo concluído.' });
+      await carregar();
+    } catch (e) {
+      setFeedback({ tipo: 'erro', texto: e.message });
+    } finally {
+      setProcessandoIds(function (ids) { return ids.filter(function (id) { return id !== p.id; }); });
+    }
+  }
+
+  function alternarSelecao(id) {
+    setSelecionados(function (ids) {
+      return ids.includes(id) ? ids.filter(function (item) { return item !== id; }) : ids.concat([id]);
+    });
+  }
+
+  function alternarTodos() {
+    var idsPagina = lista.map(function (p) { return p.id; }).filter(Boolean);
+    var todosMarcados = idsPagina.length > 0 && idsPagina.every(function (id) { return selecionados.includes(id); });
+    setSelecionados(todosMarcados ? [] : idsPagina);
+  }
+
+  function elegiveisPara(acao) {
+    return lista.filter(function (p) {
+      if (!selecionados.includes(p.id)) return false;
+      if (acao === 'arquivar') return ['CONCLUIDO', 'CANCELADO'].includes(p.status_operacional);
+      if (acao === 'reabrir') return ['CONCLUIDO', 'CANCELADO', 'ARQUIVADO'].includes(p.status_operacional);
+      return !['CONCLUIDO', 'CANCELADO', 'ARQUIVADO'].includes(p.status_operacional);
+    });
+  }
+
+  async function executarAcaoEmMassa(acao) {
+    var protocolos = elegiveisPara(acao);
+    if (protocolos.length === 0) return;
+    var motivo = '';
+    if (acao === 'reabrir') {
+      motivo = window.prompt('Informe o motivo da reabertura dos protocolos selecionados:') || '';
+      if (!motivo.trim()) return;
+    } else {
+      var verbo = acao === 'arquivar' ? 'arquivar' : 'concluir';
+      if (!window.confirm('Deseja ' + verbo + ' ' + protocolos.length + ' protocolo(s)?')) return;
+    }
+
+    var ids = protocolos.map(function (p) { return p.id; });
+    setProcessandoIds(ids);
+    setFeedback(null);
+    try {
+      await Promise.all(protocolos.map(function (p) { return chamarAcaoProtocolo(p, acao, motivo.trim()); }));
+      setFeedback({ tipo: 'sucesso', texto: protocolos.length + ' protocolo(s) atualizado(s).' });
+      setSelecionados([]);
+      await carregar();
+    } catch (e) {
+      setFeedback({ tipo: 'erro', texto: e.message });
+      await carregar();
+    } finally {
+      setProcessandoIds([]);
+    }
+  }
+
   var dashValues = dashboard && dashboard.totais ? dashboard.totais : (dashboard || {});
 
   var inputBase = {
@@ -303,7 +400,10 @@ export function PaginaProtocolos({ breakpoint, onAbrirProtocolo, onCriarProtocol
 
   function renderCabecalhoColuna(col) {
     var mapa = {
-      checkbox: React.createElement('div', { style: { width: 28 } }),
+      checkbox: React.createElement('button', {
+        type: 'button', onClick: alternarTodos, title: 'Selecionar protocolos desta página',
+        style: { width: 28, height: 28, padding: 0, border: 'none', background: 'transparent', color: T.textMuted, cursor: 'pointer' },
+      }, React.createElement(lista.length > 0 && lista.every(function (p) { return selecionados.includes(p.id); }) ? CheckSquare : Square, { size: 17 })),
       numero: 'Nº',
       solicitante: 'Solicitante',
       cpf: 'CPF/CNPJ',
@@ -316,15 +416,22 @@ export function PaginaProtocolos({ breakpoint, onAbrirProtocolo, onCriarProtocol
       origem: 'Origem',
       acoes: React.createElement('span', { style: { textAlign: 'center', display: 'block' } }, 'Ações'),
     };
-    return React.createElement('th', { key: col, style: Object.assign({}, thStyle, col === 'acoes' ? { textAlign: 'center' } : {}) }, mapa[col]);
+    var colWidths = { checkbox: 34, numero: 175, prioridade: 48, prazo: 70, origem: 80 };
+    var extra = Object.assign({}, col === 'acoes' ? { textAlign: 'center', width: ehMobile ? 112 : 150 } : {});
+    if (colWidths[col]) extra.width = colWidths[col];
+    return React.createElement('th', { key: col, style: Object.assign({}, thStyle, extra) }, mapa[col]);
   }
 
   function renderCelulaProtocolo(p, col, isSelected) {
     var rowBg = isSelected ? T.primarySoft : 'transparent';
 
     if (col === 'checkbox') {
-      return React.createElement('td', { key: col, style: Object.assign({}, tdStyle, { width: 28, background: rowBg }) },
-        React.createElement(isSelected ? CheckSquare : Square, { size: 17, style: { color: isSelected ? T.primary : T.textMuted, cursor: 'pointer' } }),
+      return React.createElement('td', { key: col, style: { padding: '0 4px', width: 34, background: rowBg, verticalAlign: 'middle', borderBottom: '1px solid ' + T.border } },
+        React.createElement('button', {
+          type: 'button', onClick: function (ev) { ev.stopPropagation(); alternarSelecao(p.id); },
+          title: isSelected ? 'Remover da seleção' : 'Selecionar protocolo',
+          style: { width: 28, height: 28, padding: 0, border: 'none', background: 'transparent', color: isSelected ? T.primary : T.textMuted, cursor: 'pointer' },
+        }, React.createElement(isSelected ? CheckSquare : Square, { size: 17 })),
       );
     }
 
@@ -335,13 +442,17 @@ export function PaginaProtocolos({ breakpoint, onAbrirProtocolo, onCriarProtocol
       } else if (prazoProximo(p.prazo_em, p.status_operacional)) {
         indicadores.push(React.createElement('span', { key: 'orange', style: { width: 7, height: 7, borderRadius: '50%', background: T.warning, display: 'inline-block', flexShrink: 0 } }));
       }
-      if (p.tem_mensagens_nao_lidas) {
+      if (p.msgs_nao_lidas > 0) {
         indicadores.push(React.createElement(MessageSquare, { key: 'msg', size: 13, style: { color: T.primary, flexShrink: 0 } }));
+        indicadores.push(React.createElement('span', {
+          key: 'msg-badge',
+          style: { fontSize: 10, fontWeight: 700, color: '#fff', background: T.primary, padding: '0px 4.5px', borderRadius: 999, lineHeight: '15px', flexShrink: 0, minWidth: 15, textAlign: 'center', fontVariantNumeric: 'tabular-nums' },
+        }, p.msgs_nao_lidas));
       }
-      if (p.tem_documentos_novos) {
+      if (p.docs_novos > 0) {
         indicadores.push(React.createElement(Paperclip, { key: 'doc', size: 13, style: { color: T.textMuted, flexShrink: 0 } }));
       }
-      if (p.tem_pendencias) {
+      if (p.pendencias_abertas > 0) {
         indicadores.push(React.createElement(AlertTriangle, { key: 'pend', size: 13, style: { color: T.warning, flexShrink: 0 } }));
       }
       if (p.nivel_acesso === 'restrito' || p.nivel_acesso === 'sigiloso') {
@@ -350,7 +461,7 @@ export function PaginaProtocolos({ breakpoint, onAbrirProtocolo, onCriarProtocol
       if (p.origem === 'whatsapp') {
         indicadores.push(React.createElement(MessageSquare, { key: 'wa', size: 13, style: { color: T.whatsappGreen, flexShrink: 0 } }));
       }
-      return React.createElement('td', { key: col, style: Object.assign({}, tdStyle, { background: rowBg }) },
+      return React.createElement('td', { key: col, style: Object.assign({}, tdStyle, { background: rowBg, overflow: 'hidden' }) },
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 5 } },
           React.createElement('span', { style: { fontWeight: 700, fontVariantNumeric: 'tabular-nums', fontFamily: "'JetBrains Mono', 'Fira Code', monospace", fontSize: 13 } }, p.numero || '—'),
           indicadores.length > 0 && React.createElement('span', { style: { display: 'flex', alignItems: 'center', gap: 3 } }, indicadores),
@@ -438,19 +549,30 @@ export function PaginaProtocolos({ breakpoint, onAbrirProtocolo, onCriarProtocol
     }
 
     if (col === 'acoes') {
-      return React.createElement('td', { key: col, style: Object.assign({}, tdStyle, { background: rowBg, textAlign: 'center' }) },
-        React.createElement('button', {
-          onClick: function (ev) { ev.stopPropagation(); onAbrirProtocolo && onAbrirProtocolo(p); },
-          title: 'Abrir protocolo',
-          style: {
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-            padding: '4px 10px', border: '1px solid ' + T.borderStrong, borderRadius: T.radiusSm,
-            background: 'transparent', color: T.primary, cursor: 'pointer', fontSize: 11.5, fontWeight: 600,
-            fontFamily: T.font,
-          },
-        },
-          React.createElement(Eye, { size: 14 }),
-          !ehMobile && 'Abrir',
+      var statusTerminal = ['CONCLUIDO', 'CANCELADO', 'ARQUIVADO'].includes(p.status_operacional);
+      var estaProcessando = processandoIds.includes(p.id);
+      return React.createElement('td', { key: col, style: Object.assign({}, tdStyle, { background: rowBg, textAlign: 'center', width: ehMobile ? 112 : 150 }) },
+        React.createElement('div', { style: { display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4 } },
+          React.createElement('button', {
+            onClick: function (ev) { ev.stopPropagation(); onAbrirProtocolo && onAbrirProtocolo(p); },
+            title: 'Abrir protocolo',
+            style: Object.assign({}, btnBase, { padding: '4px 9px', color: T.primary, fontSize: 11.5 }),
+          }, React.createElement(Eye, { size: 14 }), !ehMobile && 'Abrir'),
+          !statusTerminal && React.createElement('button', {
+            onClick: function (ev) { ev.stopPropagation(); executarAcaoIndividual(p, 'concluir'); },
+            disabled: estaProcessando, title: 'Concluir protocolo',
+            style: Object.assign({}, btnBase, { padding: '5px 7px', color: T.success, background: T.successSoft, borderColor: T.success + '55', opacity: estaProcessando ? 0.55 : 1 }),
+          }, React.createElement(CheckCircle2, { size: 14 })),
+          ['CONCLUIDO', 'CANCELADO'].includes(p.status_operacional) && React.createElement('button', {
+            onClick: function (ev) { ev.stopPropagation(); executarAcaoIndividual(p, 'arquivar'); },
+            disabled: estaProcessando, title: 'Arquivar protocolo',
+            style: Object.assign({}, btnBase, { padding: '5px 7px', color: T.textSecondary, background: T.surfaceAlt, opacity: estaProcessando ? 0.55 : 1 }),
+          }, React.createElement(Archive, { size: 14 })),
+          statusTerminal && React.createElement('button', {
+            onClick: function (ev) { ev.stopPropagation(); executarAcaoIndividual(p, 'reabrir'); },
+            disabled: estaProcessando, title: 'Reabrir protocolo',
+            style: Object.assign({}, btnBase, { padding: '5px 7px', color: T.primary, background: T.primarySoft, borderColor: T.primary + '55', opacity: estaProcessando ? 0.55 : 1 }),
+          }, React.createElement(RotateCcw, { size: 14 })),
         ),
       );
     }
@@ -590,6 +712,49 @@ export function PaginaProtocolos({ breakpoint, onAbrirProtocolo, onCriarProtocol
       }, React.createElement(ChevronRight, { size: 15 })),
     ),
 
+    feedback && React.createElement('div', {
+      role: feedback.tipo === 'erro' ? 'alert' : 'status',
+      style: {
+        padding: '9px 20px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 8,
+        borderBottom: '1px solid ' + (feedback.tipo === 'erro' ? T.danger : T.success),
+        background: feedback.tipo === 'erro' ? T.dangerSoft : T.successSoft,
+        color: feedback.tipo === 'erro' ? T.danger : T.success, fontSize: 12.5, fontWeight: 600,
+      },
+    },
+      React.createElement(feedback.tipo === 'erro' ? AlertCircle : CheckCircle2, { size: 15 }),
+      React.createElement('span', { style: { flex: 1 } }, feedback.texto),
+      React.createElement('button', {
+        onClick: function () { setFeedback(null); }, title: 'Fechar aviso',
+        style: { border: 'none', background: 'transparent', color: 'inherit', cursor: 'pointer', padding: 2, display: 'flex' },
+      }, React.createElement(X, { size: 14 })),
+    ),
+
+    selecionados.length > 0 && React.createElement('div', {
+      style: {
+        padding: ehMobile ? '10px 14px' : '10px 20px', flexShrink: 0,
+        display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+        background: T.primarySoft, borderBottom: '1px solid ' + T.primary + '33',
+      },
+    },
+      React.createElement('strong', { style: { color: T.primary, fontSize: 12.5, marginRight: 4 } }, selecionados.length + ' selecionado(s)'),
+      elegiveisPara('concluir').length > 0 && React.createElement('button', {
+        onClick: function () { executarAcaoEmMassa('concluir'); }, disabled: processandoIds.length > 0,
+        style: Object.assign({}, btnBase, { padding: '6px 10px', color: T.success, background: T.surface, borderColor: T.success + '55' }),
+      }, React.createElement(CheckCircle2, { size: 14 }), 'Concluir (' + elegiveisPara('concluir').length + ')'),
+      elegiveisPara('arquivar').length > 0 && React.createElement('button', {
+        onClick: function () { executarAcaoEmMassa('arquivar'); }, disabled: processandoIds.length > 0,
+        style: Object.assign({}, btnBase, { padding: '6px 10px', color: T.textSecondary, background: T.surface }),
+      }, React.createElement(Archive, { size: 14 }), 'Arquivar (' + elegiveisPara('arquivar').length + ')'),
+      elegiveisPara('reabrir').length > 0 && React.createElement('button', {
+        onClick: function () { executarAcaoEmMassa('reabrir'); }, disabled: processandoIds.length > 0,
+        style: Object.assign({}, btnBase, { padding: '6px 10px', color: T.primary, background: T.surface, borderColor: T.primary + '55' }),
+      }, React.createElement(RotateCcw, { size: 14 }), 'Reabrir (' + elegiveisPara('reabrir').length + ')'),
+      React.createElement('button', {
+        onClick: function () { setSelecionados([]); },
+        style: Object.assign({}, btnBase, { marginLeft: 'auto', padding: '6px 10px', background: 'transparent', borderColor: 'transparent' }),
+      }, React.createElement(X, { size: 14 }), 'Limpar seleção'),
+    ),
+
     // ── CONTEÚDO PRINCIPAL ──
     React.createElement('div', { style: { flex: 1, overflowY: 'auto', overflowX: 'auto', minHeight: 0 } },
       erro && React.createElement('div', {
@@ -642,8 +807,9 @@ export function PaginaProtocolos({ breakpoint, onAbrirProtocolo, onCriarProtocol
         : React.createElement('table', {
             style: {
               width: '100%',
+              minWidth: ehMobile ? 820 : ehTablet ? 1120 : 1420,
               borderCollapse: 'collapse',
-              tableLayout: ehMobile ? 'auto' : 'fixed',
+              tableLayout: 'fixed',
             },
           },
             React.createElement('thead', null,
@@ -653,14 +819,16 @@ export function PaginaProtocolos({ breakpoint, onAbrirProtocolo, onCriarProtocol
             ),
             React.createElement('tbody', null,
               lista.map(function (p) {
-                var isSelected = activeCard !== null; // simplified: highlight when a dashboard card is active
+                var isSelected = selecionados.includes(p.id);
+                var tmN = p.msgs_nao_lidas > 0;
                 return React.createElement('tr', {
                   key: p.id || p.numero,
                   onClick: function () { onAbrirProtocolo && onAbrirProtocolo(p); },
                   style: {
                     cursor: 'pointer',
-                    transition: 'background 0.1s',
+                    transition: 'background 0.1s, box-shadow 0.15s',
                     background: isSelected ? T.primarySoft : 'transparent',
+                    boxShadow: tmN ? 'inset 3px 0 0 ' + T.primary : 'none',
                   },
                   onMouseEnter: function (e) { if (!isSelected) e.currentTarget.style.background = T.surfaceAlt; },
                   onMouseLeave: function (e) { if (!isSelected) e.currentTarget.style.background = 'transparent'; },

@@ -81,14 +81,18 @@ export async function criarProtocolo(tenantId, {
       ]
     );
 
-    // Movimentação de abertura
+    // Movimentação de abertura. `visivel_cidadao` nasce false por padrão, o que
+    // deixava a linha do tempo do portal vazia até a migration 025 rodar de novo
+    // no próximo boot — a abertura é justamente o primeiro evento que o cidadão
+    // precisa ver.
     await t.none(
       `INSERT INTO protocolo_movimentacoes
         (tenant_id, protocolo_id, tipo, setor_destino_id, operador_id,
-         status_anterior, status_posterior, observacao, criado_em)
-       VALUES ($1, $2, 'abertura', $3, $4, NULL, 'ABERTO', $5, now())`,
+         status_anterior, status_posterior, observacao, visivel_cidadao, criado_em)
+       VALUES ($1, $2, 'abertura', $3, $4, NULL, 'ABERTO', $5, $6, now())`,
       [tenantId, proto.id, departamentoId || null, operadorId || null,
-        `Protocolo aberto via ${origem || 'whatsapp'}${assunto ? ': ' + assunto : ''}`
+        `Protocolo aberto via ${origem || 'whatsapp'}${assunto ? ': ' + assunto : ''}`,
+        externo !== false,
       ]
     );
 

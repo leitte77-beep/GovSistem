@@ -11,7 +11,6 @@ import { PaginaAgenda } from './components/PaginaAgenda';
 import { PaginaDashboard } from './components/PaginaDashboard';
 import { TelaQR } from './components/TelaQR';
 import { ModalGerarProtocolo } from './components/ModalGerarProtocolo';
-import { PainelDetalheProtocolo } from './components/PainelDetalheProtocolo';
 import { PaginaProtocoloDetalhe } from './components/PaginaProtocoloDetalhe';
 import { PaginaConfigProtocolos } from './components/PaginaConfigProtocolos';
 import { AgendaCompleta } from './components/agenda/AgendaCompleta';
@@ -49,13 +48,16 @@ export function ChatGov() {
   const [canalAtivo, setCanalAtivo] = useState(null);
   const [showQR, setShowQR] = useState(false);
   const [recarregar, setRecarregar] = useState(0);
+  const [protocolosRefresh, setProtocolosRefresh] = useState(0);
   const [notifCount, setNotifCount] = useState(0);
   const [waStatus, setWaStatus] = useState({ status: 'desconectado', numero: null });
 
   // Protocolo
   const [showGerarProtocolo, setShowGerarProtocolo] = useState(false);
-  const [protocoloDetalhe, setProtocoloDetalhe] = useState(null);
-  const [protocoloDetalheFull, setProtocoloDetalheFull] = useState(null);
+  const [protocoloDetalheFull, setProtocoloDetalheFull] = useState(() => {
+    var match = window.location.hash.match(/^#\/protocolos\/([^/]+)$/);
+    return match ? { id: decodeURIComponent(match[1]) } : null;
+  });
 
   useNotificacoesDesktop({ conversaAtivaId: conversaAtiva?.id });
 
@@ -118,7 +120,11 @@ export function ChatGov() {
   }, []);
 
   const handleChangeView = useCallback((v) => {
+    setProtocoloDetalheFull(null);
     setView(v);
+    if (window.location.hash.match(/^#\/protocolos\/[^/]+$/)) {
+      window.history.pushState({}, '', v === 'protocolos' ? '#/protocolos' : window.location.pathname);
+    }
     try { localStorage.setItem('chatgov_view', v); } catch {}
   }, []);
 
@@ -176,10 +182,21 @@ export function ChatGov() {
   const handleGerarProtocoloConversa = useCallback(() => setShowGerarProtocolo(true), []);
   const handleProtocoloCriado = useCallback((proto) => {
     setShowGerarProtocolo(false);
-    if (proto) setProtocoloDetalhe(proto);
+    setProtocolosRefresh((n) => n + 1);
+    if (proto?.id) {
+      setProtocoloDetalheFull(proto);
+      window.history.pushState({}, '', '#/protocolos/' + encodeURIComponent(proto.id));
+    }
     handleConversaUpdated();
   }, [handleConversaUpdated]);
-  const handleAbrirProtocolo = useCallback((proto, full) => {
+
+  const abrirPaginaProtocolo = useCallback((proto) => {
+    if (!proto?.id) return;
+    setProtocoloDetalheFull(proto);
+    window.history.pushState({}, '', '#/protocolos/' + encodeURIComponent(proto.id));
+  }, []);
+
+  const handleAbrirProtocolo = useCallback((proto) => {
     if (typeof proto === 'string') {
       // Buscar pelo número
       const token = JSON.parse(localStorage.getItem('chatgov_auth') || '{}').token;
@@ -187,14 +204,30 @@ export function ChatGov() {
         headers: { Authorization: `Bearer ${token}` },
       }).then(r => r.json()).then(lista => {
         if (lista && lista.length > 0) {
-          if (full) setProtocoloDetalheFull(lista[0]);
-          else setProtocoloDetalhe(lista[0]);
+          abrirPaginaProtocolo(lista[0]);
         }
       }).catch(() => {});
     } else if (proto?.id) {
-      if (full) setProtocoloDetalheFull(proto);
-      else setProtocoloDetalhe(proto);
+      abrirPaginaProtocolo(proto);
     }
+  }, [abrirPaginaProtocolo]);
+
+  useEffect(() => {
+    const sincronizarRotaProtocolo = () => {
+      var match = window.location.hash.match(/^#\/protocolos\/([^/]+)$/);
+      setProtocoloDetalheFull(match ? { id: decodeURIComponent(match[1]) } : null);
+    };
+    window.addEventListener('popstate', sincronizarRotaProtocolo);
+    window.addEventListener('hashchange', sincronizarRotaProtocolo);
+    return () => {
+      window.removeEventListener('popstate', sincronizarRotaProtocolo);
+      window.removeEventListener('hashchange', sincronizarRotaProtocolo);
+    };
+  }, []);
+
+  const handleVoltarProtocolos = useCallback(() => {
+    setProtocoloDetalheFull(null);
+    window.history.pushState({}, '', '#/protocolos');
   }, []);
 
   // A conversa selecionada chega da lista como um retrato do instante do clique.
@@ -280,7 +313,16 @@ export function ChatGov() {
     }),
 
     // Views de tela cheia
-    view === 'dashboard' && isAdmin
+    protocoloDetalheFull
+      ? React.createElement('div', { style: pageShellStyle },
+          React.createElement(PaginaProtocoloDetalhe, {
+            protocoloId: protocoloDetalheFull.id,
+            onVoltar: handleVoltarProtocolos,
+            onAtualizado: handleConversaUpdated,
+            breakpoint,
+          }),
+        )
+      : view === 'dashboard' && isAdmin
       ? React.createElement('div', { style: pageShellStyle },
           React.createElement(PaginaDashboard, { breakpoint }),
         )
@@ -296,6 +338,7 @@ export function ChatGov() {
       ? React.createElement('div', { style: pageShellStyle },
           React.createElement(PaginaProtocolos, {
             breakpoint,
+            refreshKey: protocolosRefresh,
             onAbrirProtocolo: handleAbrirProtocolo,
             onCriarProtocolo: () => setShowGerarProtocolo(true),
           }),
@@ -422,25 +465,5 @@ export function ChatGov() {
       onCriado: handleProtocoloCriado,
     }),
 
-    protocoloDetalheFull && React.createElement('div', {
-      style: { position: 'fixed', inset: 0, zIndex: 250, background: T.bg, overflow: 'hidden' },
-    },
-      React.createElement(PaginaProtocoloDetalhe, {
-        protocoloId: protocoloDetalheFull.id,
-        onVoltar: () => setProtocoloDetalheFull(null),
-        onAtualizado: handleConversaUpdated,
-        breakpoint,
-      }),
-    ),
-
-    protocoloDetalhe && React.createElement(PainelDetalheProtocolo, {
-      protocolo: protocoloDetalhe,
-      onClose: () => setProtocoloDetalhe(null),
-      onAtualizado: handleConversaUpdated,
-      onAbrirCompleto: (p) => {
-        setProtocoloDetalhe(null);
-        setProtocoloDetalheFull(p);
-      },
-    }),
   );
 }

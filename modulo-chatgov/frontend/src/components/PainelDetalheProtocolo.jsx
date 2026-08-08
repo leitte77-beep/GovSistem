@@ -257,7 +257,15 @@ export function PainelDetalheProtocolo({ protocolo, onClose, onAtualizado }) {
 
   function callApi(method, path, body) {
     return fetch(path, { method: method, headers: authHeaders(), body: body ? JSON.stringify(body) : undefined })
-      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json().catch(function () { return {}; }); });
+      .then(function (r) {
+        return r.json().catch(function () { return {}; }).then(function (dados) {
+          // O motivo da recusa vem no corpo ("Transição inválida: ...").
+          // Trocar isso por "HTTP 422" escondia exatamente o que o atendente
+          // precisa ler para saber o que fazer.
+          if (!r.ok) throw new Error(dados.erro || 'HTTP ' + r.status);
+          return dados;
+        });
+      });
   }
 
   var enviarMensagem = function () {
@@ -294,26 +302,45 @@ export function PainelDetalheProtocolo({ protocolo, onClose, onAtualizado }) {
   var concluirProtocolo = function () {
     callApi('POST', '/api/v1/protocols/' + proto.id + '/complete', {})
       .then(function () { notificarAtualizacao(); })
-      .catch(function () {});
+      .catch(function (err) { setErro(err.message); });
   };
 
+  // Cancelar e reabrir exigem motivo no backend; sem ele a chamada voltava 422
+  // e o clique não fazia nada.
   var cancelarProtocolo = function () {
-    if (!window.confirm('Tem certeza que deseja cancelar este protocolo?')) return;
-    callApi('POST', '/api/v1/protocols/' + proto.id + '/cancel', {})
+    var motivo = window.prompt('Informe o motivo do cancelamento:');
+    if (!motivo || !motivo.trim()) return;
+    callApi('POST', '/api/v1/protocols/' + proto.id + '/cancel', { justificativa: motivo.trim() })
       .then(function () { notificarAtualizacao(); })
-      .catch(function () {});
+      .catch(function (err) { setErro(err.message); });
   };
 
   var reabrirProtocolo = function () {
-    callApi('POST', '/api/v1/protocols/' + proto.id + '/reopen', {})
+    var motivo = window.prompt('Informe o motivo da reabertura:');
+    if (!motivo || !motivo.trim()) return;
+    callApi('POST', '/api/v1/protocols/' + proto.id + '/reopen', { justificativa: motivo.trim() })
       .then(function () { notificarAtualizacao(); })
-      .catch(function () {});
+      .catch(function (err) { setErro(err.message); });
   };
 
   var arquivarProtocolo = function () {
     callApi('POST', '/api/v1/protocols/' + proto.id + '/status', { status: 'ARQUIVADO' })
       .then(function () { notificarAtualizacao(); })
-      .catch(function () {});
+      .catch(function (err) { setErro(err.message); });
+  };
+
+  // Muda a situação do protocolo e registra um andamento que o cidadão vê no
+  // portal. `observacao` é o texto que ele lê.
+  var alterarSituacao = function (destino, observacao) {
+    setErro('');
+    setShowMaisAcoes(false);
+    callApi('POST', '/api/v1/protocols/' + proto.id + '/status', {
+      status_operacional: destino,
+      observacao: observacao,
+      justificativa: observacao,
+    })
+      .then(function () { notificarAtualizacao(); })
+      .catch(function (err) { setErro(err.message); });
   };
 
   var alterarPrioridade = function (novaPrioridade) {
@@ -410,6 +437,22 @@ export function PainelDetalheProtocolo({ protocolo, onClose, onAtualizado }) {
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
+      })
+      .catch(function (err) { setErroDoc(err.message); });
+  };
+
+  var visualizarDocumento = function (doc) {
+    setErroDoc('');
+    fetch('/api/v1/protocols/' + proto.id + '/documents/' + doc.id + '/download', {
+      headers: { Authorization: 'Bearer ' + token() },
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error('Não foi possível visualizar o documento');
+        return r.blob();
+      })
+      .then(function (blob) {
+        var url = URL.createObjectURL(blob);
+        window.open(url, '_blank', 'noopener,noreferrer');
       })
       .catch(function (err) { setErroDoc(err.message); });
   };
@@ -794,7 +837,7 @@ export function PainelDetalheProtocolo({ protocolo, onClose, onAtualizado }) {
                 React.createElement(BadgeVisibilidade, { publico: d.visivel_cidadao }),
                 React.createElement('div', { style: { display: 'flex', gap: 2, justifyContent: 'flex-end' } },
                   React.createElement('button', {
-                    title: 'Visualizar', onClick: function () { downloadDocumento(d); },
+                    title: 'Visualizar', onClick: function () { visualizarDocumento(d); },
                     style: { ...btnBaseStyle, padding: '4px 6px', background: 'transparent', color: T.textMuted, fontSize: 11 },
                   }, React.createElement(Eye, { size: 14 })),
                   React.createElement('button', {
@@ -1404,6 +1447,16 @@ export function PainelDetalheProtocolo({ protocolo, onClose, onAtualizado }) {
           onClick: function () { setAba('mensagens'); }, title: 'Responder',
           style: { ...btnBaseStyle, background: T.surfaceAlt, color: T.textSecondary },
         }, React.createElement(MessageSquare, { size: 13 }), 'Responder'),
+        // Só faz sentido enquanto o protocolo ainda não avançou: é o clique que
+        // leva o cidadão de "Solicitação recebida" para "Em análise".
+        (proto.status_operacional === 'ABERTO' || proto.status_operacional === 'PENDENTE')
+          && React.createElement('button', {
+            onClick: function () {
+              alterarSituacao('EM_ANDAMENTO', 'Sua solicitação está em análise pelo setor responsável.');
+            },
+            title: 'Dar andamento (o cidadão passa a ver "Em análise")',
+            style: { ...btnBaseStyle, background: T.primarySoft, color: T.primary },
+          }, React.createElement(RefreshCw, { size: 13 }), 'Dar andamento'),
         React.createElement('button', {
           onClick: concluirProtocolo, title: 'Concluir',
           style: { ...btnBaseStyle, background: T.successSoft, color: T.success },
@@ -1420,6 +1473,9 @@ export function PainelDetalheProtocolo({ protocolo, onClose, onAtualizado }) {
               padding: '4px 0', boxShadow: T.shadowMd, zIndex: 100, minWidth: 180,
             },
           },
+            ActionMenuItem({ label: 'Aguardando cidadão', onClick: function () {
+              alterarSituacao('PENDENTE', 'Aguardando uma resposta ou documento seu para prosseguir.');
+            } }),
             ActionMenuItem({ label: 'Alterar prioridade', onClick: function () { alterarPrioridade('ALTA'); } }),
             ActionMenuItem({ label: 'Alterar prazo', onClick: function () {} }),
             ActionMenuItem({ label: 'Cancelar', onClick: cancelarProtocolo }),

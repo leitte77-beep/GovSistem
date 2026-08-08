@@ -8,6 +8,7 @@ import {
   FileCheck, UserPlus, MapPin, Clock, Download, RefreshCw,
 } from 'lucide-react';
 import { T } from '../theme';
+import { RichTextEditor } from './RichTextEditor.jsx';
 
 var ORIGENS = [
   { value: 'whatsapp', label: 'WhatsApp' },
@@ -1043,11 +1044,11 @@ export function ModalGerarProtocolo({ conversa, onClose, onCriado }) {
       campoInput('Assunto *', assunto, function (e) { setAssunto(e.target.value); }, { placeholder: 'Título resumido da solicitação', erro: erros.assunto }),
 
       React.createElement('label', { style: labelStyle }, 'Descrição *'),
-      React.createElement('textarea', {
-        value: descricao, onChange: function (e) { setDescricao(e.target.value); },
+      React.createElement(RichTextEditor, {
+        value: descricao,
+        onChange: function (html) { setDescricao(html); },
         placeholder: 'Descreva detalhadamente a solicitação...',
-        rows: 4,
-        style: Object.assign({}, inputBase(), erroStyle(!!erros.descricao), { resize: 'vertical', marginBottom: 4, minHeight: 80 }),
+        minHeight: 140,
       }),
       erros.descricao && React.createElement(erroCampo, null, erros.descricao),
       React.createElement('div', { style: { height: 8 } }),
@@ -1106,12 +1107,17 @@ export function ModalGerarProtocolo({ conversa, onClose, onCriado }) {
       campoInput('Tags', tags, function (e) { setTags(e.target.value); }, { placeholder: 'Ex: urgente, licitação, fiscal (separadas por vírgula)' }),
 
       React.createElement('label', { style: labelStyle }, 'Observação interna'),
-      React.createElement('textarea', {
-        value: observacaoInterna, onChange: function (e) { setObservacaoInterna(e.target.value); },
-        placeholder: 'Observações visíveis apenas para a equipe interna...',
-        rows: 3,
-        style: Object.assign({}, inputBase(), { resize: 'vertical', marginBottom: 0, minHeight: 60 }),
-      }),
+      React.createElement('div', { style: { position: 'relative' } },
+        React.createElement('textarea', {
+          value: observacaoInterna, onChange: function (e) { setObservacaoInterna(e.target.value); },
+          placeholder: 'Observações visíveis apenas para a equipe interna...',
+          rows: 3, maxLength: 1000,
+          style: Object.assign({}, inputBase(), { resize: 'vertical', marginBottom: 0, minHeight: 70, lineHeight: 1.5, fontFamily: 'inherit' }),
+        }),
+        React.createElement('span', {
+          style: { display: 'block', textAlign: 'right', fontSize: 10.5, color: T.textMuted, marginTop: 2, fontWeight: 500 },
+        }, (observacaoInterna || '').length + '/1000'),
+      ),
     );
   }
 
