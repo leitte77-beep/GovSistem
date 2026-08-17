@@ -11,7 +11,7 @@ export function Skeleton({
   linhas?: number;
   className?: string;
 }) {
-  const barra = "animate-pulse rounded bg-ink-soft/15";
+  const barra = "motion-safe:animate-pulse rounded bg-ink-soft/15";
 
   if (variante === "cartao") {
     return (

@@ -1,6 +1,7 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
+  darkMode: "class",
   content: [
     "./index.html",
     "./src/**/*.{ts,tsx}",
@@ -62,6 +63,7 @@ const config: Config = {
         danger: "var(--ga-danger)",
         sensitive: "var(--ga-sensitive)",
         focus: "var(--ga-focus)",
+        "search-highlight": "var(--ga-search-highlight)",
         "evt-paif": "var(--ga-primary)",
         "evt-scfv": "#3E8E7E",
         "evt-paefi": "var(--ga-sensitive)",

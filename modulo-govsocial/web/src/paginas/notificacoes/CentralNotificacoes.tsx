@@ -1,6 +1,7 @@
 /** Central de Notificações — com ícones por tipo e badges coloridos */
 import { Bell, Check } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 import {
   useNotificacoes,
   servicoNotificacoes,
@@ -9,6 +10,9 @@ import {
   type NotificacaoOut,
 } from "@/nucleo/api/servicosFase2";
 import { Skeleton } from "@/ui/Skeleton";
+import { EstadoErro } from "@/ui/EstadoErro";
+import { avisar } from "@/ui/Toast";
+import { extrairProblema } from "@/nucleo/http/problemDetails";
 import { useQueryClient } from "@tanstack/react-query";
 
 function iconeTipo(tipo: string): string {
@@ -32,22 +36,43 @@ function labelTipo(tipo: string): string {
 }
 
 export default function CentralNotificacoes() {
-  const { data, isLoading } = useNotificacoes();
+  const { data, isLoading, isError, error, refetch } = useNotificacoes();
   const qc = useQueryClient();
   const navegar = useNavigate();
+  const [marcandoTodas, setMarcandoTodas] = useState(false);
 
   if (isLoading) return <Skeleton variante="cartao" />;
 
+  if (isError) {
+    return (
+      <EstadoErro
+        problema={extrairProblema(error)}
+        aoTentarNovamente={() => refetch()}
+      />
+    );
+  }
+
   const marcarTodas = async () => {
-    await servicoNotificacoes.marcarTodas();
-    qc.invalidateQueries({ queryKey: ["notificacoes"] });
-    qc.invalidateQueries({ queryKey: ["notificacoes", "count"] });
+    try {
+      setMarcandoTodas(true);
+      await servicoNotificacoes.marcarTodas();
+      qc.invalidateQueries({ queryKey: ["notificacoes"] });
+      qc.invalidateQueries({ queryKey: ["notificacoes", "count"] });
+    } catch (e) {
+      avisar.erro("Não foi possível marcar todas como lidas.");
+    } finally {
+      setMarcandoTodas(false);
+    }
   };
 
   const marcarLida = async (id: string) => {
-    await servicoNotificacoes.marcarLida(id);
-    qc.invalidateQueries({ queryKey: ["notificacoes"] });
-    qc.invalidateQueries({ queryKey: ["notificacoes", "count"] });
+    try {
+      await servicoNotificacoes.marcarLida(id);
+      qc.invalidateQueries({ queryKey: ["notificacoes"] });
+      qc.invalidateQueries({ queryKey: ["notificacoes", "count"] });
+    } catch {
+      avisar.erro("Não foi possível marcar a notificação como lida.");
+    }
   };
 
   const clicarNotificacao = (n: NotificacaoOut) => {
@@ -72,9 +97,10 @@ export default function CentralNotificacoes() {
         {naoLidas > 0 && (
           <button
             onClick={marcarTodas}
-            className="text-sm text-primary font-medium hover:underline flex items-center gap-1"
+            disabled={marcandoTodas}
+            className="text-sm text-primary font-medium hover:underline flex items-center gap-1 disabled:opacity-60"
           >
-            <Check className="w-4 h-4" /> Marcar todas como lidas
+            <Check className="w-4 h-4" /> {marcandoTodas ? "Marcando..." : "Marcar todas como lidas"}
           </button>
         )}
       </div>
@@ -107,6 +133,7 @@ export default function CentralNotificacoes() {
               >
                 <span
                   className={`material-symbols-outlined w-9 h-9 rounded-lg flex items-center justify-center shrink-0 text-[20px] ${cor}`}
+                  aria-hidden="true"
                 >
                   {icone}
                 </span>

@@ -18,9 +18,15 @@ type IconKey =
   | "send"
   | "analytics"
   | "visibility"
+  | "insights"
+  | "hospital"
+  | "search"
   | "package"
   | "settings"
-  | "apartment";
+  | "apartment"
+  | "account_balance"
+  | "monitor"
+  | "face";
 
 const ICONES_MATERIAL: Record<ItemMenu, IconKey> = {
   inicio: "home",
@@ -32,15 +38,21 @@ const ICONES_MATERIAL: Record<ItemMenu, IconKey> = {
   encaminhamentos: "send",
   rma: "analytics",
   vigilancia: "visibility",
+  vigilanciaAvancada: "insights",
+  buscaAtiva: "search",
   estoque: "package",
   administracao: "settings",
   habitacao: "apartment",
+  financeiro: "account_balance",
+  monitoramento: "monitor",
+  biometria: "face",
 };
 
 const SECAO_GERAL: ItemMenu[] = ["inicio", "familias", "atendimentos", "agenda"];
-const SECAO_PROGRAMAS: ItemMenu[] = ["beneficios", "grupos", "encaminhamentos", "estoque", "habitacao"];
-const SECAO_RELATORIOS: ItemMenu[] = ["rma", "vigilancia"];
-const SECAO_ADMIN: ItemMenu[] = ["administracao"];
+const SECAO_PROGRAMAS: ItemMenu[] = ["beneficios", "grupos", "encaminhamentos", "estoque", "habitacao", "financeiro"];
+const SECAO_RELATORIOS: ItemMenu[] = ["rma", "vigilancia", "vigilanciaAvancada", "buscaAtiva"];
+const SECAO_MONITORAMENTO: ItemMenu[] = ["monitoramento"];
+const SECAO_ADMIN: ItemMenu[] = ["administracao", "biometria"];
 
 interface SecaoInfo {
   titulo: string;
@@ -67,6 +79,7 @@ export function Sidebar() {
     { titulo: "Geral", itens: secaoVisivel(SECAO_GERAL) },
     { titulo: "Programas", itens: secaoVisivel(SECAO_PROGRAMAS) },
     { titulo: "Relatórios", itens: secaoVisivel(SECAO_RELATORIOS) },
+    { titulo: "Monitoramento", itens: secaoVisivel(SECAO_MONITORAMENTO) },
     { titulo: "Configuração", itens: secaoVisivel(SECAO_ADMIN) },
   ].filter((s) => s && s.itens.length > 0);
 
@@ -99,7 +112,7 @@ export function Sidebar() {
           return (
             <div key={s.titulo}>
               {precisaSeparador(idx) && <div className="pt-4" />}
-              <p className="px-md pb-2 pt-2 text-[11px] font-bold text-outline/60 uppercase tracking-widest">
+              <p className="px-md pb-2 pt-2 text-[11px] font-bold text-ink-soft uppercase tracking-widest">
                 {s.titulo}
               </p>
               {s.itens.map((item) => {

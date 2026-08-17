@@ -4,6 +4,13 @@ x-logging: &default-logging
     max-size: "10m"
     max-file: "3"
 
+x-security: &security-hardening
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  read_only: true
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -106,6 +113,8 @@ services:
       DEBUG: ${API_DEBUG:-true}
       SECRET_KEY: ${API_SECRET_KEY:-change-me-in-production}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-dev-internal-key-123}
+      SAAS_JWT_SECRET: ${SAAS_JWT_SECRET:-}
+      SAAS_INTERNAL_API_KEY: ${SAAS_INTERNAL_API_KEY:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
     volumes:
@@ -461,6 +470,7 @@ services:
     build:
       context: ../modulo-govsocial/api
       dockerfile: Dockerfile
+    <<: [*security-hardening]
     logging: *default-logging
     environment:
       POSTGRES_HOST: postgres
@@ -485,6 +495,8 @@ services:
       FIELD_ENCRYPTION_KEY: ${GOVSOCIAL_FIELD_ENCRYPTION_KEY:-}
     volumes:
       - govsocial_uploads:/app/uploads
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128M
     ports:
       - "8202:8000"
     depends_on:
@@ -510,8 +522,21 @@ services:
       context: ../modulo-govsocial/web
       dockerfile: Dockerfile
     logging: *default-logging
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETGID
+      - SETUID
+      - NET_BIND_SERVICE
+    read_only: true
     ports:
       - "7501:80"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=32M
+      - /var/cache/nginx:rw,noexec,nosuid,size=64M
+      - /var/run:rw,noexec,nosuid,size=1M
     depends_on:
       govsocial-api:
         condition: service_healthy

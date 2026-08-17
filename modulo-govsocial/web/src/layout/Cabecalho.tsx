@@ -5,6 +5,7 @@ import { useContagemNotificacoes } from "@/nucleo/api/servicosFase2";
 import { SeletorUnidade } from "./SeletorUnidade";
 import { BuscaGlobal } from "./BuscaGlobal";
 import { PainelNotificacoes } from "./PainelNotificacoes";
+import { ToggleTema } from "@/ui/ToggleTema";
 
 const PLATAFORMA_URL =
   import.meta.env.VITE_PLATFORM_URL || "https://admin.govsistem.com.br/";
@@ -35,7 +36,7 @@ export function Cabecalho() {
                 : "Usuário";
 
   return (
-    <header className="nao-imprimir fixed top-0 right-0 left-[260px] h-20 bg-white/80 backdrop-blur-md flex justify-between items-center px-lg z-40 border-b border-surface-container-highest/20">
+    <header className="nao-imprimir fixed top-0 right-0 left-[260px] h-20 bg-surface-container-lowest/80 backdrop-blur-md flex justify-between items-center px-lg z-40 border-b border-surface-container-highest/20">
       <div className="flex items-center flex-1 max-w-3xl gap-4">
         <div className="flex-1 max-w-2xl">
           <BuscaGlobal inputRef={buscaRef} />
@@ -73,6 +74,8 @@ export function Cabecalho() {
         </div>
 
         <div className="h-8 w-px bg-surface-container-highest mx-1" />
+
+        <ToggleTema />
 
         <div className="flex items-center gap-3 pl-2">
           <div className="text-right hidden sm:block">

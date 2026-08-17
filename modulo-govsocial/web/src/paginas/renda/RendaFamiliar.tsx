@@ -1,18 +1,30 @@
-/** Página de Renda e Despesas Familiares */
-
 import { useParams } from "react-router-dom";
 import { Trash2 } from "lucide-react";
 import { useRenda, servicoRenda } from "@/nucleo/api/servicosFase2";
+import { useFamilia } from "@/nucleo/api/hooks";
 import { usePermissao } from "@/nucleo/permissoes/usePermissao";
 import { Skeleton } from "@/ui/Skeleton";
 import { EstadoErro } from "@/ui/EstadoErro";
+import { EstadoVazio } from "@/ui/EstadoVazio";
 import { useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
 
 export default function RendaFamiliar() {
   const { familiaId } = useParams<{ familiaId: string }>();
   const { data, isLoading, isError, refetch } = useRenda(familiaId!);
+  const { data: familia } = useFamilia(familiaId);
   const podeEditar = usePermissao("beneficio.conceder");
   const qc = useQueryClient();
+
+  const nomesPorId = useMemo(() => {
+    const mapa: Record<string, string> = {};
+    if (familia?.membros) {
+      for (const m of familia.membros) {
+        mapa[m.person_id] = m.nome_exibicao;
+      }
+    }
+    return mapa;
+  }, [familia]);
 
   if (isLoading) return <Skeleton variante="cartao" />;
   if (isError || !data) return <EstadoErro problema={undefined} aoTentarNovamente={refetch} />;
@@ -29,29 +41,50 @@ export default function RendaFamiliar() {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div>
           <h3 className="font-semibold mb-2">Rendas por Membro</h3>
-          <table className="w-full text-sm border">
-            <thead><tr className="bg-gray-100"><th className="p-2 text-left">Membro</th><th>Tipo</th><th>Valor</th><th></th></tr></thead>
-            <tbody>
-              {data.rendas.map(r => (
-                <tr key={r.id} className="border-t">
-                  <td className="p-2">{r.person_id.slice(0,8)}</td><td className="p-2">{r.tipo}</td>
-                  <td className="p-2">R$ {r.valor.toFixed(2)}</td>
-                  <td className="p-2">{podeEditar && <button onClick={async () => { await servicoRenda.removerRenda(r.person_id, r.id); qc.invalidateQueries({ queryKey: ["renda"] }); }}><Trash2 className="w-4 h-4 text-red-500" /></button>}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          {data.rendas.length === 0 ? (
+            <EstadoVazio titulo="Nenhuma renda registrada" descricao="Adicione rendas para os membros da família." />
+          ) : (
+            <table className="w-full text-sm border">
+              <thead><tr className="bg-gray-100"><th className="p-2 text-left">Membro</th><th className="p-2 text-left">Tipo</th><th className="p-2 text-right">Valor</th><th className="p-2 w-10"></th></tr></thead>
+              <tbody>
+                {data.rendas.map(r => (
+                  <tr key={r.id} className="border-t hover:bg-gray-50">
+                    <td className="p-2 font-medium">{nomesPorId[r.person_id] || r.person_id.slice(0, 8)}</td>
+                    <td className="p-2">{r.tipo}</td>
+                    <td className="p-2 text-right">R$ {r.valor.toFixed(2)}</td>
+                    <td className="p-2">
+                      {podeEditar && (
+                        <button
+                          onClick={async () => { await servicoRenda.removerRenda(r.person_id, r.id); qc.invalidateQueries({ queryKey: ["renda"] }); }}
+                          title="Remover renda"
+                        >
+                          <Trash2 className="w-4 h-4 text-red-500 hover:text-red-700" />
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
         <div>
           <h3 className="font-semibold mb-2">Despesas</h3>
-          <table className="w-full text-sm border">
-            <thead><tr className="bg-gray-100"><th className="p-2 text-left">Tipo</th><th>Valor</th></tr></thead>
-            <tbody>
-              {data.despesas.map(d => (
-                <tr key={d.id} className="border-t"><td className="p-2">{d.tipo}</td><td className="p-2">R$ {d.valor.toFixed(2)}</td></tr>
-              ))}
-            </tbody>
-          </table>
+          {data.despesas.length === 0 ? (
+            <EstadoVazio titulo="Nenhuma despesa registrada" descricao="Adicione despesas da família." />
+          ) : (
+            <table className="w-full text-sm border">
+              <thead><tr className="bg-gray-100"><th className="p-2 text-left">Tipo</th><th className="p-2 text-right">Valor</th></tr></thead>
+              <tbody>
+                {data.despesas.map(d => (
+                  <tr key={d.id} className="border-t hover:bg-gray-50">
+                    <td className="p-2">{d.tipo}</td>
+                    <td className="p-2 text-right">R$ {d.valor.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
         </div>
       </div>
     </div>

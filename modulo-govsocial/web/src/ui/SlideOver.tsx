@@ -1,4 +1,5 @@
 import { useId, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import clsx from "clsx";
 import { X } from "lucide-react";
 import { usePrenderFoco } from "./usePrenderFoco";
@@ -18,18 +19,15 @@ export type SlideOverProps = {
 
 const LARGURA = { md: "max-w-md", lg: "max-w-xl" };
 
-export function SlideOver({
-  aberto,
+function ConteudoSlideOver({
   aoFechar,
   titulo,
   largura = "md",
   children,
   rodape,
-}: SlideOverProps) {
-  const ref = usePrenderFoco(aberto, aoFechar);
+}: Omit<SlideOverProps, "aberto">) {
+  const ref = usePrenderFoco(true, aoFechar);
   const tituloId = useId();
-
-  if (!aberto) return null;
 
   return (
     <div className="fixed inset-0 z-50" role="presentation">
@@ -70,4 +68,9 @@ export function SlideOver({
       </div>
     </div>
   );
+}
+
+export function SlideOver({ aberto, ...props }: SlideOverProps) {
+  if (!aberto) return null;
+  return createPortal(<ConteudoSlideOver {...props} />, document.body);
 }

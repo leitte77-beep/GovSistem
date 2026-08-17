@@ -143,7 +143,10 @@ function FilaDoDia({ unitId }: { unitId?: string }) {
   });
 
   const chamar = useMutation({
-    mutationFn: (id: string) => servicoAgenda.chamar(id, usuario?.id ?? "prof-carla"),
+    mutationFn: (id: string) => {
+      if (!usuario?.id) throw new Error("Usuário não identificado");
+      return servicoAgenda.chamar(id, usuario.id);
+    },
     onSuccess: () => {
       avisar.sucesso("Cidadão chamado para atendimento.");
       invalidar(unitId);

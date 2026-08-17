@@ -76,6 +76,15 @@ LEGACY_ROLE_MAP: dict[str, dict[str, str]] = {
     "govdoc": {"ADMIN": "admin_geral", "AUDITOR": "auditor"},
 }
 
+# Legacy role names mapped to current canonical names.
+# Allows old grants (e.g. "ADMIN") to be accepted while normalizing to the
+# new prefixed name (e.g. "DIARIO_ADMIN") at write time.
+LEGACY_ROLE_MAP: dict[str, dict[str, str]] = {
+    "diario": {"ADMIN": "DIARIO_ADMIN"},
+    "govtask": {"ADMIN": "GOVTASK_ADMIN"},
+    "govsocial": {"ADMIN": "GOVSOCIAL_ADMIN"},
+}
+
 
 def valid_role_names(module_slug: str) -> set[str]:
     return {r["name"] for r in MODULE_ROLE_CATALOG.get(module_slug, [])}

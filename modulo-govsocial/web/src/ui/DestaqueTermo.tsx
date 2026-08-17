@@ -32,7 +32,7 @@ export function DestaqueTermo({
     }
     if (idx > i) partes.push(texto.slice(i, idx));
     partes.push(
-      <mark key={chave++} className="rounded bg-amber/20 px-0.5 text-ink">
+      <mark key={chave++} className="rounded-[3px] bg-search-highlight px-0.5 text-ink">
         {texto.slice(idx, idx + t.length)}
       </mark>,
     );

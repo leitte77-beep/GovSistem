@@ -3,6 +3,7 @@ import { http } from "@/nucleo/http/clienteHttp";
 import type { UnidadeResumo } from "@/tipos/api";
 import { UnidadeAtualProvider } from "@/contextos/UnidadeAtualProvider";
 import { useSessao } from "@/nucleo/auth/SessaoProvider";
+import { normalizarNomeUnidade } from "@/nucleo/formatoTexto";
 
 /**
  * Carrega as unidades do tenant (contexto global) e alimenta o provider.
@@ -20,7 +21,12 @@ export function CarregadorUnidades({ children }: { children: ReactNode }) {
     http
       .get<UnidadeResumo[]>("/units")
       .then((us) => {
-        if (vivo) setUnidades(us.filter((u) => u.is_active));
+        if (vivo)
+          setUnidades(
+            us
+              .filter((u) => u.is_active)
+              .map((u) => ({ ...u, nome: normalizarNomeUnidade(u.nome) })),
+          );
       })
       .catch(() => {
         if (vivo) setUnidades([]);
