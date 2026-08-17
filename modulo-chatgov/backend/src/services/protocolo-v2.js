@@ -41,6 +41,25 @@ export async function criarProtocolo(tenantId, {
   observacaoInterna = null,
 }) {
   return db.tx(async (t) => {
+    if (conversaId) {
+      const conversa = await t.oneOrNone(
+        `SELECT id FROM conversas
+         WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+         FOR UPDATE`,
+        [conversaId, tenantId]
+      );
+      if (!conversa) throw new Error('Conversa não encontrada');
+      const existente = await t.oneOrNone(
+        `SELECT id, numero FROM protocolos
+         WHERE conversa_id = $1 AND tenant_id = $2
+         ORDER BY aberto_em ASC LIMIT 1`,
+        [conversaId, tenantId]
+      );
+      if (existente) {
+        throw new Error(`A conversa já possui o protocolo ${existente.numero}`);
+      }
+    }
+
     const numero = await gerarNumeroProtocoloNoContexto(t, tenantId);
 
     let prazoEm = null;

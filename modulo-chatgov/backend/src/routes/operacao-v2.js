@@ -2,6 +2,7 @@ import express from 'express';
 import { allowedTransitions, CONVERSA_STATUS, PROTOCOLO_STATUS } from '../domain/status.js';
 import { PERMISSIONS, requirePermission } from '../auth/permissions.js';
 import { transitionConversation, transitionProtocol } from '../services/status-transitions.js';
+import { podeAcessarConversa } from '../services/autorizacao-conversas.js';
 import db from '../db.js';
 
 const router = express.Router();
@@ -30,6 +31,9 @@ router.patch(
   requirePermission(PERMISSIONS.CONVERSAS_RESOLVE),
   async (req, res) => {
     try {
+      if (!(await podeAcessarConversa(db, req.operador, req.params.id))) {
+        return res.status(403).json({ erro: 'Sem acesso a esta conversa' });
+      }
       const targetStatus = String(req.body.status || '').toUpperCase();
       const conversa = await transitionConversation({
         tenantId: req.operador.tenantId,

@@ -12,14 +12,19 @@ Requisitos edital (XLIV-L):
 
 import json
 import logging
+import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
 import jwt
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.database import get_db
 from app.core.redis import get_redis
+from app.models.user import User
 
 logger = logging.getLogger("govsocial.chat")
 
@@ -97,8 +102,15 @@ def _extract_token(ws: WebSocket) -> Optional[str]:
 
 
 @router.websocket("/ws/chat/{tenant_id}")
-async def chat_websocket(ws: WebSocket, tenant_id: str):
-    """WebSocket principal do chat. Autentica via token JWT via header."""
+async def chat_websocket(ws: WebSocket, tenant_id: str, db: AsyncSession = Depends(get_db)):
+    """WebSocket principal do chat. Autentica via token JWT via header.
+
+    O tenant da sala é sempre o `organization_id` do usuário autenticado
+    (lido do banco, não do token) — nunca o `{tenant_id}` da URL por si só.
+    Sem essa checagem, qualquer usuário autenticado de qualquer município
+    poderia se conectar em `/ws/chat/{outro_tenant}` e ler/enviar mensagens
+    do chat interno de outro tenant.
+    """
 
     origin = ws.headers.get("origin", "")
     if origin and origin not in settings.CORS_ORIGINS:
@@ -130,11 +142,38 @@ async def chat_websocket(ws: WebSocket, tenant_id: str):
             await ws.close(code=4001, reason="Token inválido")
             return
 
-    user_id = payload.get("sub")
-    user_name = payload.get("name", user_id)
-    if not user_id:
+    token_type = payload.get("type")
+    if token_type == "module_access" and payload.get("module") not in (None, "govsocial"):
+        await ws.close(code=4001, reason="Token de outro módulo")
+        return
+    if token_type not in {"access", "module_access"}:
+        await ws.close(code=4001, reason="Tipo de token inválido")
+        return
+
+    raw_user_id = payload.get("sub")
+    if not raw_user_id:
         await ws.close(code=4001, reason="Token sem sub")
         return
+
+    try:
+        user_uuid = uuid.UUID(raw_user_id)
+        tenant_uuid = uuid.UUID(tenant_id)
+    except ValueError:
+        await ws.close(code=4001, reason="Identificador inválido")
+        return
+
+    user = (
+        await db.execute(select(User).where(User.id == user_uuid))
+    ).scalar_one_or_none()
+    if user is None or user.deleted_at is not None or not user.is_active:
+        await ws.close(code=4001, reason="Usuário inválido")
+        return
+    if user.organization_id != tenant_uuid:
+        await ws.close(code=4003, reason="Tenant não corresponde ao usuário autenticado")
+        return
+
+    user_id = str(user.id)
+    user_name = user.name
 
     redis = await get_redis()
     if redis is None:

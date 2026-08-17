@@ -24,11 +24,13 @@ class TestDashboard:
         db.add(Attendance(
             tenant_id=org, case_file_id=cf.id, unit_id=unit,
             service_type_code="PAIF", tipo="INDIVIDUAL",
-            data_atendimento=datetime(2026, 7, 10, 10, 0, tzinfo=timezone.utc),
+            # Mês corrente (o dashboard conta o mês de hoje; data fixa tornaria
+            # o teste dependente do relógio).
+            data_atendimento=datetime.now(timezone.utc),
         ))
         db.add(Acompanhamento(
             tenant_id=org, case_file_id=cf.id, tipo="PAIF",
-            data_inicio=date(2026, 7, 1), situacao="ATIVO",
+            data_inicio=date.today(), situacao="ATIVO",
         ))
         await db.flush()
 
@@ -97,12 +99,13 @@ class TestDashboard:
             tenant_id=world["org_a"].id, family_id=world["family_a"].id,
             unit_id=world["unit_a"].id, benefit_type_code="NATALIDADE",
             status="ENTREGUE",
-            data_solicitacao=datetime(2026, 7, 1, tzinfo=timezone.utc),
+            data_solicitacao=datetime.now(timezone.utc),
         ))
         await db_session.commit()
 
+        hoje = date.today()
         resp = await client.get(
-            f"{PREFIX}/dashboard/benefits-report?ano=2026&mes=7",
+            f"{PREFIX}/dashboard/benefits-report?ano={hoje.year}&mes={hoje.month}",
             headers=world["auth"]("gestor_municipal"),
         )
         assert resp.status_code == 200

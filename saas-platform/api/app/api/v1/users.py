@@ -173,6 +173,7 @@ async def _sync_user_to_modules(user: User, db: AsyncSession) -> None:
         "govsocial": settings.GOVSOCIAL_MODULE_INTERNAL_API_URL,
         "govtask": settings.GOVTASK_MODULE_INTERNAL_API_URL,
         "govdoc": settings.GOVDOC_MODULE_INTERNAL_API_URL,
+        "govpro": settings.GOVPRO_MODULE_INTERNAL_API_URL,
     }
 
     for module_slug in module_slugs:

@@ -1,0 +1,92 @@
+# GovPro (módulo SPE) — roda DENTRO do stack `infra` (usa postgres/minio da infra).
+#
+#   docker compose -p infra -f modulo-govpro/docker-compose.yml up -d --build
+#
+# (usar `-p infra` para compartilhar redes/volumes do stack infra).
+# Segredos ficam em modulo-govpro/.env (gitignored).
+
+services:
+  govpro-api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    image: infra-govpro-api
+    env_file:
+      - ./.env
+    volumes:
+      - govpro_uploads:/app/uploads
+    ports:
+      - "8203:8000"
+    restart: unless-stopped
+    networks:
+      - doe-network
+      - internal
+
+  govpro-worker:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    image: infra-govpro-api
+    env_file:
+      - ./.env
+    command: celery -A app.celery_app worker --loglevel=info --concurrency=2
+    depends_on:
+      - govpro-api
+    restart: unless-stopped
+    networks:
+      - doe-network
+
+  govpro-beat:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    image: infra-govpro-api
+    env_file:
+      - ./.env
+    command: celery -A app.celery_app beat --loglevel=info --schedule /tmp/celerybeat-schedule
+    depends_on:
+      - govpro-worker
+    restart: unless-stopped
+    networks:
+      - doe-network
+
+  govpro-web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_SAAS_URL: https://admin.govsistem.com.br
+    image: infra-govpro-web:latest
+    ports:
+      - "7502:3000"
+    depends_on:
+      - govpro-api
+    restart: unless-stopped
+    networks:
+      - doe-network
+
+  govpro-portal:
+    build:
+      context: ./portal
+      dockerfile: Dockerfile
+    image: infra-govpro-portal:latest
+    ports:
+      - "7503:3000"
+    depends_on:
+      - govpro-api
+    restart: unless-stopped
+    networks:
+      - doe-network
+
+networks:
+  doe-network:
+    external: true
+    name: infra_doe-network
+  internal:
+    external: true
+    name: infra_internal
+
+volumes:
+  govpro_uploads:
+    external: true
+    name: infra_govpro_uploads

@@ -9,18 +9,21 @@ from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_tenant_id, require_roles
+from app.core.auth import get_client_info, get_tenant_id, require_roles
 from app.core.database import get_db
-from app.models.enums import RoleName
+from app.models.enums import AuditAccessType, AuditAction, RoleName
 from app.models.relatorio_config import RelatorioConfig
 from app.models.user import User
+from app.services.audit import record_audit
 from app.services.report_engine import (
     DICIONARIO_DADOS,
+    RelatorioConfigInvalidoError,
     executar_relatorio,
     exportar_csv,
     exportar_excel,
     exportar_pdf,
     gerar_html,
+    validar_config_relatorio,
 )
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -44,7 +47,11 @@ async def listar_relatorios(grupo: str | None = Query(None), db: AsyncSession = 
 
 @router.post("")
 async def criar_relatorio(body: dict, db: AsyncSession = Depends(get_db), tenant_id: uuid.UUID = Depends(get_tenant_id), user: User = Depends(_MANAGE)):
-    c = RelatorioConfig(tenant_id=str(tenant_id), criado_por_id=str(user.id), nome=body["nome"], descricao=body.get("descricao"),
+    try:
+        validar_config_relatorio(body)
+    except RelatorioConfigInvalidoError as exc:
+        raise HTTPException(422, str(exc))
+    c = RelatorioConfig(tenant_id=str(tenant_id), criado_por_id=user.id, nome=body["nome"], descricao=body.get("descricao"),
                         tags=body.get("tags"), grupo=body.get("grupo"), icone=body.get("icone"),
                         fonte_dados=body["fonte_dados"], colunas=body["colunas"],
                         filtros=body.get("filtros"), agrupamentos=body.get("agrupamentos"),
@@ -68,6 +75,13 @@ async def atualizar_relatorio(relatorio_id: uuid.UUID, body: dict, db: AsyncSess
     for k, v in body.items():
         if k in ("nome", "descricao", "tags", "grupo", "icone", "fonte_dados", "colunas", "filtros", "agrupamentos", "ordenacao", "layout", "permissoes", "compartilhado", "ativo"):
             setattr(c, k, v)
+    try:
+        validar_config_relatorio({
+            "fonte_dados": c.fonte_dados, "colunas": c.colunas, "filtros": c.filtros,
+            "ordenacao": c.ordenacao, "agrupamentos": c.agrupamentos,
+        })
+    except RelatorioConfigInvalidoError as exc:
+        raise HTTPException(422, str(exc))
     c.updated_at = datetime.now(timezone.utc); await db.commit(); await db.refresh(c)
     return _rel_out(c)
 
@@ -81,7 +95,7 @@ async def excluir_relatorio(relatorio_id: uuid.UUID, db: AsyncSession = Depends(
 
 
 @router.post("/{relatorio_id}/execute")
-async def executar_relatorio_endpoint(relatorio_id: uuid.UUID, body: dict | None = None, formato: str = Query("json", regex="^(json|csv|pdf|html|excel)$"), db: AsyncSession = Depends(get_db), tenant_id: uuid.UUID = Depends(get_tenant_id), user: User = Depends(_READ)):
+async def executar_relatorio_endpoint(relatorio_id: uuid.UUID, body: dict | None = None, formato: str = Query("json", pattern="^(json|csv|pdf|html|excel)$"), request: Request = None, db: AsyncSession = Depends(get_db), tenant_id: uuid.UUID = Depends(get_tenant_id), user: User = Depends(_READ)):
     c = await db.get(RelatorioConfig, relatorio_id)
     if not c or c.tenant_id != str(tenant_id): raise HTTPException(404, "Relatorio nao encontrado")
     config = _rel_out(c)
@@ -93,7 +107,19 @@ async def executar_relatorio_endpoint(relatorio_id: uuid.UUID, body: dict | None
     config["layout"] = c.layout
 
     try:
-        dados = await executar_relatorio(db, config, body or {})
+        dados = await executar_relatorio(db, config, body or {}, tenant_id)
+    except RelatorioConfigInvalidoError as exc:
+        raise HTTPException(422, str(exc))
+
+    await record_audit(
+        db, tenant_id=tenant_id, action=AuditAction.READ,
+        access_type=AuditAccessType.READ_SENSIVEL, entity="relatorio_config",
+        entity_id=c.id, actor=user, client_info=get_client_info(request),
+        diff_summary={"fonte": c.fonte_dados.get("tabela"), "linhas": len(dados)},
+    )
+    await db.commit()
+
+    try:
         if c.agrupamentos:
             from app.services.report_engine import agrupar_dados
             dados = agrupar_dados(dados, c.agrupamentos)

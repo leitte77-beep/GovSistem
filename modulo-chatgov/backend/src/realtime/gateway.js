@@ -18,6 +18,11 @@ import {
 } from '../services/mensagens.js';
 import { criarNotificacao } from '../services/notificacoes.js';
 import { transitionConversation } from '../services/status-transitions.js';
+import {
+  obterConversaParaSaidaSincronizada,
+  obterOuCriarConversaAtiva,
+} from '../services/conversas.js';
+import { podeAcessarConversa } from '../services/autorizacao-conversas.js';
 import { normalizePhone } from '../domain/phone.js';
 import { extrairContatosCompartilhados } from '../domain/contato-compartilhado.js';
 import { createStorage } from '../storage/index.js';
@@ -304,38 +309,7 @@ async function atualizarContatoDaConversaComJidResolvido(tenantId, convId, resol
 // Mesmo critério de visibilidade do index.js (privacidade de conversas).
 // Conversa excluída administrativamente não é visível para ninguém.
 async function podeVerConversa(op, convId) {
-  if (ehGestor(op)) {
-    const r = await db.oneOrNone(
-      'SELECT 1 FROM conversas WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
-      [convId, op.tenantId]
-    );
-    return !!r;
-  }
-    const r = await db.oneOrNone(
-    `SELECT 1 FROM conversas c WHERE c.id = $1 AND c.tenant_id = $2 AND c.deleted_at IS NULL AND (
-       EXISTS (SELECT 1 FROM conversa_participantes p WHERE p.conversa_id = c.id AND p.operador_id = $3 AND p.tenant_id = $2)
-       OR (c.status = 'fila' AND (
-         c.departamento_id IS NULL
-         OR EXISTS (
-           SELECT 1 FROM operador_departamentos od
-           JOIN departamentos d ON d.id = od.departamento_id AND d.ativo = true
-           WHERE od.operador_id = $3 AND od.departamento_id = c.departamento_id
-         )
-         OR (
-           EXISTS (
-             SELECT 1 FROM departamentos dd WHERE dd.id = c.departamento_id AND LOWER(dd.nome) = 'recepcao' AND dd.ativo = true
-           )
-           AND EXISTS (
-             SELECT 1 FROM operador_departamentos od
-             JOIN departamentos d ON d.id = od.departamento_id AND d.ativo = true
-             WHERE od.operador_id = $3 AND LOWER(d.nome) = 'recepcao'
-           )
-         )
-       ))
-     )`,
-    [convId, op.tenantId, op.id]
-  );
-  return !!r;
+  return podeAcessarConversa(db, op, convId);
 }
 
 export function iniciarGateway(httpServer, wa, storage) {
@@ -652,6 +626,9 @@ export function iniciarGateway(httpServer, wa, storage) {
     socket.on('conversa:resolver', async (convId, ack) => {
       try {
         await setTenantContext(op.tenantId);
+        if (!(await podeVerConversa(op, convId))) {
+          throw new Error('Sem acesso a esta conversa');
+        }
         // Conversa ainda na fila não tem dono, e a máquina de estados exige um
         // responsável para resolver. Quem clicou assume a autoria do
         // encerramento — é o que os relatórios por atendente esperam.
@@ -1324,6 +1301,9 @@ export function iniciarGateway(httpServer, wa, storage) {
     socket.on('conversa:arquivar', async (convId, ack) => {
       try {
         await setTenantContext(op.tenantId);
+        if (!(await podeVerConversa(op, convId))) {
+          throw new Error('Sem acesso a esta conversa');
+        }
         await transitionConversation({
           tenantId: op.tenantId,
           conversaId: convId,
@@ -1342,6 +1322,9 @@ export function iniciarGateway(httpServer, wa, storage) {
     socket.on('conversa:desarquivar', async (convId, ack) => {
       try {
         await setTenantContext(op.tenantId);
+        if (!(await podeVerConversa(op, convId))) {
+          throw new Error('Sem acesso a esta conversa');
+        }
         const conv = await db.oneOrNone('SELECT operador_id FROM conversas WHERE id = $1 AND tenant_id = $2', [convId, op.tenantId]);
         await transitionConversation({
           tenantId: op.tenantId,
@@ -1900,52 +1883,72 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
   // Executa em background (não bloqueia a entrega da mensagem).
   buscarAvatarContato(wa, tenantId, contatoRow.id).catch(() => {});
 
-  // O ON CONFLICT mira o índice parcial (migração 022): conversa excluída não
-  // conta como conflito, então o cidadão que volta a escrever depois de uma
-  // exclusão administrativa abre um atendimento novo em vez de ressuscitar —
-  // e ficar preso em — o histórico apagado.
-  const conversaRow = await db.oneOrNone(
-    `INSERT INTO conversas (tenant_id, contato_id, status, status_operacional, nao_lidas, ultima_mensagem, ultima_mensagem_em)
-     VALUES ($1, $2, $5, CASE WHEN $7 = 'saida' THEN 'EM_ATENDIMENTO' ELSE 'NOVA' END, $6, $3, $4)
-      ON CONFLICT (tenant_id, contato_id) WHERE deleted_at IS NULL DO UPDATE
-        SET nao_lidas = CASE
-              WHEN $7 = 'saida' THEN conversas.nao_lidas
-              WHEN conversas.status = 'resolvida' THEN 1
-              ELSE conversas.nao_lidas + 1
-            END,
-            status = CASE
-              WHEN conversas.status IN ('resolvida', 'arquivada') AND $7 = 'entrada' THEN 'fila'
-              ELSE conversas.status
-            END,
-            status_operacional = CASE
-              WHEN conversas.status IN ('resolvida', 'arquivada') AND $7 = 'entrada' THEN 'NOVA'
-              ELSE conversas.status_operacional
-            END,
-            operador_id = CASE
-              WHEN conversas.status IN ('resolvida', 'arquivada') AND $7 = 'entrada' THEN NULL
-              ELSE conversas.operador_id
-            END,
-            departamento_id = CASE
-              WHEN conversas.status IN ('resolvida', 'arquivada') AND $7 = 'entrada' THEN NULL
-              ELSE conversas.departamento_id
-            END,
-            protocolo_id = CASE
-              WHEN conversas.status IN ('resolvida', 'arquivada') AND $7 = 'entrada' THEN NULL
-              ELSE conversas.protocolo_id
-            END,
-            ultima_mensagem = $3,
-            ultima_mensagem_em = $4
-     RETURNING id, status, protocolo_id, departamento_id, operador_id`,
-    [
-      tenantId,
-      contatoRow.id,
-      tipo === 'contato' ? '[Contato]' : (conteudo || `[${tipo}]`),
-      msgTimestamp,
-      direcao === 'saida' ? 'aberta' : 'fila',
-      direcao === 'saida' ? 0 : 1,
-      direcao,
-    ]
-  );
+  const resumoMensagem = tipo === 'contato' ? '[Contato]' : (conteudo || `[${tipo}]`);
+  const persistida = await db.tx(async (t) => {
+    // O SELECT inicial evita trabalho na maioria das reentregas; este lock e a
+    // segunda consulta são a garantia contra duas execuções simultâneas do
+    // mesmo evento incrementarem nao_lidas antes do ON CONFLICT da mensagem.
+    if (msgId) {
+      await t.one('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [`${tenantId}:${msgId}`]);
+      const jaPersistida = await t.oneOrNone(
+        'SELECT 1 FROM mensagens WHERE tenant_id = $1 AND wa_message_id = $2',
+        [tenantId, msgId]
+      );
+      if (jaPersistida) return null;
+    }
+
+    // Uma conversa terminal é um atendimento encerrado. Somente nova entrada
+    // do cidadão abre outro ciclo; saída sincronizada não possui atendente
+    // confiável e permanece no ciclo mais recente.
+    const conversa = direcao === 'entrada'
+      ? await obterOuCriarConversaAtiva(t, {
+          tenantId,
+          contatoId: contatoRow.id,
+          status: 'fila',
+          statusOperacional: 'NOVA',
+          naoLidas: 1,
+          incrementarNaoLidas: true,
+          ultimaMensagem: resumoMensagem,
+          ultimaMensagemEm: msgTimestamp,
+        })
+      : await obterConversaParaSaidaSincronizada(t, {
+          tenantId,
+          contatoId: contatoRow.id,
+          ultimaMensagem: resumoMensagem,
+          ultimaMensagemEm: msgTimestamp,
+        });
+
+    const mensagem = await t.oneOrNone(
+      `INSERT INTO mensagens (tenant_id, conversa_id, wa_message_id, direcao, operador_id, tipo, conteudo, media_url, media_mime, media_nome, status, origem, criado_em)
+       VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, $9, $10, $11, $12)
+       ON CONFLICT (tenant_id, wa_message_id) WHERE wa_message_id IS NOT NULL DO NOTHING
+       RETURNING *`,
+      [
+        tenantId,
+        conversa.id,
+        msgId,
+        direcao,
+        tipo,
+        conteudo,
+        mediaUrl,
+        mediaMime,
+        mediaNome,
+        direcao === 'saida' ? 'enviado' : 'entregue',
+        origemMensagem,
+        msgTimestamp,
+      ]
+    );
+    return mensagem ? { conversa, mensagem } : null;
+  });
+
+  // Se houve conflito/reentrega, a mensagem já foi processada: não re-emite.
+  if (!persistida) {
+    console.log(`[Persist] insert em corrida ignorado wa_message_id=${msgId}`);
+    return;
+  }
+
+  const conversaRow = persistida.conversa;
+  const novaMensagem = persistida.mensagem;
 
   if (!conversaRow.protocolo_id) {
     try {
@@ -1953,32 +1956,6 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
     } catch (e) {
       console.error('[Protocolo] Erro ao gerar:', e.message);
     }
-  }
-
-  const novaMensagem = await db.oneOrNone(
-    `INSERT INTO mensagens (tenant_id, conversa_id, wa_message_id, direcao, operador_id, tipo, conteudo, media_url, media_mime, media_nome, status, origem, criado_em)
-     VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, $9, $10, $11, $12)
-     ON CONFLICT (tenant_id, wa_message_id) WHERE wa_message_id IS NOT NULL DO NOTHING
-     RETURNING *`,
-    [
-      tenantId,
-      conversaRow.id,
-      msgId,
-      direcao,
-      tipo,
-      conteudo,
-      mediaUrl,
-      mediaMime,
-      mediaNome,
-      direcao === 'saida' ? 'enviado' : 'entregue',
-      origemMensagem,
-      msgTimestamp,
-    ]
-  );
-  // Se houve conflito (corrida), a mensagem já foi processada por outra execução: não re-emite.
-  if (!novaMensagem) {
-    console.log(`[Persist] insert em corrida ignorado wa_message_id=${msgId}`);
-    return;
   }
 
   io.to(salas.conversa(conversaRow.id)).emit('mensagem:nova', novaMensagem);

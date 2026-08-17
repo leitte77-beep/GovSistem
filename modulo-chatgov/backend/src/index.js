@@ -38,6 +38,7 @@ import administracaoV2Router from './routes/administracao-v2.js';
 import protocolosRouter from './routes/protocolos.js';
 import protocolosPublicosRouter from './routes/protocolos-publicos.js';
 import protocolosAdminRouter from './routes/protocolos-admin.js';
+import { obterOuCriarConversaAtiva } from './services/conversas.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -899,17 +900,16 @@ app.post('/api/internal/sync-user', async (req, res) => {
       // Busca foto de perfil do WhatsApp em background.
       buscarAvatarContato(wa, op.tenantId, contato.id).catch(() => {});
 
-      const conversa = await db.one(
-        `INSERT INTO conversas (tenant_id, contato_id, departamento_id, operador_id, status, status_operacional, ultima_mensagem_em)
-         VALUES ($1, $2, $3, $4, 'aberta', 'EM_ATENDIMENTO', now())
-         ON CONFLICT (tenant_id, contato_id) WHERE deleted_at IS NULL DO UPDATE
-           SET status = CASE WHEN conversas.status = 'resolvida' THEN 'aberta' ELSE conversas.status END,
-               status_operacional = CASE WHEN conversas.status_operacional IN ('RESOLVIDA','ARQUIVADA') THEN 'EM_ATENDIMENTO' ELSE conversas.status_operacional END,
-               departamento_id = COALESCE($3, conversas.departamento_id),
-               operador_id = COALESCE(conversas.operador_id, $4)
-         RETURNING *`,
-        [op.tenantId, contato.id, departamento_id || null, op.id]
-      );
+      const conversa = await obterOuCriarConversaAtiva(db, {
+        tenantId: op.tenantId,
+        contatoId: contato.id,
+        departamentoId: departamento_id || null,
+        operadorId: op.id,
+        status: 'aberta',
+        statusOperacional: 'EM_ATENDIMENTO',
+        ultimaMensagemEm: new Date(),
+        atualizarAtribuicao: true,
+      });
 
       await db.none(
         `INSERT INTO conversa_participantes (conversa_id, operador_id, papel, adicionado_por, tenant_id)

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Building2, FolderTree, Users, Smartphone, Plus, Trash2, Wifi, WifiOff, LogOut, QrCode, KeyRound, Ban, SlidersHorizontal, Save, Loader2, Check, Bot, FileText, Brain, MessageSquare, Bell, BellOff, Volume2, Network, Route, ShieldCheck } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { Building2, FolderTree, Users, Smartphone, Plus, Trash2, Wifi, WifiOff, LogOut, QrCode, KeyRound, Ban, SlidersHorizontal, Save, Loader2, Check, Bot, FileText, Brain, MessageSquare, Bell, BellOff, Volume2, Network, Route, ShieldCheck, Search, ChevronDown, ChevronRight, X } from 'lucide-react';
 import { T, CORES_DEPT } from '../theme';
 import {
   fetchSecretarias, criarSecretaria, editarSecretaria, excluirSecretaria,
@@ -266,58 +266,371 @@ function AbaDepartamentos() {
 }
 
 // ---------- Equipe ----------
+const PAPEIS_EQUIPE = [
+  { id: 'operador', label: 'Operador' },
+  { id: 'supervisor', label: 'Supervisor' },
+  { id: 'admin', label: 'Administrador' },
+];
+const SEM_SECRETARIA = '__sem_secretaria__';
+
+function semAcento(v) {
+  return String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function iniciaisDe(nome) {
+  const partes = String(nome || '?').trim().split(/\s+/);
+  const primeira = partes[0] ? partes[0][0] : '?';
+  const ultima = partes.length > 1 ? partes[partes.length - 1][0] : '';
+  return (primeira + ultima).toUpperCase();
+}
+
+// Agrupa os departamentos pela secretaria a que pertencem (mantém a ordem vinda da API).
+function agruparPorSecretaria(departamentos) {
+  const mapa = new Map();
+  departamentos.forEach((d) => {
+    const chave = d.secretaria_id || SEM_SECRETARIA;
+    if (!mapa.has(chave)) {
+      mapa.set(chave, { id: chave, nome: d.secretaria_nome || 'Sem secretaria', cor: d.secretaria_cor, deptos: [] });
+    }
+    mapa.get(chave).deptos.push(d);
+  });
+  return Array.from(mapa.values());
+}
+
+const chipSetor = (cor) => ({
+  fontSize: 11.5, fontWeight: 600, padding: '3px 9px', borderRadius: 20, whiteSpace: 'nowrap',
+  border: `1px solid ${cor}40`, background: `${cor}14`, color: cor,
+  maxWidth: 190, overflow: 'hidden', textOverflow: 'ellipsis',
+});
+const btnSecundario = {
+  display: 'inline-flex', alignItems: 'center', gap: 6, background: 'transparent', color: T.textSecondary,
+  border: `1px solid ${T.borderStrong}`, borderRadius: T.radiusSm, padding: '7px 12px',
+  fontSize: 12.5, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+};
+
+function AvatarOperador({ op }) {
+  return React.createElement('div', { style: { position: 'relative', flexShrink: 0 } },
+    op.avatar_url
+      ? React.createElement('img', { src: op.avatar_url, alt: '', style: { width: 34, height: 34, borderRadius: '50%', objectFit: 'cover' } })
+      : React.createElement('div', {
+          style: {
+            width: 34, height: 34, borderRadius: '50%', background: T.primarySoft, color: T.primary,
+            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700,
+          },
+        }, iniciaisDe(op.nome)),
+    React.createElement('span', {
+      title: op.online ? 'Online' : 'Offline',
+      style: {
+        position: 'absolute', right: -1, bottom: -1, width: 10, height: 10, borderRadius: '50%',
+        background: op.online ? T.online : T.offline, border: `2px solid ${T.surface}`,
+      },
+    }),
+  );
+}
+
 function AbaEquipe() {
   const [operadores, setOperadores] = useState([]);
   const [departamentos, setDepartamentos] = useState([]);
+  const [carregando, setCarregando] = useState(true);
+  const [busca, setBusca] = useState('');
+  const [filtroPapel, setFiltroPapel] = useState('');
+  const [filtroSecretaria, setFiltroSecretaria] = useState('');
+  const [editando, setEditando] = useState(null);
+  const [salvandoPapel, setSalvandoPapel] = useState(null);
 
   const carregar = () => {
-    fetchOperadores().then(setOperadores).catch(console.error);
-    fetchDepartamentos().then(setDepartamentos).catch(console.error);
+    setCarregando(true);
+    Promise.all([fetchOperadores(), fetchDepartamentos()])
+      .then(([ops, deps]) => { setOperadores(ops || []); setDepartamentos(deps || []); })
+      .catch(console.error)
+      .finally(() => setCarregando(false));
   };
   useEffect(() => { carregar(); }, []);
 
-  const salvarPapel = async (op, papel) => { await editarOperador(op.id, { papel }); carregar(); };
-  const toggleDepto = async (op, depId) => {
-    const atuais = op.departamento_ids || [];
-    const novos = atuais.includes(depId) ? atuais.filter((i) => i !== depId) : [...atuais, depId];
-    await editarOperador(op.id, { departamento_ids: novos });
-    carregar();
+  const porId = useMemo(() => {
+    const m = new Map();
+    departamentos.forEach((d) => m.set(d.id, d));
+    return m;
+  }, [departamentos]);
+  const grupos = useMemo(() => agruparPorSecretaria(departamentos), [departamentos]);
+  const setoresDo = (op) => (op.departamento_ids || []).map((id) => porId.get(id)).filter(Boolean);
+
+  const lista = useMemo(() => {
+    const termo = semAcento(busca.trim());
+    return operadores.filter((op) => {
+      if (filtroPapel && op.papel !== filtroPapel) return false;
+      if (filtroSecretaria) {
+        const setores = (op.departamento_ids || []).map((id) => porId.get(id)).filter(Boolean);
+        if (!setores.some((d) => (d.secretaria_id || SEM_SECRETARIA) === filtroSecretaria)) return false;
+      }
+      if (!termo) return true;
+      return semAcento(op.nome).includes(termo) || semAcento(op.email).includes(termo);
+    });
+  }, [operadores, busca, filtroPapel, filtroSecretaria, porId]);
+
+  const salvarPapel = async (op, papel) => {
+    const anterior = op.papel;
+    setOperadores((prev) => prev.map((o) => (o.id === op.id ? { ...o, papel } : o)));
+    setSalvandoPapel(op.id);
+    try {
+      await editarOperador(op.id, { papel });
+    } catch (e) {
+      setOperadores((prev) => prev.map((o) => (o.id === op.id ? { ...o, papel: anterior } : o)));
+      alert(e.message || 'Erro ao alterar o perfil');
+    } finally {
+      setSalvandoPapel(null);
+    }
   };
 
-  return React.createElement('div', { style: { ...painel, maxWidth: 980 } },
-    React.createElement('div', { style: painelHead }, React.createElement('div', { style: tituloPainel }, 'Equipe e permissões')),
-    operadores.map((op) =>
-      React.createElement('div', { key: op.id, style: { padding: '16px 22px', borderBottom: `1px solid ${T.border}` } },
-        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 } },
-          React.createElement('span', { style: { width: 9, height: 9, borderRadius: '50%', background: op.online ? T.online : T.offline } }),
-          React.createElement('div', { style: { flex: 1 } },
-            React.createElement('div', { style: { fontSize: 14, fontWeight: 700, color: T.text } }, op.nome),
-            React.createElement('div', { style: { fontSize: 12, color: T.textMuted } }, op.email),
-          ),
-          React.createElement('select', {
-            value: op.papel, onChange: (e) => salvarPapel(op, e.target.value),
-            style: { ...input, padding: '7px 10px', fontSize: 13 },
-          },
-            React.createElement('option', { value: 'operador' }, 'Operador'),
-            React.createElement('option', { value: 'supervisor' }, 'Supervisor'),
-            React.createElement('option', { value: 'admin' }, 'Administrador'),
-          ),
+  const salvarAcessos = async (op, ids) => {
+    await editarOperador(op.id, { departamento_ids: ids });
+    setOperadores((prev) => prev.map((o) => (o.id === op.id ? { ...o, departamento_ids: ids } : o)));
+  };
+
+  const filtroAtivo = !!(busca.trim() || filtroPapel || filtroSecretaria);
+
+  const resumoAcessos = (op) => {
+    const setores = setoresDo(op);
+    if (setores.length === 0) {
+      return React.createElement('span', { style: { fontSize: 12.5, color: T.textMuted, fontStyle: 'italic' } }, 'Nenhum setor');
+    }
+    const visiveis = setores.slice(0, 2);
+    const restantes = setores.length - visiveis.length;
+    const titulo = setores.map((d) => (d.secretaria_nome ? `${d.secretaria_nome} › ${d.nome}` : d.nome)).join('\n');
+    return React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }, title: titulo },
+      visiveis.map((d) => React.createElement('span', { key: d.id, style: chipSetor(d.cor || T.primary) }, d.nome)),
+      restantes > 0 && React.createElement('span', { style: { ...chipSetor(T.textSecondary), fontWeight: 700 } }, `+${restantes}`),
+    );
+  };
+
+  return React.createElement('div', { style: { ...painel, maxWidth: 1040 } },
+    React.createElement('div', { style: painelHead },
+      React.createElement('div', null,
+        React.createElement('div', { style: tituloPainel }, 'Equipe e permissões'),
+        React.createElement('div', { style: { fontSize: 12, color: T.textMuted, marginTop: 3 } },
+          carregando
+            ? 'Carregando...'
+            : `${lista.length} de ${operadores.length} pessoa(s) · ${departamentos.length} setor(es) cadastrado(s)`),
+      ),
+    ),
+
+    // filtros
+    React.createElement('div', { style: { ...linha, background: T.surfaceAlt, gap: 10 } },
+      React.createElement('div', { style: { position: 'relative', flex: '1 1 220px', minWidth: 180 } },
+        React.createElement(Search, { size: 15, style: { position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: T.textMuted, pointerEvents: 'none' } }),
+        React.createElement('input', {
+          value: busca, onChange: (e) => setBusca(e.target.value), placeholder: 'Buscar por nome ou e-mail',
+          style: { ...input, width: '100%', paddingLeft: 32, fontSize: 13 },
+        }),
+      ),
+      React.createElement('select', {
+        value: filtroPapel, onChange: (e) => setFiltroPapel(e.target.value),
+        style: { ...input, padding: '9px 10px', fontSize: 13 },
+      },
+        React.createElement('option', { value: '' }, 'Todos os perfis'),
+        PAPEIS_EQUIPE.map((p) => React.createElement('option', { key: p.id, value: p.id }, p.label)),
+      ),
+      React.createElement('select', {
+        value: filtroSecretaria, onChange: (e) => setFiltroSecretaria(e.target.value),
+        style: { ...input, padding: '9px 10px', fontSize: 13, maxWidth: 240 },
+      },
+        React.createElement('option', { value: '' }, 'Todas as secretarias'),
+        grupos.map((g) => React.createElement('option', { key: g.id, value: g.id }, g.nome)),
+      ),
+      filtroAtivo && React.createElement('button', {
+        onClick: () => { setBusca(''); setFiltroPapel(''); setFiltroSecretaria(''); },
+        style: btnSecundario,
+      }, React.createElement(X, { size: 14 }), 'Limpar'),
+    ),
+
+    // lista compacta
+    carregando
+      ? React.createElement('div', { style: { padding: 22, color: T.textMuted, fontSize: 13 } }, 'Carregando equipe...')
+      : lista.length === 0
+        ? React.createElement('div', { style: { padding: 22, color: T.textMuted, fontSize: 13 } },
+            operadores.length === 0 ? 'Nenhum usuário cadastrado.' : 'Nenhum usuário encontrado com esses filtros.')
+        : lista.map((op) =>
+            React.createElement('div', { key: op.id, style: { ...linha, gap: 14, padding: '12px 22px' } },
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, flex: '1 1 230px', minWidth: 0 } },
+                React.createElement(AvatarOperador, { op }),
+                React.createElement('div', { style: { minWidth: 0 } },
+                  React.createElement('div', { style: { fontSize: 14, fontWeight: 700, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, op.nome),
+                  React.createElement('div', { style: { fontSize: 12, color: T.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, op.email),
+                ),
+              ),
+              React.createElement('div', { style: { flex: '1 1 250px', minWidth: 0 } }, resumoAcessos(op)),
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 } },
+                React.createElement('select', {
+                  value: op.papel || '', disabled: salvandoPapel === op.id,
+                  onChange: (e) => salvarPapel(op, e.target.value),
+                  style: { ...input, padding: '7px 10px', fontSize: 13, opacity: salvandoPapel === op.id ? 0.6 : 1 },
+                },
+                  // preserva perfis avançados definidos fora desta tela (ex.: auditor, operador_ia)
+                  !PAPEIS_EQUIPE.some((p) => p.id === op.papel) && op.papel
+                    && React.createElement('option', { value: op.papel }, op.papel),
+                  PAPEIS_EQUIPE.map((p) => React.createElement('option', { key: p.id, value: p.id }, p.label)),
+                ),
+                React.createElement('button', {
+                  onClick: () => setEditando(op), style: btnSecundario, title: 'Gerenciar setores deste usuário',
+                }, React.createElement(ShieldCheck, { size: 14 }), 'Acessos'),
+              ),
+            )),
+
+    editando && React.createElement(ModalAcessosOperador, {
+      operador: editando,
+      grupos,
+      totalSetores: departamentos.length,
+      onFechar: () => setEditando(null),
+      onSalvar: salvarAcessos,
+    }),
+  );
+}
+
+function ModalAcessosOperador({ operador, grupos, totalSetores, onFechar, onSalvar }) {
+  const iniciais = operador.departamento_ids || [];
+  const [selecionados, setSelecionados] = useState(() => new Set(iniciais));
+  const [busca, setBusca] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const [abertos, setAbertos] = useState(() => {
+    const set = new Set();
+    grupos.forEach((g) => { if (g.deptos.some((d) => iniciais.includes(d.id))) set.add(g.id); });
+    if (set.size === 0) grupos.slice(0, 2).forEach((g) => set.add(g.id));
+    return set;
+  });
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onFechar(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onFechar]);
+
+  const termo = semAcento(busca.trim());
+  const gruposVisiveis = useMemo(() => {
+    if (!termo) return grupos;
+    return grupos
+      .map((g) => {
+        if (semAcento(g.nome).includes(termo)) return g;
+        const deptos = g.deptos.filter((d) => semAcento(d.nome).includes(termo));
+        return deptos.length ? { ...g, deptos } : null;
+      })
+      .filter(Boolean);
+  }, [grupos, termo]);
+
+  const alternar = (id) => setSelecionados((prev) => {
+    const proximo = new Set(prev);
+    if (proximo.has(id)) proximo.delete(id); else proximo.add(id);
+    return proximo;
+  });
+  const alternarGrupo = (grupo) => setSelecionados((prev) => {
+    const proximo = new Set(prev);
+    const todos = grupo.deptos.every((d) => proximo.has(d.id));
+    grupo.deptos.forEach((d) => { if (todos) proximo.delete(d.id); else proximo.add(d.id); });
+    return proximo;
+  });
+  const alternarAberto = (id) => setAbertos((prev) => {
+    const proximo = new Set(prev);
+    if (proximo.has(id)) proximo.delete(id); else proximo.add(id);
+    return proximo;
+  });
+
+  const salvar = async () => {
+    setSalvando(true);
+    try {
+      await onSalvar(operador, Array.from(selecionados));
+      onFechar();
+    } catch (e) {
+      alert(e.message || 'Erro ao salvar os acessos');
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const overlayAcessos = { position: 'fixed', inset: 0, background: 'rgba(15,26,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, padding: 16 };
+  const cardAcessos = { background: T.surface, borderRadius: T.radiusLg, width: '100%', maxWidth: 520, maxHeight: '86vh', display: 'flex', flexDirection: 'column', boxShadow: T.shadowLg, overflow: 'hidden' };
+
+  return React.createElement('div', { style: overlayAcessos, onClick: onFechar },
+    React.createElement('div', { style: cardAcessos, onClick: (e) => e.stopPropagation() },
+      // cabeçalho
+      React.createElement('div', { style: { padding: '18px 20px', borderBottom: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', gap: 12 } },
+        React.createElement('div', { style: { width: 38, height: 38, borderRadius: 10, background: T.primarySoft, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 } },
+          React.createElement(ShieldCheck, { size: 20, color: T.primary })),
+        React.createElement('div', { style: { flex: 1, minWidth: 0 } },
+          React.createElement('div', { style: { fontSize: 16, fontWeight: 700, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, operador.nome),
+          React.createElement('div', { style: { fontSize: 12, color: T.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, operador.email),
         ),
-        React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6 } },
-          departamentos.map((d) => {
-            const ativo = (op.departamento_ids || []).includes(d.id);
-            return React.createElement('button', {
-              key: d.id, onClick: () => toggleDepto(op, d.id),
-              style: {
-                fontSize: 12, padding: '5px 11px', borderRadius: 20, cursor: 'pointer', fontWeight: 600,
-                border: `1px solid ${ativo ? d.cor || T.primary : T.border}`,
-                background: ativo ? `${d.cor || T.primary}1a` : 'transparent',
-                color: ativo ? (d.cor || T.primary) : T.textMuted,
-              },
-            }, d.secretaria_nome ? `${d.secretaria_nome} › ${d.nome}` : d.nome);
+        React.createElement('button', { onClick: onFechar, style: btnIcon, title: 'Fechar' }, React.createElement(X, { size: 18 })),
+      ),
+
+      (operador.papel === 'admin' || operador.papel === 'supervisor')
+        && React.createElement('div', { style: { padding: '10px 20px', background: T.surfaceAlt, fontSize: 12, color: T.textSecondary, borderBottom: `1px solid ${T.border}` } },
+          'Administradores e supervisores enxergam todas as conversas do órgão. Os setores abaixo definem filas, painéis e relatórios.'),
+
+      // busca + ações em massa
+      React.createElement('div', { style: { padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', borderBottom: `1px solid ${T.border}` } },
+        React.createElement('div', { style: { position: 'relative', flex: '1 1 180px', minWidth: 150 } },
+          React.createElement(Search, { size: 15, style: { position: 'absolute', left: 11, top: '50%', transform: 'translateY(-50%)', color: T.textMuted, pointerEvents: 'none' } }),
+          React.createElement('input', {
+            value: busca, onChange: (e) => setBusca(e.target.value), placeholder: 'Buscar setor',
+            style: { ...input, width: '100%', paddingLeft: 32, fontSize: 13 },
           }),
         ),
-      )),
+        React.createElement('button', {
+          onClick: () => setSelecionados(new Set(grupos.flatMap((g) => g.deptos.map((d) => d.id)))), style: btnSecundario,
+        }, 'Marcar todos'),
+        React.createElement('button', { onClick: () => setSelecionados(new Set()), style: btnSecundario }, 'Limpar'),
+      ),
+
+      // grupos por secretaria
+      React.createElement('div', { style: { overflowY: 'auto', flex: 1 } },
+        gruposVisiveis.length === 0
+          ? React.createElement('div', { style: { padding: 20, fontSize: 13, color: T.textMuted } }, 'Nenhum setor encontrado.')
+          : gruposVisiveis.map((g) => {
+              const marcados = g.deptos.filter((d) => selecionados.has(d.id)).length;
+              const todos = marcados === g.deptos.length && g.deptos.length > 0;
+              const aberto = termo ? true : abertos.has(g.id);
+              const cor = g.cor || T.primary;
+              return React.createElement('div', { key: g.id, style: { borderBottom: `1px solid ${T.border}` } },
+                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, padding: '11px 20px', background: T.surfaceAlt } },
+                  React.createElement('input', {
+                    type: 'checkbox', checked: todos, onChange: () => alternarGrupo(g),
+                    ref: (el) => { if (el) el.indeterminate = marcados > 0 && !todos; },
+                    style: { width: 15, height: 15, cursor: 'pointer', accentColor: T.primary },
+                  }),
+                  React.createElement(PontoCor, { cor }),
+                  React.createElement('span', { style: { flex: 1, fontSize: 13, fontWeight: 700, color: T.text, minWidth: 0 } }, g.nome),
+                  React.createElement('span', { style: { fontSize: 11.5, fontWeight: 600, color: marcados ? T.primary : T.textMuted } }, `${marcados}/${g.deptos.length}`),
+                  React.createElement('button', {
+                    onClick: () => alternarAberto(g.id), style: btnIcon, title: aberto ? 'Recolher' : 'Expandir', disabled: !!termo,
+                  }, React.createElement(aberto ? ChevronDown : ChevronRight, { size: 16 })),
+                ),
+                aberto && g.deptos.map((d) =>
+                  React.createElement('label', {
+                    key: d.id,
+                    style: {
+                      display: 'flex', alignItems: 'center', gap: 10, padding: '9px 20px 9px 46px', cursor: 'pointer',
+                      fontSize: 13.5, color: T.text, background: selecionados.has(d.id) ? T.primarySoft : 'transparent',
+                    },
+                  },
+                    React.createElement('input', {
+                      type: 'checkbox', checked: selecionados.has(d.id), onChange: () => alternar(d.id),
+                      style: { width: 15, height: 15, cursor: 'pointer', accentColor: T.primary },
+                    }),
+                    React.createElement('span', { style: { flex: 1 } }, d.nome),
+                  )),
+              );
+            }),
+      ),
+
+      // rodapé
+      React.createElement('div', { style: { padding: '14px 20px', borderTop: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' } },
+        React.createElement('span', { style: { flex: 1, fontSize: 12.5, color: T.textSecondary, minWidth: 120 } },
+          `${selecionados.size} de ${totalSetores} setor(es) selecionado(s)`),
+        React.createElement('button', { onClick: onFechar, style: btnSecundario }, 'Cancelar'),
+        React.createElement('button', { onClick: salvar, disabled: salvando, style: { ...btnAdd, opacity: salvando ? 0.6 : 1 } },
+          salvando ? React.createElement(Loader2, { size: 16, className: 'spin' }) : React.createElement(Check, { size: 16 }),
+          salvando ? 'Salvando...' : 'Salvar acessos'),
+      ),
+    ),
   );
 }
 

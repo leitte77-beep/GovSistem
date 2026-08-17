@@ -53,6 +53,17 @@ MODULE_ROLE_CATALOG: dict[str, list[dict]] = {
         {"name": "leitor", "label": "Leitor — somente leitura"},
         {"name": "auditor", "label": "Auditor — somente leitura de logs"},
     ],
+    "govpro": [
+        {"name": "ADMIN", "label": "Administrador do GovPro"},
+        {"name": "SERVIDOR", "label": "Servidor — atua nos processos da sua unidade"},
+        {"name": "CHEFE_UNIDADE", "label": "Chefe de unidade — atribui, define prazos, aprova"},
+        {"name": "PROTOCOLO", "label": "Protocolo — autua, recebe, distribui, reclassifica"},
+        {"name": "AUTORIDADE_SIGNATARIA", "label": "Autoridade signatária"},
+        {"name": "GESTOR_SIGILO", "label": "Gestor de sigilo / autoridade classificadora"},
+        {"name": "ARQUIVISTA", "label": "Arquivista / gestor documental"},
+        {"name": "DPO", "label": "Encarregado de dados (DPO)"},
+        {"name": "AUDITOR", "label": "Auditor — leitura ampla, sem edição"},
+    ],
 }
 
 # Legacy role names mapped to current canonical names.

@@ -88,7 +88,6 @@ api_router.include_router(attachments_router)
 api_router.include_router(reception_router)
 api_router.include_router(audit_router)
 api_router.include_router(admin_router)
-api_router.include_router(domains_router)
 api_router.include_router(domicilio_router)
 api_router.include_router(onboarding_router)
 api_router.include_router(internal_router)
@@ -117,3 +116,13 @@ api_router.include_router(transparencia_router)
 api_router.include_router(vigilancia_avancada_router)
 api_router.include_router(panic_button_router)
 api_router.include_router(busca_ativa_router)
+
+# domains_router expõe POST/PATCH/DELETE em "/{domain}" e "/{domain}/{item_id}"
+# (sem prefixo próprio) para criar overrides locais dos 4 domínios nacionais.
+# Precisa ser o ÚLTIMO a ser incluído: por ser um catch-all de 1 e 2
+# segmentos, um registro mais cedo intercepta qualquer rota estática de
+# mesmo formato de outro router (ex.: POST /retention-policies,
+# /notification-channels, /questionarios, /repasses, /programas-habitacionais
+# etc.) antes de FastAPI validar o corpo com DomainCreate, retornando 422 em
+# vez de chegar na rota real.
+api_router.include_router(domains_router)

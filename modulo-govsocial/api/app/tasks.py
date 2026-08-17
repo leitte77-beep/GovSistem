@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 import httpx
-from sqlalchemy import delete as sa_delete, func, select
+from sqlalchemy import delete as sa_delete, select
 
 from app.celery_app import celery_app
 from app.core.database import async_session
@@ -119,7 +119,9 @@ def exportar_dados(
             from app.services.report_engine import executar_relatorio
 
             try:
-                dados = await executar_relatorio(db, relatorio_config, filtros or {})
+                dados = await executar_relatorio(
+                    db, relatorio_config, filtros or {}, uuid.UUID(tenant_id)
+                )
             except Exception as exc:
                 raise self.retry(exc=exc)
 
@@ -165,23 +167,31 @@ def exportar_dados(
     default_retry_delay=60,
     name="app.tasks.gerar_pdf_lote",
 )
-def gerar_pdf_lote(self, tenant_id: str, case_file_ids: list[str]) -> dict:
-    """Gera PDFs de prontuários em lote e compacta."""
+def gerar_pdf_lote(self, tenant_id: str, case_file_ids: list[str], solicitado_por_id: str) -> dict:
+    """Gera PDFs de prontuários em lote e compacta.
+
+    O sigilo de cada prontuário (evolução restrita por lotação/sigilo
+    reforçado) depende de QUEM está lendo — por isso o lote é sempre gerado
+    com a identidade de quem solicitou (`solicitado_por_id`), nunca com um
+    usuário arbitrário do tenant.
+    """
     import asyncio
     import zipfile
 
     async def _run():
         async with async_session() as db:
-            from app.models.case_file import CaseFile
             from app.models.user import User
             from app.services.prontuario_pdf import generate_case_file_pdf
 
             user_result = await db.execute(
-                select(User).where(User.tenant_id == uuid.UUID(tenant_id)).limit(1)
+                select(User).where(
+                    User.id == uuid.UUID(solicitado_por_id),
+                    User.organization_id == uuid.UUID(tenant_id),
+                )
             )
             user = user_result.scalar_one_or_none()
             if not user:
-                return {"error": "No user found for tenant"}
+                return {"error": "Usuario solicitante nao encontrado no tenant"}
 
             pdfs = {}
             for cf_id in case_file_ids:

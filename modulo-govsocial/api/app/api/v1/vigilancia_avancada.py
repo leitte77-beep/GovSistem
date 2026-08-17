@@ -42,7 +42,7 @@ async def tendencias(
 
 @router.get("/vigilancia/mapa-calor")
 async def mapa_calor(
-    tipo: str = Query("vulnerabilidade", regex="^(vulnerabilidade|densidade)$"),
+    tipo: str = Query("vulnerabilidade", pattern="^(vulnerabilidade|densidade)$"),
     db: AsyncSession = Depends(get_db),
     tenant_id: uuid.UUID = Depends(get_tenant_id),
     user: User = Depends(_READ),

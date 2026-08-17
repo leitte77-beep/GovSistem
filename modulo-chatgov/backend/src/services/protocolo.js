@@ -22,28 +22,64 @@ export async function gerarNumeroProtocolo(tenantId) {
   return db.tx((t) => gerarNumeroProtocoloNoContexto(t, tenantId));
 }
 
-export async function gerarProtocolo(tenantId, conversaId, contatoId, departamentoId, operadorId, assunto) {
-  return db.tx(async (t) => {
-    const numero = await gerarNumeroProtocoloNoContexto(t, tenantId);
-    const proto = await t.one(
-      `INSERT INTO protocolos
+async function criarProtocoloNoContexto(t, tenantId, conversaId, contatoId, departamentoId, operadorId, assunto) {
+  const numero = await gerarNumeroProtocoloNoContexto(t, tenantId);
+  const proto = await t.one(
+       `INSERT INTO protocolos
          (tenant_id, numero, conversa_id, contato_id, departamento_id, operador_id,
-          assunto, status, status_operacional, prioridade)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'aberto', 'ABERTO', 'normal')
+          assunto, status, status_operacional, prioridade, origem)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'aberto', 'ABERTO', 'normal', 'whatsapp')
        RETURNING *`,
       [tenantId, numero, conversaId, contatoId, departamentoId || null, operadorId || null, assunto || 'Atendimento geral']
     );
-    await t.none(
+  await t.none(
       `INSERT INTO andamentos_protocolo (tenant_id, protocolo_id, status, descricao, operador_id)
        VALUES ($1, $2, 'aberto', 'Protocolo aberto — atendimento iniciado', $3)`,
       [tenantId, proto.id, operadorId || null]
     );
+  if (conversaId) {
+    await t.none('UPDATE conversas SET protocolo_id = $1 WHERE id = $2 AND tenant_id = $3', [
+      proto.id, conversaId, tenantId,
+    ]);
+  }
+  return proto;
+}
+
+async function protocoloDaConversaNoContexto(t, tenantId, conversaId) {
+  const conversa = await t.oneOrNone(
+    `SELECT * FROM conversas
+     WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL
+     FOR UPDATE`,
+    [conversaId, tenantId]
+  );
+  if (!conversa) return { conversa: null, protocolo: null };
+
+  const protocolo = await t.oneOrNone(
+    `SELECT * FROM protocolos
+     WHERE conversa_id = $1 AND tenant_id = $2
+     ORDER BY (id = $3) DESC, aberto_em ASC
+     LIMIT 1`,
+    [conversaId, tenantId, conversa.protocolo_id]
+  );
+  if (protocolo && conversa.protocolo_id !== protocolo.id) {
+    await t.none(
+      'UPDATE conversas SET protocolo_id = $1 WHERE id = $2 AND tenant_id = $3',
+      [protocolo.id, conversaId, tenantId]
+    );
+  }
+  return { conversa, protocolo };
+}
+
+export async function gerarProtocolo(tenantId, conversaId, contatoId, departamentoId, operadorId, assunto) {
+  return db.tx(async (t) => {
     if (conversaId) {
-      await t.none('UPDATE conversas SET protocolo_id = $1 WHERE id = $2 AND tenant_id = $3', [
-        proto.id, conversaId, tenantId,
-      ]);
+      const existente = await protocoloDaConversaNoContexto(t, tenantId, conversaId);
+      if (!existente.conversa) throw new Error('Conversa não encontrada');
+      if (existente.protocolo) return existente.protocolo;
     }
-    return proto;
+    return criarProtocoloNoContexto(
+      t, tenantId, conversaId, contatoId, departamentoId, operadorId, assunto
+    );
   });
 }
 
@@ -98,23 +134,19 @@ export async function encerrarProtocolo(protocoloId, tenantId, descricao, operad
 }
 
 export async function getOuGerarProtocolo(tenantId, conversaId, contatoId) {
-  const existente = await db.oneOrNone(
-    'SELECT * FROM protocolos WHERE conversa_id = $1 AND tenant_id = $2',
-    [conversaId, tenantId]
-  );
-  if (existente) return existente;
+  return db.tx(async (t) => {
+    const existente = await protocoloDaConversaNoContexto(t, tenantId, conversaId);
+    if (!existente.conversa) throw new Error('Conversa não encontrada');
+    if (existente.protocolo) return existente.protocolo;
 
-  const conversa = await db.oneOrNone('SELECT * FROM conversas WHERE id = $1 AND tenant_id = $2', [
-    conversaId,
-    tenantId,
-  ]);
-
-  return gerarProtocolo(
-    tenantId,
-    conversaId,
-    contatoId,
-    conversa?.departamento_id || null,
-    conversa?.operador_id || null,
-    null
-  );
+    return criarProtocoloNoContexto(
+      t,
+      tenantId,
+      conversaId,
+      contatoId,
+      existente.conversa.departamento_id || null,
+      existente.conversa.operador_id || null,
+      null
+    );
+  });
 }

@@ -1,3 +1,4 @@
+import hmac
 import logging
 import uuid
 from typing import Annotated
@@ -30,7 +31,7 @@ async def require_internal_key(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Internal API not configured",
         )
-    if x_internal_key != internal_key:
+    if not x_internal_key or not hmac.compare_digest(x_internal_key, internal_key):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid internal key",
