@@ -1,5 +1,89 @@
 import db from '../db.js';
 
+// ─── Menu de setores (mídia no primeiro contato) ──────────────────────────
+// Quando o cidadão abre o atendimento enviando áudio, imagem, vídeo ou
+// documento, não há texto para a Iris triar. Em vez de deixá-lo sem resposta,
+// devolvemos o menu com os setores ativos do tenant para ele escolher.
+
+const KEYCAPS = ['0️⃣', '1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣'];
+
+// Número em keycap: 1..9 simples, 10 = 🔟, 11..99 com dígitos combinados
+// (ex.: "1️⃣1️⃣") e, acima disso, número simples ("101.").
+function keycapNumero(num) {
+  if (num === 10) return '🔟';
+  const digitos = String(num);
+  if (digitos.length <= 2) {
+    return digitos.split('').map((d) => KEYCAPS[Number(d)]).join('');
+  }
+  return `${num}.`;
+}
+
+// Formatação pura (sem banco): separada para poder ser testada isoladamente.
+export function formatarMenuSetores(tenantNome, setores) {
+  const nome = (tenantNome || '').trim();
+  const saudacao = nome ? `da ${nome}` : 'da Prefeitura Municipal';
+
+  const linhas = (setores || []).map((s, i) => `${keycapNumero(i + 1)} ${s}`);
+  const corpo = linhas.length > 0
+    ? linhas.join('\n')
+    : 'No momento não há setores disponíveis.';
+
+  return [
+    `👋 Olá! Eu sou a Íris, assistente virtual ${saudacao}.`,
+    '',
+    'Recebi sua mensagem, mas não consegui identificar o assunto. Para direcionar seu atendimento corretamente, selecione uma das opções abaixo:',
+    '',
+    corpo,
+    '',
+    '📲 Digite o número ou o nome do setor desejado.',
+    '',
+    'Assim que você escolher, vou encaminhar seu atendimento para o setor responsável. 😊',
+  ].join('\n');
+}
+
+// Lê os setores ativos do tenant e monta o menu para envio ao cidadão.
+// Devolve também a lista ordenada de IDs (na MESMA ordem do menu) para que a
+// escolha numérica do cidadão ("3" → 3º setor) seja resolvida de forma
+// determinística, sem depender da IA interpretar o número.
+export async function montarMenuSetores(tenantId) {
+  const tenant = await db.oneOrNone(
+    'SELECT nome FROM tenants WHERE id = $1',
+    [tenantId]
+  );
+
+  const setores = await db.manyOrNone(
+    `SELECT d.id, d.nome
+     FROM departamentos d
+     WHERE d.tenant_id = $1 AND d.ativo = true
+     ORDER BY d.nome`,
+    [tenantId]
+  );
+
+  return {
+    texto: formatarMenuSetores(tenant?.nome, setores.map((s) => s.nome)),
+    ids: setores.map((s) => s.id),
+  };
+}
+
+// Detecta quando o cidadão respondeu ao menu só com um número (ex.: "3",
+// "3️⃣", "1️⃣1️⃣"). Retorna o número escolhido ou null. Mensagens com letras ou
+// palavras ("preciso de 3 documentos", "quero o setor de saúde") NÃO são
+// tratadas como escolha de menu — a triagem por texto segue normal.
+export function detectarEscolhaMenu(texto) {
+  const t = String(texto || '').trim();
+  if (!t) return null;
+
+  // Remove dígitos e os caracteres que compõem o "keycap" (VS16 + combining).
+  // Se sobrar qualquer letra/caractere, não é uma escolha numérica pura.
+  if (t.replace(/[0-9\uFE0F\u20E3️]/g, '').trim() !== '') return null;
+
+  const digitos = t.replace(/\D/g, '');
+  if (!digitos) return null;
+
+  const n = parseInt(digitos, 10);
+  return (n >= 1 && n <= 99) ? n : null;
+}
+
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
 const OPENAI_API_URL = 'https://api.openai.com/v1/chat/completions';
 
@@ -494,10 +578,32 @@ export async function processarComIris(tenantId, conversaId, texto) {
   // quando o cidadão volta a escrever, então essa data é a fronteira entre o
   // atendimento antigo e o novo.
   const conv = await db.oneOrNone(
-    `SELECT departamento_sugerido, GREATEST(resolvida_em, arquivada_em) AS encerrada_em
+    `SELECT departamento_sugerido, menu_setores, GREATEST(resolvida_em, arquivada_em) AS encerrada_em
      FROM conversas WHERE id = $1 AND tenant_id = $2`,
     [conversaId, tenantId]
   );
+
+  // Escolha numérica do menu de setores (enviado quando a primeira mensagem foi
+  // mídia). Resolve "3" → 3º setor da lista de forma determinística, sem pedir
+  // para a IA adivinhar o número — isso evita que a Iris mude o contexto e
+  // responda com outro departamento.
+  const escolhaNumero = detectarEscolhaMenu(texto);
+  if (escolhaNumero && Array.isArray(conv?.menu_setores) && conv.menu_setores.length > 0) {
+    const deptoId = conv.menu_setores[escolhaNumero - 1];
+    const depto = deptoId ? departamentos.find((d) => d.id === deptoId) : null;
+    if (depto) {
+      console.log(`[Iris] Escolha numérica do menu: ${escolhaNumero} → ${depto.nome}`);
+      return {
+        respondido: true,
+        resposta: `Certo! Vou te encaminhar para o setor de ${depto.nome}. Um atendente já vai te responder.`,
+        departamento_id: depto.id,
+        operador_id: null,
+        finalizado: true,
+        origem: 'iris',
+        confianca: 'alta (menu de setores)',
+      };
+    }
+  }
 
   // Obter informações da fila
   const infoFila = await obterInfoFila(tenantId, conv?.departamento_sugerido);

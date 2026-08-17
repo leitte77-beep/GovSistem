@@ -7,7 +7,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config.js';
 import { downloadMediaMessage } from '@whiskeysockets/baileys';
 import { processarMensagem } from '../services/chatbot.js';
-import { processarComIris } from '../services/iris.js';
+import { processarComIris, montarMenuSetores } from '../services/iris.js';
 import { getOuGerarProtocolo, encerrarProtocolo } from '../services/protocolo.js';
 import { criarPesquisaNPS } from '../services/nps.js';
 import { atualizarPresenca } from '../services/presenca.js';
@@ -1961,10 +1961,60 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
   io.to(salas.conversa(conversaRow.id)).emit('mensagem:nova', novaMensagem);
   io.to(salas.tenant(tenantId)).emit('conversa:atualizada', { convId: conversaRow.id });
 
+  const jidEnvio = jid;
+
+  // Envia uma resposta do bot (Iris ou chatbot) ao cidadão. Fica fora do bloco
+  // de texto porque o caminho de mídia também a usa: no primeiro contato com
+  // áudio/imagem/vídeo/documento, a Iris responde com o menu de setores em vez
+  // de deixar o cidadão falando sozinho.
+  const enviarBotMsg = async (textoResposta, origem = 'bot') => {
+    // Barra também respostas sem conteúdo real ("{", "...", só emoji de
+    // pontuação): já aconteceu de um JSON truncado do provedor virar
+    // mensagem "🤖 {" no WhatsApp do cidadão.
+    if (!textoResposta || String(textoResposta).replace(/[^\p{L}\p{N}]/gu, '').length < 2) {
+      console.log('[Chatbot] Resposta sem conteúdo, ignorando envio:', JSON.stringify(textoResposta)?.slice(0, 60));
+      return;
+    }
+    // Emite evento "bot digitando..." antes de enviar
+    io.to(salas.conversa(conversaRow.id)).emit('cliente:presenca', {
+      convId: conversaRow.id,
+      digitando: false,
+      estado: 'bot_digitando',
+      bot: origem,
+    });
+
+    const botMsgId = uuidv4();
+    const botMsg = await db.one(
+      `INSERT INTO mensagens (id, tenant_id, conversa_id, direcao, tipo, conteudo, status, origem, criado_em)
+       VALUES ($1, $2, $3, 'saida', 'texto', $4, 'enviado', 'bot', now())
+       RETURNING *`,
+      [botMsgId, tenantId, conversaRow.id, `🤖 ${textoResposta}`]
+    );
+    const sendResult = await wa.sendText(tenantId, jidEnvio, textoResposta);
+    if (sendResult?.key?.id) {
+      await db.none(
+        'UPDATE mensagens SET wa_message_id = $1 WHERE id = $2 AND tenant_id = $3',
+        [sendResult.key.id, botMsgId, tenantId]
+      );
+    }
+    await db.none(
+      `UPDATE conversas SET ultima_mensagem = $1, ultima_mensagem_em = now()
+       WHERE id = $2 AND tenant_id = $3`,
+      [textoResposta.slice(0, 200), conversaRow.id, tenantId]
+    );
+    io.to(salas.conversa(conversaRow.id)).emit('mensagem:nova', botMsg);
+    io.to(salas.tenant(tenantId)).emit('conversa:atualizada', { convId: conversaRow.id });
+
+    // Limpa o "bot digitando" apos enviar
+    io.to(salas.conversa(conversaRow.id)).emit('cliente:presenca', {
+      convId: conversaRow.id,
+      digitando: false,
+      estado: null,
+    });
+  };
+
   if (direcao === 'entrada' && tipo === 'texto' && conteudo) {
     try {
-      const jidEnvio = jid;
-
       const irisCfg = await db.oneOrNone(
         'SELECT * FROM config_iris WHERE tenant_id = $1 AND ativo = true',
         [tenantId]
@@ -1976,52 +2026,6 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
         [conversaRow.id, tenantId]
       );
       const isFirstContact = msgCountResult.cnt === 1;
-
-      const enviarBotMsg = async (textoResposta, origem = 'bot') => {
-        // Barra também respostas sem conteúdo real ("{", "...", só emoji de
-        // pontuação): já aconteceu de um JSON truncado do provedor virar
-        // mensagem "🤖 {" no WhatsApp do cidadão.
-        if (!textoResposta || String(textoResposta).replace(/[^\p{L}\p{N}]/gu, '').length < 2) {
-          console.log('[Chatbot] Resposta sem conteúdo, ignorando envio:', JSON.stringify(textoResposta)?.slice(0, 60));
-          return;
-        }
-        // Emite evento "bot digitando..." antes de enviar
-        io.to(salas.conversa(conversaRow.id)).emit('cliente:presenca', {
-          convId: conversaRow.id,
-          digitando: false,
-          estado: 'bot_digitando',
-          bot: origem,
-        });
-
-        const botMsgId = uuidv4();
-        const botMsg = await db.one(
-          `INSERT INTO mensagens (id, tenant_id, conversa_id, direcao, tipo, conteudo, status, origem, criado_em)
-           VALUES ($1, $2, $3, 'saida', 'texto', $4, 'enviado', 'bot', now())
-           RETURNING *`,
-          [botMsgId, tenantId, conversaRow.id, `🤖 ${textoResposta}`]
-        );
-        const sendResult = await wa.sendText(tenantId, jidEnvio, textoResposta);
-        if (sendResult?.key?.id) {
-          await db.none(
-            'UPDATE mensagens SET wa_message_id = $1 WHERE id = $2 AND tenant_id = $3',
-            [sendResult.key.id, botMsgId, tenantId]
-          );
-        }
-        await db.none(
-          `UPDATE conversas SET ultima_mensagem = $1, ultima_mensagem_em = now()
-           WHERE id = $2 AND tenant_id = $3`,
-          [textoResposta.slice(0, 200), conversaRow.id, tenantId]
-        );
-        io.to(salas.conversa(conversaRow.id)).emit('mensagem:nova', botMsg);
-        io.to(salas.tenant(tenantId)).emit('conversa:atualizada', { convId: conversaRow.id });
-
-        // Limpa o "bot digitando" apos enviar
-        io.to(salas.conversa(conversaRow.id)).emit('cliente:presenca', {
-          convId: conversaRow.id,
-          digitando: false,
-          estado: null,
-        });
-      };
 
       let departamentoAlvo = null;
       let operadorAlvo = null;
@@ -2183,6 +2187,38 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
       }
     } catch (e) {
       console.error('[Chatbot] Erro ao processar:', e.message);
+    }
+  }
+
+  // Mídia como primeira mensagem: a Iris não tem texto para triar. Em vez de
+  // silêncio, responde com o menu de setores ativos do tenant. Só no primeiro
+  // contato (nova triagem) e sem atendente humano assumido — mídia no meio de
+  // uma conversa em andamento continua com o responsável, não com a IA.
+  const TIPOS_MIDIA = new Set(['audio', 'imagem', 'video', 'documento']);
+  if (direcao === 'entrada' && TIPOS_MIDIA.has(tipo) && !conversaRow.operador_id) {
+    try {
+      const irisCfg = await db.oneOrNone(
+        'SELECT * FROM config_iris WHERE tenant_id = $1 AND ativo = true',
+        [tenantId]
+      );
+      if (irisCfg) {
+        const msgCountResult = await db.one(
+          'SELECT COUNT(*)::int as cnt FROM mensagens WHERE conversa_id = $1 AND tenant_id = $2',
+          [conversaRow.id, tenantId]
+        );
+        if (msgCountResult.cnt === 1) {
+          const menu = await montarMenuSetores(tenantId);
+          await enviarBotMsg(menu.texto, 'iris');
+          // Guarda a ordem dos setores do menu para resolver a escolha numérica
+          // do cidadão ("3" → 3º setor) de forma determinística na próxima mensagem.
+          await db.none(
+            'UPDATE conversas SET menu_setores = $1::jsonb WHERE id = $2 AND tenant_id = $3',
+            [JSON.stringify(menu.ids), conversaRow.id, tenantId]
+          );
+        }
+      }
+    } catch (e) {
+      console.error('[Iris] Erro ao responder mídia com menu de setores:', e.message);
     }
   }
 
