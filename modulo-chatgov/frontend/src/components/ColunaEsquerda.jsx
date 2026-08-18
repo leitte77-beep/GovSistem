@@ -45,7 +45,7 @@ const ATRASADA = (c) => {
 export function ColunaEsquerda({
   view, onChange, onSelectConversa, onSelectCanal, onOpenQR,
   conversaAtivaId, canalAtivoId, recarregar,
-  breakpoint,
+  breakpoint, filtroSolicitado,
 }) {
   const { auth, logout } = useAuth();
   const { socket } = useSocket();
@@ -97,6 +97,15 @@ export function ColunaEsquerda({
     fetchMe().then((p) => setPerfil(p)).catch(() => {});
   }, []);
 
+  // Drill-down do painel operacional: clicar num indicador manda a lista para o
+  // recorte correspondente. Vem como objeto ({ valor, pedido }) para que dois
+  // cliques seguidos no mesmo filtro ainda reapliquem o recorte.
+  useEffect(() => {
+    if (!filtroSolicitado?.valor) return;
+    setFiltro(filtroSolicitado.valor);
+    setBusca('');
+  }, [filtroSolicitado]);
+
   // Persiste por usuário/navegador e mantém URL compartilhável.
   useEffect(() => {
     try {
@@ -125,7 +134,7 @@ export function ColunaEsquerda({
   const FILTROS_FIXOS = [
     'todas', 'naolidas', 'fila', 'aguardando_cidadao',
     'aguardando_setor', 'arquivadas', 'minhas', 'resolvidas',
-    'sem_responsavel', 'com_protocolo', 'atrasadas',
+    'sem_responsavel', 'com_protocolo', 'atrasadas', 'em_atendimento',
   ];
 
   const carregarConversas = useCallback(async () => {
@@ -137,6 +146,7 @@ export function ColunaEsquerda({
       else if (filtro === 'aguardando_setor') params.status = 'AGUARDANDO_SETOR';
       else if (filtro === 'arquivadas') params.arquivadas = 'true';
       else if (filtro === 'resolvidas') params.status = 'RESOLVIDA';
+      else if (filtro === 'em_atendimento') params.status = 'EM_ATENDIMENTO';
       else if (!FILTROS_FIXOS.includes(filtro)) params.departamento = filtro;
       if (busca) params.busca = busca;
       const precisaBase = filtro !== 'todas';
@@ -165,6 +175,7 @@ export function ColunaEsquerda({
         sem_responsavel: base.filter(SEM_RESPONSAVEL).length,
         com_protocolo: base.filter(COM_PROTOCOLO).length,
         atrasadas: base.filter(ATRASADA).length,
+        em_atendimento: base.filter((c) => ['EM_ATENDIMENTO', 'aberta'].includes(c.status_operacional || c.status)).length,
       });
     } catch (err) { console.error(err); }
     finally { setCarregando(false); }
@@ -322,7 +333,7 @@ export function ColunaEsquerda({
         ? React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 } },
             React.createElement('div', {
               'aria-hidden': true,
-              style: { width: 36, height: 36, borderRadius: '50%', background: T.primarySoft, color: T.primary, display: 'grid', placeItems: 'center', fontWeight: 800, flexShrink: 0 },
+              style: { width: 36, height: 36, borderRadius: '50%', background: T.primarySoft, color: T.primaryOnSoft, display: 'grid', placeItems: 'center', fontWeight: 800, flexShrink: 0 },
             }, (perfil?.nome || op?.nome || '?').trim().charAt(0).toUpperCase()),
             React.createElement('div', { style: { minWidth: 0 } },
               React.createElement('h1', { style: { fontSize: 16, fontWeight: 750, color: T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, perfil?.nome || op?.nome || 'Atendimento'),
@@ -453,7 +464,9 @@ export function ColunaEsquerda({
           placeholder: 'Pesquisar ou come\u00e7ar uma nova conversa',
           'aria-label': 'Pesquisar conversas por nome ou telefone',
           style: {
-            width: '100%',         background: T.surfaceMuted, border: 'none', borderRadius: 8,
+            // Sem contorno, o campo se separava do painel por 1.18:1 e sumia.
+            width: '100%',         background: T.surfaceMuted, borderRadius: 8,
+            border: `1px solid ${T.controlBorder}`,
             padding: '10px 12px 10px 44px', color: T.text, fontSize: 14, outline: 'none',
             boxSizing: 'border-box',
           },

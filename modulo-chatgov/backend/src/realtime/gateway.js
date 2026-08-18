@@ -8,6 +8,14 @@ import { config } from '../config.js';
 import { downloadMediaMessage } from '@whiskeysockets/baileys';
 import { processarMensagem } from '../services/chatbot.js';
 import { processarComIris, montarMenuSetores } from '../services/iris.js';
+import {
+  contarFilaAtendente,
+  mensagemAtendimentoIniciado,
+  mensagemAtualizacaoFilaAtendente,
+  mensagemEntradaFilaAtendente,
+  promoverFilaAtendente,
+  solicitarAtendente,
+} from '../services/filaAtendente.js';
 import { getOuGerarProtocolo, encerrarProtocolo } from '../services/protocolo.js';
 import { criarPesquisaNPS } from '../services/nps.js';
 import { atualizarPresenca } from '../services/presenca.js';
@@ -23,6 +31,7 @@ import {
   obterOuCriarConversaAtiva,
 } from '../services/conversas.js';
 import { podeAcessarConversa } from '../services/autorizacao-conversas.js';
+import { departamentoPadraoDoOperador } from '../services/departamentos.js';
 import { normalizePhone } from '../domain/phone.js';
 import { extrairContatosCompartilhados } from '../domain/contato-compartilhado.js';
 import { createStorage } from '../storage/index.js';
@@ -261,6 +270,42 @@ async function obterJidDaConversa(tenantId, convId, jidInformado) {
   return `${digits}@s.whatsapp.net`;
 }
 
+// Mensagens de movimentação da fila não dependem de uma nova fala do cidadão.
+// Este caminho permite avisar posição/promoção no instante em que o atendente
+// encerra outro atendimento.
+async function enviarAvisoAutomaticoFila({ tenantId, conversaId, texto, io, wa }) {
+  const jid = await obterJidDaConversa(tenantId, conversaId, null);
+  if (!jid || !texto) return false;
+  const mensagem = await db.one(
+    `INSERT INTO mensagens
+       (id, tenant_id, conversa_id, direcao, tipo, conteudo, status, origem, criado_em)
+     VALUES ($1, $2, $3, 'saida', 'texto', $4, 'enviado', 'bot', now())
+     RETURNING *`,
+    [uuidv4(), tenantId, conversaId, `🤖 ${texto}`],
+  );
+  const enviada = await wa.sendText(tenantId, jid, texto);
+  if (enviada?.key?.id) {
+    await db.none(
+      'UPDATE mensagens SET wa_message_id = $1 WHERE id = $2 AND tenant_id = $3',
+      [enviada.key.id, mensagem.id, tenantId],
+    );
+  }
+  await db.none(
+    `UPDATE conversas SET ultima_mensagem = $1, ultima_mensagem_em = now()
+     WHERE id = $2 AND tenant_id = $3`,
+    [texto.slice(0, 200), conversaId, tenantId],
+  );
+  io.to(salas.conversa(conversaId)).emit('mensagem:nova', mensagem);
+  io.to(salas.tenant(tenantId)).emit('conversa:atualizada', { convId: conversaId });
+  return true;
+}
+
+function emitirResumoFilaAtendente(io, operadorId, total) {
+  io.to(salas.operador(operadorId)).emit('fila-atendente:atualizada', {
+    total: Number(total || 0),
+  });
+}
+
 async function atualizarContatoDaConversaComJidResolvido(tenantId, convId, resolvedJid) {
   if (!resolvedJid) return;
   const isLid = resolvedJid.endsWith('@lid');
@@ -386,6 +431,8 @@ export function iniciarGateway(httpServer, wa, storage) {
           opId: op.id,
           online: true,
         });
+        const totalFilaPessoal = await contarFilaAtendente(db, op.tenantId, op.id);
+        socket.emit('fila-atendente:atualizada', { total: totalFilaPessoal });
       } catch (err) {
         console.error('[Socket] operador:presenca error:', err.message);
       }
@@ -422,6 +469,10 @@ export function iniciarGateway(httpServer, wa, storage) {
       socket.leave(salas.conversa(convId));
     });
 
+    // Atribuição direta: move a conversa de setor E define o dono (por padrão,
+    // quem chamou). Continua aqui para clientes antigos e para o gestor que
+    // quer entregar a conversa a alguém nomeado. Encaminhar para um setor sem
+    // escolher atendente é `conversa:encaminhar` — este handler mantém o dono.
     socket.on('conversa:atribuir', async ({ convId, departamentoId, operadorId }) => {
       try {
         await setTenantContext(op.tenantId);
@@ -453,12 +504,17 @@ export function iniciarGateway(httpServer, wa, storage) {
     socket.on('conversa:assumir', async (convId, ack) => {
       try {
         await setTenantContext(op.tenantId);
+        // Conversa que chegou pelo WhatsApp sem roteamento fica sem setor até
+        // alguém pegar. Quem assume identifica o setor: o COALESCE nunca
+        // sobrescreve um destino que já tenha sido definido.
+        const depPadrao = await departamentoPadraoDoOperador(db, { operadorId: op.id, tenantId: op.tenantId });
         const r = await db.oneOrNone(
           `UPDATE conversas SET operador_id = $1, status = 'aberta',
-             status_operacional = 'EM_ATENDIMENTO'
+             status_operacional = 'EM_ATENDIMENTO',
+             departamento_id = COALESCE(departamento_id, $4)
            WHERE id = $2 AND tenant_id = $3 AND operador_id IS NULL
            RETURNING id`,
-          [op.id, convId, op.tenantId]
+          [op.id, convId, op.tenantId, depPadrao]
         );
         if (!r) {
           const dono = await db.oneOrNone(
@@ -503,6 +559,87 @@ export function iniciarGateway(httpServer, wa, storage) {
         if (ack) ack({ ok: true });
       } catch (err) {
         console.error('[Socket] conversa:devolver error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    // Encaminhar para outro setor: a conversa cai na FILA do setor de destino e
+    // quem encaminhou deixa de ser o responsável. Antes isto reaproveitava
+    // `conversa:atribuir` com o próprio operador como dono, então o atendente
+    // continuava respondendo por um atendimento que já era de outra secretaria.
+    socket.on('conversa:encaminhar', async ({ convId, departamentoId, motivo }, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        if (!departamentoId) { if (ack) ack({ ok: false, erro: 'Selecione o setor de destino.' }); return; }
+        const conv = await db.oneOrNone(
+          `SELECT operador_id, departamento_id, status, status_operacional
+           FROM conversas WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL`,
+          [convId, op.tenantId]
+        );
+        if (!conv) { if (ack) ack({ ok: false, erro: 'Conversa não encontrada' }); return; }
+        // Dono atual e gestor sempre podem; um atendente qualquer só pode
+        // triar o que já enxerga (conversa parada na fila, sem responsável).
+        if (!ehGestor(op) && conv.operador_id && conv.operador_id !== op.id) {
+          if (ack) ack({ ok: false, erro: 'Apenas o atendente responsável pode encaminhar a conversa.' });
+          return;
+        }
+        if (!ehGestor(op) && !conv.operador_id && !(await podeAcessarConversa(db, op, convId))) {
+          if (ack) ack({ ok: false, erro: 'Sem acesso a esta conversa.' });
+          return;
+        }
+        if (['resolvida', 'arquivada'].includes(conv.status)) {
+          if (ack) ack({ ok: false, erro: 'Reabra o atendimento antes de encaminhar para outro setor.' });
+          return;
+        }
+        const dep = await db.oneOrNone(
+          'SELECT id, nome FROM departamentos WHERE id = $1 AND tenant_id = $2 AND ativo = true',
+          [departamentoId, op.tenantId]
+        );
+        if (!dep) { if (ack) ack({ ok: false, erro: 'Setor inválido ou inativo.' }); return; }
+
+        await db.none(
+          `UPDATE conversas SET departamento_id = $1, operador_id = NULL,
+             status = 'fila', status_operacional = 'NA_FILA'
+           WHERE id = $2 AND tenant_id = $3`,
+          [dep.id, convId, op.tenantId]
+        );
+        // Ninguém segue como dono/anexado: o setor de destino é quem assume.
+        await db.none('DELETE FROM conversa_participantes WHERE conversa_id = $1 AND tenant_id = $2', [convId, op.tenantId]);
+        await db.none(
+          `UPDATE conversa_transferencias SET status = 'cancelada', resolvido_em = now()
+           WHERE conversa_id = $1 AND tenant_id = $2 AND status = 'pendente'`,
+          [convId, op.tenantId]
+        );
+        await _auditar(op.tenantId, op.id, 'conversa.encaminhada', {
+          conversaId: convId,
+          departamentoId: dep.id,
+          departamentoNome: dep.nome,
+          deDepartamentoId: conv.departamento_id || null,
+          motivo: motivo || null,
+        });
+
+        // Avisa quem pode assumir — sem notificação a conversa fica esperando
+        // alguém do setor abrir a fila por acaso.
+        const alvos = await db.manyOrNone(
+          `SELECT DISTINCT od.operador_id FROM operador_departamentos od
+           JOIN operadores o ON o.id = od.operador_id AND o.tenant_id = $2
+           WHERE od.departamento_id = $1 AND od.operador_id <> $3`,
+          [dep.id, op.tenantId, op.id]
+        );
+        for (const alvo of alvos) {
+          await criarNotificacao(
+            op.tenantId, alvo.operador_id, 'fila',
+            `Nova conversa na fila de ${dep.nome}`,
+            `${op.nome} encaminhou um atendimento${motivo ? `: ${motivo}` : '.'}`,
+            `/atendimento?conversa=${convId}`
+          ).catch(() => {});
+          io.to(salas.operador(alvo.operador_id)).emit('conversa:atualizada', { convId });
+        }
+
+        io.to(salas.tenant(op.tenantId)).emit('conversa:atualizada', { convId });
+        if (ack) ack({ ok: true, setor: dep.nome });
+      } catch (err) {
+        console.error('[Socket] conversa:encaminhar error:', err.message);
         if (ack) ack({ ok: false, erro: err.message });
       }
     });
@@ -663,6 +800,52 @@ export function iniciarGateway(httpServer, wa, storage) {
           } catch (e) {
             console.error('[Socket] conversa:resolver protocolo/nps error:', e.message);
           }
+        }
+
+        // A vaga liberada pertence à fila pessoal deste atendente. O primeiro
+        // cidadão entra automaticamente; os demais só recebem mensagem se a
+        // posição numérica realmente diminuiu.
+        try {
+          const fila = await promoverFilaAtendente(db, {
+            tenantId: op.tenantId,
+            operadorId: op.id,
+          });
+          for (const item of fila.promovidas) {
+            await enviarAvisoAutomaticoFila({
+              tenantId: op.tenantId,
+              conversaId: item.conversaId,
+              texto: mensagemAtendimentoIniciado(fila.atendente.nome),
+              io,
+              wa,
+            }).catch((err) => console.error('[FilaAtendente] aviso de promoção:', err.message));
+            await criarNotificacao(
+              op.tenantId, op.id, 'conversa_atribuida', 'Próximo atendimento da sua fila',
+              'A primeira pessoa que aguardava foi direcionada para você.', `/?conversa=${item.conversaId}`,
+            ).catch(() => {});
+            io.to(salas.operador(op.id)).emit('conversa:atualizada', { convId: item.conversaId });
+          }
+          for (const item of fila.posicoesAlteradas) {
+            const textoFila = mensagemAtualizacaoFilaAtendente({
+              atendenteNome: fila.atendente.nome,
+              posicaoAnterior: item.posicaoAnterior,
+              posicao: item.posicao,
+            });
+            if (textoFila) {
+              await enviarAvisoAutomaticoFila({
+                tenantId: op.tenantId,
+                conversaId: item.conversaId,
+                texto: textoFila,
+                io,
+                wa,
+              }).catch((err) => console.error('[FilaAtendente] aviso de posição:', err.message));
+            }
+          }
+          emitirResumoFilaAtendente(io, op.id, fila.totalAguardando);
+        } catch (e) {
+          // O atendimento já foi resolvido; uma falha de aviso não deve reabrir
+          // nem fazer o botão parecer que falhou. A fila fica registrada para a
+          // próxima promoção ou reconexão.
+          console.error('[FilaAtendente] promoção após resolução:', e.message);
         }
 
         io.to(salas.tenant(op.tenantId)).emit('conversa:atualizada', { convId });
@@ -2059,11 +2242,44 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
         // Modo Iris — IA 24h com DeepSeek ou OpenAI
         const resultado = await processarComIris(tenantId, conversaRow.id, conteudo);
         if (resultado && resultado.respondido) {
-          await enviarBotMsg(resultado.resposta, 'iris');
+          let respostaIris = resultado.resposta;
+          if (resultado.operador_solicitado_id) {
+            const solicitacao = await solicitarAtendente(db, {
+              tenantId,
+              conversaId: conversaRow.id,
+              operadorId: resultado.operador_solicitado_id,
+            });
+            if (solicitacao.tipo === 'direto') {
+              operadorAlvo = resultado.operador_solicitado_id;
+              conversaRow.operador_id = operadorAlvo;
+              departamentoAlvo = solicitacao.atendente?.departamento_id || resultado.departamento_id || null;
+              await criarNotificacao(
+                tenantId, operadorAlvo, 'conversa_atribuida', 'Atendimento direcionado pela Iris',
+                'O cidadão pediu para falar com você.', `/?conversa=${conversaRow.id}`,
+              ).catch(() => {});
+              emitirResumoFilaAtendente(io, operadorAlvo, solicitacao.totalAguardando);
+            } else if (solicitacao.tipo === 'fila') {
+              departamentoAlvo = solicitacao.atendente?.departamento_id || resultado.departamento_id || null;
+              const aviso = mensagemEntradaFilaAtendente({
+                atendenteNome: solicitacao.atendente?.nome,
+                posicao: solicitacao.posicao,
+              });
+              if (solicitacao.deveNotificarCidadao && aviso) respostaIris = aviso;
+              emitirResumoFilaAtendente(io, resultado.operador_solicitado_id, solicitacao.totalAguardando);
+              if (solicitacao.deveNotificarCidadao) {
+                await criarNotificacao(
+                  tenantId, resultado.operador_solicitado_id, 'fila',
+                  `${solicitacao.totalAguardando} pessoa(s) aguardando você`,
+                  'Um cidadão pediu atendimento diretamente com você.', `/?conversa=${conversaRow.id}`,
+                ).catch(() => {});
+              }
+            }
+          }
+          await enviarBotMsg(respostaIris, 'iris');
           if (resultado.departamento_id) {
             departamentoAlvo = resultado.departamento_id;
           }
-          if (resultado.operador_id) {
+          if (resultado.operador_id && !resultado.operador_solicitado_id) {
             operadorAlvo = resultado.operador_id;
           }
           if (resultado.confianca) {
@@ -2113,10 +2329,9 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
         }
       }
 
-      // O cidadão pediu por um atendente e a Iris confirmou que ele está online
-      // e com vaga: a conversa já entra com dono, como uma transferência.
-      // A corrida com um humano que assumiu no meio do caminho é resolvida pelo
-      // `operador_id IS NULL` no UPDATE — quem chegou primeiro fica.
+      // Compatibilidade com resultados antigos da Iris, anteriores à fila
+      // pessoal. Novos pedidos por pessoa já são decididos atomicamente por
+      // `solicitarAtendente` acima.
       if (!conversaRow.operador_id && operadorAlvo) {
         const atribuida = await db.oneOrNone(
           `UPDATE conversas SET operador_id = $1, status = 'aberta', status_operacional = 'EM_ATENDIMENTO'

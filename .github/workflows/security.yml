@@ -1,0 +1,108 @@
+name: Security
+
+# DevSecOps gate — roda em PRs e pushes. Politica inicial:
+#   CRITICAL/HIGH -> falha o job (bloqueia merge)
+#   MEDIUM/LOW    -> reporta, nao bloqueia
+# Complementa o CI funcional (ci.yml) e o pre-commit (gitleaks local).
+
+on:
+  push:
+    branches: [master, main, develop]
+  pull_request:
+    branches: [master, main, develop]
+  schedule:
+    - cron: "0 6 * * 1" # varredura semanal (segredos que entraram por outra via)
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Segredos: arvore atual + historico ────────────────────────────────────
+  gitleaks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # historico completo para varrer commits antigos
+      - name: Gitleaks (falha se encontrar segredo)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "false"
+
+  # ── SAST Python (Bandit) — gate em HIGH ───────────────────────────────────
+  bandit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install bandit
+      - name: Bandit (gate: falha em severidade HIGH)
+        run: |
+          set -e
+          bandit -r \
+            saas-platform/api/app apps/api/app apps/worker/app \
+            modulo-diario/api/app modulo-govpro/api/app modulo-govsocial/api/app \
+            modulo-govdoc/api/app modulo-govinfra/api/app modulo-govcompras/api/app \
+            modulo-govtask/api/app \
+            -x '*/tests/*,*/.venv/*,*/venv/*' \
+            -ll -f screen
+          # -ll = reporta MEDIUM+; sai != 0 se houver achados de nivel >= MEDIUM.
+          # Ajuste para -lll (somente HIGH) se quiser afrouxar o gate inicialmente.
+
+  # ── Dependencias Python (pip-audit) — nao bloqueante inicialmente ─────────
+  pip-audit:
+    runs-on: ubuntu-latest
+    continue-on-error: true # vira 'false' apos limpar o backlog de CVEs
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install pip-audit
+      - name: pip-audit (todos os requirements.txt)
+        run: |
+          for req in $(git ls-files '*/requirements.txt' 'requirements.txt'); do
+            echo "::group::$req"
+            pip-audit -r "$req" || true
+            echo "::endgroup::"
+          done
+
+  # ── Dependencias Node (npm audit) — nao bloqueante inicialmente ───────────
+  npm-audit:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: npm audit (cada lockfile)
+        run: |
+          for lock in $(git ls-files '*/package-lock.json' 'package-lock.json'); do
+            dir=$(dirname "$lock")
+            echo "::group::$dir"
+            (cd "$dir" && npm audit --audit-level=high) || true
+            echo "::endgroup::"
+          done
+
+  # ── Gate final: consolida os jobs bloqueantes ─────────────────────────────
+  security-gate:
+    runs-on: ubuntu-latest
+    needs: [gitleaks, bandit]
+    if: always()
+    steps:
+      - name: Avaliar resultados
+        run: |
+          echo "gitleaks=${{ needs.gitleaks.result }}"
+          echo "bandit=${{ needs.bandit.result }}"
+          if [ "${{ needs.gitleaks.result }}" != "success" ] || [ "${{ needs.bandit.result }}" != "success" ]; then
+            echo "::error::Security gate reprovado — CRITICAL/HIGH detectado. Merge bloqueado."
+            exit 1
+          fi
+          echo "Security gate aprovado."

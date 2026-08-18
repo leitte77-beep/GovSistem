@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { CalendarDays, X, AlertTriangle } from 'lucide-react';
 import { T } from '../../theme';
 import { fetchResumoAgenda } from '../../api/agenda';
@@ -6,6 +6,7 @@ import { ItemAgenda } from './ItemAgenda';
 import { AgendaCompleta } from './AgendaCompleta';
 import { saudacao, primeiroNome, estaAtrasado } from './util';
 import { notificarAgendaAtualizada } from './eventos';
+import { useModalFocus } from '../../hooks/useModalFocus';
 
 // Duas chaves, duas regras diferentes:
 // - sessão: já mostrei nesta aba, não repito a cada F5;
@@ -36,6 +37,7 @@ export function ModalResumoLogin({ operadorNome, onAbrirConversa, breakpoint }) 
   const [aberto, setAberto] = useState(false);
   const [naoMostrarHoje, setNaoMostrarHoje] = useState(false);
   const [verAgenda, setVerAgenda] = useState(false);
+  const dialogRef = useRef(null);
   const ehMobile = breakpoint === 'mobile';
 
   useEffect(() => {
@@ -62,13 +64,7 @@ export function ModalResumoLogin({ operadorNome, onAbrirConversa, breakpoint }) 
     }
     setAberto(false);
   };
-
-  useEffect(() => {
-    if (!aberto) return undefined;
-    const onEsc = (e) => { if (e.key === 'Escape' && !verAgenda) fechar(); };
-    document.addEventListener('keydown', onEsc);
-    return () => document.removeEventListener('keydown', onEsc);
-  });
+  useModalFocus(dialogRef, fechar, undefined, undefined, aberto && Boolean(resumo) && !verAgenda);
 
   if (verAgenda) {
     return React.createElement(AgendaCompleta, {
@@ -96,7 +92,7 @@ export function ModalResumoLogin({ operadorNome, onAbrirConversa, breakpoint }) 
     onMouseDown: (e) => { if (e.target === e.currentTarget) fechar(); },
   },
     React.createElement('div', {
-      role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Resumo da agenda',
+      ref: dialogRef, role: 'dialog', 'aria-modal': true, 'aria-label': 'Resumo da agenda', tabIndex: -1,
       style: {
         background: T.surface, borderRadius: T.radiusLg, width: '100%', maxWidth: 460,
         maxHeight: '88vh', display: 'flex', flexDirection: 'column',

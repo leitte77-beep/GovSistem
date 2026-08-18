@@ -9,11 +9,25 @@ var _LIGHT = {
 
   text: '#111827',
   textSecondary: '#667085',
-  textMuted: '#8696a0',
+  // 4.5:1 sobre branco, sobre surfaceMuted e sobre o fundo da página — o valor
+  // anterior (#8696a0) ficava em 3.05:1 e derrubava horário da conversa,
+  // rótulos do menu, cargo do usuário e placeholder da busca.
+  textMuted: '#616d74',
+
+  // Limite de controle (input, chip, trilho de toggle): 3:1 contra as três
+  // superfícies claras, como exige o WCAG 1.4.11. `border` continua sutil
+  // porque separa áreas, não delimita controle.
+  controlBorder: '#86888c',
+
+  // Contador de não lidas: o verde do WhatsApp com texto branco dá 1.98:1.
+  unreadBg: '#188741',
+  unreadText: '#ffffff',
 
   primary: '#2563eb',
   primaryHover: '#1d4ed8',
   primarySoft: '#dbeafe',
+  // Texto/ícone sobre primarySoft — `primary` em cima dele dá só 4.24:1.
+  primaryOnSoft: '#1d4ed8',
   chartBar: '#dbeafe',
   primaryGradient: 'linear-gradient(135deg, #2563EB 0%, #4F46E5 100%)',
 
@@ -85,9 +99,20 @@ var _DARK = {
   textSecondary: '#E8EDF7',
   textMuted: '#C8D1DF',
 
+  // No escuro o limite precisa clarear para se destacar da superfície (3.7:1
+  // contra surface, 4:1 contra surfaceMuted).
+  controlBorder: '#7C8CA6',
+
+  // Aqui o verde vivo é o que separa o badge do fundo escuro (6.3:1); quem
+  // muda é o texto, que passa a ser escuro (9.5:1).
+  unreadBg: '#25D366',
+  unreadText: '#0A1120',
+
   primary: '#3B82F6',
   primaryHover: '#60A5FA',
   primarySoft: 'rgba(59, 130, 246, 0.18)',
+  // No escuro o mesmo par cai para 2.74:1 — o texto precisa clarear.
+  primaryOnSoft: '#93C5FD',
   chartBar: '#3B82F6',
   primaryGradient: 'linear-gradient(135deg, #2563EB 0%, #4F46E5 100%)',
 

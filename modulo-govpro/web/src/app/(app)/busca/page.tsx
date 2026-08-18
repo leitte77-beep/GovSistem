@@ -34,7 +34,7 @@ export default function BuscaPage() {
 
   return (
     <div className="pb-stack-lg">
-      <PageHeader title="Busca" subtitle="Pesquise processos por NUP, número antigo ou assunto. Resultados respeitam suas permissões de acesso." />
+      <PageHeader title="Pesquisa" subtitle="Pesquise processos por NUP, número antigo ou assunto. Resultados respeitam suas permissões de acesso." />
 
       <div className="px-gutter max-w-container-max mx-auto">
         <form onSubmit={buscar} className="flex gap-3 mb-6">

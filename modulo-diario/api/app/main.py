@@ -28,8 +28,8 @@ def create_app() -> FastAPI:
         title=settings.APP_NAME,
         description="Diário Oficial Eletrônico - API Backend",
         version=settings.VERSION,
-        docs_url="/docs",
-        redoc_url="/redoc",
+        docs_url=(None if getattr(settings, "ENVIRONMENT", "development") == "production" else "/docs"),
+        redoc_url=(None if getattr(settings, "ENVIRONMENT", "development") == "production" else "/redoc"),
     )
 
     app.state.limiter = limiter

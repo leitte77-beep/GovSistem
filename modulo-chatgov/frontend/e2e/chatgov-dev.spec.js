@@ -230,13 +230,81 @@ test('administração avançada expõe canais, SLA e governança sem overflow', 
   await page.screenshot({ path: testInfo.outputPath('governanca.png'), fullPage: true });
 });
 
+test('admin cria avisos e acompanha confirmações', async ({ page, request }, testInfo) => {
+  await page.route('**/api/evolucoes/avisos/admin', async (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify([{
+      id: '10000000-0000-4000-8000-000000000099',
+      titulo: 'Nova funcionalidade', mensagem: 'Confira o novo painel de avisos.',
+      prioridade: 'importante', publico: 'todos', exige_confirmacao: true,
+      ativo: true, departamento_ids: [], departamento_nomes: [],
+      total_destinatarios: 8, total_lidos: 5, total_confirmados: 4,
+      publicado_em: '2026-08-18T12:00:00.000Z',
+    }]),
+  }));
+  await page.route('**/api/evolucoes/avisos', async (route) => {
+    if (route.request().method() !== 'POST') return route.continue();
+    return route.fulfill({ status: 201, contentType: 'application/json', body: JSON.stringify({ id: 'novo-aviso' }) });
+  });
+  await abrirConfiguracoes(page, request, testInfo.project.name);
+  await page.getByRole('button', { name: 'Avisos' }).click();
+  await expect(page.getByText('Novo aviso aos atendentes')).toBeVisible();
+  await expect(page.getByText('5/8 leram')).toBeVisible();
+  await page.getByLabel('Título').fill('Atualização do ChatGov');
+  await page.getByLabel('Mensagem').fill('Uma nova funcionalidade está disponível.');
+  await expect(page.getByText('Prévia · Informativo')).toBeVisible();
+  await page.getByRole('button', { name: 'Publicar aviso' }).click();
+  const dimensions = await page.evaluate(() => ({
+    scrollWidth: document.documentElement.scrollWidth,
+    clientWidth: document.documentElement.clientWidth,
+  }));
+  expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth + 1);
+  const acessibilidade = await new AxeBuilder({ page })
+    .include('[data-testid="avisos-admin"]')
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+    .analyze();
+  expect(acessibilidade.violations, JSON.stringify(acessibilidade.violations, null, 2)).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath('avisos-admin.png'), fullPage: true });
+});
+
+test('atendente recebe comunicado compacto e confirma leitura', async ({ page, request }, testInfo) => {
+  let confirmado = false;
+  await page.route('**/api/evolucoes/avisos/pendentes', async (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(confirmado ? [] : [{
+      id: '10000000-0000-4000-8000-000000000098',
+      titulo: 'Nova funcionalidade no ChatGov',
+      mensagem: 'Agora os administradores podem enviar comunicados internos.',
+      prioridade: 'importante', exige_confirmacao: true, autor_nome: 'Administração',
+    }]),
+  }));
+  await page.route('**/api/evolucoes/avisos/*/ler', async (route) => {
+    confirmado = true;
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, confirmado: true }) });
+  });
+  await abrirSessaoDev(page, request);
+  const modal = page.getByRole('dialog', { name: 'Nova funcionalidade no ChatGov' });
+  await expect(modal).toBeVisible();
+  await expect(modal.getByText('Comunicado interno · Importante')).toBeVisible();
+  const acessibilidade = await new AxeBuilder({ page })
+    .include('.aviso-chatgov')
+    .withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa'])
+    .analyze();
+  expect(acessibilidade.violations, JSON.stringify(acessibilidade.violations, null, 2)).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath('aviso-flutuante.png'), fullPage: true });
+  await modal.getByRole('button', { name: 'Li e entendi' }).click();
+  await expect(modal).toBeHidden();
+});
+
 test('dashboard operacional possui filtros, indicadores e grade responsiva', async ({ page, request }, testInfo) => {
   await abrirDashboard(page, request, testInfo.project.name);
   await expect(page.getByRole('button', { name: '30 dias' })).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByLabel('Data inicial')).toBeVisible();
   await expect(page.getByLabel('Data final')).toBeVisible();
   await expect(page.getByLabel('Filtrar por departamento')).toBeVisible();
-  await expect(page.getByLabel('Filtrar por canal')).toBeVisible();
+  await expect(page.getByLabel('Filtrar por tipo de atendimento')).toBeVisible();
   await expect(page.getByText('Conversas criadas', { exact: true })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Volume de atendimentos' })).toBeVisible();
   await expect(page.getByRole('heading', { name: 'Conversas por status' })).toBeVisible();
@@ -247,6 +315,55 @@ test('dashboard operacional possui filtros, indicadores e grade responsiva', asy
   }));
   expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth + 1);
   await page.screenshot({ path: testInfo.outputPath('dashboard-operacional.png'), fullPage: true });
+});
+
+test('dashboard separa a situação atual dos números do período', async ({ page, request }, testInfo) => {
+  await abrirDashboard(page, request, testInfo.project.name);
+  await expect(page.getByRole('heading', { name: 'Agora' })).toBeVisible();
+  await expect(page.getByText('Aguardando atendimento')).toBeVisible();
+  await expect(page.getByText('Espera mais longa').first()).toBeVisible();
+  await expect(page.getByText('Sem resposta humana')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Fila por tempo de espera' })).toBeVisible();
+  // Indicadores que a API já devolvia e a tela ignorava.
+  await expect(page.getByRole('heading', { name: 'Ranking de atendentes' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Tempo médio de conclusão' })).toBeVisible();
+  await expect(page.getByText('Resolvido pela Iris')).toBeVisible();
+});
+
+test('filtro do dashboard vale para todos os painéis, inclusive os administrativos', async ({ page, request }, testInfo) => {
+  await abrirDashboard(page, request, testInfo.project.name);
+  const chamadas = [];
+  page.on('request', (req) => {
+    if (req.url().includes('/api/admin/dashboard')) chamadas.push(req.url());
+  });
+  await page.getByRole('button', { name: 'Hoje', exact: true }).click();
+  await expect.poll(() => chamadas.length).toBeGreaterThan(0);
+  expect(chamadas.every((url) => /inicio=\d{4}-\d{2}-\d{2}/.test(url) && /fim=\d{4}-\d{2}-\d{2}/.test(url))).toBe(true);
+  await expect(page.getByRole('heading', { name: 'Assuntos mais frequentes' })).toBeVisible();
+  await expect(page.getByText('Protocolos abertos no período')).toBeVisible();
+});
+
+test('dashboard exporta o período em CSV com procedência', async ({ page, request }, testInfo) => {
+  await abrirDashboard(page, request, testInfo.project.name);
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    page.getByRole('button', { name: 'CSV' }).click(),
+  ]);
+  expect(download.suggestedFilename()).toMatch(/^painel-operacional_\d{4}-\d{2}-\d{2}/);
+  const fs = await import('node:fs');
+  const conteudo = fs.readFileSync(await download.path(), 'utf8');
+  expect(conteudo).toContain('Painel operacional');
+  expect(conteudo).toContain('Emitido em');
+  expect(conteudo).toContain('Aguardando acima da meta');
+});
+
+test('impressão do dashboard esconde controles e traz cabeçalho institucional', async ({ page, request }, testInfo) => {
+  await abrirDashboard(page, request, testInfo.project.name);
+  await page.emulateMedia({ media: 'print' });
+  await expect(page.locator('.cg-so-impressao').first()).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Atualizar dados do dashboard' })).toBeHidden();
+  await page.screenshot({ path: testInfo.outputPath('dashboard-impressao.png'), fullPage: true });
+  await page.emulateMedia({ media: 'screen' });
 });
 
 test('dashboard operacional atende verificação automatizada WCAG AA', async ({ page, request }, testInfo) => {

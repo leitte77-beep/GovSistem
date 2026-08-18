@@ -165,6 +165,57 @@ async def test_codigo_duplicado_retorna_409(cenario, client):
     assert res.status_code == 409
 
 
+async def test_cria_tipo_processo_sem_codigo_gera_slug(cenario, client):
+    await _tornar_admin(cenario["db"], cenario["user"])
+    token = _token(cenario["user"], cenario["tenant_id"])
+    headers = {"Authorization": f"Bearer {token}"}
+
+    res = await client.post(
+        "/api/govpro/v1/dominio/tipos-processo",
+        json={"nome": "Licença Ambiental"},
+        headers=headers,
+    )
+    assert res.status_code == 201
+    assert res.json()["codigo"] == "LICENCA_AMBIENTAL"
+
+
+async def test_cria_tipo_processo_sem_codigo_colisao_gera_sufixo(cenario, client):
+    await _tornar_admin(cenario["db"], cenario["user"])
+    token = _token(cenario["user"], cenario["tenant_id"])
+    headers = {"Authorization": f"Bearer {token}"}
+
+    for i in range(2):
+        res = await client.post(
+            "/api/govpro/v1/dominio/tipos-processo",
+            json={"nome": "Alvará Sanitário"},
+            headers=headers,
+        )
+        assert res.status_code == 201
+
+    codigos = [
+        t["codigo"]
+        for t in (
+            await client.get("/api/govpro/v1/dominio/tipos-processo", headers=headers)
+        ).json()
+    ]
+    assert "ALVARA_SANITARIO" in codigos
+    assert "ALVARA_SANITARIO_2" in codigos
+
+
+async def test_cria_hipotese_legal_sem_codigo_gera_slug(cenario, client):
+    await _tornar_admin(cenario["db"], cenario["user"])
+    token = _token(cenario["user"], cenario["tenant_id"])
+    headers = {"Authorization": f"Bearer {token}"}
+
+    res = await client.post(
+        "/api/govpro/v1/dominio/hipoteses-legais",
+        json={"descricao": "Segredo de Justiça"},
+        headers=headers,
+    )
+    assert res.status_code == 201
+    assert res.json()["codigo"] == "SEGREDO_DE_JUSTICA"
+
+
 async def test_cria_unidade_com_pai(cenario, client):
     await _tornar_admin(cenario["db"], cenario["user"])
     token = _token(cenario["user"], cenario["tenant_id"])

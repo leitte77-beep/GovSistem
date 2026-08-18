@@ -20,12 +20,16 @@ limiter = Limiter(key_func=get_remote_address)
 
 
 def create_app() -> FastAPI:
+    # Documentacao interativa (Swagger/ReDoc) so fora de producao — evita expor
+    # o esquema completo da API publicamente (defesa em profundidade).
+    _is_prod = settings.ENVIRONMENT == "production"
     app = FastAPI(
         title=settings.APP_NAME,
         description="GovSistem - Central de Controle de Modulos",
         version=settings.VERSION,
-        docs_url="/docs",
-        redoc_url="/redoc",
+        docs_url=None if _is_prod else "/docs",
+        redoc_url=None if _is_prod else "/redoc",
+        openapi_url=None if _is_prod else "/openapi.json",
     )
 
     app.state.limiter = limiter

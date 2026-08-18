@@ -26,9 +26,23 @@ import {
 } from '../services/notificacoes.js';
 import { createStorage } from '../storage/index.js';
 import multer from 'multer';
+import {
+  atualizarAviso,
+  criarAviso,
+  definirAvisoAtivo,
+  listarAvisosAdministracao,
+  listarDestinatariosAviso,
+  listarAvisosPendentes,
+  registrarLeituraAviso,
+} from '../services/avisos.js';
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function emitirAtualizacaoAvisos(req, acao, avisoId = null) {
+  req.app.locals.io?.to(`tenant:${req.operador.tenantId}`).emit('aviso:atualizado', { acao, avisoId });
+}
 
 // ============================================================
 // PRESENÇA
@@ -408,6 +422,118 @@ router.patch('/ausencias/:id/aprovar', requirePapel('admin', 'supervisor'), asyn
 // ============================================================
 // NOTIFICAÇÕES
 // ============================================================
+
+// Comunicados internos são separados das notificações de conversa: têm
+// público-alvo, validade e confirmação de leitura próprias.
+router.get('/avisos/pendentes', async (req, res) => {
+  try {
+    const avisos = await listarAvisosPendentes(db, {
+      tenantId: req.operador.tenantId,
+      operadorId: req.operador.id,
+      papel: req.operador.papel,
+    });
+    res.json(avisos);
+  } catch (err) {
+    console.error('[Avisos] listar pendentes:', err.message);
+    res.status(500).json({ erro: 'Erro ao carregar avisos' });
+  }
+});
+
+router.get('/avisos/admin', requirePapel('admin'), async (req, res) => {
+  try {
+    res.json(await listarAvisosAdministracao(db, req.operador.tenantId));
+  } catch (err) {
+    console.error('[Avisos] listar administração:', err.message);
+    res.status(500).json({ erro: 'Erro ao carregar a administração de avisos' });
+  }
+});
+
+router.get('/avisos/:id/destinatarios', requirePapel('admin'), async (req, res) => {
+  if (!UUID_RE.test(req.params.id)) return res.status(400).json({ erro: 'Identificador inválido' });
+  try {
+    res.json(await listarDestinatariosAviso(db, {
+      tenantId: req.operador.tenantId, avisoId: req.params.id,
+    }));
+  } catch (err) {
+    res.status(500).json({ erro: 'Erro ao carregar destinatários do aviso' });
+  }
+});
+
+router.post('/avisos', requirePapel('admin'), async (req, res) => {
+  try {
+    const aviso = await criarAviso(db, {
+      tenantId: req.operador.tenantId,
+      autorId: req.operador.id,
+      dados: req.body,
+    });
+    emitirAtualizacaoAvisos(req, 'publicado', aviso.id);
+    res.status(201).json(aviso);
+  } catch (err) {
+    res.status(/obrigat|inválid|máximo|selecione/i.test(err.message) ? 400 : 500).json({ erro: err.message });
+  }
+});
+
+router.put('/avisos/:id', requirePapel('admin'), async (req, res) => {
+  if (!UUID_RE.test(req.params.id)) return res.status(400).json({ erro: 'Identificador inválido' });
+  try {
+    const aviso = await atualizarAviso(db, {
+      tenantId: req.operador.tenantId,
+      avisoId: req.params.id,
+      dados: req.body,
+    });
+    if (!aviso) return res.status(404).json({ erro: 'Aviso não encontrado' });
+    emitirAtualizacaoAvisos(req, 'editado', aviso.id);
+    res.json(aviso);
+  } catch (err) {
+    res.status(/obrigat|inválid|máximo|selecione/i.test(err.message) ? 400 : 500).json({ erro: err.message });
+  }
+});
+
+router.post('/avisos/:id/republicar', requirePapel('admin'), async (req, res) => {
+  if (!UUID_RE.test(req.params.id)) return res.status(400).json({ erro: 'Identificador inválido' });
+  try {
+    const aviso = await definirAvisoAtivo(db, {
+      tenantId: req.operador.tenantId, avisoId: req.params.id, ativo: true, republicar: true,
+    });
+    if (!aviso) return res.status(404).json({ erro: 'Aviso não encontrado' });
+    emitirAtualizacaoAvisos(req, 'republicado', aviso.id);
+    res.json(aviso);
+  } catch (err) {
+    res.status(500).json({ erro: 'Erro ao republicar aviso' });
+  }
+});
+
+router.delete('/avisos/:id', requirePapel('admin'), async (req, res) => {
+  if (!UUID_RE.test(req.params.id)) return res.status(400).json({ erro: 'Identificador inválido' });
+  try {
+    const aviso = await definirAvisoAtivo(db, {
+      tenantId: req.operador.tenantId, avisoId: req.params.id, ativo: false,
+    });
+    if (!aviso) return res.status(404).json({ erro: 'Aviso não encontrado' });
+    emitirAtualizacaoAvisos(req, 'desativado', aviso.id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ erro: 'Erro ao desativar aviso' });
+  }
+});
+
+router.post('/avisos/:id/ler', async (req, res) => {
+  if (!UUID_RE.test(req.params.id)) return res.status(400).json({ erro: 'Identificador inválido' });
+  try {
+    const leitura = await registrarLeituraAviso(db, {
+      tenantId: req.operador.tenantId,
+      operadorId: req.operador.id,
+      avisoId: req.params.id,
+      confirmado: req.body?.confirmado === true,
+    });
+    if (!leitura) return res.status(404).json({ erro: 'Aviso não encontrado' });
+    req.app.locals.io?.to(`operador:${req.operador.id}`).emit('aviso:lido', { avisoId: req.params.id });
+    res.json({ ok: true, confirmado: Boolean(leitura.confirmado_em) });
+  } catch (err) {
+    res.status(500).json({ erro: 'Erro ao registrar leitura do aviso' });
+  }
+});
+
 router.get('/notificacoes', async (req, res) => {
   try {
     const op = req.operador;

@@ -61,13 +61,15 @@ function BotaoRail({ view, ativo, onClick, badge, somenteIcone }) {
   return React.createElement('button', {
     onClick: () => onClick(view),
     title: `${label}${badge > 0 ? ` (${badge})` : ''}`,
+    'aria-label': `${label}${badge > 0 ? `, ${badge} pendente${badge === 1 ? '' : 's'}` : ''}`,
+    'aria-current': ativo ? 'page' : undefined,
     style: {
       width: '100%', height: 40,
       display: 'flex', alignItems: 'center', justifyContent: somenteIcone ? 'center' : 'flex-start',
       gap: 10, padding: somenteIcone ? '0' : '0 10px',
       borderRadius: 8,
       background: filled ? T.primarySoft : 'transparent',
-      color: filled ? T.primary : T.railText,
+      color: filled ? (T.primaryOnSoft || T.primary) : T.railText,
       border: 'none',
       borderLeft: filled && !somenteIcone ? `4px solid ${T.primary}` : `4px solid transparent`,
       cursor: 'pointer',
@@ -128,6 +130,7 @@ function BotaoRailMobile({ view, ativo, onClick, badge }) {
   return React.createElement('button', {
     onClick: () => onClick(view),
     title: label,
+    'aria-label': label, 'aria-current': ativo ? 'page' : undefined,
     className: 'bnav-item',
     style: {
       display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -171,7 +174,7 @@ function BotaoRailMobile({ view, ativo, onClick, badge }) {
   );
 }
 
-export function RailNavegacao({ view, onChange, isAdmin, verRelatorios, notifCount, breakpoint, waStatus }) {
+export function RailNavegacao({ view, onChange, isAdmin, verRelatorios, verDashboard = isAdmin, notifCount, breakpoint, waStatus }) {
   const { auth, logout } = useAuth();
   const { isDark, toggle } = useTheme();
   const op = auth?.operador;
@@ -190,7 +193,7 @@ export function RailNavegacao({ view, onChange, isAdmin, verRelatorios, notifCou
   const [menuUsuarioAberto, setMenuUsuarioAberto] = React.useState(false);
 
   const viewsMenuMobile = [
-    isAdmin && 'dashboard',
+    verDashboard && 'dashboard',
     'contatos',
     'protocolos',
     verRelatorios && 'relatorios',
@@ -199,7 +202,7 @@ export function RailNavegacao({ view, onChange, isAdmin, verRelatorios, notifCou
   const maisAtivo = viewsMenuMobile.includes(view);
 
   const itemVisivelDesktop = (key) => {
-    if (key === 'dashboard') return isAdmin;
+    if (key === 'dashboard') return verDashboard;
     if (key === 'relatorios') return verRelatorios;
     if (key === 'configuracoes') return isAdmin;
     return true;
@@ -255,7 +258,7 @@ export function RailNavegacao({ view, onChange, isAdmin, verRelatorios, notifCou
                 width: '100%', minHeight: 44, display: 'flex', alignItems: 'center', gap: 10,
                 padding: '0 12px', border: 'none', borderRadius: 8,
                 background: view === item ? T.primarySoft : 'transparent',
-                color: view === item ? T.primary : T.railText,
+                color: view === item ? (T.primaryOnSoft || T.primary) : T.railText,
                 cursor: 'pointer', fontSize: 14, fontWeight: view === item ? 700 : 600, textAlign: 'left',
               },
             },
@@ -413,6 +416,7 @@ export function RailNavegacao({ view, onChange, isAdmin, verRelatorios, notifCou
       !somenteIcone && React.createElement('button', {
         onClick: toggle,
         title: isDark ? 'Modo claro' : 'Modo escuro',
+        'aria-label': isDark ? 'Ativar modo claro' : 'Ativar modo escuro',
         style: {
           width: '100%', height: 36,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -427,7 +431,9 @@ export function RailNavegacao({ view, onChange, isAdmin, verRelatorios, notifCou
         React.createElement('div', {
           style: {
             width: 32, height: 18, borderRadius: 9,
-            background: isDark ? T.primary : '#D1D5DB',
+            // Desligado, o trilho ficava a 1.47:1 do fundo com uma bolinha
+            // branca por cima — o controle inteiro sumia no tema claro.
+            background: isDark ? T.primary : T.controlBorder,
             position: 'relative', transition: 'background 0.25s', flexShrink: 0,
           },
         },
@@ -447,6 +453,7 @@ export function RailNavegacao({ view, onChange, isAdmin, verRelatorios, notifCou
       somenteIcone && React.createElement('button', {
         onClick: toggle,
         title: isDark ? 'Modo claro' : 'Modo escuro',
+        'aria-label': isDark ? 'Ativar modo claro' : 'Ativar modo escuro',
         style: {
           width: '100%', height: 36,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -536,6 +543,7 @@ export function RailNavegacao({ view, onChange, isAdmin, verRelatorios, notifCou
       somenteIcone && React.createElement('button', {
         onClick: logout,
         title: 'Sair (' + (op?.nome || '') + ')',
+        'aria-label': 'Sair da conta de ' + (op?.nome || 'usuário'),
         style: {
           width: '100%', height: 40, marginTop: 4,
           display: 'flex', alignItems: 'center', justifyContent: 'center',

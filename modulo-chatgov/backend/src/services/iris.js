@@ -1,4 +1,5 @@
 import db from '../db.js';
+import { LIMITE_ATENDIMENTOS_ATENDENTE } from './filaAtendente.js';
 
 // ─── Menu de setores (mídia no primeiro contato) ──────────────────────────
 // Quando o cidadão abre o atendimento enviando áudio, imagem, vídeo ou
@@ -326,10 +327,10 @@ ATENDENTES:
 - A lista "EQUIPE" traz os atendentes reais, com o setor de cada um e se estao online agora.
 - Pode citar pelo nome quem esta online ("A Karina, da Tributacao, esta disponivel").
 - Nunca prometa uma pessoa que esta offline nem invente nomes fora da lista.
-- Se o cidadao pedir por uma pessoa da lista e ela estiver online e com vaga
-  (conversas_abertas < limite), devolva o UUID dela em "operador_id" — a conversa vai direto para ela.
-- Se a pessoa pedida estiver offline ou lotada, diga isso com naturalidade e encaminhe
-  para o setor dela usando "departamento_id" (deixe "operador_id" null).
+- Se o cidadao pedir por uma pessoa da lista, devolva SEMPRE o UUID dela em "operador_id".
+  O sistema confere disponibilidade e decide entre atribuicao direta e fila pessoal.
+- Nao informe numero ou posicao de fila por conta propria. O sistema calcula e envia a posicao real.
+- Se a pessoa pedida estiver offline, diga isso com naturalidade e encaminhe para o setor dela.
 - Sem pedido por pessoa, roteie por assunto como sempre: use so "departamento_id".`;
 
 function buildSystemPrompt(tenantNome, secretarias, departamentos, infoFila, contextoHorario = null, insistencia = 0, equipe = []) {
@@ -828,16 +829,20 @@ export async function processarComIris(tenantId, conversaId, texto) {
     // na equipe deste tenant, online agora e com vaga. O modelo pode alucinar um
     // UUID ou insistir em alguém que acabou de sair — a decisão final é nossa.
     let operadorValido = null;
+    let operadorSolicitado = null;
     if (parsed.operador_id) {
       const alvo = equipe.find((o) => o.id === String(parsed.operador_id));
       if (!alvo) {
         console.log('[Iris] Atendente fora da equipe, ignorando:', parsed.operador_id);
       } else if (!alvo.online) {
         console.log(`[Iris] Atendente ${alvo.nome} está offline — cai para o setor.`);
-      } else if (alvo.limite && alvo.em_atendimento >= alvo.limite) {
-        console.log(`[Iris] Atendente ${alvo.nome} no limite (${alvo.em_atendimento}/${alvo.limite}) — cai para o setor.`);
       } else {
-        operadorValido = alvo.id;
+        operadorSolicitado = alvo.id;
+        if (Number(alvo.em_atendimento || 0) < LIMITE_ATENDIMENTOS_ATENDENTE) {
+          operadorValido = alvo.id;
+        } else {
+          console.log(`[Iris] Atendente ${alvo.nome} no limite (${alvo.em_atendimento}/${LIMITE_ATENDIMENTOS_ATENDENTE}) — fila pessoal.`);
+        }
       }
     }
 
@@ -890,6 +895,7 @@ export async function processarComIris(tenantId, conversaId, texto) {
       resposta: parsed.resposta || 'Desculpe, nao entendi. Um atendente ira ajuda-lo.',
       departamento_id: deptoValido,
       operador_id: operadorValido,
+      operador_solicitado_id: operadorSolicitado,
       finalizado: parsed.finalizado !== false,
       origem: 'iris',
       confianca,

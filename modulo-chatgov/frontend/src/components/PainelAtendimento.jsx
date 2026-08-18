@@ -12,10 +12,13 @@ import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
 import { fetchMensagens, fetchDepartamentos, fetchTemplates, fetchEtiquetas, fetchEtiquetasConversa, fetchNotasInternas, editarContato, fetchTransferenciaPendente, excluirMensagemConversa, fetchMidiasConversa, marcarConversaNaoLida, criarContato, iniciarConversa } from '../api';
 import { mimeParaTipo, encodeFileBase64, mesmaData, formatarDataSeparador } from '../utils/arquivo';
+import { htmlParaTexto } from '../utils/htmlParaTexto';
 import { SeparadorData } from './SeparadorData';
 import { PainelMinhaAgenda } from './agenda/PainelMinhaAgenda';
 import { ModalCompromisso } from './agenda/ModalCompromisso';
 import { notificarAgendaAtualizada } from './agenda/eventos';
+import { useAlturaComposer } from '../hooks/useAlturaComposer';
+import { useModalFocus } from '../hooks/useModalFocus';
 import { T } from '../theme';
 
 const EMOJIS_RAPIDOS = ['😀', '😅', '👍', '🙏', '❤️', '😊', '👏', '✅', '⚠️', '📎'];
@@ -139,6 +142,9 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
   const [protocoloCriado, setProtocoloCriado] = useState(null);
   const [protocoloCopiado, setProtocoloCopiado] = useState(false);
   const protocolosAnterioresRef = useRef(-1);
+
+  // Campo de digitação que cresce com o conteúdo até um teto e então rola.
+  const alturaComposer = useAlturaComposer(inputRef, [texto, previewArquivo, audioBlob]);
 
   const novaChaveEnvio = () => (
     globalThis.crypto?.randomUUID?.()
@@ -726,12 +732,35 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
     }
   };
 
+  // Encaminhar entrega o atendimento ao setor, não a uma pessoa: a conversa vai
+  // para a FILA do destino e quem encaminhou deixa de ser o responsável. Para
+  // passar a conversa a um colega nomeado (que aceita ou recusa) existe
+  // "Transferir". A confirmação deixa essa diferença explícita.
   const encaminhar = (depId) => {
     const dep = departamentos.find((d) => d.id === depId);
-    socket?.emit('conversa:atribuir', { convId: conversa.id, departamentoId: depId, operadorId: opId });
+    const nomeDep = dep?.nome || 'o setor';
     setShowEncaminhar(false);
-    onConversaUpdated?.();
-    notificar(`Conversa encaminhada para ${dep?.nome || 'o setor'}.`, 'sucesso');
+    pedirConfirmacao({
+      titulo: `Encaminhar para ${nomeDep}`,
+      texto: `A conversa vai para a fila de ${nomeDep} e ficará aguardando alguém de lá assumir. Você deixará de ser o responsável.`,
+      comInput: true,
+      inputPlaceholder: 'Motivo do encaminhamento (opcional)',
+      confirmarLabel: 'Encaminhar',
+      onConfirm: (motivo) => {
+        const convId = conversa.id;
+        socket?.emit('conversa:encaminhar', { convId, departamentoId: depId, motivo: motivo?.trim() || null }, (ack) => {
+          if (!ack?.ok) {
+            notificar(ack?.erro || 'Não foi possível encaminhar a conversa.', 'erro');
+            return;
+          }
+          onConversaUpdated?.();
+          notificar(`Conversa encaminhada para a fila de ${ack.setor || nomeDep}.`, 'sucesso');
+          // A conversa deixa de ser sua; sem fechar o painel o atendente segue
+          // digitando num atendimento que já é de outro setor.
+          setTimeout(() => onEncerrada?.(convId), 900);
+        });
+      },
+    });
   };
 
   const assumir = () => {
@@ -1038,6 +1067,21 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
   };
 
   const handlePaste = (e) => {
+    const html = e.clipboardData?.getData?.('text/html');
+    if (html) {
+      const textoLimpo = htmlParaTexto(html);
+      if (textoLimpo) {
+        e.preventDefault();
+        const el = e.target;
+        const start = el.selectionStart ?? texto.length;
+        const end = el.selectionEnd ?? texto.length;
+        setTexto(el.value.slice(0, start) + textoLimpo + el.value.slice(end));
+        const pos = start + textoLimpo.length;
+        requestAnimationFrame(() => { el.selectionStart = el.selectionEnd = pos; });
+      }
+      return;
+    }
+
     const items = e.clipboardData?.items || [];
     if (items.length === 0) return;
 
@@ -1174,7 +1218,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
                   React.createElement('span', { className: 'cg-hdr-phone' }, ' \u00b7 '),
                   React.createElement('span', {
                     title: 'Protocolo do atendimento',
-                    style: { display: 'inline', padding: '1px 6px', borderRadius: 999, background: T.primarySoft, color: T.primary, fontWeight: 700, fontSize: 10, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' },
+                    style: { display: 'inline', padding: '1px 6px', borderRadius: 999, background: T.primarySoft, color: T.primaryOnSoft, fontWeight: 700, fontSize: 10, fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap' },
                   }, '#', conversa.protocolo_numero || conversa.protocolo),
                 ),
               ),
@@ -1219,7 +1263,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
                 React.createElement('span', { style: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, conversa.contato_telefone || ''),
                 (conversa.protocolo_numero || conversa.protocolo) && React.createElement('span', {
                   title: 'Protocolo do atendimento',
-                  style: { display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 7px', borderRadius: 999, background: T.primarySoft, color: T.primary, fontWeight: 700, fontSize: 11, fontVariantNumeric: 'tabular-nums' },
+                  style: { display: 'inline-flex', alignItems: 'center', gap: 3, padding: '1px 7px', borderRadius: 999, background: T.primarySoft, color: T.primaryOnSoft, fontWeight: 700, fontSize: 11, fontVariantNumeric: 'tabular-nums' },
                 }, '#', conversa.protocolo_numero || conversa.protocolo),
                 conversa.departamento_nome && React.createElement(DeptBadge, { nome: conversa.departamento_nome, cor: conversa.departamento_cor }),
               ),
@@ -1252,9 +1296,10 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
         },
           React.createElement(MessageSquare, { size: 16 }), 'Templates'),
         showTemplates && React.createElement('div', { style: dropdown },
+          React.createElement('style', null, estiloDropdownItens()),
           React.createElement('div', { style: { padding: '8px 14px', fontSize: 11, color: T.textMuted, fontWeight: 700, textTransform: 'uppercase' } }, 'Respostas rápidas'),
           templates.map((t) =>
-            React.createElement('button', { key: t.id, onClick: () => aplicarTemplate(t.conteudo), style: dropdownItem },
+            React.createElement('button', { key: t.id, className: 'cg-dd-item', onClick: () => aplicarTemplate(t.conteudo), style: dropdownItem },
               React.createElement('div', { style: { flex: 1 } },
                 React.createElement('div', { style: { fontSize: 13, fontWeight: 600, color: T.text } }, t.titulo),
                 React.createElement('div', { style: { fontSize: 11, color: T.textMuted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 } }, t.conteudo),
@@ -1357,48 +1402,50 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
           style: { ...acaoBtn, padding: '7px 9px' },
         }, React.createElement(MoreVertical, { size: 16 })),
         showMenuMais && React.createElement('div', { style: dropdown, role: 'menu' },
+          React.createElement('style', null, estiloDropdownItens()),
           conversa.operador_id && podeGerir && React.createElement('button', {
-            role: 'menuitem', title: 'Remove o atendente atual e devolve o atendimento para a fila do setor',
+            role: 'menuitem', className: 'cg-dd-item', title: 'Remove o atendente atual e devolve o atendimento para a fila do setor',
             onClick: () => { setShowMenuMais(false); devolver(); }, style: { ...dropdownItem, color: T.textSecondary },
           }, React.createElement(Undo2, { size: 15 }), 'Devolver para a fila'),
           React.createElement('button', {
-            role: 'menuitem', title: 'Adiciona outro atendente à conversa sem trocar o responsável',
+            role: 'menuitem', className: 'cg-dd-item', title: 'Adiciona outro atendente à conversa sem trocar o responsável',
             onClick: () => { setShowMenuMais(false); setShowParticipantes(true); }, style: { ...dropdownItem, color: T.textSecondary },
           }, React.createElement(UserPlus, { size: 15 }), 'Anexar atendente'),
           React.createElement('button', {
-            role: 'menuitem', title: 'Categorizar o atendimento com etiquetas',
+            role: 'menuitem', className: 'cg-dd-item', title: 'Categorizar o atendimento com etiquetas',
             onClick: () => { setShowMenuMais(false); setShowEtiquetas(true); }, style: { ...dropdownItem, color: T.textSecondary },
           }, React.createElement(Tag, { size: 15 }), 'Etiquetas',
             etiquetasConv.length > 0 && React.createElement('span', {
               style: { marginLeft: 'auto', fontSize: 11, fontWeight: 700, color: T.primary },
             }, String(etiquetasConv.length))),
           React.createElement('button', {
-            role: 'menuitem', title: 'Marca um retorno na sua agenda, já vinculado a esta conversa',
+            role: 'menuitem', className: 'cg-dd-item', title: 'Marca um retorno na sua agenda, já vinculado a esta conversa',
             onClick: () => { setShowMenuMais(false); setShowNovoCompromisso(true); }, style: { ...dropdownItem, color: T.textSecondary },
           }, React.createElement(CalendarPlus, { size: 15 }), 'Criar lembrete'),
-          React.createElement('button', { role: 'menuitem', onClick: () => { setShowMenuMais(false); abrirGaleria(); }, style: { ...dropdownItem, color: T.textSecondary } },
+          React.createElement('button', { role: 'menuitem', className: 'cg-dd-item', onClick: () => { setShowMenuMais(false); abrirGaleria(); }, style: { ...dropdownItem, color: T.textSecondary } },
             React.createElement(Images, { size: 15 }), 'Ver mídias'),
-          React.createElement('button', { role: 'menuitem', onClick: () => { setShowMenuMais(false); marcarNaoLida(); }, style: { ...dropdownItem, color: T.textSecondary } },
+          React.createElement('button', { role: 'menuitem', className: 'cg-dd-item', onClick: () => { setShowMenuMais(false); marcarNaoLida(); }, style: { ...dropdownItem, color: T.textSecondary } },
             React.createElement(Mail, { size: 15 }), 'Marcar como não lida'),
           ehArquivada
-            ? React.createElement('button', { role: 'menuitem', onClick: () => { setShowMenuMais(false); desarquivar(); }, style: { ...dropdownItem, color: T.primary } },
+            ? React.createElement('button', { role: 'menuitem', className: 'cg-dd-item', onClick: () => { setShowMenuMais(false); desarquivar(); }, style: { ...dropdownItem, color: T.primary } },
                 React.createElement(Archive, { size: 15 }), 'Desarquivar')
-            : React.createElement('button', { role: 'menuitem', onClick: () => { setShowMenuMais(false); arquivar(); }, style: { ...dropdownItem, color: T.textSecondary } },
+            : React.createElement('button', { role: 'menuitem', className: 'cg-dd-item', onClick: () => { setShowMenuMais(false); arquivar(); }, style: { ...dropdownItem, color: T.textSecondary } },
                 React.createElement(Archive, { size: 15 }), 'Arquivar'),
           // Só admin: o backend recusa a exclusão de qualquer outro papel.
           ehAdmin && React.createElement('div', { style: { borderTop: `1px solid ${T.border}`, marginTop: 4, paddingTop: 4 } },
             React.createElement('button', {
-              role: 'menuitem', title: 'Exclui permanentemente todo o histórico da conversa',
+              role: 'menuitem', className: 'cg-dd-item cg-dd-perigo', title: 'Exclui permanentemente todo o histórico da conversa',
               onClick: () => { setShowMenuMais(false); excluirConversa(); }, style: { ...dropdownItem, color: T.danger },
             }, React.createElement(Trash2, { size: 15 }), 'Excluir conversa'),
           ),
         ),
         // Etiquetas passaram a abrir a partir do "⋯", ancoradas neste mesmo container.
         showEtiquetas && React.createElement('div', { style: dropdown },
+          React.createElement('style', null, estiloDropdownItens()),
           React.createElement('div', { style: { padding: '8px 14px', fontSize: 11, color: T.textMuted, fontWeight: 700, textTransform: 'uppercase' } }, 'Categorizar'),
           etiquetas.map((et) => {
             const ativo = etiquetasConv.some((e) => e.id === et.id);
-            return React.createElement('button', { key: et.id, onClick: () => toggleEtiqueta(et.id), style: { ...dropdownItem, background: ativo ? T.primarySoft : 'transparent' } },
+            return React.createElement('button', { key: et.id, className: 'cg-dd-item' + (ativo ? ' cg-dd-ativo' : ''), onClick: () => toggleEtiqueta(et.id), style: dropdownItem },
               React.createElement('span', { style: { width: 10, height: 10, borderRadius: '50%', background: et.cor } }),
               et.nome, ativo && React.createElement(CheckCircle2, { size: 14, color: T.success, style: { marginLeft: 'auto' } }));
           }),
@@ -1418,7 +1465,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
         React.createElement(FileText, { size: 14, color: protocolos.length > 0 ? T.primary : T.textMuted }),
         React.createElement('span', { style: { flex: 1, textAlign: 'left' } },
           'Protocolos',
-          protocolos.length > 0 && React.createElement('span', { style: { marginLeft: 6, fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 999, background: T.primarySoft, color: T.primary } }, String(protocolos.length))
+          protocolos.length > 0 && React.createElement('span', { style: { marginLeft: 6, fontSize: 11, fontWeight: 700, padding: '1px 7px', borderRadius: 999, background: T.primarySoft, color: T.primaryOnSoft } }, String(protocolos.length))
         ),
         showProtocolos ? React.createElement(ChevronDown, { size: 14, color: T.textMuted }) : React.createElement(ChevronRight, { size: 14, color: T.textMuted }),
       ),
@@ -1457,7 +1504,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
           }, React.createElement(Search, { size: 13 }), showVincularProtocolo ? 'Fechar busca' : 'Vincular protocolo existente'),
           onGerarProtocolo && React.createElement('button', {
             onClick: onGerarProtocolo,
-            style: { display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: '1px solid ' + T.primary, borderRadius: T.radiusSm, background: T.primarySoft, cursor: 'pointer', fontSize: 11.5, fontWeight: 700, color: T.primary },
+            style: { display: 'flex', alignItems: 'center', gap: 5, padding: '6px 12px', border: '1px solid ' + T.primary, borderRadius: T.radiusSm, background: T.primarySoft, cursor: 'pointer', fontSize: 11.5, fontWeight: 700, color: T.primaryOnSoft },
           }, React.createElement(FileText, { size: 13 }), 'Criar protocolo'),
         ),
         showVincularProtocolo && React.createElement('div', { style: { marginTop: 8 } },
@@ -1543,7 +1590,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
       onAbrirProtocolo && React.createElement('button', {
         onClick: function () { setProtocoloCriado(null); onAbrirProtocolo(protocoloCriado); },
         title: 'Abrir protocolo',
-        style: { display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '1px solid ' + T.primary, borderRadius: T.radiusSm, background: T.primarySoft, cursor: 'pointer', fontSize: 11, fontWeight: 700, color: T.primary, flexShrink: 0 },
+        style: { display: 'flex', alignItems: 'center', gap: 4, padding: '5px 10px', border: '1px solid ' + T.primary, borderRadius: T.radiusSm, background: T.primarySoft, cursor: 'pointer', fontSize: 11, fontWeight: 700, color: T.primaryOnSoft, flexShrink: 0 },
       }, 'Abrir'),
       React.createElement('button', {
         onClick: function () { setProtocoloCriado(null); },
@@ -1873,6 +1920,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
         onClick: cancelarPreview,
         disabled: anexando,
         title: 'Cancelar',
+        'aria-label': 'Cancelar envio do arquivo',
         style: { background: 'none', border: 'none', cursor: anexando ? 'not-allowed' : 'pointer', color: T.textMuted, padding: 6, display: 'flex', flexShrink: 0 },
       }, React.createElement(X, { size: 20 })),
       React.createElement('button', {
@@ -1880,6 +1928,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
         onClick: () => enviarMidia(previewArquivo.file, previewLegenda),
         disabled: anexando,
         title: 'Enviar arquivo',
+        'aria-label': 'Enviar arquivo',
         style: { width: 40, height: 40, borderRadius: '50%', border: 'none', cursor: anexando ? 'not-allowed' : 'pointer', background: T.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
       }, anexando
         ? React.createElement(Loader2, { size: 18, color: '#fff', className: 'spin' })
@@ -1898,7 +1947,8 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
     },
       // Picker de emojis rápidos
       showEmojis && React.createElement('div', {
-        style: { position: 'absolute', bottom: 58, left: 16, background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radius, boxShadow: T.shadowMd, padding: 8, display: 'flex', flexWrap: 'wrap', gap: 4, width: 220, zIndex: 20 },
+        // acompanha o crescimento do campo para não cobrir o texto digitado
+        style: { position: 'absolute', bottom: alturaComposer + 18, left: 16, background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radius, boxShadow: T.shadowMd, padding: 8, display: 'flex', flexWrap: 'wrap', gap: 4, width: 220, zIndex: 20 },
       },
         EMOJIS_RAPIDOS.map((e) => React.createElement('button', {
           key: e, type: 'button',
@@ -2115,6 +2165,8 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
 function ConfirmModal({ titulo, texto, confirmarLabel = 'Confirmar', cancelarLabel = 'Cancelar', perigoso, comInput, inputPlaceholder, onConfirm, onClose }) {
   const [valor, setValor] = useState('');
   const [ocupado, setOcupado] = useState(false);
+  const dialogRef = useRef(null);
+  useModalFocus(dialogRef, onClose);
   const confirmar = () => {
     if (ocupado) return; // proteção contra duplo-clique
     setOcupado(true);
@@ -2125,7 +2177,7 @@ function ConfirmModal({ titulo, texto, confirmarLabel = 'Confirmar', cancelarLab
     style: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2500 },
   },
     React.createElement('div', {
-      onClick: (e) => e.stopPropagation(), role: 'dialog', 'aria-modal': true, 'aria-label': titulo,
+      ref: dialogRef, onClick: (e) => e.stopPropagation(), role: 'dialog', 'aria-modal': true, 'aria-label': titulo, tabIndex: -1,
       style: { background: T.surface, borderRadius: T.radius, boxShadow: T.shadowMd, padding: 22, width: 'min(420px, 92vw)' },
     },
       React.createElement('h3', { style: { margin: 0, fontSize: 16, fontWeight: 800, color: T.text } }, titulo),
@@ -2173,7 +2225,23 @@ function BottomSheet({ titulo, onClose, children }) {
   );
 }
 const dropdown = { position: 'absolute', top: '100%', right: 0, background: T.surface, borderRadius: T.radius, boxShadow: '0 8px 24px rgba(0,0,0,.18)', border: `1px solid ${T.border}`, zIndex: 9999, minWidth: 230, overflow: 'hidden', marginTop: 6 };
-const dropdownItem = { display: 'flex', alignItems: 'center', gap: 9, width: '100%', padding: '10px 14px', border: 'none', background: 'transparent', color: T.text, cursor: 'pointer', fontSize: 13.5, textAlign: 'left' };
+// Sem `background` aqui de propósito: quem pinta o item (inclusive hover,
+// foco e o estado ativo) é a classe .cg-dd-item — estilo inline venceria o CSS.
+const dropdownItem = { display: 'flex', alignItems: 'center', gap: 9, width: '100%', padding: '10px 14px', border: 'none', color: T.text, cursor: 'pointer', fontSize: 13.5, textAlign: 'left' };
+
+// Hover/foco dos itens de dropdown: inline style não cobre :hover, então as
+// classes vêm de CSS. É função, e não string fixa, para reler T na troca de tema.
+function estiloDropdownItens() {
+  return `
+.cg-dd-item { background: transparent; transition: background 0.14s ease, color 0.14s ease; }
+.cg-dd-item:hover { background: ${T.surfaceMuted}; }
+.cg-dd-item:focus-visible { background: ${T.surfaceMuted}; outline: 2px solid ${T.primary}; outline-offset: -2px; }
+.cg-dd-item:active { background: ${T.surfaceMuted}; filter: brightness(0.95); }
+.cg-dd-item.cg-dd-perigo:hover, .cg-dd-item.cg-dd-perigo:focus-visible { background: ${T.dangerSoft}; }
+.cg-dd-item.cg-dd-ativo { background: ${T.primarySoft}; }
+.cg-dd-item.cg-dd-ativo:hover { background: ${T.primarySoft}; box-shadow: inset 3px 0 0 ${T.primary}; }
+`;
+}
 
 // Estilos + animações do menu Encaminhar (hover real e cascata exigem CSS, não dá com inline)
 const ESTILO_ENCAMINHAR = `

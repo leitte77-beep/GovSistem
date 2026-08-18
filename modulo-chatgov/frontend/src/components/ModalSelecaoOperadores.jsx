@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { T } from '../theme';
+import { useModalFocus } from '../hooks/useModalFocus';
 
 const overlay = { position: 'fixed', inset: 0, background: 'rgba(15,26,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 };
 const modalCard = { background: T.surface, borderRadius: T.radiusLg, padding: 24, maxWidth: 440, width: '90%', boxShadow: T.shadowLg };
@@ -11,13 +12,15 @@ const btnPrimario = { background: T.primary, border: 'none', color: '#fff', padd
 export function ModalSelecaoOperadores({ titulo, operadores, selecaoUnica, onClose, onConfirmar }) {
   const [sel, setSel] = useState([]);
   const [busca, setBusca] = useState('');
+  const dialogRef = useRef(null);
+  useModalFocus(dialogRef, onClose);
   const toggle = (id) => {
     if (selecaoUnica) { onConfirmar([id]); return; }
     setSel((p) => p.includes(id) ? p.filter((i) => i !== id) : [...p, id]);
   };
   const filtrados = operadores.filter((o) => !busca || o.nome.toLowerCase().includes(busca.toLowerCase()));
-  return React.createElement('div', { style: overlay, onClick: onClose, role: 'dialog', 'aria-label': titulo },
-    React.createElement('div', { onClick: (e) => e.stopPropagation(), style: modalCard },
+  return React.createElement('div', { style: overlay, onClick: onClose },
+    React.createElement('div', { ref: dialogRef, onClick: (e) => e.stopPropagation(), style: modalCard, role: 'dialog', 'aria-modal': true, 'aria-label': titulo, tabIndex: -1 },
       React.createElement('h3', { style: modalTitulo }, titulo),
       operadores.length > 6 && React.createElement('input', {
         type: 'search', value: busca, onChange: (e) => setBusca(e.target.value), placeholder: 'Buscar...',

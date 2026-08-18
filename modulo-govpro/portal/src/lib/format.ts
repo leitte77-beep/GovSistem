@@ -19,9 +19,9 @@ export function formatDateTime(iso: string | null | undefined): string {
 }
 
 export const SITUACAO_LABEL: Record<string, string> = {
-  EM_TRAMITACAO: "Em tramitação",
+  EM_TRAMITACAO: "Aberto",
   SOBRESTADO: "Sobrestado",
-  ENCERRADO: "Encerrado",
+  ENCERRADO: "Concluído",
   ARQUIVADO: "Arquivado",
 };
 

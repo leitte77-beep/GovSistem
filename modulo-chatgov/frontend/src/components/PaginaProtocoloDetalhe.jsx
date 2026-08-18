@@ -612,7 +612,7 @@ export function PaginaProtocoloDetalhe(_a) {
           : unidadeInterna
             ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
                 React.createElement('div', {
-                  style: { padding: '8px 12px', borderRadius: T.radiusSm, background: T.primarySoft, fontSize: 12, color: T.primary, fontWeight: 600 },
+                  style: { padding: '8px 12px', borderRadius: T.radiusSm, background: T.primarySoft, fontSize: 12, color: T.primaryOnSoft, fontWeight: 600 },
                 }, 'Protocolo interno'),
                 React.createElement(CampoInfo, { Icone: Building2, rotulo: 'Unidade solicitante', valor: unidadeInterna }),
                 proto.setor_solicitante_secretaria && React.createElement(CampoInfo, { Icone: Building2, rotulo: 'Secretaria', valor: proto.setor_solicitante_secretaria }),
@@ -802,6 +802,7 @@ export function PaginaProtocoloDetalhe(_a) {
           ),
           React.createElement('button', {
             onClick: enviarMensagem, disabled: enviandoMsg || !textoMsg.trim(),
+            'aria-label': enviandoMsg ? 'Enviando mensagem' : 'Enviar mensagem',
             style: {
               display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5,
               padding: '9px 16px', borderRadius: 10, border: 'none',
@@ -841,6 +842,7 @@ export function PaginaProtocoloDetalhe(_a) {
             }),
             React.createElement('button', {
               onClick: enviarAnotacao, disabled: enviandoAnot || !textoAnotacao.trim(),
+              'aria-label': enviandoAnot ? 'Salvando anotação interna' : 'Salvar anotação interna',
               style: Object.assign({}, btnBaseStyle, { padding: '9px 14px', background: T.warning, color: '#fff', border: 'none', borderRadius: 8, cursor: (enviandoAnot || !textoAnotacao.trim()) ? 'default' : 'pointer', opacity: (enviandoAnot || !textoAnotacao.trim()) ? 0.5 : 1 }),
             }, enviandoAnot ? React.createElement(Loader2, { size: 13 }) : React.createElement(Send, { size: 13 })),
           ),
@@ -929,11 +931,11 @@ export function PaginaProtocoloDetalhe(_a) {
                         React.createElement(Lock, { size: 10 }), 'Interno'),
                 ),
                 React.createElement('div', { className: 'protocolo-document-actions', style: { display: 'flex', gap: 2, justifyContent: 'flex-end' } },
-                  React.createElement('button', { title: 'Visualizar', onClick: function () { visualizarDocumento(d); }, style: Object.assign({}, btnBaseStyle, { padding: '4px 6px', background: 'transparent', color: T.textMuted, fontSize: 11 }) }, React.createElement(Eye, { size: 14 })),
-                  React.createElement('button', { title: 'Baixar', onClick: function () { downloadDocumento(d); }, style: Object.assign({}, btnBaseStyle, { padding: '4px 6px', background: 'transparent', color: T.textMuted, fontSize: 11 }) }, React.createElement(Download, { size: 14 })),
-                  d.status !== 'APROVADO' && React.createElement('button', { title: 'Aprovar', onClick: function () { aprovarDoc(d); }, style: Object.assign({}, btnBaseStyle, { padding: '4px 6px', background: 'transparent', color: T.success, fontSize: 11 }) }, React.createElement(Check, { size: 14 })),
-                  d.status !== 'REJEITADO' && React.createElement('button', { title: 'Rejeitar', onClick: function () { rejeitarDoc(d); }, style: Object.assign({}, btnBaseStyle, { padding: '4px 6px', background: 'transparent', color: T.danger, fontSize: 11 }) }, React.createElement(X, { size: 14 })),
-                  React.createElement('button', { title: d.visivel_cidadao ? 'Tornar interno' : 'Liberar ao cidad\u00e3o', onClick: function () { alternarVisibilidadeDoc(d); }, style: Object.assign({}, btnBaseStyle, { padding: '4px 6px', background: 'transparent', color: d.visivel_cidadao ? T.warning : T.textMuted, fontSize: 11 }) }, d.visivel_cidadao ? React.createElement(Lock, { size: 14 }) : React.createElement(Unlock, { size: 14 })),
+                  React.createElement('button', { title: 'Visualizar', 'aria-label': 'Visualizar documento', onClick: function () { visualizarDocumento(d); }, style: Object.assign({}, btnBaseStyle, { padding: '4px 6px', background: 'transparent', color: T.textMuted, fontSize: 11 }) }, React.createElement(Eye, { size: 14 })),
+                  React.createElement('button', { title: 'Baixar', 'aria-label': 'Baixar documento', onClick: function () { downloadDocumento(d); }, style: Object.assign({}, btnBaseStyle, { padding: '4px 6px', background: 'transparent', color: T.textMuted, fontSize: 11 }) }, React.createElement(Download, { size: 14 })),
+                  d.status !== 'APROVADO' && React.createElement('button', { title: 'Aprovar', 'aria-label': 'Aprovar documento', onClick: function () { aprovarDoc(d); }, style: Object.assign({}, btnBaseStyle, { padding: '4px 6px', background: 'transparent', color: T.success, fontSize: 11 }) }, React.createElement(Check, { size: 14 })),
+                  d.status !== 'REJEITADO' && React.createElement('button', { title: 'Rejeitar', 'aria-label': 'Rejeitar documento', onClick: function () { rejeitarDoc(d); }, style: Object.assign({}, btnBaseStyle, { padding: '4px 6px', background: 'transparent', color: T.danger, fontSize: 11 }) }, React.createElement(X, { size: 14 })),
+                  React.createElement('button', { title: d.visivel_cidadao ? 'Tornar interno' : 'Liberar ao cidad\u00e3o', 'aria-label': d.visivel_cidadao ? 'Tornar documento interno' : 'Liberar documento ao cidadão', onClick: function () { alternarVisibilidadeDoc(d); }, style: Object.assign({}, btnBaseStyle, { padding: '4px 6px', background: 'transparent', color: d.visivel_cidadao ? T.warning : T.textMuted, fontSize: 11 }) }, d.visivel_cidadao ? React.createElement(Lock, { size: 14 }) : React.createElement(Unlock, { size: 14 })),
                 ),
               );
             }),
@@ -958,7 +960,7 @@ export function PaginaProtocoloDetalhe(_a) {
               return React.createElement('div', { key: t.id, style: { display: 'flex', gap: 10 } },
                 React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 } },
                   React.createElement('div', {
-                    style: { width: 28, height: 28, borderRadius: '50%', background: T.primarySoft, color: T.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 },
+                    style: { width: 28, height: 28, borderRadius: '50%', background: T.primarySoft, color: T.primaryOnSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 },
                   }, React.createElement(ArrowRightLeft, { size: 14 })),
                   i < arr.length - 1 && React.createElement('div', { style: { width: 2, flex: 1, background: T.border, minHeight: 16 } }),
                 ),
@@ -1014,8 +1016,8 @@ export function PaginaProtocoloDetalhe(_a) {
                   ),
                 ),
                 !resolved && React.createElement('div', { style: { display: 'flex', gap: 4, flexShrink: 0 } },
-                  React.createElement('button', { title: 'Marcar como resolvida', onClick: function () { resolverPendencia(p.id); }, style: Object.assign({}, btnBaseStyle, { padding: '4px 8px', background: T.successSoft, color: T.success, fontSize: 10.5 }) }, React.createElement(Check, { size: 13 })),
-                  React.createElement('button', { title: 'Excluir', onClick: function () { excluirPendencia(p.id); }, style: Object.assign({}, btnBaseStyle, { padding: '4px 8px', background: T.dangerSoft, color: T.danger, fontSize: 10.5 }) }, React.createElement(X, { size: 13 })),
+                  React.createElement('button', { title: 'Marcar como resolvida', 'aria-label': 'Marcar pendência como resolvida', onClick: function () { resolverPendencia(p.id); }, style: Object.assign({}, btnBaseStyle, { padding: '4px 8px', background: T.successSoft, color: T.success, fontSize: 10.5 }) }, React.createElement(Check, { size: 13 })),
+                  React.createElement('button', { title: 'Excluir', 'aria-label': 'Excluir pendência', onClick: function () { excluirPendencia(p.id); }, style: Object.assign({}, btnBaseStyle, { padding: '4px 8px', background: T.dangerSoft, color: T.danger, fontSize: 10.5 }) }, React.createElement(X, { size: 13 })),
                 ),
               ),
             );
@@ -1036,7 +1038,7 @@ export function PaginaProtocoloDetalhe(_a) {
             return React.createElement('div', { key: evt.id, style: { display: 'flex', gap: 10 } },
               React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 } },
                 React.createElement('div', {
-                  style: { width: 28, height: 28, borderRadius: '50%', background: T.primarySoft, color: T.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+                  style: { width: 28, height: 28, borderRadius: '50%', background: T.primarySoft, color: T.primaryOnSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
                 }, React.createElement(IconeEvt, { size: 14 })),
                 i < arr.length - 1 && React.createElement('div', { style: { width: 2, flex: 1, background: T.border, minHeight: 18 } }),
               ),
@@ -1125,6 +1127,7 @@ export function PaginaProtocoloDetalhe(_a) {
       React.createElement('button', {
         onClick: onVoltar,
         className: 'protocolo-back',
+        'aria-label': 'Voltar',
         style: Object.assign({}, btnBaseStyle, { padding: '6px 10px', background: T.surfaceAlt, color: T.textSecondary, fontSize: 11.5 }),
       }, React.createElement(ArrowLeft, { size: 16 }), !ehMobile && 'Voltar'),
 
@@ -1152,7 +1155,7 @@ export function PaginaProtocoloDetalhe(_a) {
       !ehMobile && React.createElement('div', { className: 'protocolo-header-actions', style: { display: 'flex', gap: 4, flexWrap: 'wrap' } },
         naoAtribuido && React.createElement('button', {
           onClick: assumirProtocolo, title: 'Assumir',
-          style: Object.assign({}, btnBaseStyle, { background: T.primarySoft, color: T.primary }),
+          style: Object.assign({}, btnBaseStyle, { background: T.primarySoft, color: T.primaryOnSoft }),
         }, React.createElement(Hand, { size: 13 }), 'Assumir'),
 
         React.createElement('button', {
@@ -1188,7 +1191,7 @@ export function PaginaProtocoloDetalhe(_a) {
               alterarSituacao('EM_ANDAMENTO', 'Sua solicitação está em análise pelo setor responsável.');
             },
             title: 'Dar andamento (o cidadão passa a ver "Em análise")',
-            style: Object.assign({}, btnBaseStyle, { background: T.primarySoft, color: T.primary }),
+            style: Object.assign({}, btnBaseStyle, { background: T.primarySoft, color: T.primaryOnSoft }),
           }, React.createElement(RefreshCw, { size: 13 }), 'Dar andamento'),
 
         React.createElement('button', {
@@ -1199,6 +1202,7 @@ export function PaginaProtocoloDetalhe(_a) {
         React.createElement('div', { style: { position: 'relative' }, ref: maisAcoesRef },
           React.createElement('button', {
             onClick: function () { setShowMaisAcoes(!showMaisAcoes); }, title: 'Mais a\u00e7\u00f5es',
+            'aria-label': 'Mais ações do protocolo', 'aria-expanded': showMaisAcoes,
             style: Object.assign({}, btnBaseStyle, { background: T.surfaceAlt, color: T.textSecondary }),
           }, React.createElement(MoreVertical, { size: 13 })),
           showMaisAcoes && React.createElement('div', {
@@ -1226,20 +1230,21 @@ export function PaginaProtocoloDetalhe(_a) {
       className: 'protocolo-mobile-actions',
       style: { padding: '8px 12px', background: T.surfaceAlt, borderBottom: '1px solid ' + T.border, display: 'flex', gap: 4, overflowX: 'auto', flexShrink: 0 },
     },
-      naoAtribuido && React.createElement('button', { onClick: assumirProtocolo, style: Object.assign({}, btnBaseStyle, { background: T.primarySoft, color: T.primary, fontSize: 10.5, padding: '5px 8px' }) }, React.createElement(Hand, { size: 12 }), 'Assumir'),
+      naoAtribuido && React.createElement('button', { onClick: assumirProtocolo, style: Object.assign({}, btnBaseStyle, { background: T.primarySoft, color: T.primaryOnSoft, fontSize: 10.5, padding: '5px 8px' }) }, React.createElement(Hand, { size: 12 }), 'Assumir'),
       React.createElement('button', { onClick: function () { setShowAtribuir(true); }, style: Object.assign({}, btnBaseStyle, { background: T.surfaceAlt, color: T.textSecondary, fontSize: 10.5, padding: '5px 8px' }) }, React.createElement(UserPlus, { size: 12 }), 'Atribuir'),
-      React.createElement('button', { onClick: function () { setShowEncaminhar(true); }, style: Object.assign({}, btnBaseStyle, { background: T.surfaceAlt, color: T.textSecondary, fontSize: 10.5, padding: '5px 8px' }) }, React.createElement(ArrowRightLeft, { size: 12 })),
-      React.createElement('button', { onClick: function () { setAba('mensagens'); }, style: Object.assign({}, btnBaseStyle, { background: T.surfaceAlt, color: T.textSecondary, fontSize: 10.5, padding: '5px 8px' }) }, React.createElement(MessageSquare, { size: 12 })),
-      React.createElement('button', { onClick: function () { if (fileInputRef.current) fileInputRef.current.click(); }, style: Object.assign({}, btnBaseStyle, { background: T.surfaceAlt, color: T.textSecondary, fontSize: 10.5, padding: '5px 8px' }) }, React.createElement(Paperclip, { size: 12 })),
+      React.createElement('button', { onClick: function () { setShowEncaminhar(true); }, 'aria-label': 'Encaminhar protocolo', style: Object.assign({}, btnBaseStyle, { background: T.surfaceAlt, color: T.textSecondary, fontSize: 10.5, padding: '5px 8px' }) }, React.createElement(ArrowRightLeft, { size: 12 })),
+      React.createElement('button', { onClick: function () { setAba('mensagens'); }, 'aria-label': 'Responder ao protocolo', style: Object.assign({}, btnBaseStyle, { background: T.surfaceAlt, color: T.textSecondary, fontSize: 10.5, padding: '5px 8px' }) }, React.createElement(MessageSquare, { size: 12 })),
+      React.createElement('button', { onClick: function () { if (fileInputRef.current) fileInputRef.current.click(); }, 'aria-label': 'Anexar documento', style: Object.assign({}, btnBaseStyle, { background: T.surfaceAlt, color: T.textSecondary, fontSize: 10.5, padding: '5px 8px' }) }, React.createElement(Paperclip, { size: 12 })),
       proto && (proto.status_operacional === 'ABERTO' || proto.status_operacional === 'PENDENTE')
         && React.createElement('button', {
           onClick: function () { alterarSituacao('EM_ANDAMENTO', 'Sua solicitação está em análise pelo setor responsável.'); },
           title: 'Dar andamento',
-          style: Object.assign({}, btnBaseStyle, { background: T.primarySoft, color: T.primary, fontSize: 10.5, padding: '5px 8px' }),
+          'aria-label': 'Dar andamento ao protocolo',
+          style: Object.assign({}, btnBaseStyle, { background: T.primarySoft, color: T.primaryOnSoft, fontSize: 10.5, padding: '5px 8px' }),
         }, React.createElement(RefreshCw, { size: 12 })),
-      React.createElement('button', { onClick: concluirProtocolo, style: Object.assign({}, btnBaseStyle, { background: T.successSoft, color: T.success, fontSize: 10.5, padding: '5px 8px' }) }, React.createElement(CheckCircle, { size: 12 })),
+      React.createElement('button', { onClick: concluirProtocolo, 'aria-label': 'Concluir protocolo', style: Object.assign({}, btnBaseStyle, { background: T.successSoft, color: T.success, fontSize: 10.5, padding: '5px 8px' }) }, React.createElement(CheckCircle, { size: 12 })),
       React.createElement('div', { style: { position: 'relative' }, ref: maisAcoesRef },
-        React.createElement('button', { onClick: function () { setShowMaisAcoes(!showMaisAcoes); }, style: Object.assign({}, btnBaseStyle, { background: T.surfaceAlt, color: T.textSecondary, fontSize: 10.5, padding: '5px 8px' }) }, React.createElement(MoreVertical, { size: 12 })),
+        React.createElement('button', { onClick: function () { setShowMaisAcoes(!showMaisAcoes); }, 'aria-label': 'Mais ações do protocolo', 'aria-expanded': showMaisAcoes, style: Object.assign({}, btnBaseStyle, { background: T.surfaceAlt, color: T.textSecondary, fontSize: 10.5, padding: '5px 8px' }) }, React.createElement(MoreVertical, { size: 12 })),
         showMaisAcoes && React.createElement('div', {
           style: { position: 'absolute', top: '100%', right: 0, marginTop: 4, background: T.surface, border: '1px solid ' + T.border, borderRadius: T.radiusSm, padding: '4px 0', boxShadow: T.shadowMd, zIndex: 100, minWidth: 200 },
         },
@@ -1382,7 +1387,7 @@ export function PaginaProtocoloDetalhe(_a) {
       },
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 } },
           React.createElement('h3', { style: { margin: 0, fontSize: 15, fontWeight: 700, color: T.text } }, 'Encaminhar protocolo'),
-          React.createElement('button', { onClick: function () { setShowEncaminhar(false); }, style: Object.assign({}, btnBaseStyle, { padding: '4px 6px', background: 'transparent', color: T.textMuted }) }, React.createElement(X, { size: 16 })),
+          React.createElement('button', { onClick: function () { setShowEncaminhar(false); }, 'aria-label': 'Fechar encaminhamento', style: Object.assign({}, btnBaseStyle, { padding: '4px 6px', background: 'transparent', color: T.textMuted }) }, React.createElement(X, { size: 16 })),
         ),
         React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
           React.createElement(InputLabel, { label: 'Setor de destino', required: true },
@@ -1439,7 +1444,7 @@ export function PaginaProtocoloDetalhe(_a) {
       },
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 } },
           React.createElement('h3', { style: { margin: 0, fontSize: 15, fontWeight: 700, color: T.text } }, 'Nova solicita\u00e7\u00e3o ao cidad\u00e3o'),
-          React.createElement('button', { onClick: function () { setShowNovaPendencia(false); }, style: Object.assign({}, btnBaseStyle, { padding: '4px 6px', background: 'transparent', color: T.textMuted }) }, React.createElement(X, { size: 16 })),
+          React.createElement('button', { onClick: function () { setShowNovaPendencia(false); }, 'aria-label': 'Fechar nova solicitação', style: Object.assign({}, btnBaseStyle, { padding: '4px 6px', background: 'transparent', color: T.textMuted }) }, React.createElement(X, { size: 16 })),
         ),
         React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
           React.createElement(InputLabel, { label: 'Tipo de solicita\u00e7\u00e3o' },
@@ -1506,7 +1511,7 @@ export function PaginaProtocoloDetalhe(_a) {
       },
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 } },
           React.createElement('h3', { style: { margin: 0, fontSize: 15, fontWeight: 700, color: T.text } }, 'Atribuir protocolo'),
-          React.createElement('button', { onClick: function () { setShowAtribuir(false); }, style: Object.assign({}, btnBaseStyle, { padding: '4px 6px', background: 'transparent', color: T.textMuted }) }, React.createElement(X, { size: 16 })),
+          React.createElement('button', { onClick: function () { setShowAtribuir(false); }, 'aria-label': 'Fechar atribuição', style: Object.assign({}, btnBaseStyle, { padding: '4px 6px', background: 'transparent', color: T.textMuted }) }, React.createElement(X, { size: 16 })),
         ),
         React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
           React.createElement(InputLabel, { label: 'Operador', required: true },
@@ -1541,7 +1546,7 @@ export function PaginaProtocoloDetalhe(_a) {
       },
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 } },
           React.createElement('h3', { style: { margin: 0, fontSize: 15, fontWeight: 700, color: T.text } }, 'Vincular protocolo'),
-          React.createElement('button', { onClick: function () { setShowRelacionar(false); }, style: Object.assign({}, btnBaseStyle, { padding: '4px 6px', background: 'transparent', color: T.textMuted }) }, React.createElement(X, { size: 16 })),
+          React.createElement('button', { onClick: function () { setShowRelacionar(false); }, 'aria-label': 'Fechar vínculo de protocolo', style: Object.assign({}, btnBaseStyle, { padding: '4px 6px', background: 'transparent', color: T.textMuted }) }, React.createElement(X, { size: 16 })),
         ),
         React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
           React.createElement(InputLabel, { label: 'N\u00famero do protocolo', required: true },
@@ -1594,7 +1599,7 @@ function RightSidebar(_a) {
         ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
             React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
               React.createElement('div', {
-                style: { width: 40, height: 40, borderRadius: '50%', background: T.primarySoft, color: T.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, flexShrink: 0 },
+                style: { width: 40, height: 40, borderRadius: '50%', background: T.primarySoft, color: T.primaryOnSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, flexShrink: 0 },
               }, (cidadao || '').charAt(0).toUpperCase()),
               React.createElement('div', { style: { minWidth: 0 } },
                 React.createElement('div', { style: { fontSize: 13.5, fontWeight: 700, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, cidadao),
@@ -1609,7 +1614,7 @@ function RightSidebar(_a) {
         : unidadeInterna
           ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
               React.createElement('div', {
-                style: { padding: '8px 12px', borderRadius: T.radiusSm, background: T.primarySoft, fontSize: 12, color: T.primary, fontWeight: 600 },
+                style: { padding: '8px 12px', borderRadius: T.radiusSm, background: T.primarySoft, fontSize: 12, color: T.primaryOnSoft, fontWeight: 600 },
               }, '\uD83C\uDFE2 Protocolo interno'),
               React.createElement(CampoInfo, { Icone: Building2, rotulo: 'Unidade solicitante', valor: unidadeInterna }),
               proto.setor_solicitante_secretaria && React.createElement(CampoInfo, { Icone: Building2, rotulo: 'Secretaria', valor: proto.setor_solicitante_secretaria }),
@@ -1678,7 +1683,7 @@ function RightSidebar(_a) {
     React.createElement('div', { style: { background: T.surface, borderRadius: T.radius, padding: 16, boxShadow: T.shadowMd } },
       React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 } },
         React.createElement(SectionTitle, { text: 'Relacionados', style: { marginBottom: 0 } }),
-        React.createElement('button', { onClick: onShowRelacionar, style: Object.assign({}, btnBaseStyle, { padding: '4px 8px', background: T.primarySoft, color: T.primary, fontSize: 10.5 }) },
+        React.createElement('button', { onClick: onShowRelacionar, style: Object.assign({}, btnBaseStyle, { padding: '4px 8px', background: T.primarySoft, color: T.primaryOnSoft, fontSize: 10.5 }) },
           React.createElement(Plus, { size: 11 }), 'Vincular'),
       ),
       relacionados.length === 0

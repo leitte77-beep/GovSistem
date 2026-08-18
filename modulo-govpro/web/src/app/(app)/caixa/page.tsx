@@ -74,10 +74,10 @@ export default function MinhaCaixaPage() {
     },
     "aguardando-retorno": {
       title: "Nenhum retorno pendente",
-      description: "Tramitações enviadas com prazo de resposta aparecem aqui até serem recebidas.",
+      description: "Envios com prazo de resposta aparecem aqui até serem recebidos.",
     },
     enviados: {
-      title: "Nenhuma tramitação enviada",
+      title: "Nenhum envio realizado",
       description: "O histórico de envios da sua unidade aparecerá aqui.",
     },
     concluidos: {
@@ -88,7 +88,7 @@ export default function MinhaCaixaPage() {
 
   return (
     <div className="pb-stack-lg">
-      <PageHeader title="Minha Caixa" subtitle="Sua visão de trabalho: o que chegou, o que é seu e o que está pendente." />
+      <PageHeader title="Controle de Processos" subtitle="Sua visão de trabalho: o que chegou, o que é seu e o que está pendente." />
 
       <div className="px-gutter max-w-container-max mx-auto">
         <div className="flex gap-1 border-b border-outline-variant mb-6 overflow-x-auto" role="tablist">

@@ -17,6 +17,13 @@ npm-debug.log*
 .env
 .env.local
 .env.dev
+.env.*.local
+.env.backup*
+.env.bak
+*.env.backup*
+# Nunca versionar backups/.env reais — apenas *.env.example sao permitidos
+!*.env.example
+!.env.example
 
 # IDE
 .vscode/

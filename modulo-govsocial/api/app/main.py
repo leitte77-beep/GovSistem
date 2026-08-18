@@ -27,9 +27,9 @@ def create_app() -> FastAPI:
         title=settings.APP_NAME,
         description="GovSocial - Módulo de Assistência Social (SUAS)",
         version=settings.VERSION,
-        docs_url="/docs",
-        redoc_url="/redoc",
-        openapi_url="/openapi.json",
+        docs_url=(None if getattr(settings, "ENVIRONMENT", "development") == "production" else "/docs"),
+        redoc_url=(None if getattr(settings, "ENVIRONMENT", "development") == "production" else "/redoc"),
+        openapi_url=(None if getattr(settings, "ENVIRONMENT", "development") == "production" else "/openapi.json"),
         lifespan=lifespan,
     )
 

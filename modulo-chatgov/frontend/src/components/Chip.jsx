@@ -13,8 +13,10 @@ export function Chip({ label, ativo, onClick, cor, badge, icone, titulo }) {
     style: {
       background: ativo ? T.primary : T.surfaceMuted,
       color: ativo ? '#fff' : T.textSecondary,
-      border: 'none',
-      padding: '7px 11px',
+      // Inativo, o chip só se distinguia do painel por 1.18:1 de fundo — a
+      // fileira de filtros parecia texto solto em vez de botões.
+      border: ativo ? '1px solid transparent' : `1px solid ${T.controlBorder}`,
+      padding: '6px 10px',
       minHeight: 38,
       borderRadius: 20,
       fontSize: 13,
@@ -37,7 +39,7 @@ export function Chip({ label, ativo, onClick, cor, badge, icone, titulo }) {
       style: {
         background: ativo ? 'rgba(255,255,255,0.28)' : T.surface,
         color: ativo ? '#fff' : T.textSecondary,
-        border: ativo ? 'none' : `1px solid ${T.borderStrong}`,
+        border: ativo ? 'none' : `1px solid ${T.controlBorder}`,
         borderRadius: 10,
         padding: '0px 6px',
         fontSize: 11,

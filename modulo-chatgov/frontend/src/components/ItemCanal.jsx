@@ -3,6 +3,7 @@ import { Trash2 } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { T } from '../theme';
 import { formatarHoraRelativa } from '../utils/arquivo';
+import { ativarComTeclado } from '../utils/teclado';
 
 function resumoUltima(msg) {
   if (!msg) return '';
@@ -34,7 +35,10 @@ export function ItemCanal({ canal, ativo, opId, onClick, naoLidas, onDelete }) {
     onMouseEnter: () => setShowDelete(true),
     onMouseLeave: () => setShowDelete(false),
     role: 'button', tabIndex: 0, 'aria-label': `${nome}, ${subtitulo}`,
-    onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick?.(); } },
+    'aria-current': ativo ? 'true' : undefined,
+    // Versão compartilhada: a anterior disparava o canal mesmo quando o Enter
+    // vinha do botão de excluir que existe dentro da linha.
+    onKeyDown: ativarComTeclado(onClick),
     style: {
       display: 'flex', padding: '12px 12px', cursor: 'pointer', alignItems: 'center', gap: 12,
       transition: 'background 0.12s', background: ativo ? T.primarySoft : 'transparent',

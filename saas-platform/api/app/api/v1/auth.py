@@ -49,6 +49,13 @@ from app.schemas.schemas import (
 router = APIRouter(prefix="/auth", tags=["auth"])
 logger = logging.getLogger(__name__)
 
+# Rate-limit por IP em endpoints sensiveis de autenticacao (defesa em profundidade,
+# alem do limit_req da borda nginx). Mesmo padrao do webhook_limiter ja em producao.
+from slowapi import Limiter  # noqa: E402
+from slowapi.util import get_remote_address  # noqa: E402
+
+auth_limiter = Limiter(key_func=get_remote_address)
+
 
 @router.post("/login", response_model=TokenResponse)
 async def login(
@@ -136,7 +143,9 @@ async def login(
 
 
 @router.post("/refresh", response_model=TokenResponse)
+@auth_limiter.limit("10/minute")
 async def refresh_token(
+    request: Request,
     body: RefreshRequest,
     db: AsyncSession = Depends(get_db),
 ):
@@ -591,7 +600,9 @@ def _send_password_reset_email(to_email: str, reset_link: str):
 
 
 @router.post("/forgot-password", response_model=MessageResponse)
+@auth_limiter.limit("5/minute")
 async def forgot_password(
+    request: Request,
     body: ForgotPasswordRequest,
     db: AsyncSession = Depends(get_db),
 ):
@@ -618,7 +629,9 @@ async def forgot_password(
 
 
 @router.post("/reset-password", response_model=MessageResponse)
+@auth_limiter.limit("5/minute")
 async def reset_password(
+    request: Request,
     body: ResetPasswordRequest,
     db: AsyncSession = Depends(get_db),
 ):

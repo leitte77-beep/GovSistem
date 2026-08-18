@@ -3,6 +3,7 @@ import { CalendarPlus, Bell, X, Trash2, Link2, CheckCircle2, Clock, ChevronDown 
 import { T } from '../../theme';
 import { criarItemAgenda, atualizarItemAgenda, excluirItemAgenda } from '../../api/agenda';
 import { TIPOS, PRIORIDADES, OPCOES_LEMBRETE, montarISO, partesDoISO } from './util';
+import { useModalFocus } from '../../hooks/useModalFocus';
 
 const overlay = {
   position: 'fixed', inset: 0, background: 'rgba(15,26,42,0.45)',
@@ -86,14 +87,8 @@ export function ModalCompromisso({ item, preenchimento = {}, onClose, onSalvo, o
   const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
   const tituloRef = useRef(null);
   const lembreteRef = useRef(null);
-
-  useEffect(() => { tituloRef.current?.focus(); }, []);
-
-  useEffect(() => {
-    const onEsc = (e) => { if (e.key === 'Escape') onClose?.(); };
-    document.addEventListener('keydown', onEsc);
-    return () => document.removeEventListener('keydown', onEsc);
-  }, [onClose]);
+  const dialogRef = useRef(null);
+  useModalFocus(dialogRef, onClose, tituloRef);
 
   useEffect(() => {
     if (!lembreteAberto) return;
@@ -226,7 +221,7 @@ export function ModalCompromisso({ item, preenchimento = {}, onClose, onSalvo, o
     style: overlay,
     onMouseDown: (e) => { if (e.target === e.currentTarget) onClose?.(); },
   },
-    React.createElement('div', { style: card, role: 'dialog', 'aria-modal': 'true', 'aria-label': tituloForm },
+    React.createElement('div', { ref: dialogRef, style: card, role: 'dialog', 'aria-modal': true, 'aria-label': tituloForm, tabIndex: -1 },
 
       /* ── cabeçalho ── */
       React.createElement('div', { style: { display: 'flex', alignItems: 'flex-start', gap: 10, padding: '18px 22px 14px', borderBottom: `1px solid ${T.border}` } },
@@ -358,13 +353,14 @@ export function ModalCompromisso({ item, preenchimento = {}, onClose, onSalvo, o
                 style: {
                   display: 'inline-flex', alignItems: 'center', gap: 4,
                   padding: '5px 9px', fontSize: 12, fontWeight: 600,
-                  borderRadius: 9999, background: T.primarySoft, color: T.primary,
+                  borderRadius: 9999, background: T.primarySoft, color: T.primaryOnSoft,
                   border: `1px solid ${T.primary}20`,
                 },
               },
                 labelLembrete(min),
                 React.createElement('button', {
                   onClick: () => removerLembrete(min),
+                  'aria-label': `Remover lembrete ${labelLembrete(min)}`,
                   style: { border: 'none', background: 'none', cursor: 'pointer', padding: 0, display: 'flex', color: T.primary, opacity: 0.7 },
                 }, React.createElement(X, { size: 12 })),
               )),

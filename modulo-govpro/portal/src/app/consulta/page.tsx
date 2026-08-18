@@ -93,7 +93,7 @@ export default function ConsultaPage() {
           </div>
           <div className="px-6 py-4 space-y-2">
             <Info label="Especificação" value={resultado.especificacao || "—"} />
-            <Info label="Autuado em" value={formatDate(resultado.data_autuacao)} />
+            <Info label="Gerado em" value={formatDate(resultado.data_autuacao)} />
           </div>
         </div>
       )}

@@ -1,10 +1,11 @@
 import EventEmitter from 'events';
-import { makeWASocket, DisconnectReason, fetchLatestBaileysVersion, makeCacheableSignalKeyStore, downloadMediaMessage } from '@whiskeysockets/baileys';
+import { makeWASocket, DisconnectReason, makeCacheableSignalKeyStore, downloadMediaMessage } from '@whiskeysockets/baileys';
 import pino from 'pino';
 import QRCode from 'qrcode';
 import { createPostgresAuthState } from './postgresAuthState.js';
 import db, { setTenantContext } from '../db.js';
 import { transcodeToMp3, precisaTranscodificar, isAudioTranscoderAvailable } from '../services/audio.js';
+import { resolveWaVersion } from './waVersion.js';
 
 // Reconexão com backoff exponencial: 3s, 6s, 12s, ... até o teto.
 const RECONNECT_BASE_MS = 3000;
@@ -94,13 +95,8 @@ export class WhatsAppManager extends EventEmitter {
 
   async _getVersion() {
     if (this._cachedVersion) return this._cachedVersion;
-    try {
-      const { version } = await fetchLatestBaileysVersion();
-      this._cachedVersion = version;
-    } catch (err) {
-      console.error('[WA] fetchLatestBaileysVersion falhou, usando versão em cache/padrão:', err.message);
-    }
-    return this._cachedVersion || undefined;
+    this._cachedVersion = await resolveWaVersion();
+    return this._cachedVersion;
   }
 
   async _initSession(tenantId) {

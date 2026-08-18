@@ -138,14 +138,19 @@
         .composer textarea {
           flex: 1 1 auto; min-width: 0; width: 100%;
           resize: none;
-          min-height: 40px; max-height: 120px;
+          /* A altura real é calculada em JS (cresce com o conteúdo); estes limites
+             são a rede de segurança caso o script ainda não tenha rodado. */
+          min-height: 40px; max-height: min(220px, 32vh);
           line-height: 1.25rem;
           padding: .5rem .75rem;
           font-size: 16px;
-          overflow-y: auto;
-          scrollbar-width: none;
+          overflow-y: hidden;
+          scrollbar-width: thin;
+          transition: height .08s ease-out;
         }
-        .composer textarea::-webkit-scrollbar { display: none; }
+        .composer textarea::-webkit-scrollbar { width: 6px; }
+        .composer textarea::-webkit-scrollbar-thumb { background: rgba(128,141,161,.45); border-radius: 3px; }
+        .composer textarea::-webkit-scrollbar-track { background: transparent; }
         .composer textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         @media (max-width: 480px) {
           .composer .icon-emoji { display: none; }

@@ -4,6 +4,7 @@ import { Avatar } from './Avatar';
 import { DeptBadge } from './DeptBadge';
 import { T } from '../theme';
 import { formatarHoraRelativa } from '../utils/arquivo';
+import { ativarComTeclado } from '../utils/teclado';
 import { CONVERSA_STATUS_UI, conversationStatus } from '../domain/status';
 
 function previewIcon(tipo) {
@@ -68,9 +69,19 @@ export function ItemConversa({ conversa, ativa, opId, onClick, fixada, onFixar }
     conversa.ultima_mensagem_tipo
   );
 
+  // A linha \u00e9 clic\u00e1vel, ent\u00e3o precisa ser alcan\u00e7\u00e1vel pelo Tab e ativ\u00e1vel pelo
+  // Enter/Espa\u00e7o \u2014 como <div> puro, a lista inteira ficava fora do alcance de
+  // quem n\u00e3o usa mouse. O mesmo texto do tooltip vira o nome acess\u00edvel.
+  const descricao = `${nome} \u2014 ${statusUi?.label || status}. ${responsavel}.`;
+
   return React.createElement('div', {
     onClick,
-    title: `${nome} \u2014 ${statusUi?.label || status}. ${responsavel}.`,
+    onKeyDown: ativarComTeclado(onClick),
+    role: 'button',
+    tabIndex: 0,
+    'aria-label': descricao,
+    'aria-current': ativa ? 'true' : undefined,
+    title: descricao,
     className: 'cg-conv-item' + (ativa ? ' ativa' : ''),
     style: {
       display: 'flex',
@@ -105,7 +116,7 @@ export function ItemConversa({ conversa, ativa, opId, onClick, fixada, onFixar }
         },
           minha && React.createElement('span', {
             title: 'Atribu\u00edda a voc\u00ea',
-            style: { fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 5, background: T.primarySoft, color: T.primary, textTransform: 'uppercase' },
+            style: { fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 5, background: T.primarySoft, color: T.primaryOnSoft, textTransform: 'uppercase' },
           }, 'Minha'),
           statusUi && React.createElement('span', {
             title: `Status: ${statusUi.label}`,
@@ -141,8 +152,8 @@ export function ItemConversa({ conversa, ativa, opId, onClick, fixada, onFixar }
       },
         React.createElement('span', {
           style: {
-            background: T.whatsappGreen,
-            color: '#fff',
+            background: T.unreadBg,
+            color: T.unreadText,
             borderRadius: 12,
             minWidth: 20,
             height: 20,

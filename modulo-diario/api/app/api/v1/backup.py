@@ -36,6 +36,23 @@ DB_PASS = settings.POSTGRES_PASSWORD.get_secret_value()
 ENV = {"PGPASSWORD": DB_PASS, "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin")}
 
 
+def _safe_extract(tar: "tarfile.TarFile", dest: str) -> None:
+    """Extrai um tar rejeitando membros perigosos (path traversal / links / abs).
+
+    Usa o filtro 'data' do Python 3.12+ (bloqueia '..', caminhos absolutos,
+    device/links) e, por robustez, revalida que cada destino fica dentro de `dest`.
+    """
+    dest_real = os.path.realpath(dest)
+    for member in tar.getmembers():
+        target = os.path.realpath(os.path.join(dest, member.name))
+        if target != dest_real and not target.startswith(dest_real + os.sep):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Backup inválido: membro fora do destino ({member.name})",
+            )
+    tar.extractall(path=dest, filter="data")
+
+
 def _run(cmd: list[str], cwd: str | None = None) -> str:
     result = subprocess.run(
         cmd, capture_output=True, text=True, timeout=600, env=ENV, cwd=cwd,
@@ -144,7 +161,7 @@ async def restore_backup(
             f.write(content)
 
         with tarfile.open(backup_path, "r:gz") as tar:
-            tar.extractall(path=tmpdir)
+            _safe_extract(tar, tmpdir)
 
         db_dump = os.path.join(tmpdir, "db.dump")
         if not os.path.exists(db_dump):
@@ -159,7 +176,8 @@ async def restore_backup(
 
         uploads_tar = os.path.join(tmpdir, "uploads.tar.gz")
         if os.path.exists(uploads_tar):
-            _run(["tar", "-xzf", uploads_tar, "-C", "/"])
+            with tarfile.open(uploads_tar, "r:gz") as _utar:
+                _safe_extract(_utar, str(_get_uploads_dir().parent))
 
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -182,7 +200,7 @@ async def restore_backup_from_server(
     tmpdir = tempfile.mkdtemp()
     try:
         with tarfile.open(backup_path, "r:gz") as tar:
-            tar.extractall(path=tmpdir)
+            _safe_extract(tar, tmpdir)
 
         db_dump = os.path.join(tmpdir, "db.dump")
         if not os.path.exists(db_dump):
@@ -197,7 +215,8 @@ async def restore_backup_from_server(
 
         uploads_tar = os.path.join(tmpdir, "uploads.tar.gz")
         if os.path.exists(uploads_tar):
-            _run(["tar", "-xzf", uploads_tar, "-C", "/"])
+            with tarfile.open(uploads_tar, "r:gz") as _utar:
+                _safe_extract(_utar, str(_get_uploads_dir().parent))
 
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail=str(e))

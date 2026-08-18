@@ -80,7 +80,13 @@ export function RichTextEditor({ value, onChange, placeholder, minHeight }) {
     el.addEventListener('paste', function (e) {
       e.preventDefault();
       var text = e.clipboardData.getData('text/plain');
-      document.execCommand('insertText', false, text);
+      var html = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\r\n?/g, '\n')
+        .replace(/\n/g, '<br>');
+      document.execCommand('insertHTML', false, html);
     });
   }, [value, emitChange]);
 
@@ -118,7 +124,7 @@ export function RichTextEditor({ value, onChange, placeholder, minHeight }) {
 
         if (btn.isLink) {
           return React.createElement('button', {
-            key: i, type: 'button', title: btn.label,
+            key: i, type: 'button', title: btn.label, 'aria-label': btn.label,
             onClick: function () {
               var url = window.prompt('URL do link:');
               if (url) exec(btn.cmd, url);
@@ -129,7 +135,7 @@ export function RichTextEditor({ value, onChange, placeholder, minHeight }) {
 
         if (btn.isColor) {
           return React.createElement('button', {
-            key: i, type: 'button', title: btn.label,
+            key: i, type: 'button', title: btn.label, 'aria-label': btn.label,
             onClick: function () { exec(btn.cmd, btn.defaultValue || '#111827'); },
             style: toolbarBtnStyle,
           },
@@ -141,13 +147,14 @@ export function RichTextEditor({ value, onChange, placeholder, minHeight }) {
                 onChange: function (e) { exec(btn.cmd, e.target.value); },
                 style: { position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', width: '100%' },
                 title: btn.label,
+                'aria-label': btn.label,
               }),
             ));
         }
 
         if (btn.isSelect) {
           return React.createElement('button', {
-            key: i, type: 'button', title: btn.label,
+            key: i, type: 'button', title: btn.label, 'aria-label': btn.label,
             onClick: function () {},
             style: Object.assign({}, toolbarBtnStyle, { cursor: 'default' }),
           },
@@ -156,6 +163,7 @@ export function RichTextEditor({ value, onChange, placeholder, minHeight }) {
               onChange: function (e) { exec(btn.cmd, e.target.value); },
               style: { position: 'absolute', inset: 0, opacity: 0, cursor: 'pointer', fontSize: 11 },
               defaultValue: '',
+              'aria-label': btn.label,
             },
               React.createElement('option', { value: '' }, ''),
               (btn.options || []).map(function (o) { return React.createElement('option', { key: o, value: o }, o); }),
@@ -163,7 +171,7 @@ export function RichTextEditor({ value, onChange, placeholder, minHeight }) {
         }
 
         return React.createElement('button', {
-          key: i, type: 'button', title: btn.label,
+          key: i, type: 'button', title: btn.label, 'aria-label': btn.label,
           onClick: function () { exec(btn.cmd); },
           style: toolbarBtnStyle,
         }, btn.icon);

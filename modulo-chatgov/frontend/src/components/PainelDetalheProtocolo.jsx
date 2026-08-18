@@ -577,7 +577,7 @@ export function PainelDetalheProtocolo({ protocolo, onClose, onAtualizado }) {
           : unidadeInterna
             ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
                 React.createElement('div', {
-                  style: { padding: '8px 12px', borderRadius: T.radiusSm, background: T.primarySoft, fontSize: 12, color: T.primary, fontWeight: 600 },
+                  style: { padding: '8px 12px', borderRadius: T.radiusSm, background: T.primarySoft, fontSize: 12, color: T.primaryOnSoft, fontWeight: 600 },
                 }, 'Protocolo interno'),
                 React.createElement(CampoInfo, { Icone: Building2, rotulo: 'Unidade solicitante', valor: unidadeInterna }),
                 proto.setor_solicitante_secretaria && React.createElement(CampoInfo, { Icone: Building2, rotulo: 'Secretaria', valor: proto.setor_solicitante_secretaria }),
@@ -722,6 +722,7 @@ export function PainelDetalheProtocolo({ protocolo, onClose, onAtualizado }) {
           }),
           React.createElement('button', {
             onClick: enviarMensagem, disabled: enviandoMsg || !textoMsg.trim(),
+            'aria-label': enviandoMsg ? 'Enviando mensagem' : 'Enviar mensagem',
             style: { ...btnBaseStyle, padding: '8px 14px', background: (enviandoMsg || !textoMsg.trim()) ? T.surfaceMuted : T.primary, color: '#fff', cursor: (enviandoMsg || !textoMsg.trim()) ? 'default' : 'pointer' },
           }, enviandoMsg ? React.createElement(Loader2, { size: 14 }) : React.createElement(Send, { size: 14 })),
         ),
@@ -745,6 +746,7 @@ export function PainelDetalheProtocolo({ protocolo, onClose, onAtualizado }) {
           }),
           React.createElement('button', {
             onClick: enviarAnotacao, disabled: enviandoAnot || !textoAnotacao.trim(),
+            'aria-label': enviandoAnot ? 'Salvando anotação interna' : 'Salvar anotação interna',
             style: { ...btnBaseStyle, padding: '8px 14px', background: T.warningSoft, color: T.warning, border: '1px dashed ' + T.warning, cursor: (enviandoAnot || !textoAnotacao.trim()) ? 'default' : 'pointer' },
           }, enviandoAnot ? React.createElement(Loader2, { size: 14 }) : React.createElement(Send, { size: 13 })),
         ),
@@ -837,23 +839,24 @@ export function PainelDetalheProtocolo({ protocolo, onClose, onAtualizado }) {
                 React.createElement(BadgeVisibilidade, { publico: d.visivel_cidadao }),
                 React.createElement('div', { style: { display: 'flex', gap: 2, justifyContent: 'flex-end' } },
                   React.createElement('button', {
-                    title: 'Visualizar', onClick: function () { visualizarDocumento(d); },
+                    title: 'Visualizar', 'aria-label': 'Visualizar documento', onClick: function () { visualizarDocumento(d); },
                     style: { ...btnBaseStyle, padding: '4px 6px', background: 'transparent', color: T.textMuted, fontSize: 11 },
                   }, React.createElement(Eye, { size: 14 })),
                   React.createElement('button', {
-                    title: 'Baixar', onClick: function () { downloadDocumento(d); },
+                    title: 'Baixar', 'aria-label': 'Baixar documento', onClick: function () { downloadDocumento(d); },
                     style: { ...btnBaseStyle, padding: '4px 6px', background: 'transparent', color: T.textMuted, fontSize: 11 },
                   }, React.createElement(Download, { size: 14 })),
                   d.status !== 'APROVADO' && React.createElement('button', {
-                    title: 'Aprovar', onClick: function () { aprovarDoc(d); },
+                    title: 'Aprovar', 'aria-label': 'Aprovar documento', onClick: function () { aprovarDoc(d); },
                     style: { ...btnBaseStyle, padding: '4px 6px', background: 'transparent', color: T.success, fontSize: 11 },
                   }, React.createElement(Check, { size: 14 })),
                   d.status !== 'REJEITADO' && React.createElement('button', {
-                    title: 'Rejeitar', onClick: function () { rejeitarDoc(d); },
+                    title: 'Rejeitar', 'aria-label': 'Rejeitar documento', onClick: function () { rejeitarDoc(d); },
                     style: { ...btnBaseStyle, padding: '4px 6px', background: 'transparent', color: T.danger, fontSize: 11 },
                   }, React.createElement(X, { size: 14 })),
                   React.createElement('button', {
                     title: d.visivel_cidadao ? 'Tornar interno' : 'Liberar ao cidad\u00e3o',
+                    'aria-label': d.visivel_cidadao ? 'Tornar documento interno' : 'Liberar documento ao cidadão',
                     onClick: function () { alternarVisibilidadeDoc(d); },
                     style: { ...btnBaseStyle, padding: '4px 6px', background: 'transparent', color: d.visivel_cidadao ? T.warning : T.textMuted, fontSize: 11 },
                   }, d.visivel_cidadao ? React.createElement(Lock, { size: 14 }) : React.createElement(Unlock, { size: 14 })),
@@ -882,7 +885,7 @@ export function PainelDetalheProtocolo({ protocolo, onClose, onAtualizado }) {
               return React.createElement('div', { key: t.id, style: { display: 'flex', gap: 10 } },
                 React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 } },
                   React.createElement('div', {
-                    style: { width: 28, height: 28, borderRadius: '50%', background: T.primarySoft, color: T.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 },
+                    style: { width: 28, height: 28, borderRadius: '50%', background: T.primarySoft, color: T.primaryOnSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, flexShrink: 0 },
                   }, React.createElement(ArrowRightLeft, { size: 14 })),
                   i < arr.length - 1 && React.createElement('div', { style: { width: 2, flex: 1, background: T.border, minHeight: 16 } }),
                 ),
@@ -911,7 +914,7 @@ export function PainelDetalheProtocolo({ protocolo, onClose, onAtualizado }) {
         },
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 } },
             React.createElement('h3', { style: { margin: 0, fontSize: 15, fontWeight: 700, color: T.text } }, 'Encaminhar protocolo'),
-            React.createElement('button', { onClick: function () { setShowEncaminhar(false); }, style: { ...btnBaseStyle, padding: '4px 6px', background: 'transparent', color: T.textMuted } }, React.createElement(X, { size: 16 })),
+            React.createElement('button', { onClick: function () { setShowEncaminhar(false); }, 'aria-label': 'Fechar encaminhamento', style: { ...btnBaseStyle, padding: '4px 6px', background: 'transparent', color: T.textMuted } }, React.createElement(X, { size: 16 })),
           ),
           React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
             React.createElement(InputLabel, { label: 'Setor de destino', required: true },
@@ -1014,11 +1017,11 @@ export function PainelDetalheProtocolo({ protocolo, onClose, onAtualizado }) {
                 ),
                 !resolved && React.createElement('div', { style: { display: 'flex', gap: 4, flexShrink: 0 } },
                   React.createElement('button', {
-                    title: 'Marcar como resolvida', onClick: function () { resolverPendencia(p.id); },
+                    title: 'Marcar como resolvida', 'aria-label': 'Marcar pendência como resolvida', onClick: function () { resolverPendencia(p.id); },
                     style: { ...btnBaseStyle, padding: '4px 8px', background: T.successSoft, color: T.success, fontSize: 10.5 },
                   }, React.createElement(Check, { size: 13 })),
                   React.createElement('button', {
-                    title: 'Excluir', onClick: function () { excluirPendencia(p.id); },
+                    title: 'Excluir', 'aria-label': 'Excluir pendência', onClick: function () { excluirPendencia(p.id); },
                     style: { ...btnBaseStyle, padding: '4px 8px', background: T.dangerSoft, color: T.danger, fontSize: 10.5 },
                   }, React.createElement(X, { size: 13 })),
                 ),
@@ -1036,7 +1039,7 @@ export function PainelDetalheProtocolo({ protocolo, onClose, onAtualizado }) {
         },
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 } },
             React.createElement('h3', { style: { margin: 0, fontSize: 15, fontWeight: 700, color: T.text } }, 'Nova solicita\u00e7\u00e3o ao cidad\u00e3o'),
-            React.createElement('button', { onClick: function () { setShowNovaPendencia(false); }, style: { ...btnBaseStyle, padding: '4px 6px', background: 'transparent', color: T.textMuted } }, React.createElement(X, { size: 16 })),
+            React.createElement('button', { onClick: function () { setShowNovaPendencia(false); }, 'aria-label': 'Fechar nova solicitação', style: { ...btnBaseStyle, padding: '4px 6px', background: 'transparent', color: T.textMuted } }, React.createElement(X, { size: 16 })),
           ),
           React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
             React.createElement(InputLabel, { label: 'Tipo de solicita\u00e7\u00e3o' },
@@ -1120,7 +1123,7 @@ export function PainelDetalheProtocolo({ protocolo, onClose, onAtualizado }) {
             return React.createElement('div', { key: evt.id, style: { display: 'flex', gap: 10 } },
               React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', flexShrink: 0 } },
                 React.createElement('div', {
-                  style: { width: 28, height: 28, borderRadius: '50%', background: T.primarySoft, color: T.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
+                  style: { width: 28, height: 28, borderRadius: '50%', background: T.primarySoft, color: T.primaryOnSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 },
                 }, React.createElement(IconeEvt, { size: 14 })),
                 i < arr.length - 1 && React.createElement('div', { style: { width: 2, flex: 1, background: T.border, minHeight: 18 } }),
               ),
@@ -1206,7 +1209,7 @@ export function PainelDetalheProtocolo({ protocolo, onClose, onAtualizado }) {
         ? React.createElement('div', { style: { padding: 16, borderRadius: T.radiusSm, background: T.surfaceAlt, border: '1px solid ' + T.border } },
             React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 } },
               React.createElement('div', {
-                style: { width: 48, height: 48, borderRadius: '50%', background: T.primarySoft, color: T.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700, flexShrink: 0 },
+                style: { width: 48, height: 48, borderRadius: '50%', background: T.primarySoft, color: T.primaryOnSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, fontWeight: 700, flexShrink: 0 },
               }, (cidadao || '').charAt(0).toUpperCase()),
               React.createElement('div', { style: { minWidth: 0 } },
                 React.createElement('div', { style: { fontSize: 15, fontWeight: 700, color: T.text } }, cidadao),
@@ -1228,7 +1231,7 @@ export function PainelDetalheProtocolo({ protocolo, onClose, onAtualizado }) {
             proto.cidadao_id && React.createElement('div', { style: { marginTop: 12, borderTop: '1px solid ' + T.border, paddingTop: 12, display: 'flex', gap: 8 } },
               React.createElement('button', {
                 onClick: iniciarEdicao,
-                style: { ...btnBaseStyle, background: T.primarySoft, color: T.primary, fontSize: 11 },
+                style: { ...btnBaseStyle, background: T.primarySoft, color: T.primaryOnSoft, fontSize: 11 },
               }, React.createElement(Edit, { size: 12 }), 'Editar dados'),
               React.createElement('button', {
                 onClick: function () {},
@@ -1304,6 +1307,7 @@ export function PainelDetalheProtocolo({ protocolo, onClose, onAtualizado }) {
               }, tipoLabel),
               React.createElement('button', {
                 title: 'Remover rela\u00e7\u00e3o',
+                'aria-label': 'Remover relação entre protocolos',
                 onClick: function () { removerRelacionamento(r); },
                 style: { ...btnBaseStyle, padding: '4px 6px', background: 'transparent', color: T.danger, fontSize: 11 },
               }, React.createElement(X, { size: 14 })),
@@ -1319,7 +1323,7 @@ export function PainelDetalheProtocolo({ protocolo, onClose, onAtualizado }) {
         },
           React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 } },
             React.createElement('h3', { style: { margin: 0, fontSize: 15, fontWeight: 700, color: T.text } }, 'Vincular protocolo'),
-            React.createElement('button', { onClick: function () { setShowRelacionar(false); }, style: { ...btnBaseStyle, padding: '4px 6px', background: 'transparent', color: T.textMuted } }, React.createElement(X, { size: 16 })),
+            React.createElement('button', { onClick: function () { setShowRelacionar(false); }, 'aria-label': 'Fechar vínculo de protocolo', style: { ...btnBaseStyle, padding: '4px 6px', background: 'transparent', color: T.textMuted } }, React.createElement(X, { size: 16 })),
           ),
           React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
             React.createElement(InputLabel, { label: 'N\u00famero do protocolo', required: true },
@@ -1433,7 +1437,7 @@ export function PainelDetalheProtocolo({ protocolo, onClose, onAtualizado }) {
       React.createElement('div', { style: { display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 10 } },
         React.createElement('button', {
           onClick: assumirProtocolo, title: 'Assumir protocolo',
-          style: { ...btnBaseStyle, background: T.primarySoft, color: T.primary },
+          style: { ...btnBaseStyle, background: T.primarySoft, color: T.primaryOnSoft },
         }, React.createElement(Hand, { size: 13 }), 'Assumir'),
         React.createElement('button', {
           onClick: function () {}, title: 'Atribuir',
@@ -1455,7 +1459,7 @@ export function PainelDetalheProtocolo({ protocolo, onClose, onAtualizado }) {
               alterarSituacao('EM_ANDAMENTO', 'Sua solicitação está em análise pelo setor responsável.');
             },
             title: 'Dar andamento (o cidadão passa a ver "Em análise")',
-            style: { ...btnBaseStyle, background: T.primarySoft, color: T.primary },
+            style: { ...btnBaseStyle, background: T.primarySoft, color: T.primaryOnSoft },
           }, React.createElement(RefreshCw, { size: 13 }), 'Dar andamento'),
         React.createElement('button', {
           onClick: concluirProtocolo, title: 'Concluir',
@@ -1464,6 +1468,7 @@ export function PainelDetalheProtocolo({ protocolo, onClose, onAtualizado }) {
         React.createElement('div', { style: { position: 'relative' }, ref: maisAcoesRef },
           React.createElement('button', {
             onClick: function () { setShowMaisAcoes(!showMaisAcoes); }, title: 'Mais a\u00e7\u00f5es',
+            'aria-label': 'Mais ações do protocolo', 'aria-expanded': showMaisAcoes,
             style: { ...btnBaseStyle, background: T.surfaceAlt, color: T.textSecondary },
           }, React.createElement(MoreVertical, { size: 13 })),
           showMaisAcoes && React.createElement('div', {

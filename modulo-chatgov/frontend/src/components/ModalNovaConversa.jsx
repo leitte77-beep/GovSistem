@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Send, Phone, User, MessageSquare, AlertTriangle, CheckCircle2, Loader2 } from 'lucide-react';
 import { T } from '../theme';
+import { useTheme } from '../context/ThemeContext';
 import { iniciarConversa, precheckContato } from '../api';
 import { SeletorDepartamento } from './SeletorDepartamento';
+import { useModalFocus } from '../hooks/useModalFocus';
 
 const CHAVE_ULTIMO_DEPTO = 'chatgov_ultimo_departamento';
 // DDDs em uso no Brasil (Anatel). Serve para pegar erro de digitação antes de
@@ -44,6 +46,10 @@ function haQuantoTempo(iso) {
 }
 
 export function ModalNovaConversa({ departamentos, onClose, onCriada, onAbrirConversa }) {
+  // O card é translúcido (efeito vidro sobre o painel borrado), então a cor de
+  // base precisa acompanhar o tema: fixada em branco, os rótulos e o botão
+  // Cancelar — que vêm do tema — ficavam texto claro sobre fundo claro.
+  const { isDark } = useTheme();
   const [telefone, setTelefone] = useState('');
   const [nome, setNome] = useState('');
   const [departamentoId, setDepartamentoId] = useState(() => {
@@ -54,13 +60,35 @@ export function ModalNovaConversa({ departamentos, onClose, onCriada, onAbrirCon
   const [enviando, setEnviando] = useState(false);
   const [checando, setChecando] = useState(false);
   const [precheck, setPrecheck] = useState(null);
+  const [setorAutomatico, setSetorAutomatico] = useState(false);
   const nomePreenchidoAuto = useRef(false);
+  const tocouNoSetor = useRef(false);
+  const dialogRef = useRef(null);
+  useModalFocus(dialogRef, onClose);
 
   // Só o setor válido é lembrado — se um departamento for desativado, o valor
   // guardado deixa de existir e o campo volta para "Sem encaminhamento".
   useEffect(() => {
     if (departamentoId && !departamentos.some((d) => d.id === departamentoId)) setDepartamentoId('');
   }, [departamentos, departamentoId]);
+
+  // Sem escolha anterior, o campo já vem com o setor em que o operador está
+  // cadastrado — deixar em branco fazia o atendimento nascer sem identificação
+  // de setor. Fica visível e editável antes de enviar; se ele mexer no campo,
+  // a preferência dele manda e nada é preenchido por cima.
+  useEffect(() => {
+    if (tocouNoSetor.current || departamentoId || departamentos.length === 0) return;
+    const meus = departamentos.filter((d) => d.meu);
+    if (meus.length === 0) return;
+    setDepartamentoId(meus[0].id);
+    setSetorAutomatico(true);
+  }, [departamentos, departamentoId]);
+
+  const escolherSetor = (id) => {
+    tocouNoSetor.current = true;
+    setSetorAutomatico(false);
+    setDepartamentoId(id);
+  };
 
   // Ao completar o telefone, consulta contato e atendimento em aberto. Debounce
   // curto porque o operador digita o número inteiro de uma vez.
@@ -109,12 +137,6 @@ export function ModalNovaConversa({ departamentos, onClose, onCriada, onAbrirCon
     }
   };
 
-  useEffect(() => {
-    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
-    document.addEventListener('keydown', onKey);
-    return () => document.removeEventListener('keydown', onKey);
-  }, [onClose]);
-
   const inputComIcone = (icone, props) =>
     React.createElement('div', {
       style: { position: 'relative', display: 'flex', alignItems: 'center', marginBottom: 14 },
@@ -146,12 +168,14 @@ export function ModalNovaConversa({ departamentos, onClose, onCriada, onAbrirCon
     },
   },
     React.createElement('div', {
+      ref: dialogRef, role: 'dialog', 'aria-modal': true, 'aria-label': 'Nova conversa', tabIndex: -1,
       style: {
-        background: 'rgba(255,255,255,0.92)', backdropFilter: 'blur(20px)',
+        background: isDark ? 'rgba(36,52,77,0.94)' : 'rgba(255,255,255,0.92)',
+        backdropFilter: 'blur(20px)',
         WebkitBackdropFilter: 'blur(20px)',
-        border: '1px solid rgba(255,255,255,0.3)',
+        border: `1px solid ${isDark ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.3)'}`,
         borderRadius: T.radiusLg, padding: 0, maxWidth: 500, width: '100%',
-        boxShadow: '0 24px 80px rgba(0,0,0,0.18)', overflow: 'hidden',
+        boxShadow: T.shadowLg, overflow: 'hidden',
         animation: 'modalnova-entrada 0.25s ease-out',
       },
     },
@@ -173,7 +197,7 @@ export function ModalNovaConversa({ departamentos, onClose, onCriada, onAbrirCon
             'Inicie um novo atendimento via WhatsApp'),
         ),
         React.createElement('button', {
-          onClick: onClose,
+          onClick: onClose, 'aria-label': 'Fechar nova conversa',
           style: { background: 'none', border: 'none', cursor: 'pointer', color: T.textMuted, padding: 4, display: 'flex', borderRadius: '50%' },
         }, React.createElement(X, { size: 20 })),
       ),
@@ -247,9 +271,17 @@ export function ModalNovaConversa({ departamentos, onClose, onCriada, onAbrirCon
           style: { fontSize: 11, fontWeight: 600, color: T.textSecondary, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 },
         }, 'Secretaria / Departamento'),
         React.createElement(SeletorDepartamento, {
-          departamentos, valor: departamentoId, onChange: setDepartamentoId,
+          departamentos, valor: departamentoId, onChange: escolherSetor,
           placeholder: 'Sem encaminhamento — busque por secretaria ou setor',
         }),
+        // O preenchimento automático precisa ser visível: o atendente pode
+        // estar ligando em nome de outro setor e trocar antes de enviar.
+        setorAutomatico && React.createElement('div', {
+          style: { marginTop: -8, marginBottom: 14, fontSize: 11.5, color: T.textMuted, display: 'flex', alignItems: 'center', gap: 6 },
+        },
+          React.createElement(CheckCircle2, { size: 13, color: T.primary }),
+          'Preenchido com o seu setor — troque se este atendimento for de outro.',
+        ),
 
         React.createElement('label', {
           style: { fontSize: 11, fontWeight: 600, color: T.textSecondary, marginBottom: 6, display: 'block', textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -269,7 +301,10 @@ export function ModalNovaConversa({ departamentos, onClose, onCriada, onAbrirCon
       React.createElement('div', {
         style: {
           padding: '20px 24px', display: 'flex', justifyContent: 'flex-end', gap: 10,
-          background: 'rgba(0,0,0,0.02)', borderTop: `1px solid ${T.border}`,
+          // No claro, um véu preto de 2% separa o rodapé; no escuro esse véu é
+          // invisível, então a faixa precisa ser mais funda que o card.
+          background: isDark ? 'rgba(0,0,0,0.22)' : 'rgba(0,0,0,0.02)',
+          borderTop: `1px solid ${T.border}`,
         },
       },
         React.createElement('button', {

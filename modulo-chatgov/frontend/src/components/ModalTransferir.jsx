@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ArrowRightLeft } from 'lucide-react';
 import { T } from '../theme';
 import { fetchOperadores } from '../api';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
+import { useModalFocus } from '../hooks/useModalFocus';
 
 const overlay = { position: 'fixed', inset: 0, background: 'rgba(15,26,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 };
 const card = { background: T.surface, borderRadius: T.radiusLg, padding: 24, maxWidth: 440, width: '90%', boxShadow: T.shadowLg };
@@ -15,6 +16,8 @@ export function ModalTransferir({ conversa, onClose, onTransferido }) {
   const [selecionado, setSelecionado] = useState(null);
   const [motivo, setMotivo] = useState('');
   const [enviando, setEnviando] = useState(false);
+  const dialogRef = useRef(null);
+  useModalFocus(dialogRef, onClose);
 
   useEffect(() => {
     fetchOperadores().then(setOperadores).catch(console.error);
@@ -32,8 +35,8 @@ export function ModalTransferir({ conversa, onClose, onTransferido }) {
     });
   };
 
-  return React.createElement('div', { style: overlay },
-    React.createElement('div', { style: card },
+  return React.createElement('div', { style: overlay, onMouseDown: (e) => { if (e.target === e.currentTarget) onClose?.(); } },
+    React.createElement('div', { ref: dialogRef, style: card, role: 'dialog', 'aria-modal': true, 'aria-label': 'Transferir conversa', tabIndex: -1 },
       React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 } },
         React.createElement('div', { style: { width: 38, height: 38, borderRadius: 10, background: T.primarySoft, display: 'flex', alignItems: 'center', justifyContent: 'center' } },
           React.createElement(ArrowRightLeft, { size: 20, color: T.primary })),

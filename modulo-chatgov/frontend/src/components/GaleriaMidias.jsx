@@ -444,7 +444,7 @@ export function GaleriaMidias({ conversa, midias, carregando, onFechar, onIrPara
                   style={{
                     display: 'inline-flex', alignItems: 'center', gap: 4,
                     padding: '3px 10px', borderRadius: 14, fontSize: 12, fontWeight: 500,
-                    background: T.primarySoft, color: T.primary,
+                    background: T.primarySoft, color: T.primaryOnSoft,
                   }}
                 >
                   {tag.label}

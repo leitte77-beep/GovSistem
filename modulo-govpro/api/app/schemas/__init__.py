@@ -169,3 +169,47 @@ class AndamentoOut(BaseModel):
     unidade_id: Optional[uuid.UUID] = None
     usuario_id: Optional[uuid.UUID] = None
     created_at: datetime
+
+
+# ── Modelos de documento e textos padrão ─────────────────────────────────────
+class ModeloDocumentoCreate(BaseModel):
+    nome: str = Field(min_length=2, max_length=200)
+    tipo_documento_id: Optional[uuid.UUID] = None
+    conteudo_html: Optional[str] = None
+
+
+class ModeloDocumentoUpdate(BaseModel):
+    nome: Optional[str] = None
+    tipo_documento_id: Optional[uuid.UUID] = None
+    conteudo_html: Optional[str] = None
+    ativo: Optional[bool] = None
+
+
+class ModeloDocumentoOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    nome: str
+    tipo_documento_id: Optional[uuid.UUID] = None
+    conteudo_html: Optional[str] = None
+    ativo: bool
+
+
+class TextoPadraoCreate(BaseModel):
+    nome: str = Field(min_length=2, max_length=200)
+    conteudo: Optional[str] = None
+
+
+class TextoPadraoUpdate(BaseModel):
+    nome: Optional[str] = None
+    conteudo: Optional[str] = None
+    ativo: Optional[bool] = None
+
+
+class TextoPadraoOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    nome: str
+    conteudo: Optional[str] = None
+    ativo: bool

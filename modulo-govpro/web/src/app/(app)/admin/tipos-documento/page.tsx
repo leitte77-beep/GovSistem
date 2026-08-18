@@ -37,7 +37,7 @@ export default function TiposDocumentoPage() {
   }, []);
 
   const fields: CatalogField[] = [
-    { name: "codigo", label: "Código", type: "text", required: true, disabled: Boolean(editando), span: 1 },
+    { name: "codigo", label: "Código", type: "text", required: false, disabled: Boolean(editando), span: 1, help: "Opcional. Se vazio, é gerado automaticamente a partir do nome." },
     { name: "nome", label: "Nome", type: "text", required: true, span: 1 },
     {
       name: "nivel_assinatura_minimo",
@@ -76,7 +76,7 @@ export default function TiposDocumentoPage() {
         await api.atualizarTipoDocumento(editando.id, payload as TipoDocumentoUpdate);
         toast.success("Tipo de documento atualizado");
       } else {
-        await api.criarTipoDocumento({ codigo: values.codigo as string, ...payload });
+        await api.criarTipoDocumento({ codigo: (values.codigo as string)?.trim() || undefined, ...payload });
         toast.success("Tipo de documento criado");
       }
       setModalAberto(false);

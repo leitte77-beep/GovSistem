@@ -58,11 +58,11 @@ const config: Config = {
         "surface-container-high": "#e6e8ea",
       },
       borderRadius: {
-        DEFAULT: "0.125rem",
-        lg: "0.25rem",
-        xl: "0.5rem",
-        "2xl": "1rem",
-        full: "0.75rem",
+        DEFAULT: "0.5rem",
+        lg: "0.75rem",
+        xl: "1rem",
+        "2xl": "1.25rem",
+        full: "9999px",
       },
       spacing: {
         "stack-sm": "0.5rem",
@@ -71,6 +71,10 @@ const config: Config = {
         "stack-md": "1.5rem",
         "margin-mobile": "1rem",
         "container-max": "1200px",
+      },
+      boxShadow: {
+        card: "0 1px 2px rgba(0,22,49,0.05), 0 4px 16px rgba(0,22,49,0.06)",
+        "card-hover": "0 2px 4px rgba(0,22,49,0.08), 0 10px 28px rgba(0,22,49,0.12)",
       },
       fontFamily: {
         sans: ["Public Sans", "system-ui", "sans-serif"],

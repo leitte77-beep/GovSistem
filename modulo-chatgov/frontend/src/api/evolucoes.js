@@ -114,6 +114,45 @@ export async function salvarConfigNotificacoes(body) {
   return jsonReq('/api/evolucoes/config/notificacoes', 'PUT', body);
 }
 
+// Avisos internos
+export async function fetchAvisosPendentes() {
+  const res = await fetch('/api/evolucoes/avisos/pendentes', { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!res.ok) throw new Error('Erro ao carregar avisos');
+  return res.json();
+}
+
+export async function fetchAvisosAdmin() {
+  const res = await fetch('/api/evolucoes/avisos/admin', { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!res.ok) throw new Error('Erro ao carregar avisos');
+  return res.json();
+}
+
+export async function fetchDestinatariosAviso(id) {
+  const res = await fetch(`/api/evolucoes/avisos/${id}/destinatarios`, { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!res.ok) throw new Error('Erro ao carregar destinatários');
+  return res.json();
+}
+
+export async function criarAvisoApi(body) {
+  return jsonReq('/api/evolucoes/avisos', 'POST', body);
+}
+
+export async function editarAvisoApi(id, body) {
+  return jsonReq(`/api/evolucoes/avisos/${id}`, 'PUT', body);
+}
+
+export async function desativarAvisoApi(id) {
+  return jsonReq(`/api/evolucoes/avisos/${id}`, 'DELETE');
+}
+
+export async function republicarAvisoApi(id) {
+  return jsonReq(`/api/evolucoes/avisos/${id}/republicar`, 'POST');
+}
+
+export async function marcarAvisoLidoApi(id, confirmado) {
+  return jsonReq(`/api/evolucoes/avisos/${id}/ler`, 'POST', { confirmado: Boolean(confirmado) });
+}
+
 // Mensagens fixadas
 export async function fetchMensagensFixadas(canalId) {
   const res = await fetch(`/api/evolucoes/canais-internos/${canalId}/fixadas`, { headers: { Authorization: `Bearer ${getToken()}` } });

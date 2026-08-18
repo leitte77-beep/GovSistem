@@ -85,10 +85,10 @@ export default function NovoProcessoPage() {
             email: i.email.trim() || null,
           })),
       });
-      toast.success(`Processo autuado: ${processo.nup}`);
+      toast.success(`Processo iniciado: ${processo.nup}`);
       router.push(`/processos/${processo.id}`);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao autuar processo");
+      toast.error(err instanceof Error ? err.message : "Erro ao iniciar processo");
     } finally {
       setSubmitting(false);
     }
@@ -104,7 +104,7 @@ export default function NovoProcessoPage() {
 
   return (
     <div className="pb-stack-lg">
-      <PageHeader title="Autuar processo" subtitle="Gera o NUP e dá início ao processo administrativo." />
+      <PageHeader title="Iniciar Processo" subtitle="Gera o NUP e dá início ao processo administrativo." />
 
       <form onSubmit={onSubmit} className="px-gutter max-w-container-max mx-auto space-y-stack-md">
         <div className="bg-surface-container-lowest rounded-lg border border-outline-variant p-6 grid grid-cols-1 md:grid-cols-2 gap-5">
@@ -122,7 +122,7 @@ export default function NovoProcessoPage() {
               <option value="">Selecione…</option>
               {tipos.map((t) => (
                 <option key={t.id} value={t.id}>
-                  {t.nome} ({t.codigo})
+                  {t.nome}
                 </option>
               ))}
             </select>
@@ -133,7 +133,7 @@ export default function NovoProcessoPage() {
 
           <div className="md:col-span-2 space-y-2">
             <label htmlFor="especificacao" className="text-label-md font-label-md text-on-surface">
-              Especificação (assunto) <span className="text-error">*</span>
+              Especificação <span className="text-error">*</span>
             </label>
             <input
               id="especificacao"
@@ -179,7 +179,7 @@ export default function NovoProcessoPage() {
                 <option value="">Selecione…</option>
                 {hipoteses.map((h) => (
                   <option key={h.id} value={h.id}>
-                    {h.descricao} ({h.codigo})
+                    {h.descricao}
                   </option>
                 ))}
               </select>
@@ -290,7 +290,7 @@ export default function NovoProcessoPage() {
             aria-busy={submitting}
             className="h-12 px-6 bg-primary text-on-primary rounded-lg hover:bg-primary-container transition-colors disabled:opacity-60"
           >
-            {submitting ? "Autuando…" : "Autuar processo"}
+            {submitting ? "Iniciando…" : "Iniciar Processo"}
           </button>
         </div>
       </form>

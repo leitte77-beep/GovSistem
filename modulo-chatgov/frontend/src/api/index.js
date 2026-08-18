@@ -102,10 +102,11 @@ export async function fetchMe() {
   }
 }
 
-export async function fetchDepartamentos() {
+export async function fetchDepartamentos({ signal } = {}) {
   try {
     const res = await fetch('/api/departamentos', {
       headers: { Authorization: `Bearer ${getToken()}` },
+      signal,
     });
     if (!res.ok) return [];
     return res.json();
@@ -537,13 +538,22 @@ export async function fetchOperacional({ departamentoId, signal } = {}) {
 
 // ===== Dashboard =====
 
-export async function fetchDashboard() {
-  const res = await fetch('/api/admin/dashboard', { headers: { Authorization: `Bearer ${getToken()}` } });
-  if (!res.ok) throw new Error('Erro ao carregar dashboard');
+export async function fetchDashboard({ inicio, fim, departamentoId, canal, signal } = {}) {
+  const params = new URLSearchParams();
+  if (inicio) params.set('inicio', inicio);
+  if (fim) params.set('fim', fim);
+  if (departamentoId) params.set('departamento_id', departamentoId);
+  if (canal) params.set('canal', canal);
+  const query = params.toString();
+  const res = await fetch(`/api/admin/dashboard${query ? `?${query}` : ''}`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+    signal,
+  });
+  if (!res.ok) throw new Error('Erro ao carregar o painel operacional');
   return res.json();
 }
 
-export async function fetchRelatorioMetricas(inicio, fim, { departamentoId, operadorId, status, canal, comparar } = {}) {
+export async function fetchRelatorioMetricas(inicio, fim, { departamentoId, operadorId, status, canal, comparar, signal } = {}) {
   const params = new URLSearchParams();
   if (inicio) params.set('inicio', inicio);
   if (fim) params.set('fim', fim);
@@ -552,8 +562,11 @@ export async function fetchRelatorioMetricas(inicio, fim, { departamentoId, oper
   if (status) params.set('status', status);
   if (canal) params.set('canal', canal);
   if (comparar) params.set('comparar', 'true');
-  const res = await fetch(`/api/relatorios/metricas?${params.toString()}`, { headers: { Authorization: `Bearer ${getToken()}` } });
-  if (!res.ok) throw new Error('Erro ao carregar relatórios');
+  const res = await fetch(`/api/relatorios/metricas?${params.toString()}`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+    signal,
+  });
+  if (!res.ok) throw new Error(res.status === 403 ? 'Sem permissão para ver os indicadores' : 'Erro ao carregar indicadores');
   return res.json();
 }
 

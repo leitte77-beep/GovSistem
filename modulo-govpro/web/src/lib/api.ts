@@ -23,6 +23,10 @@ import type {
   InteressadoOut,
   MatrizAssinaturaUpdate,
   ManifestacaoOut,
+  ModeloDocumento,
+  ModeloDocumentoInput,
+  ModeloDocumentoUpdate,
+  ModeloPadraoResult,
   MotivoSobrestamento,
   MotivoSobrestamentoInput,
   MotivoSobrestamentoUpdate,
@@ -33,6 +37,11 @@ import type {
   PrazoItem,
   ProcessoAutuarInput,
   ProcessoOut,
+  RenderModeloResult,
+  RenderTextoResult,
+  TextoPadrao,
+  TextoPadraoInput,
+  TextoPadraoUpdate,
   TipoDocumento,
   TipoDocumentoInput,
   TipoDocumentoUpdate,
@@ -142,6 +151,24 @@ export const api = {
   listMotivosSobrestamento() {
     return request<MotivoSobrestamento[]>("/dominio/motivos-sobrestamento");
   },
+  listModelosDocumento() {
+    return request<ModeloDocumento[]>("/dominio/modelos-documento");
+  },
+  listTextosPadrao() {
+    return request<TextoPadrao[]>("/dominio/textos-padrao");
+  },
+  renderModeloDocumento(modeloId: string, processoId: string) {
+    const q = new URLSearchParams({ processo_id: processoId });
+    return request<RenderModeloResult>(`/dominio/modelos-documento/${modeloId}/render?${q.toString()}`);
+  },
+  renderTextoPadrao(textoId: string, processoId: string) {
+    const q = new URLSearchParams({ processo_id: processoId });
+    return request<RenderTextoResult>(`/dominio/textos-padrao/${textoId}/render?${q.toString()}`);
+  },
+  modeloPadraoTipo(tipoDocumentoId: string, processoId: string) {
+    const q = new URLSearchParams({ processo_id: processoId });
+    return request<ModeloPadraoResult>(`/dominio/tipos-documento/${tipoDocumentoId}/modelo-padrao?${q.toString()}`);
+  },
 
   // Processos
   listProcessos(params?: {
@@ -178,15 +205,27 @@ export const api = {
   listInteressados(processoId: string) {
     return request<InteressadoOut[]>(`/processos/${processoId}/interessados`);
   },
-  encerrarProcesso(processoId: string, motivo: string) {
-    const q = new URLSearchParams({ motivo });
-    return request<ProcessoOut>(`/processos/${processoId}/encerrar?${q.toString()}`, {
+  concluirProcesso(processoId: string, motivo?: string) {
+    const q = new URLSearchParams();
+    if (motivo) q.set("motivo", motivo);
+    const qs = q.toString();
+    return request<ProcessoOut>(`/processos/${processoId}/concluir${qs ? `?${qs}` : ""}`, {
       method: "POST",
     });
   },
-  reabrirProcesso(processoId: string, motivo: string) {
-    const q = new URLSearchParams({ motivo });
-    return request<ProcessoOut>(`/processos/${processoId}/reabrir?${q.toString()}`, {
+  arquivarProcesso(processoId: string, motivo?: string) {
+    const q = new URLSearchParams();
+    if (motivo) q.set("motivo", motivo);
+    const qs = q.toString();
+    return request<ProcessoOut>(`/processos/${processoId}/arquivar${qs ? `?${qs}` : ""}`, {
+      method: "POST",
+    });
+  },
+  reabrirProcesso(processoId: string, motivo?: string) {
+    const q = new URLSearchParams();
+    if (motivo) q.set("motivo", motivo);
+    const qs = q.toString();
+    return request<ProcessoOut>(`/processos/${processoId}/reabrir${qs ? `?${qs}` : ""}`, {
       method: "POST",
     });
   },
@@ -461,6 +500,38 @@ export const api = {
   },
   removerMotivoSobrestamento(id: string) {
     return request<void>(`/dominio/motivos-sobrestamento/${id}`, { method: "DELETE" });
+  },
+
+  criarModeloDocumento(data: ModeloDocumentoInput) {
+    return request<ModeloDocumento>("/dominio/modelos-documento", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  atualizarModeloDocumento(id: string, data: ModeloDocumentoUpdate) {
+    return request<ModeloDocumento>(`/dominio/modelos-documento/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+  removerModeloDocumento(id: string) {
+    return request<void>(`/dominio/modelos-documento/${id}`, { method: "DELETE" });
+  },
+
+  criarTextoPadrao(data: TextoPadraoInput) {
+    return request<TextoPadrao>("/dominio/textos-padrao", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  atualizarTextoPadrao(id: string, data: TextoPadraoUpdate) {
+    return request<TextoPadrao>(`/dominio/textos-padrao/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+  removerTextoPadrao(id: string) {
+    return request<void>(`/dominio/textos-padrao/${id}`, { method: "DELETE" });
   },
 
   // Matriz de assinaturas

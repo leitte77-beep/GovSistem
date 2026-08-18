@@ -19,9 +19,9 @@ export function formatDateTime(iso: string | null | undefined): string {
 }
 
 export const SITUACAO_LABEL: Record<string, string> = {
-  EM_TRAMITACAO: "Em tramitação",
+  EM_TRAMITACAO: "Aberto",
   SOBRESTADO: "Sobrestado",
-  ENCERRADO: "Encerrado",
+  ENCERRADO: "Concluído",
   ARQUIVADO: "Arquivado",
 };
 
@@ -52,17 +52,18 @@ export const SITUACAO_DOCUMENTO_LABEL: Record<string, string> = {
 };
 
 export const TIPO_EVENTO_LABEL: Record<string, string> = {
-  AUTUACAO: "Autuação",
+  AUTUACAO: "Início do Processo",
   JUNTADA: "Juntada",
   PRODUCAO_DOCUMENTO: "Produção de documento",
   ASSINATURA: "Assinatura",
-  TRAMITACAO: "Tramitação",
+  TRAMITACAO: "Envio",
   DEVOLUCAO: "Devolução",
   DESENTRANHAMENTO: "Desentranhamento",
   SOBRESTAMENTO: "Sobrestamento",
   REATIVACAO: "Reativação",
   DESPACHO: "Despacho",
-  ENCERRAMENTO: "Encerramento",
+  ENCERRAMENTO: "Conclusão na Unidade",
+  ARQUIVAMENTO: "Arquivamento",
   REABERTURA: "Reabertura",
   OUTRO: "Outro",
 };

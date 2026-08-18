@@ -171,7 +171,7 @@ function ModalServico({ servico, onClose, onSalvo }) {
     },
       React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 } },
         React.createElement('h3', { style: { fontSize: 17, fontWeight: 700, color: T.text, margin: 0, flex: 1 } }, servico.id ? 'Editar serviço' : 'Novo serviço'),
-        React.createElement('button', { onClick: onClose, style: { width: 32, height: 32, borderRadius: '50%', border: 'none', background: 'transparent', color: T.textMuted, cursor: 'pointer', fontSize: 18 } }, React.createElement(X, { size: 18 })),
+        React.createElement('button', { onClick: onClose, 'aria-label': 'Fechar configuração', style: { width: 32, height: 32, borderRadius: '50%', border: 'none', background: 'transparent', color: T.textMuted, cursor: 'pointer', fontSize: 18 } }, React.createElement(X, { size: 18 })),
       ),
 
       React.createElement('input', { value: nome, onChange: e => setNome(e.target.value), placeholder: 'Nome do serviço', style: inputStyle }),
@@ -191,7 +191,7 @@ function ModalServico({ servico, onClose, onSalvo }) {
         ),
         React.createElement('label', { style: { fontSize: 11, display: 'flex', alignItems: 'center', gap: 3, whiteSpace: 'nowrap' } },
           React.createElement('input', { type: 'checkbox', checked: c.obrigatorio, onChange: e => attCampo(i, 'obrigatorio', e.target.checked) }), 'Obrig.'),
-        React.createElement('button', { onClick: () => remCampo(i), style: { padding: '6px 8px', borderRadius: T.radiusSm, border: 'none', background: T.dangerSoft, color: T.danger, cursor: 'pointer', fontSize: 11 } }, React.createElement(X, { size: 12 })),
+        React.createElement('button', { onClick: () => remCampo(i), 'aria-label': `Remover campo ${i + 1}`, style: { padding: '6px 8px', borderRadius: T.radiusSm, border: 'none', background: T.dangerSoft, color: T.danger, cursor: 'pointer', fontSize: 11 } }, React.createElement(X, { size: 12 })),
       )),
       React.createElement('button', { onClick: addCampo, style: { ...btnPrimary, background: T.surfaceAlt, color: T.primary, border: `1px dashed ${T.primary}`, marginBottom: 16 } }, React.createElement(Plus, { size: 14 }), 'Adicionar campo'),
 

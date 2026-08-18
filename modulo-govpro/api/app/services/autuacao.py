@@ -154,7 +154,7 @@ async def autuar(
             tenant_id=tenant_id,
             processo_id=processo.id,
             tipo_evento=TipoEvento.AUTUACAO.value,
-            descricao=f"Processo autuado com NUP {nup}.",
+            descricao=f"Processo iniciado com NUP {nup}.",
             unidade_id=unidade.id,
             usuario_id=user.id,
         )
@@ -303,7 +303,7 @@ async def autuar_externo(
             tenant_id=tenant_id,
             processo_id=processo.id,
             tipo_evento=TipoEvento.AUTUACAO.value,
-            descricao=f"Processo autuado por peticionamento externo com NUP {nup}.",
+            descricao=f"Processo iniciado por peticionamento externo com NUP {nup}.",
             unidade_id=unidade.id,
         )
     )

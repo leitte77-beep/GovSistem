@@ -1,64 +1,9 @@
 import React, { useState } from 'react';
 import { T } from '../theme';
 import { formatarHora } from '../utils/arquivo';
+import { renderizarMarkdown } from '../utils/markdown';
 import { MediaPreview, MediaLightbox } from './MediaPreview';
 import { votarEnquete } from '../api';
-
-const URL_REGEX = /(https?:\/\/[^\s<]+)/g;
-const MARKDOWN_REGEX = /(\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`)/g;
-
-/**
- * Renderiza markdown inline: **bold**, *italic*, `code`, URLs clicaveis
- */
-function renderizarMarkdown(texto) {
-  if (!texto) return texto;
-
-  // Primeiro, divide por URLs para protegê-las de processamento interno
-  const partes = texto.split(URL_REGEX);
-  return partes.map((parte, i) => {
-    // URLs são renderizadas como links
-    if (URL_REGEX.test(parte) && i % 2 === 1) {
-      return React.createElement('a', {
-        key: i,
-        href: parte,
-        target: '_blank',
-        rel: 'noopener noreferrer',
-        style: { color: '#2563EB', textDecoration: 'underline' },
-      }, parte);
-    }
-
-    // Renderiza bold, italic e code inline
-    const tokens = parte.split(MARKDOWN_REGEX).filter(Boolean);
-    if (tokens.length <= 1) {
-      // Garantir que um único texto também seja keyed para evitar warning
-      return i === 0 && tokens.length === 1 ? tokens[0] : React.createElement(React.Fragment, { key: i }, tokens[0] || parte);
-    }
-
-    return React.createElement(React.Fragment, { key: i },
-      tokens.map((token, j) => {
-        // **bold**
-        if (/^\*\*(.+)\*\*$/.test(token)) {
-          return React.createElement('strong', { key: j }, token.slice(2, -2));
-        }
-        // *italic*
-        if (/^\*(.+)\*$/.test(token)) {
-          return React.createElement('em', { key: j }, token.slice(1, -1));
-        }
-        // `code`
-        if (/^`(.+)`$/.test(token)) {
-          return React.createElement('code', {
-            key: j,
-            style: {
-              background: 'rgba(0,0,0,0.06)', borderRadius: 4, padding: '1px 5px',
-              fontFamily: 'monospace', fontSize: 13,
-            },
-          }, token.slice(1, -1));
-        }
-        return token;
-      }),
-    );
-  });
-}
 
 function EnqueteWidget({ msg, opId }) {
   const [dados, setDados] = useState(() => {

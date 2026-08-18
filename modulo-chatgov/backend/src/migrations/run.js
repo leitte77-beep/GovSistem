@@ -20,6 +20,8 @@ export async function runMigrations() {
     join(__dirname, '028_sessao_conta_sem_protocolo.sql'),
     join(__dirname, '029_conversa_ciclos.sql'),
     join(__dirname, '030_menu_setores.sql'),
+    join(__dirname, '031_fila_atendente.sql'),
+    join(__dirname, '032_avisos_internos.sql'),
   ];
 
   for (const path of migrations) {

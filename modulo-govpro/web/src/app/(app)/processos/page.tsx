@@ -11,9 +11,9 @@ import { NivelAcessoBadge, SituacaoBadge } from "@/components/processo/badges";
 
 const SITUACAO_OPTIONS = [
   { value: "", label: "Todas as situações" },
-  { value: "EM_TRAMITACAO", label: "Em tramitação" },
+  { value: "EM_TRAMITACAO", label: "Aberto" },
   { value: "SOBRESTADO", label: "Sobrestado" },
-  { value: "ENCERRADO", label: "Encerrado" },
+  { value: "ENCERRADO", label: "Concluído" },
   { value: "ARQUIVADO", label: "Arquivado" },
 ];
 
@@ -103,7 +103,7 @@ export default function ProcessosPage() {
             className="inline-flex items-center gap-2 h-11 px-4 bg-primary text-on-primary rounded-lg hover:bg-primary-container transition-colors"
           >
             <span className="material-symbols-outlined text-[20px]" aria-hidden="true">add_circle</span>
-            Autuar processo
+            Iniciar Processo
           </Link>
         }
       />
@@ -188,7 +188,7 @@ export default function ProcessosPage() {
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div>
-                  <label className="text-label-md font-label-md text-on-surface">Autuado de</label>
+                  <label className="text-label-md font-label-md text-on-surface">Gerado de</label>
                   <input
                     type="date"
                     value={filtros.dataInicio}
@@ -231,7 +231,7 @@ export default function ProcessosPage() {
           <EmptyState
             icon="folder_open"
             title="Nenhum processo encontrado"
-            description="Ajuste a busca ou os filtros, ou autue um novo processo."
+            description="Ajuste a busca ou os filtros, ou inicie um novo processo."
           />
         ) : (
           <div className="bg-surface-container-lowest rounded-lg border border-outline-variant overflow-hidden overflow-x-auto">
@@ -242,7 +242,7 @@ export default function ProcessosPage() {
                   <th className="px-4 py-3">Especificação</th>
                   <th className="px-4 py-3">Acesso</th>
                   <th className="px-4 py-3">Situação</th>
-                  <th className="px-4 py-3">Autuação</th>
+                  <th className="px-4 py-3">Início</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-outline-variant">

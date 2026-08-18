@@ -91,7 +91,7 @@ async def tramitar(
             tenant_id=tenant_id,
             processo_id=processo.id,
             tipo_evento=TipoEvento.TRAMITACAO.value,
-            descricao=f"Processo tramitado para {len(destinos)} unidade(s).",
+            descricao=f"Processo enviado para {len(destinos)} unidade(s).",
             unidade_id=unidade_origem_id,
             usuario_id=user.id,
         )
@@ -125,10 +125,10 @@ async def receber_tramitacao(
     tramitacao = await db.get(Tramitacao, tramitacao_id)
     if tramitacao is None or tramitacao.tenant_id != tenant_id:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="Tramitação não encontrada"
+            status_code=status.HTTP_404_NOT_FOUND, detail="Envio não encontrado"
         )
     if tramitacao.recebida:
-        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Tramitação já recebida")
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Envio já recebido")
 
     tramitacao.recebida = True
     tramitacao.recebida_em = agora_utc()

@@ -531,6 +531,7 @@ function ModalExport({ isOpen, onClose, selecao, setSelecao, onExportarCSV, onEx
         React.createElement('h3', { style: { fontSize: 15, fontWeight: 700, color: T.text, margin: 0 } }, 'Exportar Relatório'),
         React.createElement('button', {
           onClick: onClose,
+          'aria-label': 'Fechar exportação',
           style: { border: 'none', background: 'none', cursor: 'pointer', padding: 4, color: T.textMuted },
         }, React.createElement(X, { size: 18 })),
       ),

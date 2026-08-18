@@ -4,9 +4,11 @@ import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
 import { fetchMensagensInternas, fetchCanaisInternos, fetchOperadores, buscarMensagensCanal, adicionarMembrosCanal, removerMembroCanal, sairCanal, criarEnquete } from '../api';
 import { fetchMensagensFixadas, uploadArquivoApi } from '../api/evolucoes';
+import { useAlturaComposer } from '../hooks/useAlturaComposer';
 import { T } from '../theme';
 import { BolhaMensagem } from './BolhaMensagem';
 import { normalizarMsg, normalizarMensagens, normalizarCanal } from '../utils/normalizar';
+import { htmlParaTexto } from '../utils/htmlParaTexto';
 import { encodeFileBase64, mimeParaTipo, agruparMensagens, formatarHora, mesmaData, formatarDataSeparador } from '../utils/arquivo';
 import { SeparadorData } from './SeparadorData';
 
@@ -100,6 +102,10 @@ export function PainelChatInternoAvancado({ canal, breakpoint, onVoltar }) {
   const typingTimerRef = useRef(null);
   const digitandoTimerRef = useRef(null);
   const fileInputRef = useRef(null);
+  const campoRef = useRef(null);
+
+  // Campo de digitação que cresce com o conteúdo até um teto e então rola.
+  useAlturaComposer(campoRef, [texto, anexoPreview, audioBlob]);
 
   // Som de notificação via Web Audio API
   const playNotificacao = useCallback(() => {
@@ -122,6 +128,22 @@ export function PainelChatInternoAvancado({ canal, breakpoint, onVoltar }) {
   const handlePaste = useCallback((e) => {
     const EXTENSOES_CHAT_INTERNO = ['exe','bat','cmd','msi','vbs','ps1','scr','com','sh','dll','pif','cpl','wsf','wsh','hta','jar','reg','scf','lnk'];
     const MAX_CHAT_INTERNO_BYTES = 50 * 1024 * 1024; // 50 MB
+
+    const html = e.clipboardData?.getData?.('text/html');
+    if (html && e.target && typeof e.target.selectionStart === 'number') {
+      const textoLimpo = htmlParaTexto(html);
+      if (textoLimpo) {
+        e.preventDefault();
+        const el = e.target;
+        const start = el.selectionStart ?? el.value.length;
+        const end = el.selectionEnd ?? el.value.length;
+        setTexto(el.value.slice(0, start) + textoLimpo + el.value.slice(end));
+        const pos = start + textoLimpo.length;
+        requestAnimationFrame(() => { el.selectionStart = el.selectionEnd = pos; });
+      }
+      return;
+    }
+
     const items = e.clipboardData?.items || [];
     for (const item of items) {
       if (item.type.startsWith('image/')) {
@@ -610,7 +632,7 @@ export function PainelChatInternoAvancado({ canal, breakpoint, onVoltar }) {
   }, [mencaoBusca, membrosCanal]);
 
   const inserirMencao = (operador) => {
-    const cursorPos = document.querySelector('textarea')?.selectionStart || texto.length;
+    const cursorPos = campoRef.current?.selectionStart ?? texto.length;
     const textoAteCursor = texto.slice(0, cursorPos);
     const textoAposCursor = texto.slice(cursorPos);
     const novoAte = textoAteCursor.replace(/@\S*$/, `@${operador.nome} `);
@@ -924,6 +946,7 @@ export function PainelChatInternoAvancado({ canal, breakpoint, onVoltar }) {
         React.createElement('span', { style: { maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, a.nome),
         React.createElement('button', {
           onClick: () => setAnexosMultiplos((prev) => prev.filter((_, j) => j !== i)),
+          'aria-label': `Remover anexo ${a.nome || i + 1}`,
           style: { background: 'none', border: 'none', cursor: 'pointer', color: T.textMuted, padding: 0, display: 'flex' },
         }, React.createElement(X, { size: 10 })),
       )),
@@ -979,7 +1002,7 @@ export function PainelChatInternoAvancado({ canal, breakpoint, onVoltar }) {
           React.createElement('input', { type: 'text', value: enquetePergunta, onChange: (e) => setEnquetePergunta(e.target.value), placeholder: 'Pergunta', style: { width: '100%', padding: '8px 12px', border: `1px solid ${T.border}`, borderRadius: 8, fontSize: 13, marginBottom: 12, outline: 'none', boxSizing: 'border-box' } }),
           ...enqueteOpcoes.map((op, i) => React.createElement('div', { key: i, style: { display: 'flex', gap: 8, marginBottom: 8 } },
             React.createElement('input', { type: 'text', value: op, onChange: (e) => { const n = [...enqueteOpcoes]; n[i] = e.target.value; setEnqueteOpcoes(n); }, placeholder: `Opcao ${i + 1}`, style: { flex: 1, padding: '6px 10px', border: `1px solid ${T.border}`, borderRadius: 6, fontSize: 13, outline: 'none' } }),
-            enqueteOpcoes.length > 2 && React.createElement('button', { onClick: () => setEnqueteOpcoes((p) => p.filter((_, j) => j !== i)), style: { background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer' } }, React.createElement(X, { size: 14 })),
+            enqueteOpcoes.length > 2 && React.createElement('button', { onClick: () => setEnqueteOpcoes((p) => p.filter((_, j) => j !== i)), 'aria-label': `Remover opção ${i + 1} da enquete`, style: { background: 'none', border: 'none', color: T.textMuted, cursor: 'pointer' } }, React.createElement(X, { size: 14 })),
           )),
           React.createElement('button', { onClick: () => setEnqueteOpcoes((p) => [...p, '']), style: { background: 'none', border: 'none', color: T.primary, cursor: 'pointer', fontSize: 12, marginBottom: 12 } }, '+ Adicionar opcao'),
           React.createElement('div', { style: { display: 'flex', gap: 8, justifyContent: 'flex-end' } },
@@ -1024,6 +1047,7 @@ export function PainelChatInternoAvancado({ canal, breakpoint, onVoltar }) {
       ),
 
       React.createElement('textarea', {
+        ref: campoRef,
         value: texto, onChange: handleTextoChange, onKeyDown: handleTeclaInput,
         placeholder: editando ? 'Editar mensagem...' : respondendoA ? 'Responder...' : anexoPreview ? 'Adicione uma legenda...' : gravando ? 'Gravando áudio...' : audioBlob ? 'Adicione uma legenda (opcional)...' : 'Digite uma mensagem (use @ para mencionar)',
         'aria-label': 'Caixa de mensagem', rows: 1, disabled: gravando,
@@ -1086,7 +1110,7 @@ export function PainelChatInternoAvancado({ canal, breakpoint, onVoltar }) {
                 'aria-label': `Encaminhar para ${nomeDest}`,
                 style: { display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '10px 12px', background: 'none', border: 'none', cursor: 'pointer', borderRadius: 8, textAlign: 'left', color: T.text, fontSize: 14, borderBottom: `1px solid ${T.border}` },
               },
-                React.createElement('div', { style: { width: 32, height: 32, borderRadius: '50%', background: T.primarySoft, color: T.primary, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13 } }, (nomeDest[0] || '?').toUpperCase()),
+                React.createElement('div', { style: { width: 32, height: 32, borderRadius: '50%', background: T.primarySoft, color: T.primaryOnSoft, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: 13 } }, (nomeDest[0] || '?').toUpperCase()),
                 React.createElement('div', { style: { flex: 1, minWidth: 0 } },
                   React.createElement('div', { style: { fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, nomeDest),
                   React.createElement('div', { style: { fontSize: 11, color: T.textMuted } }, c.tipo === 'dm' ? 'Conversa direta' : `${c.membros?.length || 0} membros`),
@@ -1120,13 +1144,14 @@ export function PainelChatInternoAvancado({ canal, breakpoint, onVoltar }) {
               onClick: async () => {
                 try { await removerMembroCanal(canal.id, m.id); setShowGrupoInfo(false); } catch {}
               },
+              'aria-label': `Remover ${m.nome || 'membro'} do canal`,
               style: { background: 'none', border: 'none', cursor: 'pointer', color: '#DC2626', display: 'flex', padding: 4 },
             }, React.createElement(UserMinus, { size: 14 })),
           )),
         ),
         canal.tipo === 'grupo' && canal.criado_por === opId && React.createElement('button', {
           onClick: () => setShowGrupoInfo(false),
-          style: { display: 'flex', alignItems: 'center', gap: 6, width: '100%', padding: '8px', background: T.primarySoft, border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13, color: T.primary, fontWeight: 600, marginBottom: 8 },
+          style: { display: 'flex', alignItems: 'center', gap: 6, width: '100%', padding: '8px', background: T.primarySoft, border: 'none', borderRadius: 8, cursor: 'pointer', fontSize: 13, color: T.primaryOnSoft, fontWeight: 600, marginBottom: 8 },
         }, React.createElement(UserPlus, { size: 14 }), 'Adicionar membros'),
         canal.tipo === 'grupo' && canal.criado_por !== opId && React.createElement('button', {
           onClick: async () => {

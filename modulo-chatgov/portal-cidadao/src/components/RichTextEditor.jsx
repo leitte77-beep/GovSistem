@@ -59,7 +59,13 @@ export function RichTextEditor({ value, onChange, placeholder, minHeight = 120 }
     el.addEventListener('paste', (e) => {
       e.preventDefault();
       const text = e.clipboardData.getData('text/plain');
-      document.execCommand('insertText', false, text);
+      const html = text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\r\n?/g, '\n')
+        .replace(/\n/g, '<br>');
+      document.execCommand('insertHTML', false, html);
     });
   }, [value, emitChange]);
 

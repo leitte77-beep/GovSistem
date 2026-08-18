@@ -138,14 +138,19 @@
         .composer textarea {
           flex: 1 1 auto; min-width: 0; width: 100%;
           resize: none;
-          min-height: 40px; max-height: 120px;
+          /* A altura real é calculada em JS (cresce com o conteúdo); estes limites
+             são a rede de segurança caso o script ainda não tenha rodado. */
+          min-height: 40px; max-height: min(220px, 32vh);
           line-height: 1.25rem;
           padding: .5rem .75rem;
           font-size: 16px;
-          overflow-y: auto;
-          scrollbar-width: none;
+          overflow-y: hidden;
+          scrollbar-width: thin;
+          transition: height .08s ease-out;
         }
-        .composer textarea::-webkit-scrollbar { display: none; }
+        .composer textarea::-webkit-scrollbar { width: 6px; }
+        .composer textarea::-webkit-scrollbar-thumb { background: rgba(128,141,161,.45); border-radius: 3px; }
+        .composer textarea::-webkit-scrollbar-track { background: transparent; }
         .composer textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         @media (max-width: 480px) {
           .composer .icon-emoji { display: none; }
@@ -184,9 +189,9 @@
           a { text-decoration: underline !important; }
         }
     </style>
-  <script type="module" crossorigin src="/assets/index-BPnjakQ1.js"></script>
+  <script type="module" crossorigin src="/assets/index-Ct8mpRRK.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/rolldown-runtime-QTnfLwEv.js">
-  <link rel="modulepreload" crossorigin href="/assets/vendor-DjebsMd2.js">
+  <link rel="modulepreload" crossorigin href="/assets/vendor-DC6EfaHz.js">
   <link rel="stylesheet" crossorigin href="/assets/index-DMagNGAO.css">
 </head>
 <body class="bg-background text-on-background antialiased flex overflow-hidden h-screen">

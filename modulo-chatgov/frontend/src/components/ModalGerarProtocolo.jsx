@@ -9,6 +9,7 @@ import {
 } from 'lucide-react';
 import { T } from '../theme';
 import { RichTextEditor } from './RichTextEditor.jsx';
+import { useModalFocus } from '../hooks/useModalFocus';
 
 var ORIGENS = [
   { value: 'whatsapp', label: 'WhatsApp' },
@@ -195,6 +196,8 @@ export function ModalGerarProtocolo({ conversa, onClose, onCriado }) {
   var [operadores, setOperadores] = useState([]);
   var [carregando, setCarregando] = useState(true);
   var [copiado, setCopiado] = useState('');
+  var dialogRef = useRef(null);
+  useModalFocus(dialogRef, onClose, undefined, carregando ? 'carregando' : sucesso ? 'sucesso' : 'formulario');
 
   var searchTimer = useRef(null);
   // Chave de idempotência da tentativa de criação em curso.
@@ -615,6 +618,7 @@ export function ModalGerarProtocolo({ conversa, onClose, onCriado }) {
       style: { position: 'fixed', inset: 0, zIndex: 300, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.3)' },
     },
       React.createElement('div', {
+        ref: dialogRef, role: 'dialog', 'aria-modal': true, 'aria-label': 'Carregando novo protocolo', 'aria-busy': true, tabIndex: -1,
         style: { background: T.surface, borderRadius: T.radiusLg, padding: 40, textAlign: 'center' },
       },
         React.createElement(Loader2, { size: 32, style: { color: T.primary, animation: 'girar 1s linear infinite' } }),
@@ -637,6 +641,7 @@ export function ModalGerarProtocolo({ conversa, onClose, onCriado }) {
       onClick: function (event) { if (event.target === event.currentTarget && onClose) onClose(); },
     },
       React.createElement('div', {
+        ref: dialogRef, role: 'dialog', 'aria-modal': true, 'aria-label': 'Protocolo criado com sucesso', tabIndex: -1,
         style: {
           background: T.surface, borderRadius: T.radiusLg, maxWidth: 520, width: '95%',
           maxHeight: '90vh', overflowY: 'auto', boxShadow: T.shadowLg,
@@ -777,6 +782,7 @@ export function ModalGerarProtocolo({ conversa, onClose, onCriado }) {
     onClick: function (event) { if (event.target === event.currentTarget && onClose) onClose(); },
   },
     React.createElement('div', {
+      ref: dialogRef, role: 'dialog', 'aria-modal': true, 'aria-label': 'Novo protocolo', tabIndex: -1,
       style: {
         background: T.surface, borderRadius: T.radiusLg, width: '100%', maxWidth: 900,
         maxHeight: '90vh', display: 'flex', flexDirection: 'column',
@@ -1190,6 +1196,7 @@ export function ModalGerarProtocolo({ conversa, onClose, onCriado }) {
             ),
             React.createElement('button', {
               onClick: function () { removeFile(f._id); },
+              'aria-label': 'Remover arquivo ' + f.name,
               style: {
                 padding: '4px 6px', borderRadius: T.radiusSm, border: 'none', background: T.dangerSoft,
                 color: T.danger, cursor: 'pointer', display: 'flex', alignItems: 'center',

@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
+import dynamic from "next/dynamic";
+import DOMPurify from "dompurify";
 import toast from "react-hot-toast";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -14,17 +16,22 @@ import type {
   HipoteseLegal,
   IntimacaoOut,
   InteressadoOut,
+  ModeloDocumento,
   MotivoSobrestamento,
   ProcessoOut,
+  TextoPadrao,
   TipoDocumento,
   TramitacaoOut,
   Unidade,
 } from "@/types/govpro";
-import { formatDateTime, TIPO_EVENTO_LABEL } from "@/lib/format";
+import { formatDateTime, NIVEL_ACESSO_LABEL, SITUACAO_LABEL, TIPO_EVENTO_LABEL } from "@/lib/format";
 import PageHeader from "@/components/PageHeader";
 import ConfirmModal from "@/components/ConfirmModal";
 import Badge from "@/components/Badge";
 import { NivelAcessoBadge, SituacaoBadge, SituacaoDocumentoBadge } from "@/components/processo/badges";
+import type { RichTextEditorHandle } from "@/components/RichTextEditor";
+
+const RichTextEditor = dynamic(() => import("@/components/RichTextEditor"), { ssr: false });
 
 const PAPEIS_SIGILO = ["GESTOR_SIGILO", "AUTORIDADE_SIGNATARIA", "ADMIN", "DPO"];
 const PAPEIS_ARQUIVO = ["ARQUIVISTA", "ADMIN"];
@@ -106,7 +113,7 @@ export default function ProcessoDetalhePage() {
     { key: "andamentos", label: "Andamentos", icon: "timeline", count: andamentos.length },
     { key: "documentos", label: "Documentos", icon: "description", count: documentos.length },
     { key: "interessados", label: "Interessados", icon: "group", count: interessados.length },
-    { key: "tramitacoes", label: "Tramitações", icon: "swap_horiz", count: tramitacoes.length },
+    { key: "tramitacoes", label: "Envios", icon: "swap_horiz", count: tramitacoes.length },
     { key: "acesso", label: "Acesso e comunicações", icon: "key" },
     ...(podeArquivo ? [{ key: "arquivo" as Tab, label: "Arquivo", icon: "inventory_2" }] : []),
   ];
@@ -140,10 +147,10 @@ export default function ProcessoDetalhePage() {
       />
 
       <div className="px-gutter max-w-container-max mx-auto">
-        <div className="bg-surface-container-lowest rounded-lg border border-outline-variant p-5 mb-6 grid grid-cols-2 md:grid-cols-4 gap-4 text-body-sm">
-          <Info label="Situação" value={processo.situacao} />
-          <Info label="Nível de acesso" value={processo.nivel_acesso} />
-          <Info label="Autuado em" value={formatDateTime(processo.data_autuacao)} />
+        <div className="bg-surface-container-lowest rounded-xl border border-outline-variant p-5 mb-6 grid grid-cols-2 md:grid-cols-4 gap-4 text-body-sm shadow-card">
+          <Info label="Situação" value={SITUACAO_LABEL[processo.situacao] || processo.situacao} />
+          <Info label="Nível de acesso" value={NIVEL_ACESSO_LABEL[processo.nivel_acesso] || processo.nivel_acesso} />
+          <Info label="Gerado em" value={formatDateTime(processo.data_autuacao)} />
           <Info label="Criado em" value={formatDateTime(processo.created_at)} />
         </div>
 
@@ -224,11 +231,12 @@ function ProcessoActions({
   onChanged: () => void;
   podeSigilo: boolean;
 }) {
-  const [modal, setModal] = useState<null | "encerrar" | "reabrir" | "sobrestar" | "reativar">(null);
+  const [modal, setModal] = useState<null | "concluir" | "arquivar" | "reabrir" | "sobrestar" | "reativar">(null);
   const [motivo, setMotivo] = useState("");
   const [running, setRunning] = useState(false);
 
-  const precisaMotivo = modal !== "reativar";
+  const precisaMotivo = modal === "sobrestar";
+  const mostraMotivo = modal !== "reativar";
 
   const executar = async () => {
     if (precisaMotivo && !motivo.trim()) {
@@ -237,8 +245,9 @@ function ProcessoActions({
     }
     setRunning(true);
     try {
-      if (modal === "encerrar") await api.encerrarProcesso(processo.id, motivo);
-      else if (modal === "reabrir") await api.reabrirProcesso(processo.id, motivo);
+      if (modal === "concluir") await api.concluirProcesso(processo.id, motivo.trim() || undefined);
+      else if (modal === "arquivar") await api.arquivarProcesso(processo.id, motivo.trim() || undefined);
+      else if (modal === "reabrir") await api.reabrirProcesso(processo.id, motivo.trim() || undefined);
       else if (modal === "sobrestar") await api.sobrestar(processo.id, { motivo_texto: motivo });
       else if (modal === "reativar") await api.reativar(processo.id);
       toast.success("Operação realizada");
@@ -253,10 +262,11 @@ function ProcessoActions({
   };
 
   const confirmTitle: Record<string, string> = {
-    encerrar: "Encerrar processo",
-    reabrir: "Reabrir processo",
-    sobrestar: "Sobrestar processo",
-    reativar: "Reativar processo",
+    concluir: "Concluir Processo na Unidade",
+    arquivar: "Arquivar processo",
+    reabrir: "Reabrir Processo",
+    sobrestar: "Sobrestar Processo",
+    reativar: "Retirar Sobrestamento",
   };
 
   return (
@@ -264,11 +274,19 @@ function ProcessoActions({
       {processo.situacao === "EM_TRAMITACAO" && (
         <>
           <ActionButton icon="pause_circle" label="Sobrestar" onClick={() => setModal("sobrestar")} />
-          <ActionButton icon="check_circle" label="Encerrar" onClick={() => setModal("encerrar")} />
+          <ActionButton icon="check_circle" label="Concluir na Unidade" onClick={() => setModal("concluir")} />
+          <ActionButton icon="archive" label="Arquivar" onClick={() => setModal("arquivar")} />
         </>
       )}
-      {(processo.situacao === "ENCERRADO" || processo.situacao === "SOBRESTADO") && (
-        <ActionButton icon="play_circle" label="Reativar" onClick={() => setModal("reativar")} />
+      {processo.situacao === "SOBRESTADO" && (
+        <>
+          <ActionButton icon="play_circle" label="Retirar Sobrestamento" onClick={() => setModal("reativar")} />
+          <ActionButton icon="check_circle" label="Concluir na Unidade" onClick={() => setModal("concluir")} />
+          <ActionButton icon="archive" label="Arquivar" onClick={() => setModal("arquivar")} />
+        </>
+      )}
+      {(processo.situacao === "ENCERRADO" || processo.situacao === "ARQUIVADO") && (
+        <ActionButton icon="unarchive" label="Reabrir Processo" onClick={() => setModal("reabrir")} />
       )}
       {podeSigilo && <ClassificarAction processo={processo} onChanged={onChanged} />}
 
@@ -277,7 +295,7 @@ function ProcessoActions({
           <div className="absolute inset-0 bg-black/50" onClick={() => setModal(null)} />
           <div className="relative w-full max-w-md bg-surface-container-lowest rounded-lg shadow-xl p-6">
             <h3 className="text-headline-sm font-headline-sm">{confirmTitle[modal]}</h3>
-            {precisaMotivo && (
+            {mostraMotivo && (
               <div className="mt-4">
                 <label className="text-label-md font-label-md">Motivo</label>
                 <textarea
@@ -461,16 +479,57 @@ function DocumentosTab({
 }) {
   const [showForm, setShowForm] = useState(false);
   const [tiposDoc, setTiposDoc] = useState<TipoDocumento[]>([]);
+  const [modelos, setModelos] = useState<ModeloDocumento[]>([]);
+  const [textosPadrao, setTextosPadrao] = useState<TextoPadrao[]>([]);
   const [titulo, setTitulo] = useState("");
   const [tipoDocId, setTipoDocId] = useState("");
+  const [modeloId, setModeloId] = useState("");
+  const [textoPadraoId, setTextoPadraoId] = useState("");
   const [conteudo, setConteudo] = useState("");
   const [nivel, setNivel] = useState("PUBLICO");
   const [submitting, setSubmitting] = useState(false);
   const [assinandoId, setAssinandoId] = useState<string | null>(null);
+  const editorRef = useRef<RichTextEditorHandle>(null);
 
   useEffect(() => {
-    if (showForm) api.listTiposDocumento().then(setTiposDoc).catch(() => {});
+    if (showForm) {
+      api.listTiposDocumento().then(setTiposDoc).catch(() => {});
+      api.listModelosDocumento().then(setModelos).catch(() => {});
+      api.listTextosPadrao().then(setTextosPadrao).catch(() => {});
+    }
   }, [showForm]);
+
+  const aplicarModelo = async (novoModeloId: string) => {
+    setModeloId(novoModeloId);
+    if (!novoModeloId) return;
+    try {
+      const r = await api.renderModeloDocumento(novoModeloId, processoId);
+      setConteudo(DOMPurify.sanitize(r.conteudo_html));
+    } catch {
+      toast.error("Não foi possível carregar o modelo");
+    }
+  };
+
+  const inserirTextoPadrao = async () => {
+    if (!textoPadraoId) return;
+    try {
+      const r = await api.renderTextoPadrao(textoPadraoId, processoId);
+      editorRef.current?.insertHtml(DOMPurify.sanitize(r.conteudo));
+    } catch {
+      toast.error("Não foi possível inserir o texto padrão");
+    }
+  };
+
+  const aoMudarTipo = async (novoTipoId: string) => {
+    setTipoDocId(novoTipoId);
+    if (!novoTipoId) return;
+    try {
+      const r = await api.modeloPadraoTipo(novoTipoId, processoId);
+      if (r.encontrado) setConteudo(DOMPurify.sanitize(r.conteudo_html));
+    } catch {
+      // modelo padrão é opcional; falha não deve travar o preenchimento
+    }
+  };
 
   const criar = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -482,10 +541,12 @@ function DocumentosTab({
         tipo_documento_id: tipoDocId || null,
         nivel_acesso: nivel as "PUBLICO" | "RESTRITO" | "SIGILOSO",
       });
-      toast.success("Documento criado (rascunho)");
+      toast.success("Documento gerado (rascunho)");
       setShowForm(false);
       setTitulo("");
       setConteudo("");
+      setModeloId("");
+      setTipoDocId("");
       onChanged();
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Erro ao criar documento");
@@ -516,14 +577,14 @@ function DocumentosTab({
             className="inline-flex items-center gap-2 h-11 px-4 bg-primary text-on-primary rounded-lg hover:bg-primary-container transition-colors"
           >
             <span className="material-symbols-outlined text-[20px]" aria-hidden="true">note_add</span>
-            Produzir documento
+            Gerar Documento
           </button>
         </div>
       )}
 
       {showForm && (
         <form onSubmit={criar} className="bg-surface-container-lowest rounded-lg border border-outline-variant p-6 space-y-4">
-          <h3 className="text-headline-sm font-headline-sm">Produzir documento interno</h3>
+          <h3 className="text-headline-sm font-headline-sm">Gerar Documento</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="text-label-md font-label-md">Título</label>
@@ -539,7 +600,7 @@ function DocumentosTab({
               <label className="text-label-md font-label-md">Tipo de documento</label>
               <select
                 value={tipoDocId}
-                onChange={(e) => setTipoDocId(e.target.value)}
+                onChange={(e) => aoMudarTipo(e.target.value)}
                 className="w-full h-12 px-3 bg-surface-container-low border border-outline-variant rounded-lg mt-1"
               >
                 <option value="">Sem tipo</option>
@@ -548,36 +609,66 @@ function DocumentosTab({
                 ))}
               </select>
             </div>
+            <div>
+              <label className="text-label-md font-label-md">Modelo</label>
+              <select
+                value={modeloId}
+                onChange={(e) => aplicarModelo(e.target.value)}
+                className="w-full h-12 px-3 bg-surface-container-low border border-outline-variant rounded-lg mt-1"
+              >
+                <option value="">Sem modelo</option>
+                {modelos.map((m) => (
+                  <option key={m.id} value={m.id}>{m.nome}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-label-md font-label-md">Nível de acesso</label>
+              <select
+                value={nivel}
+                onChange={(e) => setNivel(e.target.value)}
+                className="w-full h-12 px-3 bg-surface-container-low border border-outline-variant rounded-lg mt-1"
+              >
+                <option value="PUBLICO">Público</option>
+                <option value="RESTRITO">Restrito</option>
+                <option value="SIGILOSO">Sigiloso</option>
+              </select>
+              <p className="text-body-sm text-on-surface-variant mt-1">
+                Documento não pode ser menos restritivo que o processo ({nivelProcesso}).
+              </p>
+            </div>
           </div>
           <div>
-            <label className="text-label-md font-label-md">Nível de acesso</label>
-            <select
-              value={nivel}
-              onChange={(e) => setNivel(e.target.value)}
-              className="w-full h-12 px-3 bg-surface-container-low border border-outline-variant rounded-lg mt-1"
-            >
-              <option value="PUBLICO">Público</option>
-              <option value="RESTRITO">Restrito</option>
-              <option value="SIGILOSO">Sigiloso</option>
-            </select>
-            <p className="text-body-sm text-on-surface-variant mt-1">
-              Documento não pode ser menos restritivo que o processo ({nivelProcesso}).
-            </p>
-          </div>
-          <div>
-            <label className="text-label-md font-label-md">Conteúdo (HTML)</label>
-            <textarea
-              value={conteudo}
-              onChange={(e) => setConteudo(e.target.value)}
-              rows={6}
-              placeholder="<p>Texto do documento…</p>"
-              className="w-full px-3 py-2 bg-surface-container-low border border-outline-variant rounded-lg mt-1 font-mono text-body-sm"
-            />
+            <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+              <label className="text-label-md font-label-md">Conteúdo</label>
+              <div className="flex items-center gap-2">
+                <select
+                  value={textoPadraoId}
+                  onChange={(e) => setTextoPadraoId(e.target.value)}
+                  className="h-10 px-2 bg-surface-container-low border border-outline-variant rounded-lg text-body-sm"
+                >
+                  <option value="">Inserir texto padrão…</option>
+                  {textosPadrao.map((t) => (
+                    <option key={t.id} value={t.id}>{t.nome}</option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={inserirTextoPadrao}
+                  disabled={!textoPadraoId}
+                  className="h-10 px-3 inline-flex items-center gap-1.5 border border-outline text-on-surface rounded-lg hover:bg-surface-container-high transition-colors disabled:opacity-50 text-label-md font-label-md"
+                >
+                  <span className="material-symbols-outlined text-[18px]" aria-hidden="true">playlist_add</span>
+                  Inserir
+                </button>
+              </div>
+            </div>
+            <RichTextEditor ref={editorRef} value={conteudo} onChange={setConteudo} />
           </div>
           <div className="flex justify-end gap-3">
             <button type="button" onClick={() => setShowForm(false)} className="h-11 px-4 border border-outline rounded-lg">Cancelar</button>
             <button type="submit" disabled={submitting} className="h-11 px-5 bg-primary text-on-primary rounded-lg disabled:opacity-60">
-              {submitting ? "Criando…" : "Criar rascunho"}
+              {submitting ? "Gerando…" : "Gerar Documento"}
             </button>
           </div>
         </form>
@@ -658,11 +749,11 @@ function TramitacoesTab({
           .filter((id) => id)
           .map((id) => ({ unidade_id: id, prazo_dias: prazoDias ? Number(prazoDias) : null })),
       });
-      toast.success("Tramitação registrada");
+      toast.success("Envio registrado");
       setShowForm(false);
       onChanged();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao tramitar");
+      toast.error(err instanceof Error ? err.message : "Erro ao enviar");
     } finally {
       setSubmitting(false);
     }
@@ -677,14 +768,14 @@ function TramitacoesTab({
             className="inline-flex items-center gap-2 h-11 px-4 bg-primary text-on-primary rounded-lg hover:bg-primary-container transition-colors"
           >
             <span className="material-symbols-outlined text-[20px]" aria-hidden="true">send</span>
-            Tramitar
+            Enviar
           </button>
         </div>
       )}
 
       {showForm && (
         <form onSubmit={tramitar} className="bg-surface-container-lowest rounded-lg border border-outline-variant p-6 space-y-4">
-          <h3 className="text-headline-sm font-headline-sm">Tramitar processo</h3>
+          <h3 className="text-headline-sm font-headline-sm">Enviar Processo</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="text-label-md font-label-md">Unidade de origem</label>
@@ -751,21 +842,21 @@ function TramitacoesTab({
           <div className="flex justify-end gap-3">
             <button type="button" onClick={() => setShowForm(false)} className="h-11 px-4 border border-outline rounded-lg">Cancelar</button>
             <button type="submit" disabled={submitting} className="h-11 px-5 bg-primary text-on-primary rounded-lg disabled:opacity-60">
-              {submitting ? "Tramitando…" : "Tramitar"}
+              {submitting ? "Enviando…" : "Enviar"}
             </button>
           </div>
         </form>
       )}
 
       {tramitacoes.length === 0 ? (
-        <p className="text-on-surface-variant py-8 text-center">Nenhuma tramitação registrada.</p>
+        <p className="text-on-surface-variant py-8 text-center">Nenhum envio registrado.</p>
       ) : (
         <ul className="space-y-2">
           {tramitacoes.map((t) => (
             <li key={t.id} className="bg-surface-container-lowest rounded-lg border border-outline-variant px-4 py-3 flex items-center gap-3">
               <span className="material-symbols-outlined text-on-surface-variant" aria-hidden="true">swap_horiz</span>
               <div className="flex-1">
-                <div className="text-body-md text-on-surface">{t.observacao || "Tramitação"}</div>
+                <div className="text-body-md text-on-surface">{t.observacao || "Envio"}</div>
                 <div className="text-body-sm text-on-surface-variant">
                   {t.tipo} · {t.recebida ? "Recebida" : "Pendente"} · {formatDateTime(t.created_at)}
                 </div>

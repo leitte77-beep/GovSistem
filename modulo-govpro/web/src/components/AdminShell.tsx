@@ -10,10 +10,10 @@ import QuickSearch from "@/components/QuickSearch";
 
 const NAV_ITEMS: { label: string; href: string; icon: string; roles?: string[] }[] = [
   { label: "Dashboard", href: "/", icon: "dashboard" },
-  { label: "Busca", href: "/busca", icon: "search" },
-  { label: "Minha Caixa", href: "/caixa", icon: "inbox" },
+  { label: "Pesquisa", href: "/busca", icon: "search" },
+  { label: "Controle de Processos", href: "/caixa", icon: "inbox" },
   { label: "Processos", href: "/processos", icon: "folder_open" },
-  { label: "Autuar", href: "/processos/novo", icon: "add_circle" },
+  { label: "Iniciar Processo", href: "/processos/novo", icon: "add_circle" },
   { label: "Blocos de assinatura", href: "/blocos-assinatura", icon: "draw" },
   { label: "Prazos", href: "/prazos", icon: "schedule" },
   { label: "Feriados", href: "/feriados", icon: "calendar_month" },
@@ -36,6 +36,8 @@ const NAV_ITEMS: { label: string; href: string; icon: string; roles?: string[] }
 const ADMIN_NAV_ITEMS: { label: string; href: string; icon: string }[] = [
   { label: "Tipos de processo", href: "/admin/tipos-processo", icon: "category" },
   { label: "Tipos de documento", href: "/admin/tipos-documento", icon: "description" },
+  { label: "Modelos de documento", href: "/admin/modelos-documento", icon: "draft" },
+  { label: "Textos padrão", href: "/admin/textos-padrao", icon: "text_snippet" },
   { label: "Matriz de assinaturas", href: "/admin/matriz-assinaturas", icon: "border_color" },
   { label: "Unidades", href: "/admin/unidades", icon: "account_tree" },
   { label: "Hipóteses legais", href: "/admin/hipoteses-legais", icon: "gavel" },
@@ -217,7 +219,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
 
       {/* Main content */}
       <div className="lg:ml-64 min-h-screen flex flex-col">
-        <header className="flex justify-between items-center gap-4 px-gutter w-full h-16 bg-surface border-b border-outline-variant sticky top-0 z-40">
+        <header className="flex justify-between items-center gap-4 px-gutter w-full h-16 bg-surface/85 backdrop-blur-sm border-b border-outline-variant sticky top-0 z-40 shadow-sm">
           <div className="flex items-center gap-4 flex-shrink-0">
             <button
               onClick={() => setSidebarOpen(true)}

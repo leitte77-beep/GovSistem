@@ -401,7 +401,7 @@ export function PaginaProtocolos({ breakpoint, onAbrirProtocolo, onCriarProtocol
   function renderCabecalhoColuna(col) {
     var mapa = {
       checkbox: React.createElement('button', {
-        type: 'button', onClick: alternarTodos, title: 'Selecionar protocolos desta página',
+        type: 'button', onClick: alternarTodos, title: 'Selecionar protocolos desta página', 'aria-label': 'Selecionar protocolos desta página',
         style: { width: 28, height: 28, padding: 0, border: 'none', background: 'transparent', color: T.textMuted, cursor: 'pointer' },
       }, React.createElement(lista.length > 0 && lista.every(function (p) { return selecionados.includes(p.id); }) ? CheckSquare : Square, { size: 17 })),
       numero: 'Nº',
@@ -430,6 +430,7 @@ export function PaginaProtocolos({ breakpoint, onAbrirProtocolo, onCriarProtocol
         React.createElement('button', {
           type: 'button', onClick: function (ev) { ev.stopPropagation(); alternarSelecao(p.id); },
           title: isSelected ? 'Remover da seleção' : 'Selecionar protocolo',
+          'aria-label': isSelected ? 'Remover protocolo da seleção' : 'Selecionar protocolo',
           style: { width: 28, height: 28, padding: 0, border: 'none', background: 'transparent', color: isSelected ? T.primary : T.textMuted, cursor: 'pointer' },
         }, React.createElement(isSelected ? CheckSquare : Square, { size: 17 })),
       );
@@ -556,22 +557,26 @@ export function PaginaProtocolos({ breakpoint, onAbrirProtocolo, onCriarProtocol
           React.createElement('button', {
             onClick: function (ev) { ev.stopPropagation(); onAbrirProtocolo && onAbrirProtocolo(p); },
             title: 'Abrir protocolo',
+            'aria-label': 'Abrir protocolo',
             style: Object.assign({}, btnBase, { padding: '4px 9px', color: T.primary, fontSize: 11.5 }),
           }, React.createElement(Eye, { size: 14 }), !ehMobile && 'Abrir'),
           !statusTerminal && React.createElement('button', {
             onClick: function (ev) { ev.stopPropagation(); executarAcaoIndividual(p, 'concluir'); },
             disabled: estaProcessando, title: 'Concluir protocolo',
+            'aria-label': 'Concluir protocolo',
             style: Object.assign({}, btnBase, { padding: '5px 7px', color: T.success, background: T.successSoft, borderColor: T.success + '55', opacity: estaProcessando ? 0.55 : 1 }),
           }, React.createElement(CheckCircle2, { size: 14 })),
           ['CONCLUIDO', 'CANCELADO'].includes(p.status_operacional) && React.createElement('button', {
             onClick: function (ev) { ev.stopPropagation(); executarAcaoIndividual(p, 'arquivar'); },
             disabled: estaProcessando, title: 'Arquivar protocolo',
+            'aria-label': 'Arquivar protocolo',
             style: Object.assign({}, btnBase, { padding: '5px 7px', color: T.textSecondary, background: T.surfaceAlt, opacity: estaProcessando ? 0.55 : 1 }),
           }, React.createElement(Archive, { size: 14 })),
           statusTerminal && React.createElement('button', {
             onClick: function (ev) { ev.stopPropagation(); executarAcaoIndividual(p, 'reabrir'); },
             disabled: estaProcessando, title: 'Reabrir protocolo',
-            style: Object.assign({}, btnBase, { padding: '5px 7px', color: T.primary, background: T.primarySoft, borderColor: T.primary + '55', opacity: estaProcessando ? 0.55 : 1 }),
+            'aria-label': 'Reabrir protocolo',
+            style: Object.assign({}, btnBase, { padding: '5px 7px', color: T.primaryOnSoft, background: T.primarySoft, borderColor: T.primary + '55', opacity: estaProcessando ? 0.55 : 1 }),
           }, React.createElement(RotateCcw, { size: 14 })),
         ),
       );
@@ -594,6 +599,7 @@ export function PaginaProtocolos({ breakpoint, onAbrirProtocolo, onCriarProtocol
         React.createElement('h2', { style: { fontSize: 20, fontWeight: 700, color: T.text, margin: 0, flex: 1 } }, 'Protocolos'),
         onCriarProtocolo && React.createElement('button', {
           onClick: onCriarProtocolo,
+          'aria-label': 'Novo protocolo',
           style: { display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: T.radiusSm, border: 'none', background: T.primary, color: '#fff', fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: T.font },
         },
           React.createElement(Plus, { size: 16 }),
@@ -647,6 +653,7 @@ export function PaginaProtocolos({ breakpoint, onAbrirProtocolo, onCriarProtocol
         buscaTemp && React.createElement('button', {
           type: 'button',
           onClick: function () { setBuscaTemp(''); setBusca(''); setPagina(0); },
+          'aria-label': 'Limpar busca',
           style: { position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', padding: 2, color: T.textMuted, display: 'flex' },
         }, React.createElement(X, { size: 14 })),
       ),
@@ -703,11 +710,14 @@ export function PaginaProtocolos({ breakpoint, onAbrirProtocolo, onCriarProtocol
       React.createElement('button', {
         onClick: function () { if (pagina > 0) setPagina(pagina - 1); },
         disabled: pagina === 0,
+        'aria-label': 'Página anterior',
         style: Object.assign({}, btnBase, { padding: '4px 8px', opacity: pagina === 0 ? 0.4 : 1, cursor: pagina === 0 ? 'default' : 'pointer' }),
       }, React.createElement(ChevronLeft, { size: 15 })),
       React.createElement('button', {
         onClick: function () { if (pagina < totalPaginas - 1) setPagina(pagina + 1); },
         disabled: pagina >= totalPaginas - 1,
+        'aria-label': 'Próxima página',
+        'aria-label': 'Próxima página',
         style: Object.assign({}, btnBase, { padding: '4px 8px', opacity: pagina >= totalPaginas - 1 ? 0.4 : 1, cursor: pagina >= totalPaginas - 1 ? 'default' : 'pointer' }),
       }, React.createElement(ChevronRight, { size: 15 })),
     ),
@@ -724,7 +734,7 @@ export function PaginaProtocolos({ breakpoint, onAbrirProtocolo, onCriarProtocol
       React.createElement(feedback.tipo === 'erro' ? AlertCircle : CheckCircle2, { size: 15 }),
       React.createElement('span', { style: { flex: 1 } }, feedback.texto),
       React.createElement('button', {
-        onClick: function () { setFeedback(null); }, title: 'Fechar aviso',
+        onClick: function () { setFeedback(null); }, title: 'Fechar aviso', 'aria-label': 'Fechar aviso',
         style: { border: 'none', background: 'transparent', color: 'inherit', cursor: 'pointer', padding: 2, display: 'flex' },
       }, React.createElement(X, { size: 14 })),
     ),
@@ -849,6 +859,7 @@ export function PaginaProtocolos({ breakpoint, onAbrirProtocolo, onCriarProtocol
       React.createElement('button', {
         onClick: function () { if (pagina > 0) setPagina(pagina - 1); },
         disabled: pagina === 0,
+        'aria-label': 'Página anterior',
         style: Object.assign({}, btnBase, { padding: '4px 10px', opacity: pagina === 0 ? 0.4 : 1, cursor: pagina === 0 ? 'default' : 'pointer' }),
       },
         React.createElement(ChevronLeft, { size: 15 }),

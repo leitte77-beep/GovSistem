@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { UserPlus, Crown } from 'lucide-react';
 import { T } from '../theme';
 import { fetchParticipantes, fetchOperadores } from '../api';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
+import { useModalFocus } from '../hooks/useModalFocus';
 
 const overlay = { position: 'fixed', inset: 0, background: 'rgba(15,26,42,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 };
 const card = { background: T.surface, borderRadius: T.radiusLg, padding: 24, maxWidth: 440, width: '90%', boxShadow: T.shadowLg };
@@ -14,6 +15,8 @@ export function ModalParticipantes({ conversa, onClose }) {
   const [participantes, setParticipantes] = useState([]);
   const [operadores, setOperadores] = useState([]);
   const [selecionados, setSelecionados] = useState([]);
+  const dialogRef = useRef(null);
+  useModalFocus(dialogRef, onClose);
 
   const carregar = () => {
     fetchParticipantes(conversa.id).then(setParticipantes).catch(console.error);
@@ -35,8 +38,8 @@ export function ModalParticipantes({ conversa, onClose }) {
     });
   };
 
-  return React.createElement('div', { style: overlay },
-    React.createElement('div', { style: card },
+  return React.createElement('div', { style: overlay, onMouseDown: (e) => { if (e.target === e.currentTarget) onClose?.(); } },
+    React.createElement('div', { ref: dialogRef, style: card, role: 'dialog', 'aria-modal': true, 'aria-label': 'Atendentes da conversa', tabIndex: -1 },
       React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 } },
         React.createElement('div', { style: { width: 38, height: 38, borderRadius: 10, background: T.primarySoft, display: 'flex', alignItems: 'center', justifyContent: 'center' } },
           React.createElement(UserPlus, { size: 20, color: T.primary })),

@@ -58,6 +58,7 @@ export function TelaQR({ onClose }) {
     },
       React.createElement('button', {
         onClick: onClose,
+        'aria-label': 'Fechar QR Code',
         style: {
           position: 'absolute',
           top: 12,

@@ -67,9 +67,9 @@ def create_app() -> FastAPI:
             "institucionais."
         ),
         version=settings.VERSION,
-        docs_url="/docs",
-        redoc_url="/redoc",
-        openapi_url="/openapi.json",
+        docs_url=(None if not settings.DEBUG else "/docs"),
+        redoc_url=(None if not settings.DEBUG else "/redoc"),
+        openapi_url=(None if not settings.DEBUG else "/openapi.json"),
         lifespan=lifespan,
     )
 

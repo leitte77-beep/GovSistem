@@ -26,6 +26,8 @@ import { T } from '../theme.js';
 import { api, getToken } from '../api.js';
 import { useLogado } from './LogadoContext.jsx';
 import { PortalHeader } from '../components/PortalChrome.jsx';
+import { renderizarMarkdown } from '../utils/markdown.js';
+import { htmlParaTexto } from '../utils/htmlParaTexto.js';
 
 const STATUS = {
   ABERTO: { label: 'Solicitação recebida', tone: 'blue', etapa: 1 },
@@ -142,6 +144,20 @@ export function ConsultaProtocolo({ navigate }) {
       setTimeout(() => fimRef.current?.scrollIntoView({ behavior: 'smooth' }), 80);
     } catch (e) { setErro(e.message); }
     finally { setEnviando(false); }
+  };
+
+  const handlePaste = (e) => {
+    const html = e.clipboardData?.getData?.('text/html');
+    if (!html) return;
+    const textoLimpo = htmlParaTexto(html);
+    if (!textoLimpo) return;
+    e.preventDefault();
+    const el = e.target;
+    const start = el.selectionStart ?? novaMsg.length;
+    const end = el.selectionEnd ?? novaMsg.length;
+    setNovaMsg(el.value.slice(0, start) + textoLimpo + el.value.slice(end));
+    const pos = start + textoLimpo.length;
+    requestAnimationFrame(() => { el.selectionStart = el.selectionEnd = pos; });
   };
 
   const baixar = async (doc) => {
@@ -294,13 +310,13 @@ export function ConsultaProtocolo({ navigate }) {
                     {!msgs.length ? <EmptyState icon={MessageSquare} title="Nenhuma mensagem ainda" text="Use o campo abaixo para falar diretamente com o setor responsável." /> : msgs.map(m => {
                       const prefeitura = m.direcao === 'saida';
                       return <div key={m.id} className={`pd-message ${prefeitura ? 'is-service' : 'is-citizen'}`}>
-                        <div>{m.conteudo}</div><small>{prefeitura ? 'Atendimento' : 'Você'} · {formatarData(m.criado_em)}</small>
+                        <div>{renderizarMarkdown(m.conteudo)}</div><small>{prefeitura ? 'Atendimento' : 'Você'} · {formatarData(m.criado_em)}</small>
                       </div>;
                     })}
                     <div ref={fimRef} />
                   </div>
                   <div className="pd-message-composer">
-                    <textarea value={novaMsg} onChange={(e) => setNovaMsg(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarMsg(); } }} placeholder="Escreva uma mensagem para o atendimento…" rows={2} />
+                    <textarea value={novaMsg} onChange={(e) => setNovaMsg(e.target.value)} onPaste={handlePaste} onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviarMsg(); } }} placeholder="Escreva uma mensagem para o atendimento…" rows={2} />
                     <button type="button" onClick={enviarMsg} disabled={enviando || !novaMsg.trim()} aria-label="Enviar mensagem">{enviando ? <RefreshCw className="pd-spin" size={19} /> : <Send size={19} />}</button>
                   </div>
                   <p className="pd-composer-help">Enter envia · Shift + Enter cria uma nova linha</p>

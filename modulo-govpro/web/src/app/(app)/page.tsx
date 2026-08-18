@@ -57,7 +57,7 @@ export default function DashboardPage() {
         <StatCard
           href="/caixa?aba=aguardando-acao"
           icon="pending_actions"
-          label="Na minha caixa"
+          label="Aguardando ação"
           value={contadores ? String(contadores.aguardandoAcao) : "—"}
           tone="primary"
         />
@@ -95,14 +95,14 @@ export default function DashboardPage() {
           <EmptyState
             icon="folder_open"
             title="Nenhum processo ainda"
-            description="Autue o primeiro processo para começar a tramitar."
+            description="Inicie o primeiro processo para começar a enviar."
             action={
               <Link
                 href="/processos/novo"
                 className="inline-flex items-center gap-2 h-11 px-4 bg-primary text-on-primary rounded-lg hover:bg-primary-container transition-colors"
               >
                 <span className="material-symbols-outlined text-[20px]" aria-hidden="true">add_circle</span>
-                Autuar processo
+                Iniciar Processo
               </Link>
             }
           />
@@ -153,7 +153,7 @@ function StatCard({
   return (
     <Link
       href={href}
-      className="bg-surface-container-lowest rounded-lg border border-outline-variant p-5 flex items-center gap-4 hover:border-primary transition-colors"
+      className="bg-surface-container-lowest rounded-xl border border-outline-variant p-5 flex items-center gap-4 hover:border-primary transition-all shadow-card hover:shadow-card-hover hover:-translate-y-0.5"
     >
       <div className={`w-12 h-12 rounded-lg flex items-center justify-center flex-shrink-0 ${tones[tone]}`}>
         <span className="material-symbols-outlined text-[24px]" aria-hidden="true">{icon}</span>

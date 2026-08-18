@@ -221,17 +221,41 @@ async def andamentos_processo(
     return list(result.scalars())
 
 
-@router.post("/processos/{processo_id}/encerrar", response_model=ProcessoOut)
-async def encerrar_processo(
+@router.post("/processos/{processo_id}/concluir", response_model=ProcessoOut)
+async def concluir_processo(
     processo_id: uuid.UUID,
     request: Request,
-    motivo: str,
     db: DbDep,
     tenant_id: TenantDep,
+    motivo: Optional[str] = Query(default=None),
     user: User = Depends(require_roles(*PAPEIS_ATUANTES)),
 ):
-    return await processo_service.encerrar(
-        db, tenant_id, user, processo_id=processo_id, motivo=motivo, client=get_client_info(request)
+    return await processo_service.concluir(
+        db,
+        tenant_id,
+        user,
+        processo_id=processo_id,
+        motivo=motivo,
+        client=get_client_info(request),
+    )
+
+
+@router.post("/processos/{processo_id}/arquivar", response_model=ProcessoOut)
+async def arquivar_processo(
+    processo_id: uuid.UUID,
+    request: Request,
+    db: DbDep,
+    tenant_id: TenantDep,
+    motivo: Optional[str] = Query(default=None),
+    user: User = Depends(require_roles(*PAPEIS_ATUANTES)),
+):
+    return await processo_service.arquivar(
+        db,
+        tenant_id,
+        user,
+        processo_id=processo_id,
+        motivo=motivo,
+        client=get_client_info(request),
     )
 
 
@@ -239,11 +263,16 @@ async def encerrar_processo(
 async def reabrir_processo(
     processo_id: uuid.UUID,
     request: Request,
-    motivo: str,
     db: DbDep,
     tenant_id: TenantDep,
+    motivo: Optional[str] = Query(default=None),
     user: User = Depends(require_roles(*PAPEIS_ATUANTES)),
 ):
     return await processo_service.reabrir(
-        db, tenant_id, user, processo_id=processo_id, motivo=motivo, client=get_client_info(request)
+        db,
+        tenant_id,
+        user,
+        processo_id=processo_id,
+        motivo=motivo,
+        client=get_client_info(request),
     )

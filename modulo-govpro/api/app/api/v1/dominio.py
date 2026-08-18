@@ -19,9 +19,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import PAPEIS_LEITURA, get_client_info, get_tenant_id, require_roles
 from app.core.database import get_db
+from app.core.sanitize import sanitize_html
+from app.core.slug import slugify_codigo
 from app.models.dominio import (
     HipoteseLegal,
+    ModeloDocumento,
     PlanoClassificacao,
+    TextoPadrao,
     TipoDocumento,
     TipoProcesso,
 )
@@ -30,6 +34,7 @@ from app.models.gestao import SobrestamentoMotivo
 from app.models.unidade import Unidade
 from app.models.user import User
 from app.services.auditoria import registrar as registrar_auditoria
+from app.services.render import construir_contexto_processo, render_conteudo
 
 router = APIRouter(prefix="/dominio", tags=["dominio"])
 
@@ -94,6 +99,34 @@ async def _add_unico(db: AsyncSession, obj, campo: str) -> None:
         )
 
 
+async def _codigo_unico(db: AsyncSession, model, tenant_id, base: str) -> str:
+    """Devolve ``base`` ou ``base_2``, ``base_3``… até achar um código livre no tenant."""
+    codigo = base
+    sufixo = 2
+    while True:
+        result = await db.execute(
+            select(model.id).where(model.tenant_id == tenant_id, model.codigo == codigo)
+        )
+        if result.first() is None:
+            return codigo
+        codigo = f"{base}_{sufixo}"
+        sufixo += 1
+
+
+async def _resolver_codigo(
+    db: AsyncSession, model, tenant_id, codigo_fornecido: Optional[str], texto: str
+) -> str:
+    """Código informado prevalece (colisão vira 409); senão, gera slug único.
+
+    Mantém compatibilidade: seeds e testes que passam código explícito seguem
+    funcionando e continuam disparando 409 em duplicidade. Só a ausência de
+    código ativa a geração automática.
+    """
+    if codigo_fornecido and codigo_fornecido.strip():
+        return codigo_fornecido.strip()
+    return await _codigo_unico(db, model, tenant_id, slugify_codigo(texto))
+
+
 # ── Tipos de processo ────────────────────────────────────────────────────────
 def _tipo_processo_out(t: TipoProcesso) -> dict:
     return {
@@ -113,7 +146,7 @@ def _tipo_processo_out(t: TipoProcesso) -> dict:
 
 
 class TipoProcessoInput(BaseModel):
-    codigo: str
+    codigo: Optional[str] = None
     nome: str
     descricao: Optional[str] = None
     publico_externo: bool = False
@@ -153,7 +186,11 @@ async def criar_tipo_processo(
     payload: TipoProcessoInput, request: Request, db: DbDep, tenant_id: TenantDep, user: AdminDep
 ):
     await _referencia_valida(db, Unidade, payload.unidade_destino_padrao_id, tenant_id)
-    tipo = TipoProcesso(tenant_id=tenant_id, **payload.model_dump())
+    dados = payload.model_dump()
+    dados["codigo"] = await _resolver_codigo(
+        db, TipoProcesso, tenant_id, payload.codigo, payload.nome
+    )
+    tipo = TipoProcesso(tenant_id=tenant_id, **dados)
     await _add_unico(db, tipo, "código")
     await _registrar(
         db, request, tenant_id, user,
@@ -222,7 +259,7 @@ def _tipo_documento_out(t: TipoDocumento) -> dict:
 
 
 class TipoDocumentoInput(BaseModel):
-    codigo: str
+    codigo: Optional[str] = None
     nome: str
     nivel_assinatura_minimo: str = "SIMPLES"
     numeracao: bool = False
@@ -253,7 +290,11 @@ async def tipos_documento(
 async def criar_tipo_documento(
     payload: TipoDocumentoInput, request: Request, db: DbDep, tenant_id: TenantDep, user: AdminDep
 ):
-    tipo = TipoDocumento(tenant_id=tenant_id, **payload.model_dump())
+    dados = payload.model_dump()
+    dados["codigo"] = await _resolver_codigo(
+        db, TipoDocumento, tenant_id, payload.codigo, payload.nome
+    )
+    tipo = TipoDocumento(tenant_id=tenant_id, **dados)
     await _add_unico(db, tipo, "código")
     await _registrar(
         db, request, tenant_id, user,
@@ -422,7 +463,7 @@ def _hipotese_out(h: HipoteseLegal) -> dict:
 
 
 class HipoteseLegalInput(BaseModel):
-    codigo: str
+    codigo: Optional[str] = None
     descricao: str
     base_legal: Optional[str] = None
     grau_sigilo: Optional[str] = None
@@ -455,7 +496,11 @@ async def hipoteses_legais(
 async def criar_hipotese_legal(
     payload: HipoteseLegalInput, request: Request, db: DbDep, tenant_id: TenantDep, user: AdminDep
 ):
-    hipotese = HipoteseLegal(tenant_id=tenant_id, **payload.model_dump())
+    dados = payload.model_dump()
+    dados["codigo"] = await _resolver_codigo(
+        db, HipoteseLegal, tenant_id, payload.codigo, payload.descricao
+    )
+    hipotese = HipoteseLegal(tenant_id=tenant_id, **dados)
     await _add_unico(db, hipotese, "código")
     await _registrar(
         db, request, tenant_id, user,
@@ -697,3 +742,239 @@ async def remover_motivo_sobrestamento(
         entity="motivo_sobrestamento", entity_id=str(motivo.id), antes=antes, depois=None,
     )
     await db.commit()
+
+
+# ── Modelos de documento ─────────────────────────────────────────────────────
+def _modelo_out(m: ModeloDocumento) -> dict:
+    return {
+        "id": str(m.id),
+        "nome": m.nome,
+        "tipo_documento_id": str(m.tipo_documento_id) if m.tipo_documento_id else None,
+        "conteudo_html": m.conteudo_html,
+        "ativo": m.ativo,
+    }
+
+
+class ModeloDocumentoInput(BaseModel):
+    nome: str
+    tipo_documento_id: Optional[uuid.UUID] = None
+    conteudo_html: Optional[str] = None
+
+
+class ModeloDocumentoUpdateInput(BaseModel):
+    nome: Optional[str] = None
+    tipo_documento_id: Optional[uuid.UUID] = None
+    conteudo_html: Optional[str] = None
+    ativo: Optional[bool] = None
+
+
+@router.get("/modelos-documento")
+async def modelos_documento(
+    db: DbDep,
+    tenant_id: TenantDep,
+    user: User = Depends(require_roles(*PAPEIS_LEITURA)),
+):
+    result = await db.execute(
+        select(ModeloDocumento)
+        .where(ModeloDocumento.tenant_id == tenant_id, ModeloDocumento.deleted_at.is_(None))
+        .order_by(ModeloDocumento.nome)
+    )
+    return [_modelo_out(m) for m in result.scalars()]
+
+
+@router.post("/modelos-documento", status_code=201)
+async def criar_modelo_documento(
+    payload: ModeloDocumentoInput, request: Request,
+    db: DbDep, tenant_id: TenantDep, user: AdminDep,
+):
+    if payload.tipo_documento_id is not None:
+        await _referencia_valida(db, TipoDocumento, payload.tipo_documento_id, tenant_id)
+    modelo = ModeloDocumento(
+        tenant_id=tenant_id,
+        nome=payload.nome.strip(),
+        tipo_documento_id=payload.tipo_documento_id,
+        conteudo_html=payload.conteudo_html,
+    )
+    db.add(modelo)
+    await db.flush()
+    await _registrar(
+        db, request, tenant_id, user,
+        entity="modelo_documento", entity_id=str(modelo.id), antes=None, depois=_modelo_out(modelo),
+    )
+    await db.commit()
+    await db.refresh(modelo)
+    return _modelo_out(modelo)
+
+
+@router.patch("/modelos-documento/{modelo_id}")
+async def atualizar_modelo_documento(
+    modelo_id: uuid.UUID, payload: ModeloDocumentoUpdateInput, request: Request,
+    db: DbDep, tenant_id: TenantDep, user: AdminDep,
+):
+    modelo = await _get_ou_404(db, ModeloDocumento, modelo_id, tenant_id, "Modelo de documento")
+    if payload.tipo_documento_id is not None:
+        await _referencia_valida(db, TipoDocumento, payload.tipo_documento_id, tenant_id)
+    antes = _modelo_out(modelo)
+    dados = payload.model_dump(exclude_unset=True)
+    if "nome" in dados and dados["nome"]:
+        dados["nome"] = dados["nome"].strip()
+    for campo, valor in dados.items():
+        setattr(modelo, campo, valor)
+    await db.flush()
+    await _registrar(
+        db, request, tenant_id, user,
+        entity="modelo_documento", entity_id=str(modelo.id), antes=antes,
+        depois=_modelo_out(modelo),
+    )
+    await db.commit()
+    await db.refresh(modelo)
+    return _modelo_out(modelo)
+
+
+@router.delete("/modelos-documento/{modelo_id}", status_code=204)
+async def remover_modelo_documento(
+    modelo_id: uuid.UUID, request: Request, db: DbDep, tenant_id: TenantDep, user: AdminDep
+):
+    modelo = await _get_ou_404(db, ModeloDocumento, modelo_id, tenant_id, "Modelo de documento")
+    antes = _modelo_out(modelo)
+    modelo.deleted_at = datetime.now(timezone.utc)
+    modelo.ativo = False
+    await _registrar(
+        db, request, tenant_id, user,
+        entity="modelo_documento", entity_id=str(modelo.id), antes=antes, depois=None,
+    )
+    await db.commit()
+
+
+@router.get("/modelos-documento/{modelo_id}/render")
+async def renderizar_modelo(
+    modelo_id: uuid.UUID,
+    processo_id: uuid.UUID,
+    db: DbDep,
+    tenant_id: TenantDep,
+    user: User = Depends(require_roles(*PAPEIS_LEITURA)),
+):
+    """Devolve o modelo preenchido com o contexto do processo (para prefill no editor)."""
+    modelo = await _get_ou_404(db, ModeloDocumento, modelo_id, tenant_id, "Modelo de documento")
+    contexto = await construir_contexto_processo(db, tenant_id, processo_id)
+    return {"conteudo_html": sanitize_html(render_conteudo(modelo.conteudo_html, contexto))}
+
+
+# ── Textos padrão ────────────────────────────────────────────────────────────
+def _texto_padrao_out(t: TextoPadrao) -> dict:
+    return {"id": str(t.id), "nome": t.nome, "conteudo": t.conteudo, "ativo": t.ativo}
+
+
+class TextoPadraoInput(BaseModel):
+    nome: str
+    conteudo: Optional[str] = None
+
+
+class TextoPadraoUpdateInput(BaseModel):
+    nome: Optional[str] = None
+    conteudo: Optional[str] = None
+    ativo: Optional[bool] = None
+
+
+@router.get("/textos-padrao")
+async def textos_padrao(
+    db: DbDep,
+    tenant_id: TenantDep,
+    user: User = Depends(require_roles(*PAPEIS_LEITURA)),
+):
+    result = await db.execute(
+        select(TextoPadrao)
+        .where(TextoPadrao.tenant_id == tenant_id, TextoPadrao.deleted_at.is_(None))
+        .order_by(TextoPadrao.nome)
+    )
+    return [_texto_padrao_out(t) for t in result.scalars()]
+
+
+@router.post("/textos-padrao", status_code=201)
+async def criar_texto_padrao(
+    payload: TextoPadraoInput, request: Request,
+    db: DbDep, tenant_id: TenantDep, user: AdminDep,
+):
+    texto = TextoPadrao(tenant_id=tenant_id, nome=payload.nome.strip(), conteudo=payload.conteudo)
+    db.add(texto)
+    await db.flush()
+    await _registrar(
+        db, request, tenant_id, user,
+        entity="texto_padrao", entity_id=str(texto.id), antes=None, depois=_texto_padrao_out(texto),
+    )
+    await db.commit()
+    await db.refresh(texto)
+    return _texto_padrao_out(texto)
+
+
+@router.patch("/textos-padrao/{texto_id}")
+async def atualizar_texto_padrao(
+    texto_id: uuid.UUID, payload: TextoPadraoUpdateInput, request: Request,
+    db: DbDep, tenant_id: TenantDep, user: AdminDep,
+):
+    texto = await _get_ou_404(db, TextoPadrao, texto_id, tenant_id, "Texto padrão")
+    antes = _texto_padrao_out(texto)
+    dados = payload.model_dump(exclude_unset=True)
+    if "nome" in dados and dados["nome"]:
+        dados["nome"] = dados["nome"].strip()
+    for campo, valor in dados.items():
+        setattr(texto, campo, valor)
+    await db.flush()
+    await _registrar(
+        db, request, tenant_id, user,
+        entity="texto_padrao", entity_id=str(texto.id), antes=antes,
+        depois=_texto_padrao_out(texto),
+    )
+    await db.commit()
+    await db.refresh(texto)
+    return _texto_padrao_out(texto)
+
+
+@router.delete("/textos-padrao/{texto_id}", status_code=204)
+async def remover_texto_padrao(
+    texto_id: uuid.UUID, request: Request, db: DbDep, tenant_id: TenantDep, user: AdminDep
+):
+    texto = await _get_ou_404(db, TextoPadrao, texto_id, tenant_id, "Texto padrão")
+    antes = _texto_padrao_out(texto)
+    texto.deleted_at = datetime.now(timezone.utc)
+    texto.ativo = False
+    await _registrar(
+        db, request, tenant_id, user,
+        entity="texto_padrao", entity_id=str(texto.id), antes=antes, depois=None,
+    )
+    await db.commit()
+
+
+@router.get("/textos-padrao/{texto_id}/render")
+async def renderizar_texto_padrao(
+    texto_id: uuid.UUID,
+    processo_id: uuid.UUID,
+    db: DbDep,
+    tenant_id: TenantDep,
+    user: User = Depends(require_roles(*PAPEIS_LEITURA)),
+):
+    texto = await _get_ou_404(db, TextoPadrao, texto_id, tenant_id, "Texto padrão")
+    contexto = await construir_contexto_processo(db, tenant_id, processo_id)
+    return {"conteudo": sanitize_html(render_conteudo(texto.conteudo, contexto))}
+
+
+@router.get("/tipos-documento/{tipo_id}/modelo-padrao")
+async def modelo_padrao_tipo(
+    tipo_id: uuid.UUID,
+    processo_id: uuid.UUID,
+    db: DbDep,
+    tenant_id: TenantDep,
+    user: User = Depends(require_roles(*PAPEIS_LEITURA)),
+):
+    """Prefill do modelo padrão associado ao tipo de documento (se houver)."""
+    tipo = await _get_ou_404(db, TipoDocumento, tipo_id, tenant_id, "Tipo de documento")
+    if tipo.modelo_padrao_id is None:
+        return {"conteudo_html": "", "encontrado": False}
+    modelo = await db.get(ModeloDocumento, tipo.modelo_padrao_id)
+    if modelo is None or modelo.tenant_id != tenant_id or modelo.deleted_at is not None:
+        return {"conteudo_html": "", "encontrado": False}
+    contexto = await construir_contexto_processo(db, tenant_id, processo_id)
+    return {
+        "conteudo_html": sanitize_html(render_conteudo(modelo.conteudo_html, contexto)),
+        "encontrado": True,
+    }

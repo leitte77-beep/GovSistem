@@ -110,7 +110,7 @@ export interface TipoProcesso {
 }
 
 export interface TipoProcessoInput {
-  codigo: string;
+  codigo?: string;
   nome: string;
   descricao?: string | null;
   publico_externo?: boolean;
@@ -138,7 +138,7 @@ export interface TipoDocumento {
 }
 
 export interface TipoDocumentoInput {
-  codigo: string;
+  codigo?: string;
   nome: string;
   nivel_assinatura_minimo?: string;
   numeracao?: boolean;
@@ -189,7 +189,7 @@ export interface HipoteseLegal {
 }
 
 export interface HipoteseLegalInput {
-  codigo: string;
+  codigo?: string;
   descricao: string;
   base_legal?: string | null;
   grau_sigilo?: string | null;
@@ -426,4 +426,48 @@ export interface PrazoCreate {
   modo: string;
   data_inicio?: string | null;
   unidade_id?: string | null;
+}
+
+// ── Modelos de documento e textos padrão ────────────────────────────────────
+export interface ModeloDocumento {
+  id: string;
+  nome: string;
+  tipo_documento_id?: string | null;
+  conteudo_html?: string | null;
+  ativo?: boolean;
+}
+
+export interface ModeloDocumentoInput {
+  nome: string;
+  tipo_documento_id?: string | null;
+  conteudo_html?: string | null;
+}
+
+export type ModeloDocumentoUpdate = Partial<ModeloDocumentoInput> & { ativo?: boolean };
+
+export interface TextoPadrao {
+  id: string;
+  nome: string;
+  conteudo?: string | null;
+  ativo?: boolean;
+}
+
+export interface TextoPadraoInput {
+  nome: string;
+  conteudo?: string | null;
+}
+
+export type TextoPadraoUpdate = Partial<TextoPadraoInput> & { ativo?: boolean };
+
+export interface RenderModeloResult {
+  conteudo_html: string;
+}
+
+export interface RenderTextoResult {
+  conteudo: string;
+}
+
+export interface ModeloPadraoResult {
+  conteudo_html: string;
+  encontrado: boolean;
 }

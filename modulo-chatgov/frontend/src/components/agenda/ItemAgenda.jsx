@@ -2,6 +2,7 @@ import React from 'react';
 import { Check, MessageCircle, Bell, RotateCcw, Calendar, CheckCircle2, Clock } from 'lucide-react';
 import { T } from '../../theme';
 import { PRIORIDADES, horarioDoItem, rotuloDia, estaAtrasado } from './util';
+import { ativarComTeclado } from '../../utils/teclado';
 
 const ICONE_TIPO = {
   compromisso: Calendar,
@@ -53,6 +54,11 @@ export function ItemAgenda({ item, mostrarDia = false, onConcluir, onReabrir, on
     React.createElement('div', {
       style: { flex: 1, minWidth: 0, cursor: onEditar ? 'pointer' : 'default' },
       onClick: () => onEditar?.(item),
+      // Só vira alvo de teclado quando realmente abre a edição.
+      onKeyDown: onEditar ? ativarComTeclado(() => onEditar(item)) : undefined,
+      role: onEditar ? 'button' : undefined,
+      tabIndex: onEditar ? 0 : undefined,
+      'aria-label': onEditar ? `Editar ${item.titulo}` : undefined,
     },
       React.createElement('div', { style: { display: 'flex', alignItems: 'baseline', gap: 8 } },
         React.createElement('span', {
@@ -75,7 +81,7 @@ export function ItemAgenda({ item, mostrarDia = false, onConcluir, onReabrir, on
         ehTarefa && !concluido && React.createElement('span', {
           style: {
             fontSize: 10, fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 3,
-            color: T.primary, background: T.primarySoft, padding: '1px 6px', borderRadius: 4,
+            color: T.primaryOnSoft, background: T.primarySoft, padding: '1px 6px', borderRadius: 4,
           },
         }, React.createElement(IconeTipo, { size: 9 }), LABEL_TIPO[item.tipo]),
         !ehTarefa && !ehLembrete && React.createElement('span', {
@@ -92,7 +98,7 @@ export function ItemAgenda({ item, mostrarDia = false, onConcluir, onReabrir, on
           style: { fontSize: 10, fontWeight: 700, color: T.danger },
         }, 'Atrasado'),
         item.categoria && React.createElement('span', {
-          style: { fontSize: 10.5, color: T.primary, background: T.primarySoft, padding: '1px 6px', borderRadius: 4 },
+          style: { fontSize: 10.5, color: T.primaryOnSoft, background: T.primarySoft, padding: '1px 6px', borderRadius: 4 },
         }, item.categoria),
         temLembrete && React.createElement(Bell, { size: 10, color: T.warning }),
       ),

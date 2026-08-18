@@ -3,6 +3,7 @@ import { Trash2, Reply, Smile, RotateCcw, AlertTriangle, Smartphone, UserRound, 
 import { Tick } from './Tick';
 import { T } from '../theme';
 import { formatarHora } from '../utils/arquivo';
+import { renderizarMarkdown } from '../utils/markdown';
 import { MediaPreview, MediaLightbox } from './MediaPreview';
 
 const REACOES_RAPIDAS = ['👍', '❤️', '😂', '😮', '😢', '🙏'];
@@ -301,7 +302,7 @@ export function BolhaConversa({ msg, podeExcluir, onExcluir, onResponder, onReag
         }),
         msg.conteudo && msg.tipo !== 'contato' && React.createElement('div', {
           style: { fontSize: 14.2, lineHeight: '19px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
-        }, realce ? realcarTermo(msg.conteudo, realce) : msg.conteudo),
+        }, realce ? realcarTermo(msg.conteudo, realce) : renderizarMarkdown(msg.conteudo)),
         React.createElement('div', {
           style: {
             display: 'flex',

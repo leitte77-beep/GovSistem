@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import { RailNavegacao } from './components/RailNavegacao';
 import { ColunaEsquerda } from './components/ColunaEsquerda';
 import { PainelAtendimento } from './components/PainelAtendimento';
@@ -16,6 +16,7 @@ import { PaginaConfigProtocolos } from './components/PaginaConfigProtocolos';
 import { AgendaCompleta } from './components/agenda/AgendaCompleta';
 import { ModalResumoLogin } from './components/agenda/ModalResumoLogin';
 import { PopupLembrete } from './components/agenda/PopupLembrete';
+import { AvisoFlutuante } from './components/AvisoFlutuante';
 import { useLembretesAgenda } from './hooks/useLembretesAgenda';
 import { useAuth } from './context/AuthContext';
 import { useSocket } from './context/SocketContext';
@@ -31,6 +32,9 @@ export function ChatGov() {
   const breakpoint = useBreakpoint();
   const isAdmin = auth?.operador?.papel === 'admin';
   const verRelatorios = isAdmin || auth?.operador?.papel === 'supervisor';
+  // O painel operacional é a ferramenta de quem coordena a fila — supervisor
+  // via Relatórios mas não via o Dashboard, embora a API já o autorize.
+  const verDashboard = verRelatorios;
   const ehMobile = breakpoint === 'mobile';
 
   const [view, setView] = useState(() => {
@@ -38,19 +42,22 @@ export function ChatGov() {
     // lista de contatos, virou a de compromissos). Quem tinha a antiga salva
     // cai no fallback em vez de aterrissar numa tela que não pediu.
     const VIEWS_VALIDAS = ['atendimento', 'compromissos', 'contatos', 'interno', 'protocolos', 'config-protocolos', 'relatorios', 'notificacoes', 'configuracoes'];
-    if (isAdmin) VIEWS_VALIDAS.push('dashboard');
+    if (isAdmin || auth?.operador?.papel === 'supervisor') VIEWS_VALIDAS.push('dashboard');
     try {
       const salva = localStorage.getItem('chatgov_view');
       return VIEWS_VALIDAS.includes(salva) ? salva : 'atendimento';
     } catch { return 'atendimento'; }
   });
   const [conversaAtiva, setConversaAtiva] = useState(null);
+  const [filtroConversasSolicitado, setFiltroConversasSolicitado] = useState(null);
   const [canalAtivo, setCanalAtivo] = useState(null);
   const [showQR, setShowQR] = useState(false);
   const [recarregar, setRecarregar] = useState(0);
   const [protocolosRefresh, setProtocolosRefresh] = useState(0);
   const [notifCount, setNotifCount] = useState(0);
   const [waStatus, setWaStatus] = useState({ status: 'desconectado', numero: null });
+  const [avisoFilaAtendente, setAvisoFilaAtendente] = useState({ total: 0, visivel: false });
+  const timerAvisoFila = useRef(null);
 
   // Protocolo
   const [showGerarProtocolo, setShowGerarProtocolo] = useState(false);
@@ -99,6 +106,25 @@ export function ChatGov() {
     };
   }, [socket]);
 
+  useEffect(() => {
+    if (!socket) return undefined;
+    const onFilaAtualizada = ({ total }) => {
+      const quantidade = Math.max(0, Number(total || 0));
+      clearTimeout(timerAvisoFila.current);
+      setAvisoFilaAtendente({ total: quantidade, visivel: quantidade > 0 });
+      if (quantidade > 0) {
+        timerAvisoFila.current = setTimeout(() => {
+          setAvisoFilaAtendente((atual) => ({ ...atual, visivel: false }));
+        }, 10000);
+      }
+    };
+    socket.on('fila-atendente:atualizada', onFilaAtualizada);
+    return () => {
+      clearTimeout(timerAvisoFila.current);
+      socket.off('fila-atendente:atualizada', onFilaAtualizada);
+    };
+  }, [socket]);
+
   const handleSelectConversa = useCallback((c) => {
     setConversaAtiva(c);
     setCanalAtivo(null);
@@ -117,6 +143,17 @@ export function ChatGov() {
     } else {
       try { localStorage.removeItem('chatgov_canal'); } catch {}
     }
+  }, []);
+
+  // Vem do painel operacional: leva para a lista de conversas já no recorte
+  // clicado. Sem isso, o gestor via "12 aguardando" e não tinha como chegar
+  // nas 12.
+  const irParaConversas = useCallback((valor) => {
+    if (!valor) return;
+    setFiltroConversasSolicitado({ valor, pedido: Date.now() });
+    setConversaAtiva(null);
+    setView('atendimento');
+    try { localStorage.setItem('chatgov_view', 'atendimento'); } catch {}
   }, []);
 
   const handleChangeView = useCallback((v) => {
@@ -309,7 +346,7 @@ export function ChatGov() {
     // Rail: lateral no desktop/tablet, bottom-tab fixo no mobile.
     // Some quando um chat está aberto no celular (tela cheia, estilo WhatsApp).
     !chatMobileAberto && React.createElement(RailNavegacao, {
-      view, onChange: handleChangeView, isAdmin, verRelatorios, notifCount, breakpoint, waStatus,
+      view, onChange: handleChangeView, isAdmin, verRelatorios, verDashboard, notifCount, breakpoint, waStatus,
     }),
 
     // Views de tela cheia
@@ -322,9 +359,9 @@ export function ChatGov() {
             breakpoint,
           }),
         )
-      : view === 'dashboard' && isAdmin
+      : view === 'dashboard' && verDashboard
       ? React.createElement('div', { style: pageShellStyle },
-          React.createElement(PaginaDashboard, { breakpoint }),
+          React.createElement(PaginaDashboard, { breakpoint, onDrillDown: irParaConversas }),
         )
       : view === 'configuracoes'
       ? React.createElement('div', { style: pageShellStyle },
@@ -390,6 +427,7 @@ export function ChatGov() {
               conversaAtivaId: conversaAtiva?.id,
               canalAtivoId: canalAtivo?.id,
               recarregar,
+              filtroSolicitado: filtroConversasSolicitado,
               breakpoint,
             }),
             mostrarPainelMobile && React.createElement('div', { style: { flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 0 } },
@@ -422,6 +460,7 @@ export function ChatGov() {
               conversaAtivaId: conversaAtiva?.id,
               canalAtivoId: canalAtivo?.id,
               recarregar,
+              filtroSolicitado: filtroConversasSolicitado,
               breakpoint,
             }),
             React.createElement('div', { style: { flex: 1, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' } },
@@ -439,6 +478,44 @@ export function ChatGov() {
           ),
 
     showQR && React.createElement(TelaQR, { onClose: () => setShowQR(false) }),
+
+    React.createElement(AvisoFlutuante),
+
+    avisoFilaAtendente.visivel && React.createElement('div', {
+      role: 'status',
+      'aria-live': 'polite',
+      style: {
+        position: 'fixed', top: 20, right: 20, zIndex: 3000,
+        width: 'min(360px, calc(100vw - 32px))', padding: '14px 16px',
+        borderRadius: 12, background: '#FFF7ED', color: '#9A3412',
+        border: '1px solid #FDBA74', boxShadow: '0 12px 32px rgba(15, 23, 42, .18)',
+        display: 'flex', alignItems: 'flex-start', gap: 12,
+      },
+    },
+      React.createElement('div', {
+        style: {
+          width: 34, height: 34, borderRadius: 9, flexShrink: 0,
+          display: 'grid', placeItems: 'center', background: '#FFEDD5', fontSize: 18,
+        },
+      }, '⏳'),
+      React.createElement('div', { style: { flex: 1, minWidth: 0 } },
+        React.createElement('div', { style: { fontWeight: 750, fontSize: 14 } }, 'Fila de atendimento'),
+        React.createElement('div', { style: { marginTop: 3, fontSize: 13, lineHeight: 1.45 } },
+          avisoFilaAtendente.total === 1
+            ? 'Há 1 pessoa aguardando atendimento com você.'
+            : `Há ${avisoFilaAtendente.total} pessoas aguardando atendimento com você.`,
+        ),
+      ),
+      React.createElement('button', {
+        type: 'button',
+        'aria-label': 'Fechar aviso da fila',
+        onClick: () => setAvisoFilaAtendente((atual) => ({ ...atual, visivel: false })),
+        style: {
+          border: 0, background: 'transparent', color: '#9A3412', cursor: 'pointer',
+          fontSize: 20, lineHeight: 1, padding: 0,
+        },
+      }, '×'),
+    ),
 
     // Resumo do dia: decide sozinho se deve aparecer (só quando há compromisso
     // de hoje, pendência atrasada ou item urgente).

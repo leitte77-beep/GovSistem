@@ -25,6 +25,10 @@ import { registrarRespostaNPS, calcularNPS, npsPorSetor, npsPorAtendente } from 
 import rotasEvolucoes from './routes/evolucoes.js';
 import rotasAgenda from './routes/agenda.js';
 import { iniciarLimpezaConversas } from './services/limpeza-conversas.js';
+import {
+  diaLocal, filtrosCanal, horaLocal, metasDoPeriodo, periodoAnterior,
+  repartirAtendimento, resolverCanal, resumirFila,
+} from './services/dashboard.js';
 import { iniciarWorkerNotificacoes } from './services/worker-notificacoes-protocolo.js';
 import { ensureTenantProvisioned } from './services/provisionamento.js';
 import devSaasRouter from './auth/dev-saas.js';
@@ -39,6 +43,7 @@ import protocolosRouter from './routes/protocolos.js';
 import protocolosPublicosRouter from './routes/protocolos-publicos.js';
 import protocolosAdminRouter from './routes/protocolos-admin.js';
 import { obterOuCriarConversaAtiva } from './services/conversas.js';
+import { departamentoPadraoDoOperador } from './services/departamentos.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -491,13 +496,19 @@ app.post('/api/internal/sync-user', async (req, res) => {
   app.get('/api/departamentos', async (req, res) => {
     try {
       const op = req.operador;
+      // `meu` marca os setores em que o operador está cadastrado — é o que
+      // permite à tela já vir preenchida com o setor dele.
       const departamentos = await db.manyOrNone(
-        `SELECT d.*, s.nome AS secretaria_nome, s.cor AS secretaria_cor
+        `SELECT d.*, s.nome AS secretaria_nome, s.cor AS secretaria_cor,
+                EXISTS (
+                  SELECT 1 FROM operador_departamentos od
+                  WHERE od.departamento_id = d.id AND od.operador_id = $2
+                ) AS meu
          FROM departamentos d
          LEFT JOIN secretarias s ON s.id = d.secretaria_id
          WHERE d.tenant_id = $1 AND d.ativo = true
          ORDER BY s.nome NULLS LAST, d.nome`,
-        [op.tenantId]
+        [op.tenantId, op.id]
       );
       res.json(departamentos);
     } catch (err) {
@@ -647,6 +658,7 @@ app.post('/api/internal/sync-user', async (req, res) => {
   const ROTULO_MOVIMENTACAO = {
     'conversa.assumida': 'Atendimento assumido',
     'conversa.atribuida': 'Encaminhado para setor',
+    'conversa.encaminhada': 'Encaminhado para a fila de outro setor',
     'conversa.devolvida': 'Devolvido para a fila',
     'conversa.transferida.solicitada': 'Transferência solicitada',
     'conversa.transferida.aceita': 'Transferência aceita',
@@ -900,10 +912,15 @@ app.post('/api/internal/sync-user', async (req, res) => {
       // Busca foto de perfil do WhatsApp em background.
       buscarAvatarContato(wa, op.tenantId, contato.id).catch(() => {});
 
+      // Sem setor escolhido, o atendimento nasce em nome do setor do próprio
+      // atendente em vez de ficar "sem identificação".
+      const departamentoFinal = departamento_id
+        || await departamentoPadraoDoOperador(db, { operadorId: op.id, tenantId: op.tenantId });
+
       const conversa = await obterOuCriarConversaAtiva(db, {
         tenantId: op.tenantId,
         contatoId: contato.id,
-        departamentoId: departamento_id || null,
+        departamentoId: departamentoFinal,
         operadorId: op.id,
         status: 'aberta',
         statusOperacional: 'EM_ATENDIMENTO',
@@ -2540,60 +2557,122 @@ app.post('/api/internal/sync-user', async (req, res) => {
   });
 
   // === Dashboard Admin (imp.md Painel Admin) ===
-  app.get('/api/admin/dashboard', requirePapel('admin'), async (req, res) => {
+  // Painel operacional. Diferente de /api/relatorios/metricas (que conta o que
+  // passou), aqui o foco é o estado agora: fila esperando, equipe disponível e
+  // metas. Aceita o mesmo recorte da tela para os blocos históricos — antes
+  // ignorava os filtros e mostrava sempre "o mês", contradizendo o cabeçalho.
+  app.get('/api/admin/dashboard', requirePapel('admin', 'supervisor'), async (req, res) => {
     try {
       const op = req.operador;
+      const t = op.tenantId;
+      const hojeStr = new Date().toISOString().slice(0, 10);
+      const fim = String(req.query.fim || hojeStr).slice(0, 10);
+      const inicio = String(req.query.inicio || new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10)).slice(0, 10);
+      const departamentoId = req.query.departamento_id || null;
+      const canalPedido = resolverCanal(req.query.canal);
+      if (!canalPedido.ok) {
+        return res.status(400).json({ erro: 'Canal inválido para o painel' });
+      }
+      const canal = filtrosCanal(canalPedido.tipo);
+      const DIA_CONV = diaLocal('c.criado_em');
+      const DIA_MSG = diaLocal('m.criado_em');
 
-      const hoje = new Date().toISOString().slice(0, 10);
-      const inicioSemana = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
-      const inicioMes = new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
+      const filtroDep = departamentoId ? ' AND c.departamento_id = $4::uuid' : '';
+      const params = departamentoId ? [t, inicio, fim, departamentoId] : [t, inicio, fim];
 
-      const [totalHoje, totalSemana, totalMes] = await Promise.all([
-        db.one('SELECT COUNT(*)::int AS c FROM conversas WHERE tenant_id = $1 AND criado_em::date = $2', [op.tenantId, hoje]),
-        db.one('SELECT COUNT(*)::int AS c FROM conversas WHERE tenant_id = $1 AND criado_em::date >= $2', [op.tenantId, inicioSemana]),
-        db.one('SELECT COUNT(*)::int AS c FROM conversas WHERE tenant_id = $1 AND criado_em::date >= $2', [op.tenantId, inicioMes]),
+      const metasLinhas = await db.manyOrNone(
+        'SELECT departamento_id, primeira_resposta_minutos, resolucao_minutos, alerta_percentual, ativo FROM sla_configuracoes WHERE tenant_id = $1',
+        [t],
+      ).catch(() => []);
+      const metas = metasDoPeriodo(metasLinhas, departamentoId);
+
+      const [totais, porStatus, tmaPorSetor, topAssuntos, operadores, filaBruta, origens] = await Promise.all([
+        db.one(
+          `SELECT
+             (SELECT COUNT(*)::int FROM conversas c
+               WHERE c.tenant_id=$1 AND ${DIA_CONV} BETWEEN $2 AND $3${filtroDep}${canal.conv}) AS periodo,
+             (SELECT COUNT(*)::int FROM conversas c
+               WHERE c.tenant_id=$1 AND ${DIA_CONV} = ${diaLocal('now()')}${filtroDep}${canal.conv}) AS hoje`,
+          params,
+        ),
+        db.manyOrNone(
+          `SELECT c.status, COUNT(*)::int AS total FROM conversas c
+           WHERE c.tenant_id=$1 AND c.deleted_at IS NULL${filtroDep ? ' AND c.departamento_id = $2::uuid' : ''}${canal.conv}
+           GROUP BY c.status`,
+          departamentoId ? [t, departamentoId] : [t],
+        ),
+        db.manyOrNone(
+          `SELECT d.nome, AVG(EXTRACT(EPOCH FROM (p.fechado_em - p.aberto_em))/60)::int AS minutos
+           FROM protocolos p JOIN departamentos d ON d.id = p.departamento_id
+           WHERE p.tenant_id = $1 AND p.fechado_em IS NOT NULL
+             AND ${diaLocal('p.fechado_em')} BETWEEN $2 AND $3
+             ${departamentoId ? 'AND p.departamento_id = $4::uuid' : ''}
+           GROUP BY d.nome ORDER BY minutos`,
+          params,
+        ),
+        db.manyOrNone(
+          `SELECT COALESCE(assunto, 'Geral') AS assunto, COUNT(*)::int AS total
+           FROM protocolos p WHERE p.tenant_id = $1 AND ${diaLocal('p.aberto_em')} BETWEEN $2 AND $3
+             ${departamentoId ? 'AND p.departamento_id = $4::uuid' : ''}
+           GROUP BY assunto ORDER BY total DESC LIMIT 5`,
+          params,
+        ),
+        db.manyOrNone(
+          `SELECT o.id, o.nome, o.online, o.status_atendente,
+                  (SELECT COUNT(*)::int FROM conversa_participantes cp
+                   JOIN conversas c ON c.id = cp.conversa_id AND c.status = 'aberta'
+                   WHERE cp.operador_id = o.id) AS carga
+           FROM operadores o
+           WHERE o.tenant_id = $1
+             ${departamentoId ? `AND EXISTS (SELECT 1 FROM operador_departamentos od
+                  WHERE od.operador_id = o.id AND od.departamento_id = $2::uuid)` : ''}
+           ORDER BY o.online DESC, o.nome`,
+          departamentoId ? [t, departamentoId] : [t],
+        ),
+        // Fila de espera: quem entrou e ainda não teve resposta de gente.
+        db.manyOrNone(
+          `SELECT c.id AS conversa_id,
+                  COALESCE(ct.nome, ct.telefone, 'Cidadão') AS contato,
+                  d.nome AS departamento,
+                  COALESCE(c.fila_operador_entrou_em, c.ultima_mensagem_em, c.criado_em) AS aguardando_desde,
+                  NOT EXISTS (
+                    SELECT 1 FROM mensagens m
+                    WHERE m.conversa_id = c.id AND m.direcao = 'saida' AND m.origem IN ('atendente','whatsapp')
+                  ) AS sem_primeira_resposta
+           FROM conversas c
+           LEFT JOIN contatos ct ON ct.id = c.contato_id
+           LEFT JOIN departamentos d ON d.id = c.departamento_id
+           WHERE c.tenant_id = $1 AND c.deleted_at IS NULL AND c.operador_id IS NULL
+             AND (c.status = 'fila' OR c.status_operacional IN ('NOVA','NA_FILA'))
+             ${departamentoId ? 'AND c.departamento_id = $2::uuid' : ''}${canal.conv}
+           ORDER BY aguardando_desde`,
+          departamentoId ? [t, departamentoId] : [t],
+        ),
+        db.manyOrNone(
+          `SELECT m.origem, COUNT(*)::int AS total FROM mensagens m
+           WHERE m.tenant_id = $1 AND ${DIA_MSG} BETWEEN $2 AND $3
+             ${departamentoId ? `AND m.conversa_id IN (SELECT id FROM conversas WHERE tenant_id=$1 AND departamento_id=$4::uuid)` : ''}
+           GROUP BY m.origem`,
+          params,
+        ),
       ]);
 
-      const porStatus = await db.manyOrNone(
-        'SELECT status, COUNT(*)::int FROM conversas WHERE tenant_id = $1 GROUP BY status',
-        [op.tenantId]
-      );
-
-      const nps = await calcularNPS(op.tenantId, inicioMes, null);
-
-      const tmaPorSetor = await db.manyOrNone(
-        `SELECT d.nome, AVG(EXTRACT(EPOCH FROM (p.fechado_em - p.aberto_em))/60)::int AS minutos
-         FROM protocolos p JOIN departamentos d ON d.id = p.departamento_id
-         WHERE p.tenant_id = $1 AND p.fechado_em IS NOT NULL AND p.fechado_em::date >= $2
-         GROUP BY d.nome ORDER BY minutos`,
-        [op.tenantId, inicioMes]
-      );
-
-      const topAssuntos = await db.manyOrNone(
-        `SELECT COALESCE(assunto, 'Geral') AS assunto, COUNT(*)::int AS total
-         FROM protocolos WHERE tenant_id = $1 AND aberto_em::date >= $2
-         GROUP BY assunto ORDER BY total DESC LIMIT 5`,
-        [op.tenantId, inicioMes]
-      );
-
-      const operadoresOnline = await db.manyOrNone(
-        `SELECT o.id, o.nome, o.online, o.status_atendente,
-                (SELECT COUNT(*)::int FROM conversa_participantes cp
-                 JOIN conversas c ON c.id = cp.conversa_id AND c.status = 'aberta'
-                 WHERE cp.operador_id = o.id) AS carga
-         FROM operadores o WHERE o.tenant_id = $1 ORDER BY o.online DESC`,
-        [op.tenantId]
-      );
+      let nps = null;
+      try { nps = await calcularNPS(t, inicio, fim); } catch { /* NPS é opcional */ }
 
       res.json({
-        total_hoje: totalHoje.c,
-        total_semana: totalSemana.c,
-        total_mes: totalMes.c,
+        periodo: { inicio, fim },
+        filtros: { departamento_id: departamentoId, canal: req.query.canal || null },
+        metas,
+        total_periodo: totais.periodo,
+        total_hoje: totais.hoje,
         por_status: porStatus,
         nps,
         tma_por_setor: tmaPorSetor,
         top_assuntos: topAssuntos,
-        operadores_online: operadoresOnline,
+        operadores_online: operadores,
+        fila: resumirFila(filaBruta, new Date(), metas),
+        atendimento: repartirAtendimento(origens),
       });
     } catch (err) {
       console.error('[API] dashboard error:', err.message);
@@ -2649,18 +2728,22 @@ app.post('/api/internal/sync-user', async (req, res) => {
         extraParams2.push(statusFiltro);
         p4++; p2++;
       }
-      if (canal === 'chatbot') {
-        const f = ` AND c.operador_id IS NULL`;
-        convFilter4 += f;
-        convFilter2 += f;
-        msgFilter4 += ` AND m.operador_id IS NULL`;
-        msgFilter2 += ` AND m.operador_id IS NULL`;
-      } else if (canal === 'interno') {
-        const f = ` AND FALSE`;
-        convFilter4 += f;
-        convFilter2 += f;
-        msgFilter4 += f;
-        msgFilter2 += f;
+      // Canal desconhecido não pode passar batido: antes, 'whatsapp' e
+      // 'chat_interno' não filtravam nada e a tela exibia o total como se
+      // fosse o recorte pedido.
+      const DIA_CONV = diaLocal('c.criado_em');
+      const DIA_MSG = diaLocal('m.criado_em');
+      const HORA_MSG = horaLocal('m.criado_em');
+      const canalResolvido = resolverCanal(canal);
+      if (!canalResolvido.ok) {
+        return res.status(400).json({ erro: 'Canal inválido para o relatório' });
+      }
+      if (canalResolvido.tipo) {
+        const f = filtrosCanal(canalResolvido.tipo);
+        convFilter4 += f.conv;
+        convFilter2 += f.conv;
+        msgFilter4 += f.msg;
+        msgFilter2 += f.msg;
       }
 
       const msgExtra4 = [];
@@ -2684,12 +2767,12 @@ app.post('/api/internal/sync-user', async (req, res) => {
       const [resumo, primeiraResposta, porStatus, porDia, porSetor, porHora, ranking] = await Promise.all([
         db.one(
           `SELECT
-             (SELECT COUNT(*)::int FROM conversas WHERE tenant_id=$1 AND criado_em::date BETWEEN $2 AND $3${convFilter4}) AS criadas,
-             (SELECT COUNT(*)::int FROM mensagens m WHERE tenant_id=$1 AND direcao='saida' AND criado_em::date BETWEEN $2 AND $3${msgFilter4}) AS enviadas,
-             (SELECT COUNT(*)::int FROM mensagens m WHERE tenant_id=$1 AND direcao='entrada' AND criado_em::date BETWEEN $2 AND $3${msgFilter4}) AS recebidas,
-             (SELECT COUNT(*)::int FROM conversas WHERE tenant_id=$1 AND status='aberta'${convFilter4}) AS em_aberto,
-             (SELECT COUNT(*)::int FROM conversas WHERE tenant_id=$1 AND status='fila'${convFilter4}) AS na_fila,
-             (SELECT COUNT(*)::int FROM conversas WHERE tenant_id=$1 AND status IN ('resolvida','arquivada') AND criado_em::date BETWEEN $2 AND $3${convFilter4}) AS resolvidas_periodo`,
+             (SELECT COUNT(*)::int FROM conversas c WHERE c.tenant_id=$1 AND ${DIA_CONV} BETWEEN $2 AND $3${convFilter4}) AS criadas,
+             (SELECT COUNT(*)::int FROM mensagens m WHERE m.tenant_id=$1 AND m.direcao='saida' AND ${DIA_MSG} BETWEEN $2 AND $3${msgFilter4}) AS enviadas,
+             (SELECT COUNT(*)::int FROM mensagens m WHERE m.tenant_id=$1 AND m.direcao='entrada' AND ${DIA_MSG} BETWEEN $2 AND $3${msgFilter4}) AS recebidas,
+             (SELECT COUNT(*)::int FROM conversas c WHERE c.tenant_id=$1 AND c.status='aberta'${convFilter4}) AS em_aberto,
+             (SELECT COUNT(*)::int FROM conversas c WHERE c.tenant_id=$1 AND c.status='fila'${convFilter4}) AS na_fila,
+             (SELECT COUNT(*)::int FROM conversas c WHERE c.tenant_id=$1 AND c.status IN ('resolvida','arquivada') AND ${DIA_CONV} BETWEEN $2 AND $3${convFilter4}) AS resolvidas_periodo`,
           allParams
         ),
         db.oneOrNone(
@@ -2699,20 +2782,20 @@ app.post('/api/internal/sync-user', async (req, res) => {
                MIN(criado_em) FILTER (WHERE direcao='entrada') AS primeira_entrada,
                MIN(criado_em) FILTER (WHERE direcao='saida')   AS primeira_saida
              FROM mensagens m
-             WHERE tenant_id=$1 AND criado_em::date BETWEEN $2 AND $3${msgFilter4}
+             WHERE m.tenant_id=$1 AND ${DIA_MSG} BETWEEN $2 AND $3${msgFilter4}
              GROUP BY conversa_id
            ) q
            WHERE primeira_entrada IS NOT NULL AND primeira_saida IS NOT NULL AND primeira_saida > primeira_entrada`,
           allParams
         ),
-        db.manyOrNone(`SELECT status, COUNT(*)::int AS total FROM conversas WHERE tenant_id=$1${convFilter2} GROUP BY status`, baseParams),
+        db.manyOrNone(`SELECT c.status, COUNT(*)::int AS total FROM conversas c WHERE c.tenant_id=$1${convFilter2} GROUP BY c.status`, baseParams),
         db.manyOrNone(
           `SELECT to_char(d.dia,'YYYY-MM-DD') AS dia, COALESCE(c.total,0)::int AS total
            FROM generate_series($2::date, $3::date, interval '1 day') d(dia)
            LEFT JOIN (
-             SELECT criado_em::date AS dia, COUNT(*)::int AS total
-             FROM conversas WHERE tenant_id=$1 AND criado_em::date BETWEEN $2 AND $3${convFilter4}
-             GROUP BY criado_em::date
+             SELECT ${DIA_CONV} AS dia, COUNT(*)::int AS total
+             FROM conversas c WHERE c.tenant_id=$1 AND ${DIA_CONV} BETWEEN $2 AND $3${convFilter4}
+             GROUP BY 1
            ) c ON c.dia = d.dia
            ORDER BY d.dia`,
           convParams
@@ -2720,13 +2803,13 @@ app.post('/api/internal/sync-user', async (req, res) => {
         db.manyOrNone(
           `SELECT COALESCE(dp.nome,'Sem setor') AS nome, COUNT(*)::int AS total
            FROM conversas c LEFT JOIN departamentos dp ON dp.id=c.departamento_id
-           WHERE c.tenant_id=$1 AND c.criado_em::date BETWEEN $2 AND $3${convFilter4}
+           WHERE c.tenant_id=$1 AND ${DIA_CONV} BETWEEN $2 AND $3${convFilter4}
            GROUP BY dp.nome ORDER BY total DESC LIMIT 10`,
           convParams
         ),
         db.manyOrNone(
-          `SELECT EXTRACT(HOUR FROM (criado_em AT TIME ZONE 'America/Sao_Paulo'))::int AS hora, COUNT(*)::int AS total
-           FROM mensagens m WHERE tenant_id=$1 AND direcao='entrada' AND criado_em::date BETWEEN $2 AND $3${msgFilter4}
+          `SELECT ${HORA_MSG} AS hora, COUNT(*)::int AS total
+           FROM mensagens m WHERE m.tenant_id=$1 AND m.direcao='entrada' AND ${DIA_MSG} BETWEEN $2 AND $3${msgFilter4}
            GROUP BY hora ORDER BY hora`,
           allParams
         ),
@@ -2735,7 +2818,7 @@ app.post('/api/internal/sync-user', async (req, res) => {
                   COUNT(*) FILTER (WHERE m.direcao='saida')::int AS enviadas,
                   COUNT(DISTINCT m.conversa_id)::int AS conversas
            FROM mensagens m JOIN operadores o ON o.id=m.operador_id
-           WHERE m.tenant_id=$1 AND m.operador_id IS NOT NULL AND m.criado_em::date BETWEEN $2 AND $3${msgFilter4}
+           WHERE m.tenant_id=$1 AND m.operador_id IS NOT NULL AND ${DIA_MSG} BETWEEN $2 AND $3${msgFilter4}
            GROUP BY o.id, o.nome ORDER BY enviadas DESC LIMIT 10`,
           allParams
         ),
@@ -2757,24 +2840,22 @@ app.post('/api/internal/sync-user', async (req, res) => {
 
       let comparacao = null;
       if (comparar === 'true') {
-        const diffMs = new Date(fim).getTime() - new Date(inicio).getTime();
-        const diffDias = Math.ceil(diffMs / 86400000) + 1;
-        const fimAntDate = new Date(new Date(inicio).getTime() - 86400000);
-        const inicioAntDate = new Date(fimAntDate.getTime() - (diffDias - 1) * 86400000);
-        const inicioAnt = inicioAntDate.toISOString().slice(0, 10);
-        const fimAnt = fimAntDate.toISOString().slice(0, 10);
+        const anterior = periodoAnterior(inicio, fim) || { inicio, fim };
+        const inicioAnt = anterior.inicio;
+        const fimAnt = anterior.fim;
 
         try {
           const allParamsAnt = [t, inicioAnt, fimAnt, ...msgExtra4];
-          const [resumoAnt, primeiraRespAnt] = await Promise.all([
+          const convParamsAnt = [t, inicioAnt, fimAnt, ...extraParams4];
+          const [resumoAnt, primeiraRespAnt, porDiaAnt] = await Promise.all([
             db.one(
               `SELECT
-                 (SELECT COUNT(*)::int FROM conversas WHERE tenant_id=$1 AND criado_em::date BETWEEN $2 AND $3${convFilter4}) AS criadas,
-                 (SELECT COUNT(*)::int FROM mensagens m WHERE tenant_id=$1 AND direcao='saida' AND criado_em::date BETWEEN $2 AND $3${msgFilter4}) AS enviadas,
-                 (SELECT COUNT(*)::int FROM mensagens m WHERE tenant_id=$1 AND direcao='entrada' AND criado_em::date BETWEEN $2 AND $3${msgFilter4}) AS recebidas,
-                 (SELECT COUNT(*)::int FROM conversas WHERE tenant_id=$1 AND status='aberta'${convFilter4}) AS em_aberto,
-                 (SELECT COUNT(*)::int FROM conversas WHERE tenant_id=$1 AND status='fila'${convFilter4}) AS na_fila,
-                 (SELECT COUNT(*)::int FROM conversas WHERE tenant_id=$1 AND status IN ('resolvida','arquivada') AND criado_em::date BETWEEN $2 AND $3${convFilter4}) AS resolvidas_periodo`,
+                 (SELECT COUNT(*)::int FROM conversas c WHERE c.tenant_id=$1 AND ${DIA_CONV} BETWEEN $2 AND $3${convFilter4}) AS criadas,
+                 (SELECT COUNT(*)::int FROM mensagens m WHERE m.tenant_id=$1 AND m.direcao='saida' AND ${DIA_MSG} BETWEEN $2 AND $3${msgFilter4}) AS enviadas,
+                 (SELECT COUNT(*)::int FROM mensagens m WHERE m.tenant_id=$1 AND m.direcao='entrada' AND ${DIA_MSG} BETWEEN $2 AND $3${msgFilter4}) AS recebidas,
+                 (SELECT COUNT(*)::int FROM conversas c WHERE c.tenant_id=$1 AND c.status='aberta'${convFilter4}) AS em_aberto,
+                 (SELECT COUNT(*)::int FROM conversas c WHERE c.tenant_id=$1 AND c.status='fila'${convFilter4}) AS na_fila,
+                 (SELECT COUNT(*)::int FROM conversas c WHERE c.tenant_id=$1 AND c.status IN ('resolvida','arquivada') AND ${DIA_CONV} BETWEEN $2 AND $3${convFilter4}) AS resolvidas_periodo`,
               allParamsAnt
             ),
             db.oneOrNone(
@@ -2784,11 +2865,22 @@ app.post('/api/internal/sync-user', async (req, res) => {
                    MIN(criado_em) FILTER (WHERE direcao='entrada') AS primeira_entrada,
                    MIN(criado_em) FILTER (WHERE direcao='saida')   AS primeira_saida
                  FROM mensagens m
-                 WHERE tenant_id=$1 AND criado_em::date BETWEEN $2 AND $3${msgFilter4}
+                 WHERE m.tenant_id=$1 AND ${DIA_MSG} BETWEEN $2 AND $3${msgFilter4}
                  GROUP BY conversa_id
                ) q
                WHERE primeira_entrada IS NOT NULL AND primeira_saida IS NOT NULL AND primeira_saida > primeira_entrada`,
               allParamsAnt
+            ),
+            db.manyOrNone(
+              `SELECT to_char(d.dia,'YYYY-MM-DD') AS dia, COALESCE(c.total,0)::int AS total
+               FROM generate_series($2::date, $3::date, interval '1 day') d(dia)
+               LEFT JOIN (
+                 SELECT ${DIA_CONV} AS dia, COUNT(*)::int AS total
+                 FROM conversas c WHERE c.tenant_id=$1 AND ${DIA_CONV} BETWEEN $2 AND $3${convFilter4}
+                 GROUP BY 1
+               ) c ON c.dia = d.dia
+               ORDER BY d.dia`,
+              convParamsAnt
             ),
           ]);
 
@@ -2797,6 +2889,7 @@ app.post('/api/internal/sync-user', async (req, res) => {
 
           comparacao = {
             periodo: { inicio: inicioAnt, fim: fimAnt },
+            por_dia: porDiaAnt,
             criadas: resumoAnt.criadas,
             enviadas: resumoAnt.enviadas,
             recebidas: resumoAnt.recebidas,
@@ -2828,6 +2921,9 @@ app.post('/api/internal/sync-user', async (req, res) => {
         ranking_atendentes: ranking,
         nps,
         comparacao,
+        // Série do período anterior separada, para o gráfico sobrepor as duas
+        // linhas sem o front ter de cavar dentro de `comparacao`.
+        por_dia_anterior: comparacao?.por_dia || null,
       });
     } catch (err) {
       console.error('[API] relatorios metricas error:', err.message);
@@ -3059,6 +3155,7 @@ app.post('/api/internal/sync-user', async (req, res) => {
   });
 
   const io = iniciarGateway(server, wa, storage);
+  app.locals.io = io;
 
   server.listen(config.port, async () => {
     console.log(`[ChatGov] Server running on port ${config.port}`);

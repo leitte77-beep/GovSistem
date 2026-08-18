@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Building2, FolderTree, Users, Smartphone, Plus, Trash2, Wifi, WifiOff, LogOut, QrCode, KeyRound, Ban, SlidersHorizontal, Save, Loader2, Check, Bot, FileText, Brain, MessageSquare, Bell, BellOff, Volume2, Network, Route, ShieldCheck, Search, ChevronDown, ChevronRight, X } from 'lucide-react';
+import { Building2, FolderTree, Users, Smartphone, Plus, Trash2, Wifi, WifiOff, LogOut, QrCode, KeyRound, Ban, SlidersHorizontal, Save, Loader2, Check, Bot, FileText, Brain, MessageSquare, Bell, BellOff, Volume2, Network, Route, ShieldCheck, Search, ChevronDown, ChevronRight, X, Megaphone } from 'lucide-react';
 import { T, CORES_DEPT } from '../theme';
 import {
   fetchSecretarias, criarSecretaria, editarSecretaria, excluirSecretaria,
@@ -14,6 +14,8 @@ import {
 } from '../api';
 import { fetchConfigNotificacoes, salvarConfigNotificacoes } from '../api/evolucoes';
 import { useSocket } from '../context/SocketContext';
+import { useAuth } from '../context/AuthContext';
+import { AbaAvisos } from './AbaAvisos';
 import {
   AbaCanaisAvancados, AbaRegrasOperacionais, AbaGovernanca, VersoesIris, VersoesChatbot,
 } from './AdministracaoAvancada';
@@ -58,6 +60,7 @@ const GRUPOS_CONFIGURACAO = [
     id: 'sistema',
     label: 'Sistema',
     abas: [
+      { id: 'avisos', label: 'Avisos', icon: Megaphone, somenteAdmin: true },
       { id: 'notificacoes', label: 'Notificações', icon: Bell },
       { id: 'governanca', label: 'Governança', icon: ShieldCheck },
     ],
@@ -65,9 +68,15 @@ const GRUPOS_CONFIGURACAO = [
 ];
 
 export function PaginaConfiguracoes({ onOpenQR, breakpoint }) {
+  const { auth } = useAuth();
   const [aba, setAba] = useState('conexao');
   const ehMobile = breakpoint === 'mobile';
-  const abas = GRUPOS_CONFIGURACAO.flatMap((grupo) => grupo.abas);
+  const isAdmin = auth?.operador?.papel === 'admin';
+  const grupos = useMemo(() => GRUPOS_CONFIGURACAO.map((grupo) => ({
+    ...grupo,
+    abas: grupo.abas.filter((item) => !item.somenteAdmin || isAdmin),
+  })).filter((grupo) => grupo.abas.length > 0), [isAdmin]);
+  const abas = grupos.flatMap((grupo) => grupo.abas);
   const abaAtual = abas.find((item) => item.id === aba);
 
   return React.createElement('div', { style: { flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column', height: '100%', background: T.bg, overflow: 'hidden' } },
@@ -111,7 +120,7 @@ export function PaginaConfiguracoes({ onOpenQR, breakpoint }) {
         },
       },
         React.createElement('nav', { 'aria-label': 'Seções de configurações', style: { display: 'grid', gap: 18 } },
-          GRUPOS_CONFIGURACAO.map((grupo) => React.createElement('div', { key: grupo.id },
+          grupos.map((grupo) => React.createElement('div', { key: grupo.id },
             React.createElement('div', {
               style: {
                 padding: '0 10px 6px', color: T.textMuted, fontSize: 10,
@@ -156,6 +165,7 @@ export function PaginaConfiguracoes({ onOpenQR, breakpoint }) {
           aba === 'secretarias' && React.createElement(AbaSecretarias),
           aba === 'departamentos' && React.createElement(AbaDepartamentos),
           aba === 'equipe' && React.createElement(AbaEquipe),
+          aba === 'avisos' && isAdmin && React.createElement(AbaAvisos),
           aba === 'notificacoes' && React.createElement(AbaNotificacoes),
           aba === 'governanca' && React.createElement(AbaGovernanca),
         ),
@@ -209,7 +219,7 @@ function AbaSecretarias() {
             React.createElement(PontoCor, { cor: s.cor }),
             React.createElement('span', { style: { flex: 1, fontSize: 14, fontWeight: 600, color: T.text } }, s.nome),
             React.createElement('span', { style: { fontSize: 12, color: T.textMuted } }, `${s.total_departamentos || 0} depto(s)`),
-            React.createElement('button', { onClick: () => remover(s.id), style: btnIcon, title: 'Excluir' }, React.createElement(Trash2, { size: 16 })),
+            React.createElement('button', { onClick: () => remover(s.id), style: btnIcon, title: 'Excluir', 'aria-label': `Excluir secretaria ${s.nome}` }, React.createElement(Trash2, { size: 16 })),
           )),
   );
 }
@@ -260,7 +270,7 @@ function AbaDepartamentos() {
               React.createElement('option', { value: '' }, 'Sem secretaria'),
               secretarias.map((s) => React.createElement('option', { key: s.id, value: s.id }, s.nome)),
             ),
-            React.createElement('button', { onClick: () => remover(d.id), style: btnIcon, title: 'Excluir' }, React.createElement(Trash2, { size: 16 })),
+            React.createElement('button', { onClick: () => remover(d.id), style: btnIcon, title: 'Excluir', 'aria-label': `Excluir departamento ${d.nome}` }, React.createElement(Trash2, { size: 16 })),
           )),
   );
 }
@@ -314,7 +324,7 @@ function AvatarOperador({ op }) {
       ? React.createElement('img', { src: op.avatar_url, alt: '', style: { width: 34, height: 34, borderRadius: '50%', objectFit: 'cover' } })
       : React.createElement('div', {
           style: {
-            width: 34, height: 34, borderRadius: '50%', background: T.primarySoft, color: T.primary,
+            width: 34, height: 34, borderRadius: '50%', background: T.primarySoft, color: T.primaryOnSoft,
             display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700,
           },
         }, iniciaisDe(op.nome)),
@@ -558,7 +568,7 @@ function ModalAcessosOperador({ operador, grupos, totalSetores, onFechar, onSalv
           React.createElement('div', { style: { fontSize: 16, fontWeight: 700, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, operador.nome),
           React.createElement('div', { style: { fontSize: 12, color: T.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, operador.email),
         ),
-        React.createElement('button', { onClick: onFechar, style: btnIcon, title: 'Fechar' }, React.createElement(X, { size: 18 })),
+        React.createElement('button', { onClick: onFechar, style: btnIcon, title: 'Fechar', 'aria-label': 'Fechar acessos do usuário' }, React.createElement(X, { size: 18 })),
       ),
 
       (operador.papel === 'admin' || operador.papel === 'supervisor')
@@ -601,6 +611,8 @@ function ModalAcessosOperador({ operador, grupos, totalSetores, onFechar, onSalv
                   React.createElement('span', { style: { fontSize: 11.5, fontWeight: 600, color: marcados ? T.primary : T.textMuted } }, `${marcados}/${g.deptos.length}`),
                   React.createElement('button', {
                     onClick: () => alternarAberto(g.id), style: btnIcon, title: aberto ? 'Recolher' : 'Expandir', disabled: !!termo,
+                    'aria-label': `${aberto ? 'Recolher' : 'Expandir'} setores de ${g.nome}`,
+                    'aria-expanded': aberto,
                   }, React.createElement(aberto ? ChevronDown : ChevronRight, { size: 16 })),
                 ),
                 aberto && g.deptos.map((d) =>
@@ -900,16 +912,17 @@ function AbaBloqueios() {
             React.createElement(Ban, { size: 16, color: T.danger }),
             React.createElement('span', { style: { fontSize: 14, fontWeight: 600, color: T.text, minWidth: 130 } }, b.telefone),
             React.createElement('span', { style: { flex: 1, fontSize: 13, color: T.textMuted } }, b.motivo || '—'),
-            React.createElement('button', { onClick: () => desbloquear(b.id), style: btnIcon, title: 'Desbloquear' }, React.createElement(Trash2, { size: 16 })),
+            React.createElement('button', { onClick: () => desbloquear(b.id), style: btnIcon, title: 'Desbloquear', 'aria-label': `Desbloquear número ${b.telefone}` }, React.createElement(Trash2, { size: 16 })),
           )),
   );
 }
 
 function SeletorCor({ cor, onChange }) {
   return React.createElement('div', { style: { display: 'flex', gap: 4 } },
-    CORES_DEPT.slice(0, 6).map((c) =>
+    CORES_DEPT.slice(0, 6).map((c, indice) =>
       React.createElement('button', {
         key: c, onClick: () => onChange(c), title: c,
+        'aria-label': `Selecionar cor ${indice + 1}`, 'aria-pressed': cor === c,
         style: {
           width: 22, height: 22, borderRadius: '50%', background: c, cursor: 'pointer',
           border: cor === c ? `2px solid ${T.text}` : '2px solid transparent',
@@ -1046,7 +1059,7 @@ function AbaChatbot() {
             React.createElement('span', { style: { fontSize: 13, color: T.text, flex: 1 } }, (pc.palavras || []).join(', ')),
             React.createElement('span', { style: { fontSize: 13, color: T.textSecondary, flex: 2 } }, pc.resposta),
             deptoNome && React.createElement('span', { style: { fontSize: 11, padding: '2px 8px', borderRadius: 10, background: T.surfaceMuted, color: T.textMuted, marginRight: 8 } }, deptoNome),
-            React.createElement('button', { onClick: () => delPC(pc.id), style: btnIcon }, React.createElement(Trash2, { size: 16 })),
+            React.createElement('button', { onClick: () => delPC(pc.id), style: btnIcon, 'aria-label': 'Excluir regra de resposta' }, React.createElement(Trash2, { size: 16 })),
           ));
       }),
       pcs.length === 0 && React.createElement('div', { style: { padding: 22, color: T.textMuted, fontSize: 13 } }, 'Nenhuma regra cadastrada.'),
@@ -1064,7 +1077,7 @@ function AbaChatbot() {
         React.createElement('div', { key: f.id, style: { ...linha, flexDirection: 'column', alignItems: 'stretch', gap: 4 } },
           React.createElement('div', { style: { fontSize: 14, fontWeight: 600, color: T.text } }, f.pergunta),
           React.createElement('div', { style: { fontSize: 13, color: T.textSecondary } }, f.resposta),
-          React.createElement('button', { onClick: () => delFaq(f.id), style: { ...btnIcon, alignSelf: 'flex-end' } }, React.createElement(Trash2, { size: 16 })),
+          React.createElement('button', { onClick: () => delFaq(f.id), style: { ...btnIcon, alignSelf: 'flex-end' }, 'aria-label': `Excluir FAQ ${f.pergunta}` }, React.createElement(Trash2, { size: 16 })),
         )),
       faqs.length === 0 && React.createElement('div', { style: { padding: 22, color: T.textMuted, fontSize: 13 } }, 'Nenhuma FAQ cadastrada.'),
     ),
@@ -1307,7 +1320,7 @@ function AbaTemplates() {
             React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
               React.createElement('span', { style: { fontSize: 12, padding: '2px 8px', borderRadius: 10, background: T.surfaceMuted, color: T.textSecondary } }, t.categoria),
               React.createElement('span', { style: { fontSize: 14, fontWeight: 600, color: T.text, flex: 1 } }, t.titulo),
-              React.createElement('button', { onClick: () => remover(t.id), style: btnIcon }, React.createElement(Trash2, { size: 16 })),
+              React.createElement('button', { onClick: () => remover(t.id), style: btnIcon, 'aria-label': `Excluir template ${t.titulo}` }, React.createElement(Trash2, { size: 16 })),
             ),
             React.createElement('span', { style: { fontSize: 13, color: T.textSecondary, lineHeight: '18px' } }, t.conteudo),
           )),

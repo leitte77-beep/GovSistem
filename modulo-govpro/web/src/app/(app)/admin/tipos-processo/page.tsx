@@ -39,7 +39,7 @@ export default function TiposProcessoPage() {
   }, []);
 
   const fields: CatalogField[] = [
-    { name: "codigo", label: "Código", type: "text", required: true, disabled: Boolean(editando), span: 1 },
+    { name: "codigo", label: "Código", type: "text", required: false, disabled: Boolean(editando), span: 1, help: "Opcional. Se vazio, é gerado automaticamente a partir do nome." },
     { name: "nome", label: "Nome", type: "text", required: true, span: 1 },
     { name: "descricao", label: "Descrição", type: "textarea", span: 2 },
     {
@@ -114,7 +114,7 @@ export default function TiposProcessoPage() {
         await api.atualizarTipoProcesso(editando.id, payload as TipoProcessoUpdate);
         toast.success("Tipo de processo atualizado");
       } else {
-        await api.criarTipoProcesso({ codigo: values.codigo as string, ...payload });
+        await api.criarTipoProcesso({ codigo: (values.codigo as string)?.trim() || undefined, ...payload });
         toast.success("Tipo de processo criado");
       }
       setModalAberto(false);
@@ -230,7 +230,7 @@ export default function TiposProcessoPage() {
       <ConfirmModal
         open={Boolean(removendo)}
         title="Desativar tipo de processo"
-        message={`Deseja desativar "${removendo?.nome}"? Processos já autuados com este tipo não são afetados.`}
+        message={`Deseja desativar "${removendo?.nome}"? Processos já iniciados com este tipo não são afetados.`}
         danger
         loading={salvando}
         onConfirm={remover}

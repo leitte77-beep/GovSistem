@@ -568,8 +568,6 @@ services:
       - ./nginx/ssl:/etc/nginx/ssl:ro
       - uploads:/app/uploads
       - certbot-www:/var/www/certbot
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
     depends_on:
       - api
       - web-admin

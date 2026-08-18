@@ -36,7 +36,7 @@ export default function HipotesesLegaisPage() {
   }, []);
 
   const fields: CatalogField[] = [
-    { name: "codigo", label: "Código", type: "text", required: true, disabled: Boolean(editando), span: 1 },
+    { name: "codigo", label: "Código", type: "text", required: false, disabled: Boolean(editando), span: 1, help: "Opcional. Se vazio, é gerado automaticamente a partir da descrição." },
     { name: "grau_sigilo", label: "Grau (LAI art. 24, quando aplicável)", type: "select", options: GRAU_OPTIONS, span: 1 },
     { name: "descricao", label: "Descrição", type: "textarea", required: true, span: 2 },
     { name: "base_legal", label: "Base legal", type: "textarea", span: 2 },
@@ -72,7 +72,7 @@ export default function HipotesesLegaisPage() {
         await api.atualizarHipoteseLegal(editando.id, payload as HipoteseLegalUpdate);
         toast.success("Hipótese legal atualizada");
       } else {
-        await api.criarHipoteseLegal({ codigo: values.codigo as string, ...payload });
+        await api.criarHipoteseLegal({ codigo: (values.codigo as string)?.trim() || undefined, ...payload });
         toast.success("Hipótese legal criada");
       }
       setModalAberto(false);

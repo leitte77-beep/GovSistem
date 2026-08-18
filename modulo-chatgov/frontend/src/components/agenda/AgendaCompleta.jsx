@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { X, Plus, Search, CalendarDays } from 'lucide-react';
 import { T } from '../../theme';
 import { fetchItensAgenda, concluirItemAgenda, reabrirItemAgenda, janelaDeHoje } from '../../api/agenda';
 import { ItemAgenda } from './ItemAgenda';
 import { ModalCompromisso } from './ModalCompromisso';
 import { notificarAgendaAtualizada } from './eventos';
+import { useModalFocus } from '../../hooks/useModalFocus';
 
 // A visão em lista é a que o servidor realmente usa no dia a dia. Dia/semana/mês
 // em grade de calendário fica para a etapa da agenda compartilhada, onde a grade
@@ -57,6 +58,7 @@ export function AgendaCompleta({ onClose, onAbrirConversa, breakpoint, modo = 'o
   const [editando, setEditando] = useState(null);
   const [criando, setCriando] = useState(false);
   const ehMobile = breakpoint === 'mobile';
+  const dialogRef = useRef(null);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -76,15 +78,8 @@ export function AgendaCompleta({ onClose, onAbrirConversa, breakpoint, modo = 'o
     return () => clearTimeout(t);
   }, [carregar, busca]);
 
-  // Esc só fecha no modo sobreposto: como view do rail não há o que fechar, e
-  // sequestrar a tecla ali confundiria quem espera que ela feche o modal.
   const ehOverlay = modo === 'overlay';
-  useEffect(() => {
-    if (!ehOverlay) return undefined;
-    const onEsc = (e) => { if (e.key === 'Escape' && !criando && !editando) onClose?.(); };
-    document.addEventListener('keydown', onEsc);
-    return () => document.removeEventListener('keydown', onEsc);
-  }, [ehOverlay, onClose, criando, editando]);
+  useModalFocus(dialogRef, onClose, undefined, undefined, ehOverlay);
 
   const concluir = async (item) => {
     setItens((l) => l.map((i) => (i.id === item.id ? { ...i, status: 'concluida' } : i)));
@@ -99,7 +94,7 @@ export function AgendaCompleta({ onClose, onAbrirConversa, breakpoint, modo = 'o
   const painel = React.createElement('div',
     ehOverlay
       ? {
-          role: 'dialog', 'aria-modal': 'true', 'aria-label': 'Agenda completa',
+          ref: dialogRef, role: 'dialog', 'aria-modal': true, 'aria-label': 'Agenda completa', tabIndex: -1,
           style: {
             background: T.surface, borderRadius: ehMobile ? 0 : T.radiusLg,
             width: '100%', maxWidth: 680, height: ehMobile ? '100%' : '82vh',

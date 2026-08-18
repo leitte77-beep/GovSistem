@@ -143,6 +143,7 @@ export function PaginaAgenda({ onSendMessage, breakpoint }) {
         onClick: () => setModoGrade(!modoGrade),
         style: sf.btnIcon,
         title: modoGrade ? 'Visualizar em lista' : 'Visualizar em grade',
+        'aria-label': modoGrade ? 'Visualizar em lista' : 'Visualizar em grade',
       }, modoGrade ? React.createElement(List, { size: 20, color: T.textMuted }) : React.createElement(Grid3X3, { size: 20, color: T.textMuted })),
     ),
 
@@ -202,8 +203,8 @@ export function PaginaAgenda({ onSendMessage, breakpoint }) {
                   onKeyDown: (e) => { if (e.key === 'Enter') salvar(c.id); if (e.key === 'Escape') setEditandoId(null); },
                   autoFocus: true, style: sf.editInput,
                 }),
-                React.createElement('button', { onClick: () => salvar(c.id), style: { ...sf.actionBtn, background: T.success, color: '#fff' } }, React.createElement(Check, { size: 14 })),
-                React.createElement('button', { onClick: () => setEditandoId(null), style: { ...sf.actionBtn, background: T.surfaceMuted } }, React.createElement(X, { size: 14 })),
+                React.createElement('button', { onClick: () => salvar(c.id), 'aria-label': `Salvar nome de ${c.nome || c.telefone}`, style: { ...sf.actionBtn, background: T.success, color: '#fff' } }, React.createElement(Check, { size: 14 })),
+                React.createElement('button', { onClick: () => setEditandoId(null), 'aria-label': 'Cancelar edição do nome', style: { ...sf.actionBtn, background: T.surfaceMuted } }, React.createElement(X, { size: 14 })),
               )
             : React.createElement('div', {
                 style: { fontSize: 15, fontWeight: 700, color: c.nome ? T.text : T.textMuted, cursor: 'pointer', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
@@ -241,8 +242,8 @@ export function PaginaAgenda({ onSendMessage, breakpoint }) {
           React.createElement(Edit3, { size: 14 }), ' Editar'),
         excluindoId === c.id
           ? React.createElement('div', { style: { display: 'flex', gap: 4, marginLeft: 'auto' } },
-              React.createElement('button', { onClick: (e) => executarExclusao(e, c.id), style: { ...sf.actionBtn, background: T.danger, color: '#fff' } }, React.createElement(Check, { size: 14 })),
-              React.createElement('button', { onClick: (e) => cancelarExclusao(e), style: { ...sf.actionBtn, background: T.surfaceMuted } }, React.createElement(X, { size: 14 })),
+              React.createElement('button', { onClick: (e) => executarExclusao(e, c.id), 'aria-label': `Confirmar exclusão de ${c.nome || c.telefone}`, style: { ...sf.actionBtn, background: T.danger, color: '#fff' } }, React.createElement(Check, { size: 14 })),
+              React.createElement('button', { onClick: (e) => cancelarExclusao(e), 'aria-label': 'Cancelar exclusão', style: { ...sf.actionBtn, background: T.surfaceMuted } }, React.createElement(X, { size: 14 })),
             )
           : React.createElement('button', {
               onClick: (e) => confirmarExclusao(e, c.id),
@@ -270,8 +271,8 @@ export function PaginaAgenda({ onSendMessage, breakpoint }) {
                 autoFocus: true,
                 style: { fontSize: 14, fontWeight: 600, padding: '4px 8px', border: `2px solid ${T.primary}`, borderRadius: T.radiusSm, color: T.text, background: T.surface, outline: 'none', width: '100%' },
               }),
-              React.createElement('button', { onClick: () => salvar(c.id), style: { ...sf.actionBtn, background: T.success, color: '#fff' } }, React.createElement(Check, { size: 14 })),
-              React.createElement('button', { onClick: () => setEditandoId(null), style: { ...sf.actionBtn, background: T.surfaceMuted } }, React.createElement(X, { size: 14 })),
+              React.createElement('button', { onClick: () => salvar(c.id), 'aria-label': `Salvar nome de ${c.nome || c.telefone}`, style: { ...sf.actionBtn, background: T.success, color: '#fff' } }, React.createElement(Check, { size: 14 })),
+              React.createElement('button', { onClick: () => setEditandoId(null), 'aria-label': 'Cancelar edição do nome', style: { ...sf.actionBtn, background: T.surfaceMuted } }, React.createElement(X, { size: 14 })),
             )
           : React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
               React.createElement('div', { style: { fontSize: 14, fontWeight: 600, color: c.nome ? T.text : T.textMuted, cursor: 'pointer' }, onClick: (e) => iniciarEdicao(e, c) },
@@ -284,15 +285,15 @@ export function PaginaAgenda({ onSendMessage, breakpoint }) {
       React.createElement('div', { style: { display: 'flex', gap: 4, alignItems: 'center' } },
         excluindoId === c.id
           ? React.createElement(React.Fragment, null,
-              React.createElement('button', { onClick: (e) => executarExclusao(e, c.id), style: { ...sf.actionBtn, background: T.danger, color: '#fff' } }, React.createElement(Check, { size: 14 })),
-              React.createElement('button', { onClick: (e) => cancelarExclusao(e), style: { ...sf.actionBtn, background: T.surfaceMuted } }, React.createElement(X, { size: 14 })),
+              React.createElement('button', { onClick: (e) => executarExclusao(e, c.id), 'aria-label': `Confirmar exclusão de ${c.nome || c.telefone}`, style: { ...sf.actionBtn, background: T.danger, color: '#fff' } }, React.createElement(Check, { size: 14 })),
+              React.createElement('button', { onClick: (e) => cancelarExclusao(e), 'aria-label': 'Cancelar exclusão', style: { ...sf.actionBtn, background: T.surfaceMuted } }, React.createElement(X, { size: 14 })),
             )
           : React.createElement(React.Fragment, null,
-              React.createElement('button', { onClick: (e) => iniciarEnvio(e, c), disabled: enviandoId === c.id, style: { ...sf.actionBtn, background: T.primary, color: '#fff', opacity: enviandoId === c.id ? 0.6 : 1 }, title: 'Enviar mensagem' },
+              React.createElement('button', { onClick: (e) => iniciarEnvio(e, c), disabled: enviandoId === c.id, style: { ...sf.actionBtn, background: T.primary, color: '#fff', opacity: enviandoId === c.id ? 0.6 : 1 }, title: 'Enviar mensagem', 'aria-label': `Enviar mensagem para ${c.nome || c.telefone}` },
                 React.createElement(MessageCircle, { size: 14 })),
-              React.createElement('button', { onClick: (e) => iniciarEdicao(e, c), style: sf.actionBtnIcon },
+              React.createElement('button', { onClick: (e) => iniciarEdicao(e, c), style: sf.actionBtnIcon, 'aria-label': `Editar ${c.nome || c.telefone}` },
                 React.createElement(Edit3, { size: 14, color: T.textSecondary })),
-              React.createElement('button', { onClick: (e) => confirmarExclusao(e, c.id), style: sf.actionBtnIcon },
+              React.createElement('button', { onClick: (e) => confirmarExclusao(e, c.id), style: sf.actionBtnIcon, 'aria-label': `Excluir ${c.nome || c.telefone}` },
                 React.createElement(Trash2, { size: 14, color: T.textSecondary })),
             ),
       ),

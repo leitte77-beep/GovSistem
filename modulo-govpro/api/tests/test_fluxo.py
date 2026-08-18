@@ -9,7 +9,7 @@ from app.models.dominio import TipoDocumento, TipoProcesso
 from app.models.enums import NivelAcesso, SituacaoDocumento, SituacaoProcesso
 from app.models.unidade import Unidade
 from app.services import assinatura, autuacao, documento, tramitacao
-from app.services.processo import encerrar
+from app.services.processo import concluir
 
 
 async def _tipo_processo(db, tenant_id, codigo):
@@ -102,8 +102,8 @@ async def test_fluxo_completo(cenario):
     )
     assert len(criadas) == 1
 
-    # 6. Encerramento
-    processo = await encerrar(
+    # 6. Conclusão na unidade
+    processo = await concluir(
         db, tenant_id, user, processo_id=processo.id, motivo="Demanda atendida"
     )
     assert processo.situacao == SituacaoProcesso.ENCERRADO.value
@@ -112,6 +112,31 @@ async def test_fluxo_completo(cenario):
     result = await db.execute(select(Andamento).where(Andamento.processo_id == processo.id))
     andamentos = list(result.scalars())
     assert len(andamentos) >= 4
+
+
+async def test_arquivar_e_reabrir_processo(cenario):
+    from app.services.processo import arquivar, reabrir
+
+    db = cenario["db"]
+    tenant_id = cenario["tenant_id"]
+    user = cenario["user"]
+
+    tipo = await _tipo_processo(db, tenant_id, "REQ_GERAL")
+    processo = await autuacao.autuar(
+        db,
+        tenant_id,
+        user,
+        tipo_processo_id=tipo.id,
+        especificacao="Processo a arquivar",
+        interessados=[{"tipo_pessoa": "PF", "nome": "João", "cpf_cnpj": "11144477735"}],
+        nivel_acesso=NivelAcesso.PUBLICO.value,
+    )
+
+    processo = await arquivar(db, tenant_id, user, processo_id=processo.id)
+    assert processo.situacao == SituacaoProcesso.ARQUIVADO.value
+
+    processo = await reabrir(db, tenant_id, user, processo_id=processo.id, motivo="Retomar análise")
+    assert processo.situacao == SituacaoProcesso.EM_TRAMITACAO.value
 
 
 async def test_documento_nao_pode_ser_menos_restritivo(cenario):
