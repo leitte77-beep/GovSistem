@@ -381,6 +381,10 @@ services:
       dockerfile: Dockerfile
     <<: [*restart-policy]
     logging: *default-logging
+    # Expõe a API no host para o SaaS sincronizar usuário/org via
+    # host.docker.internal (GOVTASK_MODULE_INTERNAL_API_URL aponta p/ :8101).
+    ports:
+      - "8101:8000"
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_DB: ${GOVTASK_POSTGRES_DB:-govtask}
@@ -415,6 +419,10 @@ services:
       start_period: 15s
     networks:
       - internal
+      # Rede nao-interna para publicar a porta 8101 no host (necessario para o
+      # SaaS sincronizar usuario via host.docker.internal). A rede `internal`
+      # nao permite publicacao de portas.
+      - public
     deploy:
       resources:
         limits:
