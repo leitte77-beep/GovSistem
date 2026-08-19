@@ -506,4 +506,23 @@ export interface RegistroFoto {
   created_at: string;
 }
 
+export interface VistoriaObra {
+  id: string;
+  obra_id: string;
+  data: string | null;
+  tipo: string | null;
+  vistoriador: string | null;
+  orgao_vistoriador: string | null;
+  status: string | null;
+  protocolo: string | null;
+  observacoes: string | null;
+  nao_conformidades: string | null;
+  recomendacoes: string | null;
+  registrado_por_id: string | null;
+  created_at: string;
+}
+
+export const VISTORIA_TIPOS = ["ROTINEIRA", "FISCALIZACAO", "RECEBIMENTO", "ESPECIAL", "OUTRA"];
+export const VISTORIA_STATUS = ["AGENDADA", "REALIZADA", "EM_ANDAMENTO", "CANCELADA"];
+
 export const DIARIO_TIPOS = ["VISITA", "OCORRENCIA", "CHUVA", "PARALISACAO", "AVANCO", "PROBLEMA_TECNICO", "DETERMINACAO", "FISCALIZACAO", "REUNIAO", "NOTIFICACAO"];

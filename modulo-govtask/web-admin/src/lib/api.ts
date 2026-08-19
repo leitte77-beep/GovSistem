@@ -1,4 +1,4 @@
-import type { Convenio, ConvenioListItem, Etapa, TimelineEvent, Anexo, Tarefa, TarefaListItem, Comentario, Contestacao, Notificacao, TemplateFluxo, Setor, Diligencia, Repasse, Medicao, MovimentoFinanceiro, ResumoFinanceiro, Contrato, Aditivo, Licitacao, Prestacao, EntregaObjeto, AuditoriaRegistro, Obra, DiarioObra, RegistroFoto } from "@/types/govtask";
+import type { Convenio, ConvenioListItem, Etapa, TimelineEvent, Anexo, Tarefa, TarefaListItem, Comentario, Contestacao, Notificacao, TemplateFluxo, Setor, Diligencia, Repasse, Medicao, MovimentoFinanceiro, ResumoFinanceiro, Contrato, Aditivo, Licitacao, Prestacao, EntregaObjeto, AuditoriaRegistro, Obra, DiarioObra, RegistroFoto, VistoriaObra } from "@/types/govtask";
 
 const BASE_URL = "/api/govtask";
 const ACCESS_TOKEN_KEY = "govtask_access_token";
@@ -529,6 +529,18 @@ export const api = {
   },
   registrarFoto(convenioId: string, obraId: string, data: Record<string, unknown>) {
     return request<RegistroFoto>(`/convenios/${convenioId}/obras/${obraId}/fotos`, { method: "POST", body: JSON.stringify(data) });
+  },
+  listVistorias(convenioId: string, obraId: string) {
+    return request<VistoriaObra[]>(`/convenios/${convenioId}/obras/${obraId}/vistorias`);
+  },
+  registrarVistoria(convenioId: string, obraId: string, data: Record<string, unknown>) {
+    return request<VistoriaObra>(`/convenios/${convenioId}/obras/${obraId}/vistorias`, { method: "POST", body: JSON.stringify(data) });
+  },
+  atualizarVistoria(convenioId: string, obraId: string, vistoriaId: string, data: Record<string, unknown>) {
+    return request<VistoriaObra>(`/convenios/${convenioId}/obras/${obraId}/vistorias/${vistoriaId}`, { method: "PATCH", body: JSON.stringify(data) });
+  },
+  excluirVistoria(convenioId: string, obraId: string, vistoriaId: string) {
+    return request<void>(`/convenios/${convenioId}/obras/${obraId}/vistorias/${vistoriaId}`, { method: "DELETE" });
   },
 };
 

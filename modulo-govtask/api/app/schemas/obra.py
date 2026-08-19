@@ -1,7 +1,6 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -143,6 +142,48 @@ class FotoOut(BaseModel):
     latitude: str | None
     longitude: str | None
     anexo_id: uuid.UUID | None
+    registrado_por_id: uuid.UUID | None
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class VistoriaCreate(BaseModel):
+    data: datetime | None = None
+    tipo: str | None = Field(None, max_length=40)
+    vistoriador: str | None = Field(None, max_length=255)
+    orgao_vistoriador: str | None = Field(None, max_length=255)
+    status: str | None = Field(None, max_length=40)
+    protocolo: str | None = Field(None, max_length=100)
+    observacoes: str | None = None
+    nao_conformidades: str | None = None
+    recomendacoes: str | None = None
+
+
+class VistoriaUpdate(BaseModel):
+    data: datetime | None = None
+    tipo: str | None = None
+    vistoriador: str | None = None
+    orgao_vistoriador: str | None = None
+    status: str | None = None
+    protocolo: str | None = None
+    observacoes: str | None = None
+    nao_conformidades: str | None = None
+    recomendacoes: str | None = None
+
+
+class VistoriaOut(BaseModel):
+    id: uuid.UUID
+    obra_id: uuid.UUID
+    data: datetime | None
+    tipo: str | None
+    vistoriador: str | None
+    orgao_vistoriador: str | None
+    status: str | None
+    protocolo: str | None
+    observacoes: str | None
+    nao_conformidades: str | None
+    recomendacoes: str | None
     registrado_por_id: uuid.UUID | None
     created_at: datetime
 

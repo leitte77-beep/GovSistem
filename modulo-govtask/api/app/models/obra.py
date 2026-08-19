@@ -58,6 +58,10 @@ class Obra(Base, TimestampMixin, SoftDeleteMixin):
         "RegistroFotografico", back_populates="obra", lazy="selectin",
         cascade="all, delete-orphan",
     )
+    vistorias: Mapped[list["VistoriaObra"]] = relationship(
+        "VistoriaObra", back_populates="obra", lazy="selectin",
+        cascade="all, delete-orphan",
+    )
 
     def __repr__(self) -> str:
         return f"<Obra {self.nome or self.id}>"
@@ -104,6 +108,33 @@ class DiarioObra(Base, TimestampMixin, SoftDeleteMixin):
 
     def __repr__(self) -> str:
         return f"<DiarioObra {self.tipo} {self.data or ''}>"
+
+
+class VistoriaObra(Base, TimestampMixin, SoftDeleteMixin):
+    __tablename__ = "vistorias_obra"
+
+    obra_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("obras.id", ondelete="CASCADE"),
+        nullable=False, index=True,
+    )
+    data: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    tipo: Mapped[Optional[str]] = mapped_column(String(40), nullable=True, default="ROTINEIRA")
+    vistoriador: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    orgao_vistoriador: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    status: Mapped[Optional[str]] = mapped_column(String(40), nullable=True, default="AGENDADA")
+    protocolo: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    observacoes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    nao_conformidades: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    recomendacoes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    registrado_por_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+
+    obra: Mapped["Obra"] = relationship("Obra", back_populates="vistorias")
+    registrado_por: Mapped[Optional["User"]] = relationship("User", foreign_keys=[registrado_por_id])
+
+    def __repr__(self) -> str:
+        return f"<VistoriaObra {self.tipo} {self.data or ''}>"
 
 
 class RegistroFotografico(Base, TimestampMixin, SoftDeleteMixin):

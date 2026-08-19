@@ -53,7 +53,7 @@ from app.models.contrato import Contrato, Aditivo
 from app.models.licitacao import Licitacao
 from app.models.prestacao_contas import PrestacaoContas, PrestacaoItem
 from app.models.entrega_objeto import EntregaObjeto
-from app.models.obra import Obra, CronogramaItem, DiarioObra, RegistroFotografico
+from app.models.obra import Obra, CronogramaItem, DiarioObra, RegistroFotografico, VistoriaObra
 from app.models.tarefa_dependencia import TarefaDependencia
 from app.models.tarefa_prazo_historico import TarefaPrazoHistorico
 from app.models.processo_status import ProcessoStatus
@@ -124,6 +124,7 @@ __all__ = [
     "CronogramaItem",
     "DiarioObra",
     "RegistroFotografico",
+    "VistoriaObra",
     "TarefaDependencia",
     "TarefaPrazoHistorico",
     "ProcessoStatus",

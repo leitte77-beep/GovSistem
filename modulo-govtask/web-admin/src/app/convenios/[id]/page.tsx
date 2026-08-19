@@ -823,45 +823,71 @@ export default function ConvenioDetailPage() {
                   }
                 />
               ) : (
-                <div className="space-y-2">
-                  {filteredTarefas.map((t) => (
-                    <Link
-                      key={t.id}
-                      href={`/tarefas/${t.id}`}
-                      className="block p-4 rounded-card bg-surface-card border border-surface-border hover:shadow-card transition-shadow"
-                    >
-                      <div className="flex items-start justify-between">
-                        <div className="min-w-0 flex-1">
-                          <p className="text-body-sm font-medium text-text-title truncate">
-                            {t.titulo}
-                          </p>
-                          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                            <PriorityBadge priority={t.prioridade} />
-                            {t.prazo && (
-                              <span className={`text-meta flex items-center gap-1 ${prazoColor(daysUntil(t.prazo))}`}>
-                                <Clock className="w-3 h-3" />
-                                Prazo: {formatDate(t.prazo)}
-                              </span>
-                            )}
-                            {t.atrasada && (
-                              <span className="text-meta text-[#B42318] font-medium flex items-center gap-1">
-                                <AlertTriangle className="w-3 h-3" />
-                                Atrasada
-                              </span>
-                            )}
-                            {t.atribuida_a && (
-                              <span className="text-meta text-text-subtle">{t.atribuida_a.name}</span>
-                            )}
-                            {t.etapa && (
-                              <Badge label={t.etapa.nome} color="bg-[#1D4ED8]/10 text-[#1D4ED8]" />
-                            )}
+                (() => {
+                  const grupos: { titulo: string; status: string[]; items: typeof filteredTarefas }[] = [
+                    { titulo: "Não iniciada", status: ["AGUARDANDO_ACEITE"], items: [] },
+                    { titulo: "Em andamento", status: ["EM_ANDAMENTO"], items: [] },
+                    { titulo: "Aguardando terceiro", status: ["ENTREGUE", "DEVOLVIDA", "CONTESTADA"], items: [] },
+                    { titulo: "Concluída", status: ["CONCLUIDA"], items: [] },
+                    { titulo: "Cancelada", status: ["CANCELADA"], items: [] },
+                  ];
+                  grupos.forEach((g) => {
+                    g.items = filteredTarefas.filter((t) => g.status.includes(t.status));
+                  });
+                  const vazios = grupos.filter((g) => g.items.length === 0);
+                  if (tarefaStatusFilter && vazios.length === grupos.length) {
+                    return <EmptyState icon="inbox" title="Nenhuma tarefa encontrada" description="Nenhuma tarefa com este status" />;
+                  }
+                  return (
+                    <div className="space-y-6">
+                      {grupos.map((g) => (
+                        g.items.length === 0 ? null : (
+                          <div key={g.titulo}>
+                            <div className="flex items-center gap-2 mb-2">
+                              <h3 className="text-label font-semibold uppercase tracking-wide text-text-subtle">{g.titulo}</h3>
+                              <span className="inline-flex items-center justify-center rounded-full bg-[#F6F7F9] text-[#98A2B3] px-2 py-0.5 text-meta font-medium">{g.items.length}</span>
+                            </div>
+                            <div className="space-y-2">
+                              {g.items.map((t) => (
+                                <Link
+                                  key={t.id}
+                                  href={`/tarefas/${t.id}`}
+                                  className="block p-4 rounded-card bg-surface-card border border-surface-border hover:shadow-card transition-shadow"
+                                >
+                                  <div className="flex items-start justify-between">
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-body-sm font-medium text-text-title truncate">{t.titulo}</p>
+                                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                        <PriorityBadge priority={t.prioridade} />
+                                        {t.prazo && (
+                                          <span className={`text-meta flex items-center gap-1 ${prazoColor(daysUntil(t.prazo))}`}>
+                                            <Clock className="w-3 h-3" /> Prazo: {formatDate(t.prazo)}
+                                          </span>
+                                        )}
+                                        {t.atrasada && (
+                                          <span className="text-meta text-[#B42318] font-medium flex items-center gap-1">
+                                            <AlertTriangle className="w-3 h-3" /> Atrasada
+                                          </span>
+                                        )}
+                                        {t.atribuida_a && (
+                                          <span className="text-meta text-text-subtle">{t.atribuida_a.name}</span>
+                                        )}
+                                        {t.etapa && (
+                                          <Badge label={t.etapa.nome} color="bg-[#1D4ED8]/10 text-[#1D4ED8]" />
+                                        )}
+                                      </div>
+                                    </div>
+                                    <StatusPill status={t.status} className="shrink-0" />
+                                  </div>
+                                </Link>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                        <StatusPill status={t.status} className="shrink-0" />
-                      </div>
-                    </Link>
-                  ))}
-                </div>
+                        )
+                      ))}
+                    </div>
+                  );
+                })()
               )}
             </div>
           )}

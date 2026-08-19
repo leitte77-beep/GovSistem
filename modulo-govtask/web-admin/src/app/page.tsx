@@ -275,67 +275,77 @@ export default function Dashboard() {
             </div>
           </section>
 
-          {/* Metric cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
-            <MetricCard label="Convênios ativos" value={conveniosAtivos.length} icon="FileText" color="#1D4ED8" href="/convenios" />
-            <MetricCard label="Tarefas abertas" value={tarefasAbertas.length} icon="CheckSquare" color="#067647" href="/tarefas" />
-            <MetricCard label="Atrasadas" value={tarefasAtrasadas.length} icon="AlertTriangle" color={tarefasAtrasadas.length > 0 ? "#B42318" : "#667085"} href="/tarefas?atrasadas=true" />
-            <MetricCard label="Valor Aprovado" value={formatCurrency(dashboardData?.valor_aprovado ?? valorTotal)} icon="Target" color="#1D4ED8" href="/convenios/relatorios" />
-            <MetricCard label="Valor Executado" value={formatCurrency(dashboardData?.valor_executado ?? 0)} icon="TrendingUp" color="#067647" href="/convenios/relatorios" />
-            <MetricCard label="Obras em Andamento" value={dashboardData?.obras_em_andamento ?? 0} icon="Building2" color={dashboardData?.obras_em_andamento ? "#B54708" : "#667085"} href="/convenios" />
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <MetricCard label="Diligências abertas" value={dashboardData?.diligencias_abertas ?? 0} icon="AlertTriangle" color={(dashboardData?.diligencias_abertas ?? 0) > 0 ? "#B42318" : "#667085"} />
-            <MetricCard label="Prestações pendentes" value={dashboardData?.prestacoes_pendentes ?? 0} icon="ClipboardList" color={(dashboardData?.prestacoes_pendentes ?? 0) > 0 ? "#B54708" : "#667085"} />
-            <MetricCard label="Contestações" value={contestaçõesCount} icon="Bell" color={contestaçõesCount > 0 ? "#B54708" : "#667085"} />
-            <MetricCard label="Aguardando Governo" value={aguardandoGoverno} icon="Hourglass" color={aguardandoGoverno > 0 ? "#B54708" : "#667085"} />
+          {/* Metric cards — KPIs da gestão de recursos */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-8 gap-3">
+            {[
+              { label: "Processos ativos", value: conveniosAtivos.length, icon: "FileText", color: "#1D4ED8", href: "/convenios" },
+              { label: "Valor aprovado", value: formatCurrency(dashboardData?.valor_aprovado ?? valorTotal), icon: "Target", color: "#1D4ED8", href: "/convenios/relatorios" },
+              { label: "Valor executado", value: formatCurrency(dashboardData?.valor_executado ?? 0), icon: "TrendingUp", color: "#067647", href: "/convenios/relatorios" },
+              { label: "Em diligência", value: dashboardData?.diligencias_abertas ?? 0, icon: "AlertTriangle", color: (dashboardData?.diligencias_abertas ?? 0) > 0 ? "#B42318" : "#667085" },
+              { label: "Tarefas atrasadas", value: tarefasAtrasadas.length, icon: "AlertTriangle", color: tarefasAtrasadas.length > 0 ? "#B42318" : "#667085", href: "/tarefas?atrasadas=true" },
+              { label: "Obras em andamento", value: dashboardData?.obras_em_andamento ?? 0, icon: "Building2", color: (dashboardData?.obras_em_andamento ?? 0) > 0 ? "#B54708" : "#667085", href: "/convenios" },
+              { label: "Prazos próximos", value: prazosProximos.length, icon: "Clock", color: "#B54708", href: "/tarefas" },
+              { label: "Valor pago", value: formatCurrency(dashboardData?.valor_executado ?? 0), icon: "CheckSquare", color: "#067647", href: "/convenios/relatorios" },
+            ].map((k, i) => (
+              <MetricCard key={i} label={k.label} value={k.value as any} icon={k.icon as any} color={k.color} href={k.href as any} />
+            ))}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Left column - 8 cols */}
             <div className="lg:col-span-8 space-y-6">
-              {/* Convênios recentes */}
+              {/* Processos recentes — cards */}
               <Card padding="p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="font-semibold text-[#101828] flex items-center gap-2 text-lg">
                     <Building2 className="w-5 h-5 text-[#1D4ED8]" />
-                    Convênios em Andamento
+                    Processos recentes
                   </h2>
                   <Link href="/convenios" className="text-body-sm text-[#1D4ED8] hover:underline font-medium flex items-center gap-1">
                     Ver todos <ArrowRight className="w-4 h-4" />
                   </Link>
                 </div>
                 {conveniosAtivos.length === 0 ? (
-                  <p className="text-body-sm text-[#98A2B3] py-6 text-center">Nenhum convênio ativo</p>
+                  <p className="text-body-sm text-[#98A2B3] py-6 text-center">Nenhum processo ativo</p>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-body-sm">
-                      <thead>
-                        <tr className="border-b border-[#E4E7EC] text-left text-[#667085] text-meta">
-                          <th className="py-3 px-3 font-medium">Convênio</th>
-                          <th className="py-3 px-3 font-medium">Protocolo</th>
-                          <th className="py-3 px-3 font-medium">Tipo</th>
-                          <th className="py-3 px-3 font-medium">Valor</th>
-                          <th className="py-3 px-3 font-medium">Status</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {conveniosAtivos.slice(0, 8).map((c) => (
-                          <tr key={c.id} className="border-b border-[#E4E7EC] hover:bg-[#F6F7F9] cursor-pointer transition-colors" onClick={() => window.location.href = `/convenios/${c.id}`}>
-                            <td className="py-2.5 px-3">
-                              <p className="font-medium text-[#101828] truncate max-w-[220px]">{c.titulo}</p>
-                            </td>
-                            <td className="py-2.5 px-3 text-[#475467] font-mono text-meta tabular-nums">
-                              {c.numero_protocolo_governo || "—"}
-                            </td>
-                            <td className="py-2.5 px-3 text-[#475467]">{c.tipo === "OBRA" ? "Obra" : c.tipo === "AQUISICAO" ? "Aquisição" : c.tipo === "SERVICO" ? "Serviço" : c.tipo || "—"}</td>
-                            <td className="py-2.5 px-3 text-[#475467] tabular-nums font-medium">{formatCurrency(c.valor)}</td>
-                            <td className="py-2.5 px-3"><StatusPill status={c.status} /></td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {conveniosAtivos.slice(0, 6).map((c) => (
+                      <Link
+                        key={c.id}
+                        href={`/convenios/${c.id}`}
+                        className="bg-surface-card border border-[#E4E7EC] rounded-card p-4 hover:shadow-card hover:border-[#1D4ED8]/30 transition-all group flex flex-col"
+                      >
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-[12px] font-semibold uppercase tracking-wide text-[#98A2B3]">{c.numero_emenda || c.numero_protocolo_governo || "—"}</span>
+                        </div>
+                        <h3 className="text-body-sm font-semibold text-[#101828] mt-1.5 leading-snug group-hover:text-[#1D4ED8] transition-colors line-clamp-2">{c.titulo}</h3>
+                        <div className="flex items-center gap-2 mt-2">
+                          <StatusPill status={c.status} />
+                          {c.prioridade && <PriorityBadge priority={c.prioridade} />}
+                        </div>
+                        <p className="text-h2 text-[#101828] tabular-nums mt-3">{formatCurrency(c.valor)}</p>
+                        <div className="mt-3 space-y-2">
+                          <div className="flex items-center gap-3">
+                            <span className="text-meta text-[#667085] w-14 shrink-0">Físico</span>
+                            <div className="h-2 bg-[#F6F7F9] rounded-pill overflow-hidden flex-1">
+                              <div className="h-full bg-[#1D4ED8]" style={{ width: `${Number(c.percentual_fisico ?? 0)}%` }} />
+                            </div>
+                            <span className="text-meta text-[#101828] tabular-nums w-10 text-right">{Number(c.percentual_fisico ?? 0)}%</span>
+                          </div>
+                          <div className="flex items-center gap-3">
+                            <span className="text-meta text-[#667085] w-14 shrink-0">Financeiro</span>
+                            <div className="h-2 bg-[#F6F7F9] rounded-pill overflow-hidden flex-1">
+                              <div className="h-full bg-[#067647]" style={{ width: `${Number(c.percentual_financeiro ?? 0)}%` }} />
+                            </div>
+                            <span className="text-meta text-[#101828] tabular-nums w-10 text-right">{Number(c.percentual_financeiro ?? 0)}%</span>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-3 text-meta text-[#667085]">
+                          <Clock className="w-3.5 h-3.5" />
+                          {c.proximo_prazo ? formatDate(c.proximo_prazo) : "Sem prazo"}
+                        </div>
+                      </Link>
+                    ))}
                   </div>
                 )}
               </Card>

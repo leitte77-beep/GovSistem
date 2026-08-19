@@ -80,40 +80,57 @@ export function FinanceiroTab({ convenioId, canEdit }: Props) {
       ) : (
         <>
           {resumo && (
-            <Card padding="p-5">
-              <div className="flex items-center gap-2 mb-4">
-                <TrendingUp className="w-5 h-5 text-[#1D4ED8]" />
-                <h3 className="text-h3 text-text-title">Painel Financeiro do Recurso</h3>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-                {cards.map((c) => (
-                  <div key={c.label} className="p-3 bg-[#F6F7F9] rounded-btn">
+            <>
+              {/* KPIs principais: Aprovado / Recebido / Liquidado / Pago */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                {[
+                  { label: "Aprovado", value: resumo.valor_aprovado, color: "#1D4ED8" },
+                  { label: "Recebido", value: resumo.valor_recebido, color: "#067647" },
+                  { label: "Liquidado", value: resumo.liquidado, color: "#475467" },
+                  { label: "Pago", value: resumo.pago, color: "#067647" },
+                ].map((c) => (
+                  <div key={c.label} className="p-4 bg-[#F6F7F9] rounded-btn">
                     <p className="text-meta text-text-subtle">{c.label}</p>
-                    <p className="text-body font-semibold text-text-title tabular-nums mt-0.5">{c.value}</p>
+                    <p className="text-body font-bold text-text-title tabular-nums mt-0.5">{formatCurrency(c.value)}</p>
                   </div>
                 ))}
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-                <div>
-                  <div className="flex justify-between text-meta text-text-subtle mb-1">
-                    <span>Execução financeira</span>
-                    <span>{resumo.percentual_executado ?? 0}%</span>
+
+              <Card padding="p-5">
+                <div className="flex items-center gap-2 mb-4">
+                  <TrendingUp className="w-5 h-5 text-[#1D4ED8]" />
+                  <h3 className="text-h3 text-text-title">Painel Financeiro do Recurso</h3>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                  {cards.map((c) => (
+                    <div key={c.label} className="p-3 bg-[#F6F7F9] rounded-btn">
+                      <p className="text-meta text-text-subtle">{c.label}</p>
+                      <p className="text-body font-semibold text-text-title tabular-nums mt-0.5">{c.value}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                  <div>
+                    <div className="flex justify-between text-meta text-text-subtle mb-1">
+                      <span>Execução financeira</span>
+                      <span>{resumo.percentual_executado ?? 0}%</span>
+                    </div>
+                    <div className="h-2 bg-[#F6F7F9] rounded-pill overflow-hidden">
+                      <div className="h-full bg-[#1D4ED8] transition-all duration-700" style={{ width: `${progress(resumo.percentual_executado) ?? 0}%` }} />
+                    </div>
                   </div>
-                  <div className="h-2 bg-[#F6F7F9] rounded-pill overflow-hidden">
-                    <div className="h-full bg-[#1D4ED8] transition-all duration-700" style={{ width: `${progress(resumo.percentual_executado) ?? 0}%` }} />
+                  <div>
+                    <div className="flex justify-between text-meta text-text-subtle mb-1">
+                      <span>Percentual pago</span>
+                      <span>{resumo.percentual_pago ?? 0}%</span>
+                    </div>
+                    <div className="h-2 bg-[#F6F7F9] rounded-pill overflow-hidden">
+                      <div className="h-full bg-[#067647] transition-all duration-700" style={{ width: `${progress(resumo.percentual_pago) ?? 0}%` }} />
+                    </div>
                   </div>
                 </div>
-                <div>
-                  <div className="flex justify-between text-meta text-text-subtle mb-1">
-                    <span>Percentual pago</span>
-                    <span>{resumo.percentual_pago ?? 0}%</span>
-                  </div>
-                  <div className="h-2 bg-[#F6F7F9] rounded-pill overflow-hidden">
-                    <div className="h-full bg-[#067647] transition-all duration-700" style={{ width: `${progress(resumo.percentual_pago) ?? 0}%` }} />
-                  </div>
-                </div>
-              </div>
-            </Card>
+              </Card>
+            </>
           )}
 
           <div className="flex items-center justify-between">

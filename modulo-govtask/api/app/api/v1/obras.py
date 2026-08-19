@@ -9,8 +9,7 @@ from sqlalchemy.orm import selectinload
 from app.core.auth import get_current_user, require_roles
 from app.core.database import get_db
 from app.models.convenio import Convenio
-from app.models.enums import TipoEvento
-from app.models.obra import Obra, CronogramaItem, DiarioObra, RegistroFotografico
+from app.models.obra import Obra, CronogramaItem, DiarioObra, RegistroFotografico, VistoriaObra
 from app.models.user import User
 from app.schemas.obra import (
     CronogramaItemCreate,
@@ -22,9 +21,11 @@ from app.schemas.obra import (
     ObraCreate,
     ObraOut,
     ObraUpdate,
+    VistoriaCreate,
+    VistoriaOut,
+    VistoriaUpdate,
 )
 from app.services.auditoria import registrar_auditoria
-from app.services.timeline import registrar_evento
 
 router = APIRouter(prefix="/convenios/{convenio_id}/obras", tags=["obras"])
 
@@ -299,6 +300,101 @@ async def anexar_foto(
     await db.commit()
     await db.refresh(foto)
     return foto
+
+
+@router.get("/{obra_id}/vistorias", response_model=list[VistoriaOut])
+async def listar_vistorias(
+    convenio_id: uuid.UUID,
+    obra_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    obra = await _get_obra(db, convenio_id, obra_id, user)
+    if not obra:
+        raise HTTPException(status_code=404, detail="Obra não encontrada")
+    result = await db.execute(
+        select(VistoriaObra).where(VistoriaObra.obra_id == obra_id, VistoriaObra.deleted_at.is_(None)).order_by(VistoriaObra.data.desc())
+    )
+    return result.scalars().all()
+
+
+@router.post("/{obra_id}/vistorias", response_model=VistoriaOut, status_code=201)
+async def registrar_vistoria(
+    convenio_id: uuid.UUID,
+    obra_id: uuid.UUID,
+    body: VistoriaCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles("ASSESSOR", "ADMIN", "ENGENHEIRO_TECNICO")),
+):
+    obra = await _get_obra(db, convenio_id, obra_id, user)
+    if not obra:
+        raise HTTPException(status_code=404, detail="Obra não encontrada")
+
+    vistoria = VistoriaObra(
+        obra_id=obra_id,
+        data=body.data or datetime.now(timezone.utc),
+        tipo=body.tipo or "ROTINEIRA",
+        vistoriador=body.vistoriador,
+        orgao_vistoriador=body.orgao_vistoriador,
+        status=body.status or "AGENDADA",
+        protocolo=body.protocolo,
+        observacoes=body.observacoes,
+        nao_conformidades=body.nao_conformidades,
+        recomendacoes=body.recomendacoes,
+        registrado_por_id=user.id,
+    )
+    db.add(vistoria)
+    await db.commit()
+    await db.refresh(vistoria)
+    return vistoria
+
+
+@router.patch("/{obra_id}/vistorias/{vistoria_id}", response_model=VistoriaOut)
+async def atualizar_vistoria(
+    convenio_id: uuid.UUID,
+    obra_id: uuid.UUID,
+    vistoria_id: uuid.UUID,
+    body: VistoriaUpdate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles("ASSESSOR", "ADMIN", "ENGENHEIRO_TECNICO")),
+):
+    obra = await _get_obra(db, convenio_id, obra_id, user)
+    if not obra:
+        raise HTTPException(status_code=404, detail="Obra não encontrada")
+    result = await db.execute(select(VistoriaObra).where(VistoriaObra.id == vistoria_id, VistoriaObra.obra_id == obra_id))
+    vistoria = result.scalar_one_or_none()
+    if not vistoria:
+        raise HTTPException(status_code=404, detail="Vistoria não encontrada")
+
+    for field in ("data", "tipo", "vistoriador", "orgao_vistoriador", "status",
+                  "protocolo", "observacoes", "nao_conformidades", "recomendacoes"):
+        value = getattr(body, field, None)
+        if value is not None:
+            setattr(vistoria, field, value)
+
+    await db.commit()
+    await db.refresh(vistoria)
+    return vistoria
+
+
+@router.delete("/{obra_id}/vistorias/{vistoria_id}", status_code=204)
+async def excluir_vistoria(
+    convenio_id: uuid.UUID,
+    obra_id: uuid.UUID,
+    vistoria_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+):
+    obra = await _get_obra(db, convenio_id, obra_id, user)
+    if not obra:
+        raise HTTPException(status_code=404, detail="Obra não encontrada")
+    result = await db.execute(select(VistoriaObra).where(VistoriaObra.id == vistoria_id, VistoriaObra.obra_id == obra_id))
+    vistoria = result.scalar_one_or_none()
+    if not vistoria:
+        raise HTTPException(status_code=404, detail="Vistoria não encontrada")
+    vistoria.deleted_at = datetime.now(timezone.utc)
+    await db.commit()
+    return None
 
 
 @router.delete("/{obra_id}", status_code=204)

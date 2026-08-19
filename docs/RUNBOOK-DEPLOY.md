@@ -45,6 +45,13 @@ ChatGov e do saas-platform e vários Dockerfiles.
   (dangling apenas). `-a` apagaria imagens de módulos sem Dockerfile no disco
   (ex.: `saas-platform-api`, `infra-govsocial-api`, `modulo-chatgov-*`) — que
   **não poderiam ser reconstruídas**.
+- **NUNCA** apague volumes nem dados de nenhum módulo em produção. Em especial o
+  **chatgov está em uso real por uma prefeitura** (banco, conversas, mensagens e
+  mídia). Regra absoluta: **não apagar nada do chatgov em hipótese alguma** —
+  nem volume (`modulo-chatgov_chatgov_pgdata`, `modulo-chatgov_chatgov_uploads`,
+  `infra_chatgov_uploads`), nem tabela, nem mensagem, nem container. Qualquer
+  limpeza de disco se limita a **build cache** (`docker builder prune -f`) e
+  **imagens dangling** (`docker system prune -f`), que nunca tocam volumes.
 - Após recriar um container servido pela borda, recarregue o nginx de borda:
   `docker exec infra-nginx-1 nginx -s reload` (senão dá 502).
 
