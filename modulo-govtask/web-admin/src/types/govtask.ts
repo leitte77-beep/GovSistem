@@ -23,7 +23,11 @@ export interface ConvenioListItem {
   proximo_prazo: string | null;
   percentual_fisico?: number | null;
   percentual_financeiro?: number | null;
+  percentual_administrativo?: number | null;
   tarefas_abertas?: number;
+  tarefas_atrasadas?: number;
+  valor_recebido?: number | null;
+  ultima_movimentacao?: string | null;
   pendencias?: number;
   responsavel?: { id: string; name: string } | null;
   responsavel_id?: string | null;

@@ -21,9 +21,11 @@ import { notify } from "@/components/ui/Toast";
 import {
   formatDate,
   formatCurrency,
+  formatDateTime,
+  relativeTime,
   daysUntil,
   prazoColor,
-  prazoBgColor,
+  cn,
   STATUS_LABELS,
   TIPO_CONVENIO_LABELS,
   NATUREZA_ETAPA_LABELS,
@@ -243,91 +245,186 @@ export default function ConvenioDetailPage() {
 
   const tabs = [
     { key: "visao-geral", label: "Visão Geral" },
-    { key: "etapas", label: "Etapas", count: etapas.length },
+    { key: "timeline", label: "Timeline", count: timeline.length },
     { key: "tarefas", label: "Tarefas", count: tarefas.length },
-    { key: "documentos", label: "Documentos", count: (convenio?.anexos || []).length },
     { key: "diligencias", label: "Diligências" },
+    { key: "documentos", label: "Documentos", count: (convenio?.anexos || []).length },
     { key: "financeiro", label: "Financeiro" },
+    { key: "prestacoes", label: "Prestação de Contas" },
+    { key: "obras", label: "Obras" },
+    { key: "etapas", label: "Etapas", count: etapas.length },
     { key: "repasses", label: "Repasses" },
     { key: "medicoes", label: "Medições" },
-    { key: "obras", label: "Obras" },
-    { key: "prestacoes", label: "Prestações" },
     { key: "contratos", label: "Contratos" },
     { key: "licitacoes", label: "Licitações" },
     { key: "entregas", label: "Entregas" },
     { key: "configuracoes", label: "Configurações" },
-    { key: "timeline", label: "Linha do Tempo", count: timeline.length },
   ];
+
+  const categoriaLabel = convenio.categoria
+    ? CATEGORIA_RECURSO_LABELS[convenio.categoria] || convenio.categoria
+    : TIPO_CONVENIO_LABELS[convenio.tipo] || convenio.tipo;
+  const situacaoLabel = convenio.situacao
+    ? SITUACAO_PROCESSO_LABELS[convenio.situacao] || convenio.situacao
+    : STATUS_LABELS[convenio.status] || convenio.status;
+  const prioridadeLabel = convenio.prioridade
+    ? PRIORIDADE_PROCESSO_LABELS[convenio.prioridade] || convenio.prioridade
+    : convenio.prioridade;
+
+  const ProgressBar = ({ pct, color }: { pct: number | null | undefined; color: string }) => {
+    const v = Math.min(100, Math.max(0, Number(pct ?? 0)));
+    return (
+      <div className="h-2 bg-[#F6F7F9] rounded-pill overflow-hidden flex-1">
+        <div className={cn("h-full rounded-pill transition-all duration-700", color)} style={{ width: `${v}%` }} />
+      </div>
+    );
+  };
+  const pctLabel = (v: number | null | undefined) => {
+    const n = Number(v ?? 0);
+    if (!Number.isFinite(n)) return "0";
+    return Number.isInteger(n) ? String(n) : n.toFixed(1);
+  };
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        eyebrow="Processo"
-        title={convenio.titulo}
-        description={`${TIPO_CONVENIO_LABELS[convenio.tipo] || convenio.tipo}${
-          convenio.origem ? ` — ${convenio.origem}` : ""
-        }`}
-        breadcrumbs={[
-          { label: "Convênios", href: "/convenios" },
-          { label: convenio.titulo },
-        ]}
-        actions={
-          <div className="flex items-center gap-2">
-            {canEdit && (
-              <Link href={`/convenios/${id}/editar`}>
-                <Button variant="secondary" icon={Edit} size="sm">
-                  Editar
+      {/* Cabeçalho do processo */}
+      <div className="bg-surface-card border border-surface-border rounded-2xl overflow-hidden">
+        <div className="p-5 sm:p-6 border-b border-surface-border">
+          <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge label={categoriaLabel} color="bg-[#1D4ED8]/10 text-[#1D4ED8]" />
+                {convenio.numero_emenda && (
+                  <span className="text-[12px] font-semibold uppercase tracking-wide text-[#98A2B3]">
+                    {convenio.numero_emenda}
+                  </span>
+                )}
+              </div>
+              <h1 className="text-h1 font-bold text-text-title tracking-tight mt-2.5 break-words">
+                {convenio.titulo}
+              </h1>
+              {convenio.finalidade && (
+                <p className="text-body-sm text-text-body mt-1.5 max-w-2xl">
+                  {convenio.finalidade}
+                </p>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2 shrink-0">
+              {canEdit && (
+                <Link href={`/convenios/${id}/editar`}>
+                  <Button variant="secondary" icon={Edit} size="sm">
+                    Editar
+                  </Button>
+                </Link>
+              )}
+              {canEdit && hasPermission("resource.delete") && (
+                <Button
+                  variant="danger"
+                  icon={X}
+                  size="sm"
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  Excluir
+                </Button>
+              )}
+              {canEdit && !convenio.numero_protocolo_governo && (
+                <Button
+                  variant="secondary"
+                  icon={FileText}
+                  size="sm"
+                  onClick={async () => {
+                    const proto = prompt("Número do protocolo do governo:");
+                    if (!proto) return;
+                    try {
+                      await api.registrarProtocolo(id, {
+                        numero_protocolo: proto,
+                        data_protocolo: new Date().toISOString().split("T")[0],
+                      });
+                      notify.success("Protocolo registrado!");
+                      load();
+                    } catch (e: any) {
+                      notify.error(e.message);
+                    }
+                  }}
+                >
+                  Registrar Protocolo
+                </Button>
+              )}
+              {canEdit && (
+                <Link href={`/convenios/${id}/tarefas/nova`}>
+                  <Button icon={Plus} size="sm">
+                    Criar Tarefa
+                  </Button>
+                </Link>
+              )}
+              <Link href={`/convenios/${id}/impressao`} title="Imprimir / Dossiê do processo">
+                <Button variant="secondary" size="sm" icon={Printer}>
+                  Imprimir
                 </Button>
               </Link>
-            )}
-            {canEdit && hasPermission("resource.delete") && (
-              <Button
-                variant="danger"
-                icon={X}
-                size="sm"
-                onClick={() => setConfirmDelete(true)}
-              >
-                Excluir
-              </Button>
-            )}
-            {canEdit && !convenio.numero_protocolo_governo && (
-              <Button
-                variant="secondary"
-                icon={FileText}
-                size="sm"
-                onClick={async () => {
-                  const proto = prompt("Número do protocolo do governo:");
-                  if (!proto) return;
-                  try {
-                    await api.registrarProtocolo(id, {
-                      numero_protocolo: proto,
-                      data_protocolo: new Date().toISOString().split("T")[0],
-                    });
-                    notify.success("Protocolo registrado!");
-                    load();
-                  } catch (e: any) {
-                    notify.error(e.message);
-                  }
-                }}
-              >
-                Registrar Protocolo
-              </Button>
-            )}
-            {canEdit && (
-              <Link href={`/convenios/${id}/tarefas/nova`}>
-                <Button icon={Plus} size="sm">
-                  Criar Tarefa
-                </Button>
-              </Link>
-            )}
-            <Link href={`/convenios/${id}/impressao`} title="Imprimir / Dossiê do processo">
-              <Button variant="secondary" size="sm" icon={Printer}>
-                Imprimir
-              </Button>
-            </Link>
+            </div>
           </div>
-        }
-      />
+        </div>
+
+        {/* Barra de situação + indicadores de progresso */}
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-px bg-[#F0F2F5]">
+          <div className="bg-surface-card p-4">
+            <p className="text-meta text-text-subtle">Situação</p>
+            <span className="mt-1 inline-flex items-center rounded-full bg-[#1D4ED8]/10 text-[#1D4ED8] px-2.5 py-0.5 text-meta font-medium">
+              {situacaoLabel}
+            </span>
+          </div>
+          <div className="bg-surface-card p-4">
+            <p className="text-meta text-text-subtle">Prioridade</p>
+            <div className="mt-1">
+              <PriorityBadge priority={convenio.prioridade || "NORMAL"} />
+            </div>
+          </div>
+          <div className="bg-surface-card p-4">
+            <p className="text-meta text-text-subtle">Valor aprovado</p>
+            <p className="text-body font-semibold text-text-title tabular-nums mt-1">
+              {formatCurrency(convenio.valor_aprovado ?? convenio.valor)}
+            </p>
+          </div>
+          <div className="bg-surface-card p-4">
+            <p className="text-meta text-text-subtle">Valor executado</p>
+            <p className="text-body font-semibold text-text-title tabular-nums mt-1">
+              {formatCurrency(convenio.valor_executado)}
+            </p>
+          </div>
+          <div className="bg-surface-card p-4">
+            <p className="text-meta text-text-subtle">Órgão concedente</p>
+            <p className="text-body-sm font-medium text-text-title mt-1">
+              {convenio.orgao_concedente || "—"}
+            </p>
+          </div>
+          <div className="bg-surface-card p-4">
+            <p className="text-meta text-text-subtle">Prazo de execução</p>
+            <p className="text-body-sm font-medium text-text-title tabular-nums mt-1">
+              {formatDate(convenio.prazo_execucao)}
+            </p>
+          </div>
+        </div>
+
+        {/* Progresso do processo */}
+        <div className="px-5 sm:px-6 py-4 border-t border-surface-border space-y-2.5">
+          <div className="flex items-center gap-3">
+            <span className="text-meta text-[#667085] w-24 shrink-0">Administrativo</span>
+            <ProgressBar pct={convenio.percentual_administrativo} color="bg-[#1D4ED8]" />
+            <span className="text-meta text-text-title tabular-nums w-10 text-right">{pctLabel(convenio.percentual_administrativo)}%</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-meta text-[#667085] w-24 shrink-0">Físico</span>
+            <ProgressBar pct={convenio.percentual_fisico} color="bg-[#1D4ED8]" />
+            <span className="text-meta text-text-title tabular-nums w-10 text-right">{pctLabel(convenio.percentual_fisico)}%</span>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="text-meta text-[#667085] w-24 shrink-0">Financeiro</span>
+            <ProgressBar pct={convenio.percentual_financeiro} color="bg-[#067647]" />
+            <span className="text-meta text-text-title tabular-nums w-10 text-right">{pctLabel(convenio.percentual_financeiro)}%</span>
+          </div>
+        </div>
+      </div>
 
       {showEmptyFlow && canEdit && (
         <Card padding="p-8">
@@ -385,147 +482,64 @@ export default function ConvenioDetailPage() {
           {/* Visão Geral */}
           {activeTab === "visao-geral" && (
             <div className="space-y-6">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <Card padding="p-4">
-                  <p className="text-meta text-text-subtle">Valor</p>
-                  <p className="text-h2 text-text-title tabular-nums mt-1">
-                    {formatCurrency(convenio.valor)}
-                  </p>
-                </Card>
-                <Card padding="p-4">
-                  <p className="text-meta text-text-subtle">Protocolo</p>
-                  <p className="text-h2 text-text-title mt-1">
-                    {convenio.numero_protocolo_governo || "—"}
-                  </p>
-                </Card>
-                <Card padding="p-4">
-                  <p className="text-meta text-text-subtle">Responsável</p>
-                  <p className="text-h2 text-text-title mt-1">
-                    {convenio.responsavel?.name || "—"}
-                  </p>
-                </Card>
-                <Card padding="p-4">
-                  <p className="text-meta text-text-subtle">Status</p>
-                  <div className="mt-1">
-                    <StatusPill status={convenio.status} />
-                  </div>
-                </Card>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <Card padding="p-4">
-                  <p className="text-meta text-text-subtle">Data de Protocolo</p>
-                  <p className="text-body-sm text-text-title mt-1">
-                    {formatDate(convenio.data_protocolo)}
-                  </p>
-                </Card>
-                <Card padding="p-4">
-                  <p className="text-meta text-text-subtle">Criado em</p>
-                  <p className="text-body-sm text-text-title mt-1">
-                    {formatDate(convenio.created_at)}
-                  </p>
-                </Card>
-              </div>
-
-              {(convenio.categoria || convenio.esfera || convenio.situacao || convenio.parlamentar || convenio.orgao_concedente) && (
-                <Card padding="p-6">
-                  <h3 className="text-h3 text-text-title mb-3">Origem do Recurso</h3>
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {convenio.categoria && (
-                      <Badge label={CATEGORIA_RECURSO_LABELS[convenio.categoria] || convenio.categoria} color="bg-[#1D4ED8]/10 text-[#1D4ED8]" />
-                    )}
-                    {convenio.esfera && (
-                      <Badge label={ESFERA_LABELS[convenio.esfera] || convenio.esfera} color="bg-[#067647]/10 text-[#067647]" />
-                    )}
-                    {convenio.situacao && (
-                      <Badge label={SITUACAO_PROCESSO_LABELS[convenio.situacao] || convenio.situacao} color="bg-[#B54708]/10 text-[#B54708]" />
-                    )}
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-body-sm">
-                    {convenio.parlamentar && (
-                      <div><span className="text-meta text-text-subtle">Parlamentar: </span><span className="text-text-title">{convenio.parlamentar}{convenio.partido ? ` (${convenio.partido})` : ""}</span></div>
-                    )}
-                    {convenio.orgao_concedente && (
-                      <div><span className="text-meta text-text-subtle">Órgão Concedente: </span><span className="text-text-title">{convenio.orgao_concedente}</span></div>
-                    )}
-                    {convenio.programa && (
-                      <div><span className="text-meta text-text-subtle">Programa: </span><span className="text-text-title">{convenio.programa}</span></div>
-                    )}
-                    {convenio.numero_emenda && (
-                      <div><span className="text-meta text-text-subtle">Emenda: </span><span className="text-text-title">{convenio.numero_emenda}</span></div>
-                    )}
-                    {convenio.numero_convenio && (
-                      <div><span className="text-meta text-text-subtle">Convênio: </span><span className="text-text-title">{convenio.numero_convenio}</span></div>
-                    )}
-                    {convenio.numero_proposta && (
-                      <div><span className="text-meta text-text-subtle">Proposta: </span><span className="text-text-title">{convenio.numero_proposta}</span></div>
-                    )}
-                    {convenio.vigencia_inicio && convenio.vigencia_fim && (
-                      <div><span className="text-meta text-text-subtle">Vigência: </span><span className="text-text-title">{formatDate(convenio.vigencia_inicio)} a {formatDate(convenio.vigencia_fim)}</span></div>
-                    )}
-                    {convenio.previsao_conclusao && (
-                      <div><span className="text-meta text-text-subtle">Previsão conclusão: </span><span className="text-text-title">{formatDate(convenio.previsao_conclusao)}</span></div>
-                    )}
-                    {convenio.prazo_prestacao_contas && (
-                      <div><span className="text-meta text-text-subtle">Prazo prestação: </span><span className="text-text-title">{formatDate(convenio.prazo_prestacao_contas)}</span></div>
-                    )}
-                  </div>
-                  {convenio.finalidade && (
-                    <p className="text-body-sm text-text-body mt-3">{convenio.finalidade}</p>
-                  )}
-                </Card>
-              )}
-
+              {/* Resumo executivo */}
               <Card padding="p-6">
-                <h3 className="text-h3 text-text-title mb-3">Descrição</h3>
-                <p className="text-body-sm text-text-body whitespace-pre-wrap">
-                  {convenio.descricao || "Nenhuma descrição informada."}
-                </p>
+                <h3 className="text-h3 text-text-title mb-4">Resumo executivo</h3>
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="p-4 bg-[#F6F7F9] rounded-btn">
+                    <p className="text-meta text-text-subtle">Etapa atual</p>
+                    <p className="text-body-sm font-semibold text-text-title mt-1">
+                      {convenio.etapa_atual || convenio.situacao || "—"}
+                    </p>
+                  </div>
+                  <div className="p-4 bg-[#F6F7F9] rounded-btn">
+                    <p className="text-meta text-text-subtle">Última movimentação</p>
+                    <p className="text-body-sm font-semibold text-text-title mt-1">
+                      {convenio.ultima_movimentacao ? relativeTime(convenio.ultima_movimentacao) : "—"}
+                    </p>
+                    {convenio.ultima_movimentacao && (
+                      <p className="text-meta text-text-subtle mt-0.5">{formatDateTime(convenio.ultima_movimentacao)}</p>
+                    )}
+                  </div>
+                  <div className="p-4 bg-[#F6F7F9] rounded-btn">
+                    <p className="text-meta text-text-subtle">Tarefas abertas</p>
+                    <p className="text-body font-bold text-text-title tabular-nums mt-1">
+                      {convenio.tarefas_abertas ?? tarefas.filter((t) => t.status !== "CONCLUIDA" && t.status !== "CANCELADA").length}
+                    </p>
+                  </div>
+                  <div className="p-4 bg-[#F6F7F9] rounded-btn">
+                    <p className="text-meta text-text-subtle">Tarefas atrasadas</p>
+                    <p className={`text-body font-bold tabular-nums mt-1 ${(convenio.tarefas_atrasadas ?? tarefas.filter((t) => t.atrasada).length) > 0 ? "text-[#B42318]" : "text-text-title"}`}>
+                      {convenio.tarefas_atrasadas ?? tarefas.filter((t) => t.atrasada && t.status !== "CONCLUIDA" && t.status !== "CANCELADA").length}
+                    </p>
+                  </div>
+                </div>
+                <div className="mt-5 pt-5 border-t border-surface-border">
+                  <p className="text-label text-text-subtle mb-2.5">Progresso do processo</p>
+                  <div className="space-y-2.5">
+                    <div className="flex items-center gap-3">
+                      <span className="text-meta text-[#667085] w-24 shrink-0">Administrativo</span>
+                      <ProgressBar pct={convenio.percentual_administrativo} color="bg-[#1D4ED8]" />
+                      <span className="text-meta text-text-title tabular-nums w-10 text-right">{pctLabel(convenio.percentual_administrativo)}%</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-meta text-[#667085] w-24 shrink-0">Físico</span>
+                      <ProgressBar pct={convenio.percentual_fisico} color="bg-[#1D4ED8]" />
+                      <span className="text-meta text-text-title tabular-nums w-10 text-right">{pctLabel(convenio.percentual_fisico)}%</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <span className="text-meta text-[#667085] w-24 shrink-0">Financeiro</span>
+                      <ProgressBar pct={convenio.percentual_financeiro} color="bg-[#067647]" />
+                      <span className="text-meta text-text-title tabular-nums w-10 text-right">{pctLabel(convenio.percentual_financeiro)}%</span>
+                    </div>
+                  </div>
+                </div>
               </Card>
 
-              {etapas.length > 0 && (
-                <Card padding="p-6">
-                  <h3 className="text-h3 text-text-title mb-3">Próximos Prazos</h3>
-                  <div className="space-y-3">
-                    {etapas
-                      .filter((e) => e.prazo_governo && e.status !== "CONCLUIDA")
-                      .map((e) => {
-                        const dias = daysUntil(e.prazo_governo!);
-                        return (
-                          <div
-                            key={e.id}
-                            className="flex items-center justify-between p-3 bg-[#F6F7F9] rounded-btn"
-                          >
-                            <div>
-                              <p className="text-body-sm font-medium text-text-title">
-                                {e.nome}
-                              </p>
-                              <p className="text-meta text-text-subtle">
-                                Prazo do governo: {formatDate(e.prazo_governo)}
-                              </p>
-                            </div>
-                            <span className={`px-2 py-1 rounded-pill text-meta font-medium ${prazoBgColor(dias)}`}>
-                              {dias < 0
-                                ? `${Math.abs(dias)} dia(s) atrasado`
-                                : dias === 0
-                                  ? "Vence hoje"
-                                  : `${dias} dia(s)`}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    {etapas.filter((e) => e.prazo_governo && e.status !== "CONCLUIDA").length === 0 && (
-                      <p className="text-body-sm text-text-subtle text-center py-4">
-                        Nenhum prazo pendente
-                      </p>
-                    )}
-                  </div>
-                </Card>
-              )}
-
+              {/* Tarefas em andamento */}
               <Card padding="p-6">
                 <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-h3 text-text-title">Tarefas Recentes</h3>
+                  <h3 className="text-h3 text-text-title">Tarefas em andamento</h3>
                   <button
                     onClick={() => setActiveTab("tarefas")}
                     className="text-body-sm text-[#1D4ED8] hover:underline"
@@ -533,39 +547,124 @@ export default function ConvenioDetailPage() {
                     Ver todas ({tarefas.length})
                   </button>
                 </div>
-                {tarefas.length === 0 ? (
+                {tarefas.filter((t) => t.status !== "CONCLUIDA" && t.status !== "CANCELADA").length === 0 ? (
                   <p className="text-body-sm text-text-subtle text-center py-4">
-                    Nenhuma tarefa criada
+                    Nenhuma tarefa em andamento
                   </p>
                 ) : (
                   <div className="space-y-2">
-                    {tarefas.slice(0, 5).map((t) => (
-                      <Link
-                        key={t.id}
-                        href={`/tarefas/${t.id}`}
-                        className="flex items-center justify-between p-3 rounded-btn hover:bg-[#F6F7F9] border border-surface-border transition-colors"
-                      >
-                        <div className="min-w-0 flex-1">
-                          <p className="text-body-sm font-medium text-text-title truncate">
-                            {t.titulo}
-                          </p>
-                          <div className="flex items-center gap-2 mt-1">
-                            <PriorityBadge priority={t.prioridade} />
-                            {t.prazo && (
-                              <span className={`text-meta flex items-center gap-1 ${prazoColor(daysUntil(t.prazo))}`}>
-                                <Clock className="w-3 h-3" />
-                                {formatDate(t.prazo)}
-                              </span>
-                            )}
-                            {t.atrasada && (
-                              <span className="text-meta text-[#B42318] font-medium">Atrasada</span>
-                            )}
+                    {tarefas
+                      .filter((t) => t.status !== "CONCLUIDA" && t.status !== "CANCELADA")
+                      .slice(0, 5)
+                      .map((t) => (
+                        <Link
+                          key={t.id}
+                          href={`/tarefas/${t.id}`}
+                          className="flex items-center justify-between p-3 rounded-btn hover:bg-[#F6F7F9] border border-surface-border transition-colors"
+                        >
+                          <div className="min-w-0 flex-1">
+                            <p className="text-body-sm font-medium text-text-title truncate">
+                              {t.titulo}
+                            </p>
+                            <div className="flex items-center gap-2 mt-1">
+                              <PriorityBadge priority={t.prioridade} />
+                              {t.atribuida_a ? (
+                                <span className="text-meta text-text-subtle">· {t.atribuida_a.name}</span>
+                              ) : (
+                                <span className="text-meta text-text-subtle">· Sem responsável</span>
+                              )}
+                              {t.prazo && (
+                                <span className={`text-meta flex items-center gap-1 ${prazoColor(daysUntil(t.prazo))}`}>
+                                  <Clock className="w-3 h-3" />
+                                  {formatDate(t.prazo)}
+                                </span>
+                              )}
+                              {t.atrasada && (
+                                <span className="text-meta text-[#B42318] font-medium">Atrasada</span>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                        <StatusPill status={t.status} />
-                      </Link>
-                    ))}
+                          <StatusPill status={t.status} />
+                        </Link>
+                      ))}
                   </div>
+                )}
+              </Card>
+
+              {/* Identificação + Financeiro */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <Card padding="p-6">
+                  <h3 className="text-h3 text-text-title mb-3">Identificação</h3>
+                  <dl className="grid grid-cols-1 gap-x-6 gap-y-2.5 text-body-sm">
+                    <div className="flex items-start justify-between gap-3 border-b border-[#F0F2F5] pb-2">
+                      <dt className="text-meta text-text-subtle">Tipo</dt>
+                      <dd className="text-text-title text-right font-medium">{categoriaLabel}</dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-3 border-b border-[#F0F2F5] pb-2">
+                      <dt className="text-meta text-text-subtle">Origem</dt>
+                      <dd className="text-text-title text-right">{convenio.esfera ? ESFERA_LABELS[convenio.esfera] || convenio.esfera : convenio.origem || "—"}</dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-3 border-b border-[#F0F2F5] pb-2">
+                      <dt className="text-meta text-text-subtle">Parlamentar</dt>
+                      <dd className="text-text-title text-right">{convenio.parlamentar || "—"}</dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-3 border-b border-[#F0F2F5] pb-2">
+                      <dt className="text-meta text-text-subtle">Órgão</dt>
+                      <dd className="text-text-title text-right">{convenio.orgao_concedente || "—"}</dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-3 border-b border-[#F0F2F5] pb-2">
+                      <dt className="text-meta text-text-subtle">Programa</dt>
+                      <dd className="text-text-title text-right">{convenio.programa || "—"}</dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-3 border-b border-[#F0F2F5] pb-2">
+                      <dt className="text-meta text-text-subtle">Nº emenda</dt>
+                      <dd className="text-text-title text-right">{convenio.numero_emenda || "—"}</dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-3 border-b border-[#F0F2F5] pb-2">
+                      <dt className="text-meta text-text-subtle">Nº convênio</dt>
+                      <dd className="text-text-title text-right">{convenio.numero_convenio || "—"}</dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <dt className="text-meta text-text-subtle">Coordenador</dt>
+                      <dd className="text-text-title text-right">{convenio.responsavel?.name || "—"}</dd>
+                    </div>
+                  </dl>
+                </Card>
+
+                <Card padding="p-6">
+                  <h3 className="text-h3 text-text-title mb-3">Financeiro</h3>
+                  <dl className="grid grid-cols-1 gap-x-6 gap-y-2.5 text-body-sm">
+                    <div className="flex items-start justify-between gap-3 border-b border-[#F0F2F5] pb-2">
+                      <dt className="text-meta text-text-subtle">Aprovado</dt>
+                      <dd className="text-text-title text-right font-semibold tabular-nums">{formatCurrency(convenio.valor_aprovado ?? convenio.valor)}</dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-3 border-b border-[#F0F2F5] pb-2">
+                      <dt className="text-meta text-text-subtle">Recebido</dt>
+                      <dd className="text-text-title text-right tabular-nums">{formatCurrency(convenio.valor_recebido)}</dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-3 border-b border-[#F0F2F5] pb-2">
+                      <dt className="text-meta text-text-subtle">Executado</dt>
+                      <dd className="text-text-title text-right tabular-nums">{formatCurrency(convenio.valor_executado)}</dd>
+                    </div>
+                    <div className="flex items-start justify-between gap-3">
+                      <dt className="text-meta text-text-subtle">Pago</dt>
+                      <dd className="text-text-title text-right tabular-nums">{formatCurrency(convenio.valor_pago)}</dd>
+                    </div>
+                  </dl>
+                </Card>
+              </div>
+
+              {/* Diligências ativas */}
+              <Card padding="p-6">
+                <h3 className="text-h3 text-text-title mb-3">Diligências ativas</h3>
+                {(convenio.pendencias ?? 0) > 0 ? (
+                  <p className="text-body-sm text-text-body">
+                    {convenio.pendencias} diligência(s) pendente(s) de atendimento.
+                  </p>
+                ) : (
+                  <p className="text-body-sm text-text-subtle">
+                    Nenhuma diligência ativa
+                  </p>
                 )}
               </Card>
             </div>

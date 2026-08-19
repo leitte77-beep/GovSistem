@@ -1,7 +1,6 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -160,7 +159,22 @@ class ConvenioOut(BaseModel):
     created_at: datetime
     updated_at: datetime
 
+    # Campos computados (enriquecimento do detalhe)
+    percentual_administrativo: float | None = None
+    percentual_fisico: float | None = None
+    percentual_financeiro: float | None = None
+    etapa_atual: str | None = None
+    proximo_prazo: datetime | None = None
+    tarefas_abertas: int = 0
+    tarefas_atrasadas: int = 0
+    valor_recebido: Decimal | None = None
+    ultima_movimentacao: datetime | None = None
+
     model_config = {"from_attributes": True}
+
+
+class ConvenioDetailOut(ConvenioOut):
+    responsavel: dict | None = None
 
 
 class ConvenioListItem(BaseModel):

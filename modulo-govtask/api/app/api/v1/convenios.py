@@ -16,6 +16,7 @@ from app.models.template_fluxo import TemplateFluxo
 from app.models.user import User
 from app.schemas.convenio import (
     ConvenioCreate,
+    ConvenioDetailOut,
     ConvenioListItem,
     ConvenioOut,
     ConvenioUpdate,
@@ -26,8 +27,6 @@ from app.services.timeline import registrar_evento
 
 def _enrich_list_item(convenio: Convenio) -> dict:
     """Adiciona etapa_atual, proximo_prazo, progresso e contagens computados."""
-    from app.models.etapa import Etapa
-
     etapas: list = sorted((convenio.etapas or []), key=lambda e: e.ordem)
     etapa_atual = None
     proximo_prazo = None
@@ -90,10 +89,39 @@ def _enrich_list_item(convenio: Convenio) -> dict:
     percentual_fisico = round(float(percentual_fisico), 1)
     percentual_financeiro = round(float(percentual_financeiro), 1)
 
+    # Progresso administrativo: posição da situação atual no fluxo padrão
+    # (proxy do avanço do processo pelas etapas de trâmite). Quando o status
+    # já está concluído/cancelado, fixa em 100/0.
+    from app.models.enums import SituacaoProcesso
+
+    percentual_administrativo = None
+    if convenio.status == "CONCLUIDO":
+        percentual_administrativo = 100.0
+    elif convenio.status == "CANCELADO":
+        percentual_administrativo = 0.0
+    else:
+        flow = SituacaoProcesso.default_flow()
+        if convenio.situacao in flow:
+            percentual_administrativo = round(
+                (flow.index(convenio.situacao) + 1) * 100 / len(flow), 1
+            )
+        else:
+            # Sem situação cadastrada, usa as etapas concluídas como proxy.
+            etapas_list = getattr(convenio, "etapas", None) or []
+            if etapas_list:
+                concluidas = sum(1 for e in etapas_list if e.status == "CONCLUIDA")
+                percentual_administrativo = round(concluidas * 100 / len(etapas_list), 1)
+            else:
+                percentual_administrativo = 0.0
+
     # Contagens
     tarefas_abertas = sum(
         1 for t in (getattr(convenio, "tarefas", None) or [])
         if t.status not in ("CONCLUIDA", "CANCELADA")
+    )
+    tarefas_atrasadas = sum(
+        1 for t in (getattr(convenio, "tarefas", None) or [])
+        if t.status not in ("CONCLUIDA", "CANCELADA") and getattr(t, "atrasada", False)
     )
     pendencias = sum(
         1 for d in (getattr(convenio, "diligencias", None) or [])
@@ -121,7 +149,9 @@ def _enrich_list_item(convenio: Convenio) -> dict:
         "proximo_prazo": proximo_prazo,
         "percentual_fisico": percentual_fisico,
         "percentual_financeiro": percentual_financeiro,
+        "percentual_administrativo": percentual_administrativo,
         "tarefas_abertas": tarefas_abertas,
+        "tarefas_atrasadas": tarefas_atrasadas,
         "pendencias": pendencias,
         "responsavel_id": convenio.responsavel_id,
         "created_at": convenio.created_at,
@@ -269,7 +299,7 @@ async def criar_convenio(
     return convenio
 
 
-@router.get("/{convenio_id}", response_model=ConvenioOut)
+@router.get("/{convenio_id}", response_model=ConvenioDetailOut)
 async def obter_convenio(
     convenio_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -286,12 +316,36 @@ async def obter_convenio(
             selectinload(Convenio.etapas),
             selectinload(Convenio.anexos),
             selectinload(Convenio.tarefas),
+            selectinload(Convenio.obras),
+            selectinload(Convenio.medicoes),
+            selectinload(Convenio.movimentos_financeiros),
+            selectinload(Convenio.repasses),
+            selectinload(Convenio.eventos),
+            selectinload(Convenio.diligencias),
+            selectinload(Convenio.responsavel),
         )
     )
     convenio = result.scalar_one_or_none()
     if not convenio:
         raise HTTPException(status_code=404, detail="Convênio não encontrado")
-    return convenio
+
+    # Enriquecimento do detalhe: progresso, etapa atual, financeiro e
+    # última movimentação (reuso da mesma lógica do item de lista).
+    data = ConvenioOut.model_validate(convenio).model_dump()
+    data.update(_enrich_list_item(convenio))
+    data["valor_recebido"] = float(
+        sum(
+            (r.valor_recebido or 0) for r in (getattr(convenio, "repasses", None) or [])
+        )
+    )
+    ultima = None
+    for ev in (getattr(convenio, "eventos", None) or []):
+        if ultima is None or ev.ocorrido_em > ultima:
+            ultima = ev.ocorrido_em
+    data["ultima_movimentacao"] = ultima.isoformat() if ultima else None
+    if convenio.responsavel:
+        data["responsavel"] = {"id": str(convenio.responsavel.id), "name": convenio.responsavel.name}
+    return data
 
 
 @router.patch("/{convenio_id}", response_model=ConvenioOut)
