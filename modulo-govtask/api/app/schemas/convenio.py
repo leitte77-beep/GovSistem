@@ -180,8 +180,8 @@ class ConvenioListItem(BaseModel):
     orgao_concedente: str | None = None
     etapa_atual: str | None = None
     proximo_prazo: datetime | None = None
-    percentual_fisico: Decimal | None = None
-    percentual_financeiro: Decimal | None = None
+    percentual_fisico: float | None = None
+    percentual_financeiro: float | None = None
     tarefas_abertas: int = 0
     pendencias: int = 0
     responsavel: dict | None = None

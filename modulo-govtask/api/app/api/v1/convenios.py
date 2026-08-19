@@ -58,13 +58,37 @@ def _enrich_list_item(convenio: Convenio) -> dict:
             percentual_fisico = max(fis)
         if fin:
             percentual_financeiro = max(fin)
+
+    # Sem percentual lançado na obra, o avanço físico real é o acumulado da
+    # última medição aprovada (obra sem medição fica em 0, como esperado).
+    if percentual_fisico is None:
+        aprovadas = [
+            m for m in (getattr(convenio, "medicoes", None) or [])
+            if m.status in ("APROVADA", "PAGA") and m.deleted_at is None
+            and m.percentual_acumulado is not None
+        ]
+        if aprovadas:
+            percentual_fisico = max(aprovadas, key=lambda m: m.numero).percentual_acumulado
     if percentual_fisico is None:
         percentual_fisico = 100 if convenio.status == "CONCLUIDO" else 0
+
+    # Financeiro: valor_executado é preenchido à mão e quase sempre fica
+    # vazio; o executado real é a soma dos pagamentos, mesma definição usada
+    # pelo dashboard (ver dashboard.py, "Valor executado = soma dos pagamentos").
     if percentual_financeiro is None:
         total = convenio.valor_aprovado or convenio.valor or 0
-        percentual_financeiro = round(
-            (convenio.valor_executado or 0) * 100 / total, 1
-        ) if total else 0
+        executado = convenio.valor_executado
+        if executado is None:
+            executado = sum(
+                (mv.valor or 0) for mv in (getattr(convenio, "movimentos_financeiros", None) or [])
+                if mv.tipo == "PAGAMENTO" and mv.deleted_at is None
+            )
+        percentual_financeiro = round(executado * 100 / total, 1) if total else 0
+
+    # Decimal serializa como string ("25.00") e o front tipa como number,
+    # entao normaliza para float com no maximo 1 casa.
+    percentual_fisico = round(float(percentual_fisico), 1)
+    percentual_financeiro = round(float(percentual_financeiro), 1)
 
     # Contagens
     tarefas_abertas = sum(

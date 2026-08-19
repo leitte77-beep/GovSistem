@@ -84,9 +84,17 @@ export default function ConveniosPage() {
     return TIPO_CONVENIO_LABELS[c.tipo] || c.tipo;
   };
 
+  // A API pode devolver o percentual como string (Decimal serializado), entao
+  // coage antes de exibir e esconde a casa decimal quando ela e zero.
+  const pctLabel = (v: number | null | undefined) => {
+    const n = Number(v ?? 0);
+    if (!Number.isFinite(n)) return "0";
+    return Number.isInteger(n) ? String(n) : n.toFixed(1);
+  };
+
   const ProcessCard = ({ c }: { c: ConvenioListItem }) => {
-    const fis = c.percentual_fisico ?? 0;
-    const fin = c.percentual_financeiro ?? 0;
+    const fis = Number(c.percentual_fisico ?? 0);
+    const fin = Number(c.percentual_financeiro ?? 0);
     const atrasado = c.proximo_prazo && new Date(c.proximo_prazo) < new Date() && c.status !== "CONCLUIDO";
     return (
       <div
@@ -122,12 +130,12 @@ export default function ConveniosPage() {
           <div className="flex items-center gap-3">
             <span className="text-meta text-[#667085] w-14 shrink-0">Físico</span>
             <Progress pct={fis} color="bg-[#1D4ED8]" />
-            <span className="text-meta text-[#101828] tabular-nums w-10 text-right">{fis}%</span>
+            <span className="text-meta text-[#101828] tabular-nums w-10 text-right">{pctLabel(fis)}%</span>
           </div>
           <div className="flex items-center gap-3">
             <span className="text-meta text-[#667085] w-14 shrink-0">Financeiro</span>
             <Progress pct={fin} color="bg-[#067647]" />
-            <span className="text-meta text-[#101828] tabular-nums w-10 text-right">{fin}%</span>
+            <span className="text-meta text-[#101828] tabular-nums w-10 text-right">{pctLabel(fin)}%</span>
           </div>
         </div>
 
