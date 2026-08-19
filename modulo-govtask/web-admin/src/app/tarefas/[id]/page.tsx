@@ -42,6 +42,7 @@ import {
   XCircle,
   RotateCcw,
   ArrowLeft,
+  Lock,
 } from "lucide-react";
 
 export default function TarefaDetailPage() {
@@ -374,6 +375,47 @@ export default function TarefaDetailPage() {
                 </div>
               </div>
             </div>
+
+            {tarefa.prazo_interno && (
+              <div className="p-4 rounded-lg mb-4 bg-[#FEF0C7]">
+                <p className="text-xs font-medium text-[#B54708]">Prazo interno (margem de revisão)</p>
+                <p className="text-sm font-semibold text-[#B54708]">{formatDate(tarefa.prazo_interno)}</p>
+              </div>
+            )}
+
+            {tarefa.bloqueada_por && tarefa.bloqueada_por.length > 0 && (
+              <div className="p-4 rounded-lg mb-4 bg-[#FEE4E2]">
+                <div className="flex items-center gap-2 mb-1">
+                  <Lock className="w-4 h-4 text-[#B42318]" />
+                  <p className="text-sm font-medium text-[#B42318]">Bloqueada</p>
+                </div>
+                <p className="text-xs text-[#B42318]">
+                  Aguardando: {tarefa.bloqueada_por.join(", ")}
+                </p>
+              </div>
+            )}
+
+            {tarefa.historico_prazos && tarefa.historico_prazos.length > 0 && (
+              <div className="p-4 rounded-lg bg-[#F6F7F9] mb-4">
+                <p className="text-xs font-semibold text-gray-900 mb-2">Histórico de Prazos</p>
+                <div className="space-y-2">
+                  {tarefa.historico_prazos.map((h) => (
+                    <div key={h.id} className="text-xs">
+                      <div className="flex justify-between">
+                        <span className="font-medium text-gray-700">
+                          {h.tipo === "PRORROGACAO" ? "Prorrogação" : "Definição"}
+                        </span>
+                        <span className="text-gray-400">{formatDate(h.created_at)}</span>
+                      </div>
+                      <p className="text-gray-600">
+                        {h.prazo_anterior ? `${formatDate(h.prazo_anterior)} → ` : ""}{h.prazo_novo ? formatDate(h.prazo_novo) : "—"}
+                      </p>
+                      {h.motivo && <p className="text-gray-500 italic">{h.motivo}</p>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <div className="space-y-3">
               <div className="flex items-center gap-3">

@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { StatusPill } from "@/components/ui/StatusPill";
 import { notify } from "@/components/ui/Toast";
-import { TIPO_CONVENIO_LABELS, NATUREZA_ETAPA_LABELS } from "@/lib/utils";
+import { TIPO_CONVENIO_LABELS, NATUREZA_ETAPA_LABELS, CATEGORIA_RECURSO_LABELS, ESFERA_LABELS, PRIORIDADE_PROCESSO_LABELS } from "@/lib/utils";
 import type { TemplateFluxo } from "@/types/govtask";
 import {
   Save,
@@ -25,6 +25,29 @@ interface FormData {
   origem: string;
   valor: string;
   template_fluxo_id: string;
+  categoria: string;
+  esfera: string;
+  prioridade: string;
+  parlamentar: string;
+  parlamentar_cargo: string;
+  partido: string;
+  orgao_concedente: string;
+  programa: string;
+  finalidade: string;
+  numero_proposta: string;
+  numero_convenio: string;
+  numero_emenda: string;
+  numero_plano_acao: string;
+  numero_plano_trabalho: string;
+  valor_solicitado: string;
+  valor_aprovado: string;
+  valor_repasse: string;
+  contrapartida: string;
+  vigencia_inicio: string;
+  vigencia_fim: string;
+  prazo_execucao: string;
+  prazo_prestacao_contas: string;
+  previsao_conclusao: string;
 }
 
 interface FormErrors {
@@ -40,6 +63,29 @@ export default function NovoConvenioPage() {
     origem: "",
     valor: "",
     template_fluxo_id: "",
+    categoria: "",
+    esfera: "",
+    prioridade: "",
+    parlamentar: "",
+    parlamentar_cargo: "",
+    partido: "",
+    orgao_concedente: "",
+    programa: "",
+    finalidade: "",
+    numero_proposta: "",
+    numero_convenio: "",
+    numero_emenda: "",
+    numero_plano_acao: "",
+    numero_plano_trabalho: "",
+    valor_solicitado: "",
+    valor_aprovado: "",
+    valor_repasse: "",
+    contrapartida: "",
+    vigencia_inicio: "",
+    vigencia_fim: "",
+    prazo_execucao: "",
+    prazo_prestacao_contas: "",
+    previsao_conclusao: "",
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [saving, setSaving] = useState(false);
@@ -47,6 +93,7 @@ export default function NovoConvenioPage() {
   const [loadingTemplates, setLoadingTemplates] = useState(true);
   const [selectedTemplate, setSelectedTemplate] = useState<TemplateFluxo | null>(null);
   const [valorFmt, setValorFmt] = useState("");
+  const inputCls = "w-full border border-surface-border rounded-btn px-3 py-2 text-sm bg-white text-text-title placeholder:text-text-subtle focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/20 focus:border-[#1D4ED8]";
 
   useEffect(() => {
     const loadTemplates = async () => {
@@ -116,6 +163,29 @@ export default function NovoConvenioPage() {
         origem: form.origem.trim() || undefined,
         valor: form.valor ? parseFloat(form.valor) : undefined,
         template_fluxo_id: form.template_fluxo_id || undefined,
+        categoria: form.categoria || undefined,
+        esfera: form.esfera || undefined,
+        prioridade: form.prioridade || undefined,
+        parlamentar: form.parlamentar.trim() || undefined,
+        parlamentar_cargo: form.parlamentar_cargo.trim() || undefined,
+        partido: form.partido.trim() || undefined,
+        orgao_concedente: form.orgao_concedente.trim() || undefined,
+        programa: form.programa.trim() || undefined,
+        finalidade: form.finalidade.trim() || undefined,
+        numero_proposta: form.numero_proposta.trim() || undefined,
+        numero_convenio: form.numero_convenio.trim() || undefined,
+        numero_emenda: form.numero_emenda.trim() || undefined,
+        numero_plano_acao: form.numero_plano_acao.trim() || undefined,
+        numero_plano_trabalho: form.numero_plano_trabalho.trim() || undefined,
+        valor_solicitado: form.valor_solicitado ? parseFloat(form.valor_solicitado) : undefined,
+        valor_aprovado: form.valor_aprovado ? parseFloat(form.valor_aprovado) : undefined,
+        valor_repasse: form.valor_repasse ? parseFloat(form.valor_repasse) : undefined,
+        contrapartida: form.contrapartida ? parseFloat(form.contrapartida) : undefined,
+        vigencia_inicio: form.vigencia_inicio || undefined,
+        vigencia_fim: form.vigencia_fim || undefined,
+        prazo_execucao: form.prazo_execucao || undefined,
+        prazo_prestacao_contas: form.prazo_prestacao_contas || undefined,
+        previsao_conclusao: form.previsao_conclusao || undefined,
       };
 
       const convenio = await api.createConvenio(payload as any);
@@ -139,6 +209,7 @@ export default function NovoConvenioPage() {
   return (
     <div className="space-y-6">
       <PageHeader
+        eyebrow="Novo Processo"
         title="Novo Convênio"
         description="Preencha os dados para criar um novo convênio"
         breadcrumbs={[
@@ -247,6 +318,135 @@ export default function NovoConvenioPage() {
             </div>
           </Card>
 
+          {/* Origem do Recurso */}
+          <Card padding="p-6">
+            <h2 className="text-h3 text-text-title mb-1">Origem e Identificação</h2>
+            <p className="text-body-sm text-text-body mb-4">Dados de origem política, concedente e instrumentos.</p>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-label text-text-title mb-1">Categoria do Recurso</label>
+                  <select value={form.categoria} onChange={(e) => setForm({ ...form, categoria: e.target.value })} className="w-full border border-surface-border rounded-btn px-3 py-2 text-sm bg-white text-text-title focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/20 focus:border-[#1D4ED8]">
+                    <option value="">Selecione...</option>
+                    {Object.entries(CATEGORIA_RECURSO_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-label text-text-title mb-1">Esfera</label>
+                  <select value={form.esfera} onChange={(e) => setForm({ ...form, esfera: e.target.value })} className="w-full border border-surface-border rounded-btn px-3 py-2 text-sm bg-white text-text-title focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/20 focus:border-[#1D4ED8]">
+                    <option value="">Selecione...</option>
+                    {Object.entries(ESFERA_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-label text-text-title mb-1">Prioridade</label>
+                  <select value={form.prioridade} onChange={(e) => setForm({ ...form, prioridade: e.target.value })} className="w-full border border-surface-border rounded-btn px-3 py-2 text-sm bg-white text-text-title focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/20 focus:border-[#1D4ED8]">
+                    <option value="">Selecione...</option>
+                    {Object.entries(PRIORIDADE_PROCESSO_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-label text-text-title mb-1">Parlamentar</label>
+                  <input type="text" value={form.parlamentar} onChange={(e) => setForm({ ...form, parlamentar: e.target.value })} placeholder="Dep. Fulano" className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-label text-text-title mb-1">Cargo</label>
+                  <input type="text" value={form.parlamentar_cargo} onChange={(e) => setForm({ ...form, parlamentar_cargo: e.target.value })} placeholder="Deputado Federal" className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-label text-text-title mb-1">Partido</label>
+                  <input type="text" value={form.partido} onChange={(e) => setForm({ ...form, partido: e.target.value })} placeholder="Partido" className={inputCls} />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-label text-text-title mb-1">Órgão Concedente</label>
+                  <input type="text" value={form.orgao_concedente} onChange={(e) => setForm({ ...form, orgao_concedente: e.target.value })} placeholder="Ex: Ministério da Educação" className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-label text-text-title mb-1">Programa</label>
+                  <input type="text" value={form.programa} onChange={(e) => setForm({ ...form, programa: e.target.value })} placeholder="Ex: PAC Creches" className={inputCls} />
+                </div>
+              </div>
+              <div>
+                <label className="block text-label text-text-title mb-1">Finalidade</label>
+                <textarea value={form.finalidade} onChange={(e) => setForm({ ...form, finalidade: e.target.value })} rows={2} placeholder="Finalidade do recurso..." className={inputCls} />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-label text-text-title mb-1">Número da Proposta</label>
+                  <input type="text" value={form.numero_proposta} onChange={(e) => setForm({ ...form, numero_proposta: e.target.value })} className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-label text-text-title mb-1">Número do Convênio</label>
+                  <input type="text" value={form.numero_convenio} onChange={(e) => setForm({ ...form, numero_convenio: e.target.value })} className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-label text-text-title mb-1">Número da Emenda</label>
+                  <input type="text" value={form.numero_emenda} onChange={(e) => setForm({ ...form, numero_emenda: e.target.value })} className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-label text-text-title mb-1">Plano de Ação</label>
+                  <input type="text" value={form.numero_plano_acao} onChange={(e) => setForm({ ...form, numero_plano_acao: e.target.value })} className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-label text-text-title mb-1">Plano de Trabalho</label>
+                  <input type="text" value={form.numero_plano_trabalho} onChange={(e) => setForm({ ...form, numero_plano_trabalho: e.target.value })} className={inputCls} />
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          {/* Valores e Datas */}
+          <Card padding="p-6">
+            <h2 className="text-h3 text-text-title mb-1">Valores e Datas</h2>
+            <p className="text-body-sm text-text-body mb-4">Planejamento financeiro e prazos do instrumento.</p>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div>
+                  <label className="block text-label text-text-title mb-1">Valor Solicitado</label>
+                  <input type="number" step="0.01" value={form.valor_solicitado} onChange={(e) => setForm({ ...form, valor_solicitado: e.target.value })} className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-label text-text-title mb-1">Valor Aprovado</label>
+                  <input type="number" step="0.01" value={form.valor_aprovado} onChange={(e) => setForm({ ...form, valor_aprovado: e.target.value })} className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-label text-text-title mb-1">Valor Repasse</label>
+                  <input type="number" step="0.01" value={form.valor_repasse} onChange={(e) => setForm({ ...form, valor_repasse: e.target.value })} className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-label text-text-title mb-1">Contrapartida</label>
+                  <input type="number" step="0.01" value={form.contrapartida} onChange={(e) => setForm({ ...form, contrapartida: e.target.value })} className={inputCls} />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                <div>
+                  <label className="block text-label text-text-title mb-1">Vigência Início</label>
+                  <input type="date" value={form.vigencia_inicio} onChange={(e) => setForm({ ...form, vigencia_inicio: e.target.value })} className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-label text-text-title mb-1">Vigência Fim</label>
+                  <input type="date" value={form.vigencia_fim} onChange={(e) => setForm({ ...form, vigencia_fim: e.target.value })} className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-label text-text-title mb-1">Prazo Execução</label>
+                  <input type="date" value={form.prazo_execucao} onChange={(e) => setForm({ ...form, prazo_execucao: e.target.value })} className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-label text-text-title mb-1">Prazo Prestação</label>
+                  <input type="date" value={form.prazo_prestacao_contas} onChange={(e) => setForm({ ...form, prazo_prestacao_contas: e.target.value })} className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-label text-text-title mb-1">Previsão Conclusão</label>
+                  <input type="date" value={form.previsao_conclusao} onChange={(e) => setForm({ ...form, previsao_conclusao: e.target.value })} className={inputCls} />
+                </div>
+              </div>
+            </div>
+          </Card>
+
           {/* Template de Fluxo */}
           <Card padding="p-6">
             <h2 className="text-h3 text-text-title mb-1">
@@ -331,6 +531,18 @@ export default function NovoConvenioPage() {
                   <p className="text-meta text-text-subtle">Tipo</p>
                   <p className="text-body-sm text-text-title">
                     {TIPO_CONVENIO_LABELS[form.tipo] || form.tipo}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-meta text-text-subtle">Categoria</p>
+                  <p className="text-body-sm text-text-title">
+                    {form.categoria ? (CATEGORIA_RECURSO_LABELS[form.categoria] || form.categoria) : <span className="text-text-subtle italic">—</span>}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-meta text-text-subtle">Esfera</p>
+                  <p className="text-body-sm text-text-title">
+                    {form.esfera ? (ESFERA_LABELS[form.esfera] || form.esfera) : <span className="text-text-subtle italic">—</span>}
                   </p>
                 </div>
                 <div>

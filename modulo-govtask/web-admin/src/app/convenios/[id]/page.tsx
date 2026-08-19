@@ -13,7 +13,6 @@ import { StatusPill } from "@/components/ui/StatusPill";
 import { Badge } from "@/components/ui/Badge";
 import { Card } from "@/components/ui/Card";
 import { Button } from "@/components/ui/Button";
-import { FileUpload } from "@/components/ui/FileUpload";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ConfirmModal } from "@/components/ui/ConfirmModal";
@@ -22,14 +21,16 @@ import { notify } from "@/components/ui/Toast";
 import {
   formatDate,
   formatCurrency,
-  formatFileSize,
   daysUntil,
   prazoColor,
   prazoBgColor,
   STATUS_LABELS,
   TIPO_CONVENIO_LABELS,
   NATUREZA_ETAPA_LABELS,
-  TIPO_DOCUMENTO_LABELS,
+  CATEGORIA_RECURSO_LABELS,
+  ESFERA_LABELS,
+  PRIORIDADE_PROCESSO_LABELS,
+  SITUACAO_PROCESSO_LABELS,
 } from "@/lib/utils";
 import type {
   Convenio,
@@ -38,11 +39,21 @@ import type {
   Anexo,
   TarefaListItem,
 } from "@/types/govtask";
+import { DiligenciasTab } from "@/components/recursos/DiligenciasTab";
+import { FinanceiroTab } from "@/components/recursos/FinanceiroTab";
+import { RepassesTab } from "@/components/recursos/RepassesTab";
+import { MedicoesTab } from "@/components/recursos/MedicoesTab";
+import { PrestacoesTab } from "@/components/recursos/PrestacoesTab";
+import { ContratosTab } from "@/components/recursos/ContratosTab";
+import { LicitacoesTab } from "@/components/recursos/LicitacoesTab";
+import { EntregasTab } from "@/components/recursos/EntregasTab";
+import { DocumentosTab } from "@/components/recursos/DocumentosTab";
+import { ObrasTab } from "@/components/recursos/ObrasTab";
+import { ConfiguracoesTab } from "@/components/recursos/ConfiguracoesTab";
 import {
   Edit,
   FileText,
   Plus,
-  Download,
   RefreshCw,
   AlertTriangle,
   Clock,
@@ -51,12 +62,13 @@ import {
   Send,
   RotateCcw,
   X,
+  Printer,
 } from "lucide-react";
 
 export default function ConvenioDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
-  const { hasRole } = useAuth();
+  const { hasRole, hasPermission } = useAuth();
 
   const [convenio, setConvenio] = useState<Convenio | null>(null);
   const [timeline, setTimeline] = useState<TimelineEvent[]>([]);
@@ -66,7 +78,6 @@ export default function ConvenioDetailPage() {
   const [activeTab, setActiveTab] = useState("visao-geral");
   const [timelineTipos, setTimelineTipos] = useState<string[] | undefined>();
   const [tarefaStatusFilter, setTarefaStatusFilter] = useState("");
-  const [uploadTipoDocumento, setUploadTipoDocumento] = useState("OUTRO");
   const [confirmDeleteAnexo, setConfirmDeleteAnexo] = useState<string | null>(null);
 
   const [etapaEncaminhar, setEtapaEncaminhar] = useState<string | null>(null);
@@ -105,18 +116,11 @@ export default function ConvenioDetailPage() {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
       const tab = params.get("tab");
-      if (tab && ["visao-geral", "etapas", "tarefas", "documentos", "timeline"].includes(tab)) {
+      if (tab && ["visao-geral", "etapas", "tarefas", "documentos", "timeline", "diligencias", "financeiro", "repasses", "medicoes", "obras", "prestacoes", "contratos", "licitacoes", "entregas", "configuracoes"].includes(tab)) {
         setActiveTab(tab);
       }
     }
   }, []);
-
-  const handleUpload = async (file: File): Promise<void> => {
-    if (!convenio) return;
-    await api.uploadAnexo(convenio.id, file, uploadTipoDocumento);
-    notify.success("Documento enviado com sucesso!");
-    load();
-  };
 
   const handleEncaminharGoverno = async () => {
     if (!etapaEncaminhar) return;
@@ -180,16 +184,6 @@ export default function ConvenioDetailPage() {
 
   const etapas = (convenio?.etapas || []).slice().sort((a, b) => a.ordem - b.ordem);
 
-  const anexosByTipo = (convenio?.anexos || []).reduce(
-    (acc, a) => {
-      const tipo = a.tipo_documento;
-      if (!acc[tipo]) acc[tipo] = [];
-      acc[tipo].push(a);
-      return acc;
-    },
-    {} as Record<string, Anexo[]>
-  );
-
   if (loading) {
     return (
       <div className="space-y-6">
@@ -252,12 +246,23 @@ export default function ConvenioDetailPage() {
     { key: "etapas", label: "Etapas", count: etapas.length },
     { key: "tarefas", label: "Tarefas", count: tarefas.length },
     { key: "documentos", label: "Documentos", count: (convenio?.anexos || []).length },
+    { key: "diligencias", label: "Diligências" },
+    { key: "financeiro", label: "Financeiro" },
+    { key: "repasses", label: "Repasses" },
+    { key: "medicoes", label: "Medições" },
+    { key: "obras", label: "Obras" },
+    { key: "prestacoes", label: "Prestações" },
+    { key: "contratos", label: "Contratos" },
+    { key: "licitacoes", label: "Licitações" },
+    { key: "entregas", label: "Entregas" },
+    { key: "configuracoes", label: "Configurações" },
     { key: "timeline", label: "Linha do Tempo", count: timeline.length },
   ];
 
   return (
     <div className="space-y-6">
       <PageHeader
+        eyebrow="Processo"
         title={convenio.titulo}
         description={`${TIPO_CONVENIO_LABELS[convenio.tipo] || convenio.tipo}${
           convenio.origem ? ` — ${convenio.origem}` : ""
@@ -275,7 +280,7 @@ export default function ConvenioDetailPage() {
                 </Button>
               </Link>
             )}
-            {canEdit && (
+            {canEdit && hasPermission("resource.delete") && (
               <Button
                 variant="danger"
                 icon={X}
@@ -315,6 +320,11 @@ export default function ConvenioDetailPage() {
                 </Button>
               </Link>
             )}
+            <Link href={`/convenios/${id}/impressao`} title="Imprimir / Dossiê do processo">
+              <Button variant="secondary" size="sm" icon={Printer}>
+                Imprimir
+              </Button>
+            </Link>
           </div>
         }
       />
@@ -416,6 +426,55 @@ export default function ConvenioDetailPage() {
                   </p>
                 </Card>
               </div>
+
+              {(convenio.categoria || convenio.esfera || convenio.situacao || convenio.parlamentar || convenio.orgao_concedente) && (
+                <Card padding="p-6">
+                  <h3 className="text-h3 text-text-title mb-3">Origem do Recurso</h3>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {convenio.categoria && (
+                      <Badge label={CATEGORIA_RECURSO_LABELS[convenio.categoria] || convenio.categoria} color="bg-[#1D4ED8]/10 text-[#1D4ED8]" />
+                    )}
+                    {convenio.esfera && (
+                      <Badge label={ESFERA_LABELS[convenio.esfera] || convenio.esfera} color="bg-[#067647]/10 text-[#067647]" />
+                    )}
+                    {convenio.situacao && (
+                      <Badge label={SITUACAO_PROCESSO_LABELS[convenio.situacao] || convenio.situacao} color="bg-[#B54708]/10 text-[#B54708]" />
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-body-sm">
+                    {convenio.parlamentar && (
+                      <div><span className="text-meta text-text-subtle">Parlamentar: </span><span className="text-text-title">{convenio.parlamentar}{convenio.partido ? ` (${convenio.partido})` : ""}</span></div>
+                    )}
+                    {convenio.orgao_concedente && (
+                      <div><span className="text-meta text-text-subtle">Órgão Concedente: </span><span className="text-text-title">{convenio.orgao_concedente}</span></div>
+                    )}
+                    {convenio.programa && (
+                      <div><span className="text-meta text-text-subtle">Programa: </span><span className="text-text-title">{convenio.programa}</span></div>
+                    )}
+                    {convenio.numero_emenda && (
+                      <div><span className="text-meta text-text-subtle">Emenda: </span><span className="text-text-title">{convenio.numero_emenda}</span></div>
+                    )}
+                    {convenio.numero_convenio && (
+                      <div><span className="text-meta text-text-subtle">Convênio: </span><span className="text-text-title">{convenio.numero_convenio}</span></div>
+                    )}
+                    {convenio.numero_proposta && (
+                      <div><span className="text-meta text-text-subtle">Proposta: </span><span className="text-text-title">{convenio.numero_proposta}</span></div>
+                    )}
+                    {convenio.vigencia_inicio && convenio.vigencia_fim && (
+                      <div><span className="text-meta text-text-subtle">Vigência: </span><span className="text-text-title">{formatDate(convenio.vigencia_inicio)} a {formatDate(convenio.vigencia_fim)}</span></div>
+                    )}
+                    {convenio.previsao_conclusao && (
+                      <div><span className="text-meta text-text-subtle">Previsão conclusão: </span><span className="text-text-title">{formatDate(convenio.previsao_conclusao)}</span></div>
+                    )}
+                    {convenio.prazo_prestacao_contas && (
+                      <div><span className="text-meta text-text-subtle">Prazo prestação: </span><span className="text-text-title">{formatDate(convenio.prazo_prestacao_contas)}</span></div>
+                    )}
+                  </div>
+                  {convenio.finalidade && (
+                    <p className="text-body-sm text-text-body mt-3">{convenio.finalidade}</p>
+                  )}
+                </Card>
+              )}
 
               <Card padding="p-6">
                 <h3 className="text-h3 text-text-title mb-3">Descrição</h3>
@@ -710,89 +769,62 @@ export default function ConvenioDetailPage() {
 
           {/* Documentos */}
           {activeTab === "documentos" && (
-            <div className="space-y-6">
-              {canEdit && (
-                <Card padding="p-4">
-                  <div className="flex items-center gap-3 mb-3">
-                    <h3 className="text-label font-medium text-text-title">Enviar Documento</h3>
-                    <select
-                      value={uploadTipoDocumento}
-                      onChange={(e) => setUploadTipoDocumento(e.target.value)}
-                      className="border border-surface-border rounded-btn px-2 py-1 text-meta bg-white"
-                    >
-                      {Object.entries(TIPO_DOCUMENTO_LABELS).map(([k, v]) => (
-                        <option key={k} value={k}>
-                          {v}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <FileUpload onUpload={handleUpload} multiple={false} />
-                </Card>
-              )}
-              {(convenio?.anexos || []).length === 0 ? (
-                <EmptyState
-                  icon="file-text"
-                  title="Nenhum documento"
-                  description="Nenhum documento foi anexado a este convênio ainda."
-                />
-              ) : (
-                <div className="space-y-4">
-                  {Object.entries(anexosByTipo).map(([tipo, anexos]) => (
-                    <Card key={tipo} padding="p-4">
-                      <h3 className="text-label font-medium text-text-title mb-3">
-                        {TIPO_DOCUMENTO_LABELS[tipo] || tipo}{" "}
-                        <span className="text-text-subtle">({anexos.length})</span>
-                      </h3>
-                      <div className="space-y-1">
-                        {anexos.map((a) => (
-                          <div
-                            key={a.id}
-                            className="flex items-center justify-between p-2 rounded-btn hover:bg-[#F6F7F9] transition-colors"
-                          >
-                            <div className="flex items-center gap-3 min-w-0">
-                              <FileText className="w-5 h-5 text-text-subtle shrink-0" />
-                              <div className="min-w-0">
-                                <p className="text-body-sm font-medium text-text-title truncate">
-                                  {a.nome_arquivo}
-                                </p>
-                                <div className="flex items-center gap-2 text-meta text-text-subtle mt-0.5">
-                                  <Badge label={`v${a.versao}`} color="bg-[#F6F7F9] text-[#667085]" />
-                                  <span>{formatFileSize(a.tamanho_bytes)}</span>
-                                  <span>{formatDate(a.created_at)}</span>
-                                  {a.enviado_por && <span>{a.enviado_por.name}</span>}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-1 shrink-0">
-                              <a
-                                href={`/api/govtask/anexos/${a.id}/download`}
-                                className="p-1.5 text-text-subtle hover:text-[#1D4ED8] rounded-btn hover:bg-[#1D4ED8]/10 transition-colors"
-                                title="Download"
-                              >
-                                <Download className="w-4 h-4" />
-                              </a>
-                              {canEdit && (
-                                <button
-                                  onClick={(e) => {
-                                    e.preventDefault();
-                                    setConfirmDeleteAnexo(a.id);
-                                  }}
-                                  className="p-1.5 text-text-subtle hover:text-[#B42318] rounded-btn hover:bg-[#B42318]/10 transition-colors"
-                                  title="Excluir"
-                                >
-                                  <X className="w-4 h-4" />
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              )}
-            </div>
+            <DocumentosTab
+              convenioId={id}
+              anexos={(convenio?.anexos || []) as Anexo[]}
+              canEdit={canEdit}
+              onRefresh={load}
+            />
+          )}
+
+          {/* Diligências */}
+          {activeTab === "diligencias" && (
+            <DiligenciasTab convenioId={id} canEdit={canEdit} />
+          )}
+
+          {/* Financeiro */}
+          {activeTab === "financeiro" && (
+            <FinanceiroTab convenioId={id} canEdit={canEdit} />
+          )}
+
+          {/* Repasses */}
+          {activeTab === "repasses" && (
+            <RepassesTab convenioId={id} canEdit={canEdit} />
+          )}
+
+          {/* Medições */}
+          {activeTab === "medicoes" && (
+            <MedicoesTab convenioId={id} canEdit={canEdit} />
+          )}
+
+          {/* Obras */}
+          {activeTab === "obras" && (
+            <ObrasTab convenioId={id} canEdit={canEdit} />
+          )}
+
+          {/* Prestações */}
+          {activeTab === "prestacoes" && (
+            <PrestacoesTab convenioId={id} canEdit={canEdit} />
+          )}
+
+          {/* Contratos */}
+          {activeTab === "contratos" && (
+            <ContratosTab convenioId={id} canEdit={canEdit} />
+          )}
+
+          {/* Licitações */}
+          {activeTab === "licitacoes" && (
+            <LicitacoesTab convenioId={id} canEdit={canEdit} />
+          )}
+
+          {/* Entregas */}
+          {activeTab === "entregas" && (
+            <EntregasTab convenioId={id} canEdit={canEdit} />
+          )}
+
+          {/* Configurações */}
+          {activeTab === "configuracoes" && (
+            <ConfiguracoesTab convenioId={id} convenio={convenio} canEdit={canEdit} onRefresh={load} />
           )}
 
           {/* Linha do Tempo */}

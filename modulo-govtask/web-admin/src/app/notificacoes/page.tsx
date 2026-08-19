@@ -184,6 +184,7 @@ export default function NotificacoesPage() {
   return (
     <div className="space-y-6 max-w-2xl">
       <PageHeader
+        eyebrow="Central de Comunicação"
         title="Notificações"
         actions={
           <Button variant="secondary" size="sm" icon={CheckCheck} onClick={marcarTodas}>

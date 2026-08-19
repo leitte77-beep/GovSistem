@@ -39,15 +39,23 @@ import {
   Building2,
   Target,
   Activity,
+  ClipboardList,
+  X,
+  Rocket,
+  FileStack,
 } from "lucide-react";
 
 export default function Dashboard() {
-  const { user, hasRole } = useAuth();
+  const { user, hasRole, hasPermission } = useAuth();
   const isAssessor = hasRole("ASSESSOR", "ADMIN");
   const isEngenheiro = hasRole("ENGENHEIRO_TECNICO");
   const isGestor = hasRole("GESTOR") && !isAssessor;
 
   const [loading, setLoading] = useState(true);
+  const [onboarding, setOnboarding] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return !localStorage.getItem("govtask_onboarding_dismissed");
+  });
   const [convenios, setConvenios] = useState<ConvenioListItem[]>([]);
   const [tarefas, setTarefas] = useState<TarefaListItem[]>([]);
   const [notificacoes, setNotificacoes] = useState<Notificacao[]>([]);
@@ -160,41 +168,128 @@ export default function Dashboard() {
 
   return (
     <div className="space-y-8">
-      {/* Header with greeting + actions */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-h1 text-[#101828] tracking-tight">
-            {`Bem-vindo${user?.name ? `, ${user.name}` : ""}`}
-          </h1>
-          <p className="text-body text-[#475467] mt-1">
-            {isAssessor ? "Gerencie convênios, tarefas e acompanhe o progresso das obras." :
-             isEngenheiro ? "Acompanhe suas tarefas técnicas e entregas." :
-             "Visão geral dos convênios e status do sistema."}
-          </p>
-        </div>
-        {isAssessor && (
-          <div className="flex gap-2">
-            <Link href="/convenios/novo" className="btn-primary">
-              <Plus className="w-4 h-4" /> Novo Convênio
-            </Link>
-            <Link href="/tarefas" className="btn-secondary">
-              <CheckSquare className="w-4 h-4" /> Minhas Tarefas
-            </Link>
+      {/* Header with greeting (visões de engenheiro/gestor) */}
+      {!isAssessor && (
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-h1 text-[#101828] tracking-tight">
+              {`Bem-vindo${user?.name ? `, ${user.name}` : ""}`}
+            </h1>
+            <p className="text-body text-[#475467] mt-1">
+              {isEngenheiro ? "Acompanhe suas tarefas técnicas e entregas." :
+               "Visão geral dos convênios e status do sistema."}
+            </p>
           </div>
-        )}
-      </div>
+          {isAssessor && hasPermission("resource.create") && (
+            <div className="flex gap-2">
+              <Link href="/convenios/novo" className="btn-primary">
+                <Plus className="w-4 h-4" /> Novo Convênio
+              </Link>
+              <Link href="/tarefas" className="btn-secondary">
+                <CheckSquare className="w-4 h-4" /> Minhas Tarefas
+              </Link>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Onboarding do módulo */}
+      {onboarding && (
+        <div className="relative overflow-hidden rounded-card border border-[#1D4ED8]/20 bg-gradient-to-br from-[#1D4ED8]/5 via-surface-card to-surface-card p-6">
+          <button
+            onClick={() => {
+              setOnboarding(false);
+              try { localStorage.setItem("govtask_onboarding_dismissed", "1"); } catch {}
+            }}
+            className="absolute top-4 right-4 p-1.5 rounded-btn text-text-subtle hover:bg-surface-bg hover:text-text-body transition-colors"
+            aria-label="Dispensar onboarding"
+          >
+            <X className="w-4 h-4" />
+          </button>
+          <div className="flex flex-col lg:flex-row lg:items-center gap-6">
+            <div className="flex items-center gap-4">
+              <div className="w-14 h-14 rounded-2xl bg-[#1D4ED8]/10 flex items-center justify-center">
+                <Rocket className="w-7 h-7 text-[#1D4ED8]" />
+              </div>
+              <div>
+                <h2 className="text-h2 text-text-title">Centralize seus convênios e emendas</h2>
+                <p className="text-body-sm text-text-body mt-1">
+                  Acompanhe desde o protocolo inicial até a execução, prestação de contas e entrega — tudo em um único processo digital.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 flex-wrap lg:ml-auto">
+              <Link href="/convenios/novo" className="btn-primary btn-sm"><Plus className="w-4 h-4" /> Criar primeiro processo</Link>
+              <Link href="/coordenador" className="btn-secondary btn-sm"><FileStack className="w-4 h-4" /> Conhecer o módulo</Link>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ==================== ASSESSOR VIEW ==================== */}
       {isAssessor && (
         <>
+          {/* Hero */}
+          <section className="relative overflow-hidden rounded-2xl bg-gradient-primary text-white p-6 sm:p-8">
+            <div className="absolute inset-0 soft-blob" />
+            <div className="absolute -right-10 -top-16 w-64 h-64 rounded-full bg-white/10 blur-2xl" />
+            <div className="relative flex flex-col lg:flex-row lg:items-center gap-6">
+              <div className="flex-1 min-w-0">
+                <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-white/70">Torre de Controle dos Recursos</p>
+                <h1 className="text-h1 font-bold tracking-tight mt-1.5">
+                  Olá, {user?.name?.split(" ")[0] || "Assessor"}
+                </h1>
+                <p className="text-body-sm text-white/85 mt-1 max-w-xl">
+                  Acompanhe emendas, convênios, obras e prestações de contas em um único lugar — com prazos, pendências e progresso em tempo real.
+                </p>
+                <div className="flex flex-wrap gap-2.5 mt-5">
+                  <Link href="/convenios/novo" className="inline-flex items-center gap-2 rounded-lg bg-white text-[#1D4ED8] px-4 py-2.5 text-[13px] font-semibold shadow-lg hover:bg-white/90 transition-colors">
+                    <Plus className="w-4 h-4" /> Novo Processo
+                  </Link>
+                  <Link href="/tarefas" className="inline-flex items-center gap-2 rounded-lg bg-white/15 text-white px-4 py-2.5 text-[13px] font-semibold hover:bg-white/25 transition-colors backdrop-blur">
+                    <CheckSquare className="w-4 h-4" /> Minhas Tarefas
+                  </Link>
+                  <Link href="/convenios/relatorios" className="inline-flex items-center gap-2 rounded-lg bg-white/15 text-white px-4 py-2.5 text-[13px] font-semibold hover:bg-white/25 transition-colors backdrop-blur">
+                    <BarChart3 className="w-4 h-4" /> Relatórios
+                  </Link>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3 lg:w-[300px] shrink-0">
+                <div className="rounded-xl bg-white/10 backdrop-blur border border-white/15 p-4">
+                  <p className="text-[11px] font-medium text-white/75">Valor aprovado</p>
+                  <p className="text-h2 font-bold tabular-nums mt-0.5">{formatCurrency(dashboardData?.valor_aprovado ?? valorTotal)}</p>
+                </div>
+                <div className="rounded-xl bg-white/10 backdrop-blur border border-white/15 p-4">
+                  <p className="text-[11px] font-medium text-white/75">Executado</p>
+                  <p className="text-h2 font-bold tabular-nums mt-0.5">{formatCurrency(dashboardData?.valor_executado ?? 0)}</p>
+                </div>
+                <div className="rounded-xl bg-white/10 backdrop-blur border border-white/15 p-4">
+                  <p className="text-[11px] font-medium text-white/75">Em diligência</p>
+                  <p className="text-h2 font-bold tabular-nums mt-0.5">{dashboardData?.diligencias_abertas ?? 0}</p>
+                </div>
+                <div className="rounded-xl bg-white/10 backdrop-blur border border-white/15 p-4">
+                  <p className="text-[11px] font-medium text-white/75">Atrasadas</p>
+                  <p className="text-h2 font-bold tabular-nums mt-0.5">{tarefasAtrasadas.length}</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
           {/* Metric cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-4">
             <MetricCard label="Convênios ativos" value={conveniosAtivos.length} icon="FileText" color="#1D4ED8" href="/convenios" />
             <MetricCard label="Tarefas abertas" value={tarefasAbertas.length} icon="CheckSquare" color="#067647" href="/tarefas" />
             <MetricCard label="Atrasadas" value={tarefasAtrasadas.length} icon="AlertTriangle" color={tarefasAtrasadas.length > 0 ? "#B42318" : "#667085"} href="/tarefas?atrasadas=true" />
+            <MetricCard label="Valor Aprovado" value={formatCurrency(dashboardData?.valor_aprovado ?? valorTotal)} icon="Target" color="#1D4ED8" href="/convenios/relatorios" />
+            <MetricCard label="Valor Executado" value={formatCurrency(dashboardData?.valor_executado ?? 0)} icon="TrendingUp" color="#067647" href="/convenios/relatorios" />
+            <MetricCard label="Obras em Andamento" value={dashboardData?.obras_em_andamento ?? 0} icon="Building2" color={dashboardData?.obras_em_andamento ? "#B54708" : "#667085"} href="/convenios" />
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <MetricCard label="Diligências abertas" value={dashboardData?.diligencias_abertas ?? 0} icon="AlertTriangle" color={(dashboardData?.diligencias_abertas ?? 0) > 0 ? "#B42318" : "#667085"} />
+            <MetricCard label="Prestações pendentes" value={dashboardData?.prestacoes_pendentes ?? 0} icon="ClipboardList" color={(dashboardData?.prestacoes_pendentes ?? 0) > 0 ? "#B54708" : "#667085"} />
             <MetricCard label="Contestações" value={contestaçõesCount} icon="Bell" color={contestaçõesCount > 0 ? "#B54708" : "#667085"} />
             <MetricCard label="Aguardando Governo" value={aguardandoGoverno} icon="Hourglass" color={aguardandoGoverno > 0 ? "#B54708" : "#667085"} />
-            <MetricCard label="Valor Total" value={formatCurrency(valorTotal)} icon="Target" color="#067647" />
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

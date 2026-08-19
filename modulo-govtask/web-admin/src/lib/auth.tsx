@@ -8,28 +8,28 @@ interface User {
   email: string;
   name: string;
   roles: { id: string; name: string; label: string }[];
+  permissions?: string[];
 }
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   refreshAuth: () => Promise<void>;
   hasRole: (...roles: string[]) => boolean;
+  hasPermission: (...perms: string[]) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
-  login: async () => {},
   logout: () => {},
   refreshAuth: async () => {},
   hasRole: () => false,
+  hasPermission: () => false,
 });
 
 const ACCESS_TOKEN_KEY = "govtask_access_token";
-const REFRESH_TOKEN_KEY = "govtask_refresh_token";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -48,7 +48,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (e) {
       if (e instanceof AuthError) {
         localStorage.removeItem(ACCESS_TOKEN_KEY);
-        localStorage.removeItem(REFRESH_TOKEN_KEY);
       }
     } finally {
       setLoading(false);
@@ -63,16 +62,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => window.removeEventListener("auth:logout", handleLogout);
   }, [fetchUser]);
 
-  const login = async (email: string, password: string) => {
-    const tokens = await api.login(email, password);
-    localStorage.setItem(ACCESS_TOKEN_KEY, tokens.access_token);
-    localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refresh_token);
-    await fetchUser();
-  };
-
   const logout = () => {
     localStorage.removeItem(ACCESS_TOKEN_KEY);
-    localStorage.removeItem(REFRESH_TOKEN_KEY);
     setUser(null);
   };
 
@@ -86,8 +77,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return user.roles.some((r) => roles.includes(r.name));
   };
 
+  const hasPermission = (...perms: string[]) => {
+    if (!user?.permissions) return false;
+    return perms.some((p) => user.permissions!.includes(p));
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, refreshAuth, hasRole }}>
+    <AuthContext.Provider value={{ user, loading, logout, refreshAuth, hasRole, hasPermission }}>
       {children}
     </AuthContext.Provider>
   );

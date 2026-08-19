@@ -132,6 +132,7 @@ export default function EntregarTarefaPage() {
   return (
     <div className="space-y-6 max-w-2xl">
       <PageHeader
+        eyebrow="Tarefa"
         title="Entregar Tarefa"
         description="Confirme a entrega e anexe os arquivos necessários."
         breadcrumbs={breadcrumbs}

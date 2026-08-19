@@ -396,7 +396,8 @@ services:
       DEBUG: "false"
       SECRET_KEY: ${GOVTASK_SECRET_KEY}
       SAAS_JWT_SECRET: ${SAAS_JWT_SECRET}
-      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
+      # Internal key DEVE ser igual ao INTERNAL_API_KEY da plataforma SaaS (protege /internal/sync-*).
+      INTERNAL_API_KEY: ${GOVTASK_INTERNAL_API_KEY:-${INTERNAL_API_KEY}}
     volumes:
       - govtask_uploads:/app/uploads
     depends_on:

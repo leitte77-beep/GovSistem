@@ -7,6 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import get_current_user, require_roles
 from app.core.database import get_db
 from app.models.contestacao import Contestacao
+from app.models.convenio import Convenio
 from app.models.enums import TipoEvento
 from app.models.tarefa import Tarefa
 from app.models.user import User
@@ -38,7 +39,11 @@ async def criar_contestacao(
     user: User = Depends(get_current_user),
 ):
     result = await db.execute(
-        select(Tarefa).where(Tarefa.id == tarefa_id, Tarefa.deleted_at.is_(None))
+        select(Tarefa).join(Convenio, Tarefa.convenio_id == Convenio.id).where(
+            Tarefa.id == tarefa_id,
+            Convenio.organization_id == user.organization_id,
+            Tarefa.deleted_at.is_(None),
+        )
     )
     tarefa = result.scalar_one_or_none()
     if not tarefa:
@@ -86,8 +91,13 @@ async def decidir_contestacao(
     user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
 ):
     result = await db.execute(
-        select(Contestacao).where(
-            Contestacao.id == contestacao_id, Contestacao.deleted_at.is_(None)
+        select(Contestacao)
+        .join(Tarefa, Contestacao.tarefa_id == Tarefa.id)
+        .join(Convenio, Tarefa.convenio_id == Convenio.id)
+        .where(
+            Contestacao.id == contestacao_id,
+            Convenio.organization_id == user.organization_id,
+            Contestacao.deleted_at.is_(None),
         )
     )
     contestacao = result.scalar_one_or_none()
@@ -96,7 +106,10 @@ async def decidir_contestacao(
 
     # Carrega a tarefa associada
     tarefa_result = await db.execute(
-        select(Tarefa).where(Tarefa.id == contestacao.tarefa_id)
+        select(Tarefa).join(Convenio, Tarefa.convenio_id == Convenio.id).where(
+            Tarefa.id == contestacao.tarefa_id,
+            Convenio.organization_id == user.organization_id,
+        )
     )
     tarefa = tarefa_result.scalar_one_or_none()
     if not tarefa:

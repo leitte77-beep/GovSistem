@@ -55,7 +55,7 @@ async def criar_etapa(
     user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
 ):
     result = await db.execute(
-        select(Convenio).where(Convenio.id == convenio_id, Convenio.deleted_at.is_(None))
+        select(Convenio).where(Convenio.id == convenio_id, Convenio.organization_id == user.organization_id, Convenio.deleted_at.is_(None))
     )
     convenio = result.scalar_one_or_none()
     if not convenio:
@@ -99,7 +99,7 @@ async def atualizar_etapa(
     user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
 ):
     result = await db.execute(
-        select(Etapa).where(Etapa.id == etapa_id, Etapa.deleted_at.is_(None))
+        select(Etapa).join(Convenio, Etapa.convenio_id == Convenio.id).where(Etapa.id == etapa_id, Convenio.organization_id == user.organization_id, Etapa.deleted_at.is_(None))
     )
     etapa = result.scalar_one_or_none()
     if not etapa:
@@ -135,7 +135,7 @@ async def encaminhar_governo(
     user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
 ):
     result = await db.execute(
-        select(Etapa).where(Etapa.id == etapa_id, Etapa.deleted_at.is_(None))
+        select(Etapa).join(Convenio, Etapa.convenio_id == Convenio.id).where(Etapa.id == etapa_id, Convenio.organization_id == user.organization_id, Etapa.deleted_at.is_(None))
     )
     etapa = result.scalar_one_or_none()
     if not etapa:
@@ -164,7 +164,7 @@ async def registrar_resposta_governo(
     user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
 ):
     result = await db.execute(
-        select(Etapa).where(Etapa.id == etapa_id, Etapa.deleted_at.is_(None))
+        select(Etapa).join(Convenio, Etapa.convenio_id == Convenio.id).where(Etapa.id == etapa_id, Convenio.organization_id == user.organization_id, Etapa.deleted_at.is_(None))
     )
     etapa = result.scalar_one_or_none()
     if not etapa:
@@ -193,7 +193,7 @@ async def concluir_etapa_endpoint(
     user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
 ):
     result = await db.execute(
-        select(Etapa).where(Etapa.id == etapa_id, Etapa.deleted_at.is_(None))
+        select(Etapa).join(Convenio, Etapa.convenio_id == Convenio.id).where(Etapa.id == etapa_id, Convenio.organization_id == user.organization_id, Etapa.deleted_at.is_(None))
     )
     etapa = result.scalar_one_or_none()
     if not etapa:
@@ -213,7 +213,7 @@ async def excluir_etapa(
     user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
 ):
     result = await db.execute(
-        select(Etapa).where(Etapa.id == etapa_id, Etapa.deleted_at.is_(None))
+        select(Etapa).join(Convenio, Etapa.convenio_id == Convenio.id).where(Etapa.id == etapa_id, Convenio.organization_id == user.organization_id, Etapa.deleted_at.is_(None))
     )
     etapa = result.scalar_one_or_none()
     if not etapa:

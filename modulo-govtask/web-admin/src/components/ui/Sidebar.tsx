@@ -6,15 +6,27 @@ import {
   FileText,
   CheckSquare,
   Bell,
+  BarChart3,
   FileStack,
   Settings,
   LogOut,
   ChevronDown,
   ChevronUp,
+  CalendarDays,
+  Building2,
+  ClipboardCheck,
+  ListChecks,
+  Search,
+  LayoutGrid,
+  HardHat,
+  Landmark,
+  X,
+  Menu,
+  Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
-import { X, Menu } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 
 type SidebarUser = {
   name: string;
@@ -26,14 +38,45 @@ type NavItem = {
   key: string;
   href: string;
   label: string;
-  icon: React.ComponentType<{ className?: string }>;
+  icon: LucideIcon;
 };
 
-const NAV_ITEMS: NavItem[] = [
-  { key: "dashboard", href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { key: "convenios", href: "/convenios", label: "Convênios", icon: FileText },
-  { key: "tarefas", href: "/tarefas", label: "Minhas Tarefas", icon: CheckSquare },
-  { key: "notificacoes", href: "/notificacoes", label: "Notificações", icon: Bell },
+type NavGroup = { title: string; items: NavItem[] };
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    title: "Visão Geral",
+    items: [
+      { key: "dashboard", href: "/", label: "Dashboard", icon: LayoutDashboard },
+      { key: "pendencias", href: "/pendencias", label: "Minhas Pendências", icon: CheckSquare },
+      { key: "coordenador", href: "/coordenador", label: "Painel do Coordenador", icon: ListChecks },
+    ],
+  },
+  {
+    title: "Gestão",
+    items: [
+      { key: "convenios", href: "/convenios", label: "Processos", icon: FileText },
+      { key: "tarefas", href: "/tarefas", label: "Quadro de Tarefas", icon: LayoutGrid },
+      { key: "setor", href: "/setor", label: "Demandas do Setor", icon: Building2 },
+    ],
+  },
+  {
+    title: "Acompanhamento",
+    items: [
+      { key: "obras", href: "/obras", label: "Obras", icon: HardHat },
+      { key: "prestacoes", href: "/prestacoes", label: "Prestações de Contas", icon: ClipboardCheck },
+      { key: "calendario", href: "/calendario", label: "Calendário", icon: CalendarDays },
+    ],
+  },
+  {
+    title: "Insights",
+    items: [
+      { key: "relatorios", href: "/convenios/relatorios", label: "Relatórios", icon: BarChart3 },
+      { key: "alertas", href: "/alertas", label: "Alertas", icon: Bell },
+      { key: "busca", href: "/busca", label: "Busca Global", icon: Search },
+      { key: "notificacoes", href: "/notificacoes", label: "Notificações", icon: Bell },
+    ],
+  },
 ];
 
 const ADMIN_ITEMS: NavItem[] = [
@@ -43,26 +86,19 @@ const ADMIN_ITEMS: NavItem[] = [
 
 const SAAS_URL = process.env.NEXT_PUBLIC_SAAS_URL || "http://localhost:3000";
 
-function AdminSaasLink() {
-  return (
-    <a
-      href={SAAS_URL}
-      className="flex items-center gap-3 px-3 py-2.5 rounded-btn text-body-sm text-navy-muted hover:bg-navy-light hover:text-white transition-all duration-150"
-    >
-      <ExternalLinkIcon className="w-5 h-5 shrink-0" />
-      Admin SaaS
-    </a>
-  );
-}
+const ROLE_LABEL: Record<string, string> = {
+  ADMIN: "Administrador",
+  ASSESSOR: "Assessor / Coordenador",
+  ENGENHEIRO_TECNICO: "Engenharia",
+  COMPRAS_LICITACAO: "Compras & Licitações",
+  GESTOR: "Gestão",
+};
 
-function ExternalLinkIcon({ className }: { className?: string }) {
-  return (
-    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-      <polyline points="15 3 21 3 21 9" />
-      <line x1="10" y1="14" x2="21" y2="3" />
-    </svg>
-  );
+function roleLabel(roles: { name: string }[]): string {
+  for (const r of roles) {
+    if (ROLE_LABEL[r.name]) return ROLE_LABEL[r.name];
+  }
+  return "Colaborador";
 }
 
 type SidebarProps = {
@@ -76,9 +112,10 @@ type SidebarProps = {
 export function Sidebar({ user, pathname, onLogout, open, onClose }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
 
-  const isAdmin = user?.roles?.some(
-    (r) => r.name === "ADMIN"
-  );
+  const isAdmin = user?.roles?.some((r) => r.name === "ADMIN");
+  const initials = user?.name
+    ? user.name.split(" ").slice(0, 2).map((s) => s[0]).join("").toUpperCase()
+    : "GT";
 
   const isActive = (href: string) => {
     if (href === "/") return pathname === "/";
@@ -87,96 +124,126 @@ export function Sidebar({ user, pathname, onLogout, open, onClose }: SidebarProp
 
   const linkClass = (href: string) =>
     cn(
-      "flex items-center gap-3 px-3 py-2.5 rounded-btn text-body-sm transition-all duration-150",
+      "relative flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium transition-all duration-150",
       collapsed && "justify-center px-2",
       isActive(href)
-        ? "bg-navy-light text-white border-l-[3px] border-[#1D4ED8] pl-[9px]"
-        : "text-navy-muted hover:bg-navy-light hover:text-white",
-      collapsed && isActive(href) && "border-l-0 pl-2"
+        ? "bg-white/10 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]"
+        : "text-navy-muted hover:bg-white/5 hover:text-white"
     );
 
   const renderNavItem = (item: NavItem) => (
     <Link key={item.key} href={item.href} className={linkClass(item.href)} title={collapsed ? item.label : undefined} onClick={() => onClose?.(false)}>
-      <item.icon className="w-5 h-5 shrink-0" />
-      {!collapsed && <span>{item.label}</span>}
+      {isActive(item.href) && (
+        <span className="absolute left-0 top-1/2 -translate-y-1/2 h-5 w-1 rounded-r-full bg-gradient-to-b from-[#60A5FA] to-[#A78BFA]" />
+      )}
+      <item.icon className="w-[18px] h-[18px] shrink-0" strokeWidth={isActive(item.href) ? 2.4 : 2} />
+      {!collapsed && <span className="truncate">{item.label}</span>}
     </Link>
   );
 
   return (
     <>
       <button
-        className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-navy text-white rounded-btn"
+        className="lg:hidden fixed top-4 left-4 z-50 p-2 bg-navy text-white rounded-lg shadow-lg"
         onClick={() => onClose?.(!open)}
+        aria-label="Abrir menu"
       >
         {open ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
       </button>
 
       {open && (
         <div
-          className="lg:hidden fixed inset-0 bg-black/50 z-30"
+          className="lg:hidden fixed inset-0 bg-black/50 z-30 backdrop-blur-sm"
           onClick={() => onClose?.()}
         />
       )}
 
       <aside
         className={cn(
-          "fixed inset-y-0 left-0 z-40 h-screen bg-navy text-white flex flex-col transition-all duration-200",
-          collapsed ? "w-16" : "w-64",
-          open !== undefined
-            ? open
-              ? "translate-x-0"
-              : "-translate-x-full lg:translate-x-0"
-            : ""
+          "fixed inset-y-0 left-0 z-40 h-screen bg-[#0E1B2E] text-white flex flex-col transition-all duration-200 border-r border-white/5",
+          collapsed ? "w-[72px]" : "w-64"
         )}
       >
-        <div className="p-4 border-b border-navy-light flex items-center justify-between">
+        {/* Marca */}
+        <div className={cn("flex items-center gap-3 px-4 h-[72px] border-b border-white/5", collapsed && "justify-center px-2")}>
+          <div className="w-9 h-9 rounded-xl bg-gradient-primary flex items-center justify-center shadow-lg shadow-[#2563EB]/30 shrink-0">
+            <Landmark className="w-5 h-5 text-white" strokeWidth={2.2} />
+          </div>
           {!collapsed && (
-            <div>
-              <h1 className="text-lg font-bold tracking-tight">GovTask</h1>
-              <p className="text-meta text-navy-muted">Gestão de Convênios</p>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5">
+                <h1 className="text-[15px] font-bold tracking-tight">GovTask</h1>
+                <Sparkles className="w-3.5 h-3.5 text-[#A78BFA]" />
+              </div>
+              <p className="text-[11px] text-navy-muted truncate">Gestão de Recursos Públicos</p>
             </div>
           )}
           <button
             onClick={() => setCollapsed(!collapsed)}
-            className="p-1.5 rounded-btn text-navy-muted hover:text-white hover:bg-navy-light transition-colors hidden lg:block"
+            className={cn("ml-auto p-1.5 rounded-lg text-navy-muted hover:text-white hover:bg-white/5 transition-colors hidden lg:block", collapsed && "ml-0")}
+            aria-label="Recolher menu"
           >
             {collapsed ? <ChevronDown className="w-4 h-4" /> : <ChevronUp className="w-4 h-4" />}
           </button>
         </div>
 
-        <nav className="flex-1 p-3 space-y-1 overflow-y-auto scrollbar-thin">
-          {NAV_ITEMS.map(renderNavItem)}
+        {/* Navegação agrupada */}
+        <nav className="flex-1 px-3 py-4 space-y-4 overflow-y-auto scrollbar-thin">
+          {NAV_GROUPS.map((group) => (
+            <div key={group.title}>
+              {!collapsed && (
+                <p className="px-3 mb-1 text-[10px] font-semibold text-navy-muted uppercase tracking-[0.12em]">
+                  {group.title}
+                </p>
+              )}
+              <div className="space-y-0.5">
+                {group.items.map(renderNavItem)}
+              </div>
+            </div>
+          ))}
 
           {isAdmin && (
-            <>
+            <div className={cn(collapsed && "pt-2 border-t border-white/5")}>
               {!collapsed && (
-                <div className="pt-4 pb-1 px-3">
-                  <p className="text-meta font-semibold text-navy-muted uppercase tracking-wider">
-                    Administração
-                  </p>
-                </div>
+                <p className="px-3 mb-1 text-[10px] font-semibold text-navy-muted uppercase tracking-[0.12em] pt-3">
+                  Sistema
+                </p>
               )}
-              <div className={cn(collapsed && "pt-4 border-t border-navy-light")}>
+              <div className="space-y-0.5">
                 {ADMIN_ITEMS.map(renderNavItem)}
-                {!collapsed && <AdminSaasLink />}
+                {!collapsed && (
+                  <a
+                    href={SAAS_URL}
+                    className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-[13px] font-medium text-navy-muted hover:bg-white/5 hover:text-white transition-all"
+                  >
+                    <FileStack className="w-[18px] h-[18px] shrink-0" />
+                    <span>Admin SaaS</span>
+                  </a>
+                )}
               </div>
-            </>
+            </div>
           )}
         </nav>
 
-        <div className="p-3 border-t border-navy-light">
+        {/* Usuário */}
+        <div className="p-3 border-t border-white/5">
           {user ? (
-            <>
+            <div className={cn("rounded-xl bg-white/5 p-2.5", collapsed && "flex justify-center p-2")}>
               {!collapsed && (
-                <div className="px-3 py-2">
-                  <p className="text-body-sm font-medium text-white truncate">{user.name}</p>
-                  <p className="text-meta text-navy-muted truncate">{user.email}</p>
+                <div className="flex items-center gap-2.5 mb-2.5">
+                  <div className="w-9 h-9 rounded-full bg-gradient-primary flex items-center justify-center text-[13px] font-bold shrink-0">
+                    {initials}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-semibold text-white truncate">{user.name}</p>
+                    <p className="text-[11px] text-navy-muted truncate">{roleLabel(user.roles || [])}</p>
+                  </div>
                 </div>
               )}
               <button
                 onClick={onLogout}
                 className={cn(
-                  "flex items-center gap-2 w-full rounded-btn text-body-sm text-navy-muted hover:bg-navy-light hover:text-white transition-colors mt-1",
+                  "flex items-center gap-2 w-full rounded-lg text-[13px] text-navy-muted hover:bg-white/10 hover:text-white transition-colors",
                   collapsed ? "justify-center p-2" : "px-3 py-2"
                 )}
                 title={collapsed ? "Sair" : undefined}
@@ -184,11 +251,9 @@ export function Sidebar({ user, pathname, onLogout, open, onClose }: SidebarProp
                 <LogOut className="w-4 h-4 shrink-0" />
                 {!collapsed && <span>Sair</span>}
               </button>
-            </>
+            </div>
           ) : (
-            !collapsed && (
-              <div className="px-3 py-2 text-meta text-navy-muted">Não autenticado</div>
-            )
+            !collapsed && <p className="px-3 py-2 text-meta text-navy-muted">Não autenticado</p>
           )}
         </div>
       </aside>

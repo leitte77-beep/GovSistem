@@ -5,6 +5,7 @@ import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { Sidebar } from "@/components/ui/Sidebar";
 import { Topbar } from "@/components/ui/Topbar";
+import { CommandPalette } from "@/components/CommandPalette";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, loading, logout } = useAuth();
@@ -43,6 +44,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <Topbar user={user} />
         <main className="p-8">{children}</main>
       </div>
+      <CommandPalette />
     </div>
   );
 }

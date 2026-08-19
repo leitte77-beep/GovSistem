@@ -6,6 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base, SoftDeleteMixin, TimestampMixin
 
 if TYPE_CHECKING:
+    from app.models.role_permission import RolePermission
     from app.models.user_role import UserRole
 
 
@@ -24,6 +25,10 @@ class Role(Base, TimestampMixin, SoftDeleteMixin):
 
     user_roles: Mapped[List["UserRole"]] = relationship(
         "UserRole", back_populates="role", lazy="selectin",
+        cascade="all, delete-orphan",
+    )
+    permissions: Mapped[List["RolePermission"]] = relationship(
+        "RolePermission", back_populates="role", lazy="selectin",
         cascade="all, delete-orphan",
     )
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/Badge";
 import { notify } from "@/components/ui/Toast";
 import { TIPO_CONVENIO_LABELS, NATUREZA_ETAPA_LABELS } from "@/lib/utils";
 import type { Convenio, TemplateFluxo, TemplateEtapa } from "@/types/govtask";
-import { Save, ArrowLeft, XCircle, RefreshCw, Trash2, GripVertical } from "lucide-react";
+import { Save, ArrowLeft, XCircle, RefreshCw, Trash2, GripVertical, CloudUpload, CheckCircle2 } from "lucide-react";
 
 interface FormData {
   titulo: string;
@@ -48,6 +48,12 @@ export default function EditarConvenioPage() {
   const [valorFmt, setValorFmt] = useState("");
   const [confirmDeleteEtapa, setConfirmDeleteEtapa] = useState<string | null>(null);
 
+  // Autosave (§144): salva automaticamente os campos de texto com debounce.
+  const [autoState, setAutoState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [lastSaved, setLastSaved] = useState<string | null>(null);
+  const loadedRef = useRef(false);
+  const skipNextRef = useRef(false);
+
   const [etapasLocais, setEtapasLocais] = useState<{ id?: string; nome: string; ordem: number; natureza: string }[]>([]);
 
   const load = async () => {
@@ -80,6 +86,8 @@ export default function EditarConvenioPage() {
       }
       const existingEtapas = (data.etapas || []).slice().sort((a, b) => a.ordem - b.ordem);
       setEtapasLocais(existingEtapas.map((e) => ({ id: e.id, nome: e.nome, ordem: e.ordem, natureza: e.natureza })));
+      loadedRef.current = true;
+      skipNextRef.current = true;
     } catch (e: any) {
       console.error(e);
       setError(e.message || "Erro ao carregar convênio");
@@ -89,6 +97,33 @@ export default function EditarConvenioPage() {
   };
 
   useEffect(() => { load(); }, [id]);
+
+  // Autosave com debounce nos campos de texto (não altera status/etapas).
+  useEffect(() => {
+    if (!loadedRef.current) return;
+    if (skipNextRef.current) {
+      skipNextRef.current = false;
+      return;
+    }
+    if (!form.titulo.trim()) return;
+    const t = setTimeout(async () => {
+      setAutoState("saving");
+      try {
+        await api.updateConvenio(id, {
+          titulo: form.titulo.trim(),
+          descricao: form.descricao.trim() || undefined,
+          tipo: form.tipo,
+          origem: form.origem.trim() || undefined,
+          valor: form.valor ? parseFloat(form.valor) : undefined,
+        });
+        setAutoState("saved");
+        setLastSaved(new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }));
+      } catch {
+        setAutoState("error");
+      }
+    }, 1200);
+    return () => clearTimeout(t);
+  }, [form.titulo, form.descricao, form.tipo, form.origem, form.valor, id]);
 
   const handleValorChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.replace(/\D/g, "");
@@ -212,6 +247,7 @@ export default function EditarConvenioPage() {
   return (
     <div className="space-y-6 max-w-3xl">
       <PageHeader
+        eyebrow="Processo"
         title={`Editar: ${convenio.titulo}`}
         description="Altere os dados e o fluxo de etapas do convênio"
         breadcrumbs={[{ label: "Convênios", href: "/convenios" }, { label: convenio.titulo, href: `/convenios/${id}` }, { label: "Editar" }]}
@@ -339,8 +375,27 @@ export default function EditarConvenioPage() {
 
         {/* Footer */}
         <div className="sticky bottom-0 bg-white border-t border-[#E4E7EC] p-4 mt-6 rounded-t-card shadow-elevated flex items-center justify-between">
-          <Button variant="ghost" onClick={() => router.push(`/convenios/${id}`)} disabled={saving}>Cancelar</Button>
-          <Button icon={Save} type="submit" loading={saving}>Salvar Alterações</Button>
+          <div className="flex items-center gap-2">
+            {autoState === "saving" && (
+              <span className="flex items-center gap-1.5 text-meta text-[#667085]">
+                <CloudUpload className="w-4 h-4 animate-pulse" /> Salvando...
+              </span>
+            )}
+            {autoState === "saved" && (
+              <span className="flex items-center gap-1.5 text-meta text-[#067647]">
+                <CheckCircle2 className="w-4 h-4" /> Salvo às {lastSaved || "—"}
+              </span>
+            )}
+            {autoState === "error" && (
+              <span className="flex items-center gap-1.5 text-meta text-[#B42318]">
+                <XCircle className="w-4 h-4" /> Erro ao salvar automaticamente
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" onClick={() => router.push(`/convenios/${id}`)} disabled={saving}>Cancelar</Button>
+            <Button icon={Save} type="submit" loading={saving}>Salvar Alterações</Button>
+          </div>
         </div>
       </form>
 

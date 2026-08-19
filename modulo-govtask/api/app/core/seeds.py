@@ -152,6 +152,7 @@ async def seed_rich_data(db: AsyncSession) -> dict:
 
     # Convênio 1 — Em andamento, completo
     conv1 = Convenio(
+        organization_id=org.id,
         titulo="Pavimentação Asfáltica – Rua das Flores",
         descricao="Obra de pavimentação asfáltica em CBUQ na Rua das Flores, bairro Centro, extensão total de 850 metros lineares.",
         tipo="OBRA", origem="Governo Estadual", numero_protocolo_governo="PROT-2026-00421",
@@ -177,6 +178,7 @@ async def seed_rich_data(db: AsyncSession) -> dict:
 
     # Convênio 2 — Rascunho (sem etapas ainda)
     conv2 = Convenio(
+        organization_id=org.id,
         titulo="Reforma Escola Municipal – Bairro Industrial",
         descricao="Reforma e ampliação da Escola Municipal Prof. Helena Rodrigues, incluindo 4 novas salas de aula.",
         tipo="OBRA", origem="Governo Federal", valor=Decimal("1250000.00"), status="RASCUNHO",

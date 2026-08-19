@@ -75,6 +75,9 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     INTERNAL_API_KEY: SecretStr = SecretStr("")
+    # Authentication is owned by the SaaS platform. Local credentials exist
+    # only as an opt-in escape hatch for isolated developer fixtures.
+    ALLOW_LOCAL_AUTH: bool = False
 
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_SIZE_MB: int = 50

@@ -2,15 +2,16 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.auth import get_current_user, require_roles
+from app.core.auth import get_current_user, require_permission, require_roles
+from app.core.permissions import Perm
 from app.core.database import get_db
 from app.models.convenio import Convenio
 from app.models.etapa import Etapa
-from app.models.enums import StatusConvenio, TipoEvento
+from app.models.enums import SituacaoProcesso, StatusConvenio, TipoEvento
 from app.models.template_fluxo import TemplateFluxo
 from app.models.user import User
 from app.schemas.convenio import (
@@ -24,7 +25,7 @@ from app.services.timeline import registrar_evento
 
 
 def _enrich_list_item(convenio: Convenio) -> dict:
-    """Adiciona etapa_atual e proximo_prazo computados."""
+    """Adiciona etapa_atual, proximo_prazo, progresso e contagens computados."""
     from app.models.etapa import Etapa
 
     etapas: list = sorted((convenio.etapas or []), key=lambda e: e.ordem)
@@ -46,6 +47,37 @@ def _enrich_list_item(convenio: Convenio) -> dict:
                     if proximo_prazo is None or t.prazo < proximo_prazo:
                         proximo_prazo = t.prazo
 
+    # Progresso físico (obras) e financeiro
+    percentual_fisico = None
+    percentual_financeiro = None
+    obras = getattr(convenio, "obras", None) or []
+    if obras:
+        fis = [o.percentual_fisico for o in obras if o.percentual_fisico is not None]
+        fin = [o.percentual_financeiro for o in obras if o.percentual_financeiro is not None]
+        if fis:
+            percentual_fisico = max(fis)
+        if fin:
+            percentual_financeiro = max(fin)
+    if percentual_fisico is None:
+        percentual_fisico = 100 if convenio.status == "CONCLUIDO" else 0
+    if percentual_financeiro is None:
+        total = convenio.valor_aprovado or convenio.valor or 0
+        percentual_financeiro = round(
+            (convenio.valor_executado or 0) * 100 / total, 1
+        ) if total else 0
+
+    # Contagens
+    tarefas_abertas = sum(
+        1 for t in (getattr(convenio, "tarefas", None) or [])
+        if t.status not in ("CONCLUIDA", "CANCELADA")
+    )
+    pendencias = sum(
+        1 for d in (getattr(convenio, "diligencias", None) or [])
+        if d.status not in ("ENCERRADA", "ACEITA")
+    )
+
+    numero_emenda = convenio.numero_emenda or convenio.numero_convenio
+
     return {
         "id": convenio.id,
         "titulo": convenio.titulo,
@@ -54,8 +86,19 @@ def _enrich_list_item(convenio: Convenio) -> dict:
         "numero_protocolo_governo": convenio.numero_protocolo_governo,
         "valor": convenio.valor,
         "status": convenio.status,
+        "categoria": convenio.categoria,
+        "esfera": convenio.esfera,
+        "situacao": convenio.situacao,
+        "prioridade": convenio.prioridade,
+        "numero_emenda": numero_emenda,
+        "parlamentar": convenio.parlamentar,
+        "orgao_concedente": convenio.orgao_concedente,
         "etapa_atual": etapa_atual,
         "proximo_prazo": proximo_prazo,
+        "percentual_fisico": percentual_fisico,
+        "percentual_financeiro": percentual_financeiro,
+        "tarefas_abertas": tarefas_abertas,
+        "pendencias": pendencias,
         "responsavel_id": convenio.responsavel_id,
         "created_at": convenio.created_at,
         "updated_at": convenio.updated_at,
@@ -69,20 +112,36 @@ async def listar_convenios(
     status: StatusConvenio | None = Query(None),
     tipo: str | None = Query(None),
     search: str | None = Query(None),
+    esfera: str | None = Query(None),
+    categoria: str | None = Query(None),
+    situacao: str | None = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    query = select(Convenio).where(Convenio.deleted_at.is_(None))
+    query = select(Convenio).where(
+        Convenio.organization_id == user.organization_id,
+        Convenio.deleted_at.is_(None),
+    )
     if status:
         query = query.where(Convenio.status == status)
     if tipo:
         query = query.where(Convenio.tipo == tipo)
+    if esfera:
+        query = query.where(Convenio.esfera == esfera)
+    if categoria:
+        query = query.where(Convenio.categoria == categoria)
+    if situacao:
+        query = query.where(Convenio.situacao == situacao)
     if search:
         query = query.where(
             (Convenio.titulo.ilike(f"%{search}%"))
             | (Convenio.numero_protocolo_governo.ilike(f"%{search}%"))
+            | (Convenio.numero_convenio.ilike(f"%{search}%"))
+            | (Convenio.numero_emenda.ilike(f"%{search}%"))
+            | (Convenio.parlamentar.ilike(f"%{search}%"))
+            | (Convenio.orgao_concedente.ilike(f"%{search}%"))
         )
     query = query.options(selectinload(Convenio.etapas)).offset(skip).limit(limit).order_by(Convenio.updated_at.desc())
     result = await db.execute(query)
@@ -94,9 +153,10 @@ async def listar_convenios(
 async def criar_convenio(
     body: ConvenioCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.RESOURCE_CREATE)),
 ):
     convenio = Convenio(
+        organization_id=user.organization_id,
         titulo=body.titulo,
         descricao=body.descricao,
         tipo=body.tipo,
@@ -104,6 +164,39 @@ async def criar_convenio(
         valor=body.valor,
         responsavel_id=user.id,
         template_fluxo_id=body.template_fluxo_id,
+        categoria=body.categoria.value if body.categoria else None,
+        esfera=body.esfera.value if body.esfera else None,
+        prioridade=body.prioridade.value if body.prioridade else None,
+        situacao=body.situacao or (SituacaoProcesso.default_flow()[0] if body.categoria else None),
+        parlamentar=body.parlamentar,
+        parlamentar_cargo=body.parlamentar_cargo,
+        partido=body.partido,
+        orgao_concedente=body.orgao_concedente,
+        programa=body.programa,
+        finalidade=body.finalidade,
+        numero_proposta=body.numero_proposta,
+        numero_instrumento=body.numero_instrumento,
+        numero_convenio=body.numero_convenio,
+        numero_contrato_repasse=body.numero_contrato_repasse,
+        numero_emenda=body.numero_emenda,
+        numero_plano_acao=body.numero_plano_acao,
+        numero_plano_trabalho=body.numero_plano_trabalho,
+        valor_solicitado=body.valor_solicitado,
+        valor_aprovado=body.valor_aprovado,
+        valor_repasse=body.valor_repasse,
+        contrapartida=body.contrapartida,
+        data_aprovacao=body.data_aprovacao,
+        data_assinatura=body.data_assinatura,
+        vigencia_inicio=body.vigencia_inicio,
+        vigencia_fim=body.vigencia_fim,
+        prazo_execucao=body.prazo_execucao,
+        prazo_prestacao_contas=body.prazo_prestacao_contas,
+        previsao_conclusao=body.previsao_conclusao,
+        gestor_id=body.gestor_id,
+        fiscal_id=body.fiscal_id,
+        engenheiro_id=body.engenheiro_id,
+        links_externos=body.links_externos,
+        identificadores_externos=body.identificadores_externos,
     )
     db.add(convenio)
     await db.flush()
@@ -113,6 +206,10 @@ async def criar_convenio(
             select(TemplateFluxo)
             .where(
                 TemplateFluxo.id == body.template_fluxo_id,
+                or_(
+                    TemplateFluxo.organization_id == user.organization_id,
+                    TemplateFluxo.organization_id.is_(None),
+                ),
                 TemplateFluxo.deleted_at.is_(None),
             )
             .options(selectinload(TemplateFluxo.etapas))
@@ -156,7 +253,11 @@ async def obter_convenio(
 ):
     result = await db.execute(
         select(Convenio)
-        .where(Convenio.id == convenio_id, Convenio.deleted_at.is_(None))
+        .where(
+            Convenio.id == convenio_id,
+            Convenio.organization_id == user.organization_id,
+            Convenio.deleted_at.is_(None),
+        )
         .options(
             selectinload(Convenio.etapas),
             selectinload(Convenio.anexos),
@@ -174,10 +275,14 @@ async def atualizar_convenio(
     convenio_id: uuid.UUID,
     body: ConvenioUpdate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.RESOURCE_EDIT)),
 ):
     result = await db.execute(
-        select(Convenio).where(Convenio.id == convenio_id, Convenio.deleted_at.is_(None))
+        select(Convenio).where(
+            Convenio.id == convenio_id,
+            Convenio.organization_id == user.organization_id,
+            Convenio.deleted_at.is_(None),
+        )
     )
     convenio = result.scalar_one_or_none()
     if not convenio:
@@ -201,6 +306,81 @@ async def atualizar_convenio(
         convenio.valor = body.valor
     if body.template_fluxo_id is not None:
         convenio.template_fluxo_id = body.template_fluxo_id
+
+    if body.categoria is not None:
+        convenio.categoria = body.categoria.value if hasattr(body.categoria, "value") else body.categoria
+    if body.esfera is not None:
+        convenio.esfera = body.esfera.value if hasattr(body.esfera, "value") else body.esfera
+    if body.prioridade is not None:
+        convenio.prioridade = body.prioridade.value if hasattr(body.prioridade, "value") else body.prioridade
+    if body.situacao is not None:
+        convenio.situacao = body.situacao
+    if body.parlamentar is not None:
+        convenio.parlamentar = body.parlamentar
+    if body.parlamentar_cargo is not None:
+        convenio.parlamentar_cargo = body.parlamentar_cargo
+    if body.partido is not None:
+        convenio.partido = body.partido
+    if body.orgao_concedente is not None:
+        convenio.orgao_concedente = body.orgao_concedente
+    if body.programa is not None:
+        convenio.programa = body.programa
+    if body.finalidade is not None:
+        convenio.finalidade = body.finalidade
+    if body.numero_proposta is not None:
+        convenio.numero_proposta = body.numero_proposta
+    if body.numero_instrumento is not None:
+        convenio.numero_instrumento = body.numero_instrumento
+    if body.numero_convenio is not None:
+        convenio.numero_convenio = body.numero_convenio
+    if body.numero_contrato_repasse is not None:
+        convenio.numero_contrato_repasse = body.numero_contrato_repasse
+    if body.numero_emenda is not None:
+        convenio.numero_emenda = body.numero_emenda
+    if body.numero_plano_acao is not None:
+        convenio.numero_plano_acao = body.numero_plano_acao
+    if body.numero_plano_trabalho is not None:
+        convenio.numero_plano_trabalho = body.numero_plano_trabalho
+    if body.valor_solicitado is not None:
+        convenio.valor_solicitado = body.valor_solicitado
+    if body.valor_aprovado is not None:
+        convenio.valor_aprovado = body.valor_aprovado
+    if body.valor_repasse is not None:
+        convenio.valor_repasse = body.valor_repasse
+    if body.contrapartida is not None:
+        convenio.contrapartida = body.contrapartida
+    if body.valor_executado is not None:
+        convenio.valor_executado = body.valor_executado
+    if body.valor_pago is not None:
+        convenio.valor_pago = body.valor_pago
+    if body.saldo is not None:
+        convenio.saldo = body.saldo
+    if body.data_aprovacao is not None:
+        convenio.data_aprovacao = body.data_aprovacao
+    if body.data_assinatura is not None:
+        convenio.data_assinatura = body.data_assinatura
+    if body.vigencia_inicio is not None:
+        convenio.vigencia_inicio = body.vigencia_inicio
+    if body.vigencia_fim is not None:
+        convenio.vigencia_fim = body.vigencia_fim
+    if body.prazo_execucao is not None:
+        convenio.prazo_execucao = body.prazo_execucao
+    if body.prazo_prestacao_contas is not None:
+        convenio.prazo_prestacao_contas = body.prazo_prestacao_contas
+    if body.previsao_conclusao is not None:
+        convenio.previsao_conclusao = body.previsao_conclusao
+    if body.conclusao_efetiva is not None:
+        convenio.conclusao_efetiva = body.conclusao_efetiva
+    if body.gestor_id is not None:
+        convenio.gestor_id = body.gestor_id
+    if body.fiscal_id is not None:
+        convenio.fiscal_id = body.fiscal_id
+    if body.engenheiro_id is not None:
+        convenio.engenheiro_id = body.engenheiro_id
+    if body.links_externos is not None:
+        convenio.links_externos = body.links_externos
+    if body.identificadores_externos is not None:
+        convenio.identificadores_externos = body.identificadores_externos
 
     if body.status is not None and body.status != convenio.status:
         old_status.assert_transition(body.status)
@@ -231,7 +411,11 @@ async def registrar_protocolo(
     user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
 ):
     result = await db.execute(
-        select(Convenio).where(Convenio.id == convenio_id, Convenio.deleted_at.is_(None))
+        select(Convenio).where(
+            Convenio.id == convenio_id,
+            Convenio.organization_id == user.organization_id,
+            Convenio.deleted_at.is_(None),
+        )
     )
     convenio = result.scalar_one_or_none()
     if not convenio:
@@ -263,7 +447,11 @@ async def obter_timeline(
 ):
     result = await db.execute(
         select(Convenio)
-        .where(Convenio.id == convenio_id, Convenio.deleted_at.is_(None))
+        .where(
+            Convenio.id == convenio_id,
+            Convenio.organization_id == user.organization_id,
+            Convenio.deleted_at.is_(None),
+        )
         .options(selectinload(Convenio.eventos))
     )
     convenio = result.scalar_one_or_none()
@@ -288,10 +476,14 @@ async def obter_timeline(
 async def excluir_convenio(
     convenio_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.RESOURCE_DELETE)),
 ):
     result = await db.execute(
-        select(Convenio).where(Convenio.id == convenio_id, Convenio.deleted_at.is_(None))
+        select(Convenio).where(
+            Convenio.id == convenio_id,
+            Convenio.organization_id == user.organization_id,
+            Convenio.deleted_at.is_(None),
+        )
     )
     convenio = result.scalar_one_or_none()
     if not convenio:

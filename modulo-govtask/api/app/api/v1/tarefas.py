@@ -6,21 +6,27 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.auth import get_current_user, require_roles
+from app.core.auth import get_current_user, require_permission
+from app.core.permissions import Perm
 from app.core.database import get_db
 from app.models.etapa import Etapa
+from app.models.convenio import Convenio
 from app.models.enums import StatusTarefa, TipoEvento
 from app.models.tarefa import Tarefa
 from app.models.user import User
+from app.models.setor import Setor
 from app.schemas.tarefa import (
     ComentarioCreate,
     ComentarioOut,
+    DependenciaCreate,
     TarefaCreate,
     TarefaListItem,
     TarefaOut,
     TarefaUpdate,
 )
 from app.models.comentario import Comentario
+from app.models.tarefa_prazo_historico import TarefaPrazoHistorico
+from app.models.tarefa_dependencia import TarefaDependencia
 from app.services.state_machine import (
     aceitar_tarefa,
     cancelar_tarefa,
@@ -51,7 +57,11 @@ async def listar_tarefas(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    query = select(Tarefa).where(Tarefa.deleted_at.is_(None))
+    query = select(Tarefa).join(Convenio, Tarefa.convenio_id == Convenio.id).where(
+        Convenio.organization_id == user.organization_id,
+        Convenio.deleted_at.is_(None),
+        Tarefa.deleted_at.is_(None),
+    )
 
     if minhas:
         query = query.where(Tarefa.atribuida_a_id == user.id)
@@ -78,14 +88,41 @@ async def criar_tarefa(
     etapa_id: uuid.UUID,
     body: TarefaCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.TASK_ASSIGN)),
 ):
     result = await db.execute(
-        select(Etapa).where(Etapa.id == etapa_id, Etapa.deleted_at.is_(None))
+        select(Etapa).join(Convenio, Etapa.convenio_id == Convenio.id).where(
+            Etapa.id == etapa_id,
+            Convenio.organization_id == user.organization_id,
+            Convenio.deleted_at.is_(None),
+            Etapa.deleted_at.is_(None),
+        )
     )
     etapa = result.scalar_one_or_none()
     if not etapa:
         raise HTTPException(status_code=404, detail="Etapa não encontrada")
+
+    if body.atribuida_a_id:
+        assignee = await db.scalar(
+            select(User).where(
+                User.id == body.atribuida_a_id,
+                User.organization_id == user.organization_id,
+                User.is_active.is_(True),
+                User.deleted_at.is_(None),
+            )
+        )
+        if assignee is None:
+            raise HTTPException(status_code=422, detail="Responsável não pertence à organização")
+    if body.setor_destino_id:
+        setor = await db.scalar(
+            select(Setor).where(
+                Setor.id == body.setor_destino_id,
+                Setor.organization_id == user.organization_id,
+                Setor.deleted_at.is_(None),
+            )
+        )
+        if setor is None:
+            raise HTTPException(status_code=422, detail="Setor não pertence à organização")
 
     # Validação: alertar se prazo interno > prazo do governo
     warning = None
@@ -151,11 +188,14 @@ async def obter_tarefa(
 ):
     result = await db.execute(
         select(Tarefa)
-        .where(Tarefa.id == tarefa_id, Tarefa.deleted_at.is_(None))
+        .join(Convenio, Tarefa.convenio_id == Convenio.id)
+        .where(Tarefa.id == tarefa_id, Convenio.organization_id == user.organization_id, Tarefa.deleted_at.is_(None))
         .options(
             selectinload(Tarefa.anexos),
             selectinload(Tarefa.comentarios),
             selectinload(Tarefa.contestacoes),
+            selectinload(Tarefa.historico_prazos),
+            selectinload(Tarefa.dependencias).selectinload(TarefaDependencia.depende_de),
         )
     )
     tarefa = result.scalar_one_or_none()
@@ -169,10 +209,10 @@ async def atualizar_tarefa(
     tarefa_id: uuid.UUID,
     body: TarefaUpdate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.TASK_ASSIGN)),
 ):
     result = await db.execute(
-        select(Tarefa).where(Tarefa.id == tarefa_id, Tarefa.deleted_at.is_(None))
+        select(Tarefa).join(Convenio, Tarefa.convenio_id == Convenio.id).where(Tarefa.id == tarefa_id, Convenio.organization_id == user.organization_id, Tarefa.deleted_at.is_(None))
     )
     tarefa = result.scalar_one_or_none()
     if not tarefa:
@@ -183,6 +223,16 @@ async def atualizar_tarefa(
     if body.descricao is not None:
         tarefa.descricao = body.descricao
     if body.atribuida_a_id is not None:
+        assignee = await db.scalar(
+            select(User).where(
+                User.id == body.atribuida_a_id,
+                User.organization_id == user.organization_id,
+                User.is_active.is_(True),
+                User.deleted_at.is_(None),
+            )
+        )
+        if assignee is None:
+            raise HTTPException(status_code=422, detail="Responsável não pertence à organização")
         old_assignee = tarefa.atribuida_a_id
         tarefa.atribuida_a_id = body.atribuida_a_id
         if body.atribuida_a_id != old_assignee:
@@ -190,6 +240,15 @@ async def atualizar_tarefa(
                 db, tarefa.id, tarefa.convenio_id, body.atribuida_a_id, tarefa.titulo
             )
     if body.setor_destino_id is not None:
+        setor = await db.scalar(
+            select(Setor).where(
+                Setor.id == body.setor_destino_id,
+                Setor.organization_id == user.organization_id,
+                Setor.deleted_at.is_(None),
+            )
+        )
+        if setor is None:
+            raise HTTPException(status_code=422, detail="Setor não pertence à organização")
         tarefa.setor_destino_id = body.setor_destino_id
     if body.prioridade is not None:
         tarefa.prioridade = body.prioridade
@@ -206,10 +265,21 @@ async def atualizar_tarefa(
             tarefa_id=tarefa.id,
             metadados={"prazo_anterior": old_prazo.isoformat() if old_prazo else None, "prazo_novo": body.prazo.isoformat()},
         )
+        await _registrar_historico_prazo(
+            db, tarefa, old_prazo, body.prazo, user.id, body.motivo_prazo,
+            tipo="PRORROGACAO" if old_prazo else "DEFINICAO",
+        )
+    if body.prazo_interno is not None:
+        tarefa.prazo_interno = body.prazo_interno
 
     await db.commit()
-    await db.refresh(tarefa)
-    return tarefa
+    result = await db.execute(
+        select(Tarefa)
+        .join(Convenio, Tarefa.convenio_id == Convenio.id)
+        .where(Tarefa.id == tarefa_id, Convenio.organization_id == user.organization_id)
+        .options(selectinload(Tarefa.historico_prazos), selectinload(Tarefa.dependencias))
+    )
+    return result.scalar_one()
 
 
 @router.post("/tarefas/{tarefa_id}/aceitar", response_model=TarefaOut)
@@ -219,7 +289,7 @@ async def aceitar_tarefa_endpoint(
     user: User = Depends(get_current_user),
 ):
     result = await db.execute(
-        select(Tarefa).where(Tarefa.id == tarefa_id, Tarefa.deleted_at.is_(None))
+        select(Tarefa).join(Convenio, Tarefa.convenio_id == Convenio.id).where(Tarefa.id == tarefa_id, Convenio.organization_id == user.organization_id, Tarefa.deleted_at.is_(None))
     )
     tarefa = result.scalar_one_or_none()
     if not tarefa:
@@ -253,7 +323,8 @@ async def entregar_tarefa_endpoint(
 ):
     result = await db.execute(
         select(Tarefa)
-        .where(Tarefa.id == tarefa_id, Tarefa.deleted_at.is_(None))
+        .join(Convenio, Tarefa.convenio_id == Convenio.id)
+        .where(Tarefa.id == tarefa_id, Convenio.organization_id == user.organization_id, Tarefa.deleted_at.is_(None))
         .options(selectinload(Tarefa.anexos))
     )
     tarefa = result.scalar_one_or_none()
@@ -287,10 +358,10 @@ async def devolver_tarefa_endpoint(
     tarefa_id: uuid.UUID,
     comentario: ComentarioCreate | None = None,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.TASK_APPROVE)),
 ):
     result = await db.execute(
-        select(Tarefa).where(Tarefa.id == tarefa_id, Tarefa.deleted_at.is_(None))
+        select(Tarefa).join(Convenio, Tarefa.convenio_id == Convenio.id).where(Tarefa.id == tarefa_id, Convenio.organization_id == user.organization_id, Tarefa.deleted_at.is_(None))
     )
     tarefa = result.scalar_one_or_none()
     if not tarefa:
@@ -333,10 +404,10 @@ async def devolver_tarefa_endpoint(
 async def concluir_tarefa_endpoint(
     tarefa_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.TASK_APPROVE)),
 ):
     result = await db.execute(
-        select(Tarefa).where(Tarefa.id == tarefa_id, Tarefa.deleted_at.is_(None))
+        select(Tarefa).join(Convenio, Tarefa.convenio_id == Convenio.id).where(Tarefa.id == tarefa_id, Convenio.organization_id == user.organization_id, Tarefa.deleted_at.is_(None))
     )
     tarefa = result.scalar_one_or_none()
     if not tarefa:
@@ -361,10 +432,10 @@ async def concluir_tarefa_endpoint(
 async def cancelar_tarefa_endpoint(
     tarefa_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.TASK_APPROVE)),
 ):
     result = await db.execute(
-        select(Tarefa).where(Tarefa.id == tarefa_id, Tarefa.deleted_at.is_(None))
+        select(Tarefa).join(Convenio, Tarefa.convenio_id == Convenio.id).where(Tarefa.id == tarefa_id, Convenio.organization_id == user.organization_id, Tarefa.deleted_at.is_(None))
     )
     tarefa = result.scalar_one_or_none()
     if not tarefa:
@@ -393,7 +464,7 @@ async def adicionar_comentario(
     user: User = Depends(get_current_user),
 ):
     result = await db.execute(
-        select(Tarefa).where(Tarefa.id == tarefa_id, Tarefa.deleted_at.is_(None))
+        select(Tarefa).join(Convenio, Tarefa.convenio_id == Convenio.id).where(Tarefa.id == tarefa_id, Convenio.organization_id == user.organization_id, Tarefa.deleted_at.is_(None))
     )
     tarefa = result.scalar_one_or_none()
     if not tarefa:
@@ -405,6 +476,150 @@ async def adicionar_comentario(
         texto=body.texto,
     )
     db.add(comentario)
+    await db.flush()
+
+    from app.services.notifications import notificar_mencoes
+
+    await notificar_mencoes(
+        db,
+        body.texto,
+        user,
+        tarefa.convenio_id,
+        tarefa_id,
+        tarefa.titulo,
+    )
+
     await db.commit()
     await db.refresh(comentario)
     return comentario
+
+
+async def _registrar_historico_prazo(
+    db: AsyncSession,
+    tarefa: Tarefa,
+    prazo_anterior,
+    prazo_novo,
+    definido_por_id: uuid.UUID,
+    motivo: str | None,
+    tipo: str,
+) -> None:
+    from app.models.tarefa_prazo_historico import TarefaPrazoHistorico
+    db.add(
+        TarefaPrazoHistorico(
+            tarefa_id=tarefa.id,
+            prazo_anterior=prazo_anterior,
+            prazo_novo=prazo_novo,
+            definido_por_id=definido_por_id,
+            motivo=motivo,
+            tipo=tipo,
+        )
+    )
+    await db.flush()
+
+
+async def _get_tarefa_tenant(db, tarefa_id, user):
+    result = await db.execute(
+        select(Tarefa)
+        .join(Convenio, Tarefa.convenio_id == Convenio.id)
+        .where(Tarefa.id == tarefa_id, Convenio.organization_id == user.organization_id, Tarefa.deleted_at.is_(None))
+        .options(
+            selectinload(Tarefa.dependencias).selectinload(TarefaDependencia.depende_de),
+            selectinload(Tarefa.historico_prazos),
+        )
+    )
+    return result.scalar_one_or_none()
+
+
+@router.get("/tarefas/{tarefa_id}/historico-prazos")
+async def listar_historico_prazos(
+    tarefa_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from app.schemas.tarefa import TarefaPrazoHistoricoOut
+    tarefa = await _get_tarefa_tenant(db, tarefa_id, user)
+    if not tarefa:
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
+    return [
+        TarefaPrazoHistoricoOut(
+            id=h.id, tarefa_id=h.tarefa_id, prazo_anterior=h.prazo_anterior,
+            prazo_novo=h.prazo_novo, definido_por_id=h.definido_por_id,
+            motivo=h.motivo, tipo=h.tipo, created_at=h.created_at,
+        )
+        for h in sorted(tarefa.historico_prazos, key=lambda x: x.created_at)
+    ]
+
+
+@router.get("/tarefas/{tarefa_id}/dependencias")
+async def listar_dependencias(
+    tarefa_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    from app.schemas.tarefa import DependenciaOut
+    tarefa = await _get_tarefa_tenant(db, tarefa_id, user)
+    if not tarefa:
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
+    result = []
+    for dep in tarefa.dependencias:
+        titulo = None
+        if dep.depende_de:
+            titulo = dep.depende_de.titulo
+        result.append(
+            DependenciaOut(id=dep.id, tarefa_id=dep.tarefa_id, depende_de_id=dep.depende_de_id, depende_de_titulo=titulo)
+        )
+    return result
+
+
+@router.post("/tarefas/{tarefa_id}/dependencias", status_code=201)
+async def criar_dependencia(
+    tarefa_id: uuid.UUID,
+    body: DependenciaCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission(Perm.TASK_ASSIGN)),
+):
+    if tarefa_id == body.depende_de_id:
+        raise HTTPException(status_code=422, detail="Uma tarefa não pode depender de si mesma")
+
+    tarefa = await _get_tarefa_tenant(db, tarefa_id, user)
+    if not tarefa:
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
+
+    result = await db.execute(
+        select(Tarefa).join(Convenio, Tarefa.convenio_id == Convenio.id).where(
+            Tarefa.id == body.depende_de_id,
+            Convenio.organization_id == user.organization_id,
+            Tarefa.deleted_at.is_(None),
+        )
+    )
+    depende_de = result.scalar_one_or_none()
+    if not depende_de:
+        raise HTTPException(status_code=404, detail="Tarefa da qual se depende não encontrada")
+
+    dep = TarefaDependencia(tarefa_id=tarefa_id, depende_de_id=body.depende_de_id)
+    db.add(dep)
+    await db.commit()
+    return {
+        "id": dep.id,
+        "tarefa_id": dep.tarefa_id,
+        "depende_de_id": dep.depende_de_id,
+        "depende_de_titulo": depende_de.titulo,
+    }
+
+
+@router.delete("/tarefas/{tarefa_id}/dependencias/{dependencia_id}", status_code=204)
+async def remover_dependencia(
+    tarefa_id: uuid.UUID,
+    dependencia_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission(Perm.TASK_ASSIGN)),
+):
+    tarefa = await _get_tarefa_tenant(db, tarefa_id, user)
+    if not tarefa:
+        raise HTTPException(status_code=404, detail="Tarefa não encontrada")
+    dep = next((d for d in tarefa.dependencias if d.id == dependencia_id), None)
+    if not dep:
+        raise HTTPException(status_code=404, detail="Dependência não encontrada")
+    await db.delete(dep)
+    await db.commit()
+    return None

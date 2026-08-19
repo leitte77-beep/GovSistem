@@ -55,6 +55,17 @@ export default function ConfiguracoesPage() {
   const [escalonarAssessor, setEscalonarAssessor] = useState(true);
   const [canais, setCanais] = useState({ inApp: true, email: false });
 
+  // Escalonamento real (persistido por organização)
+  const [escal, setEscal] = useState({
+    ativo: true,
+    dia_responsavel: 1,
+    dia_coordenador: 3,
+    dia_gestor: 5,
+  });
+  const [loadingEscal, setLoadingEscal] = useState(true);
+  const [savingEscal, setSavingEscal] = useState(false);
+  const [verificando, setVerificando] = useState(false);
+
   const loadSetores = async () => {
     try {
       const data = await api.listSetores();
@@ -68,6 +79,14 @@ export default function ConfiguracoesPage() {
 
   useEffect(() => {
     if (isAdmin) loadSetores();
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    api.getEscalonamento()
+      .then(setEscal)
+      .catch(() => {})
+      .finally(() => setLoadingEscal(false));
   }, [isAdmin]);
 
   if (!isAdmin) {
@@ -160,6 +179,30 @@ export default function ConfiguracoesPage() {
       localStorage.setItem("govtask_notif_settings", JSON.stringify(settings));
     }
     notify.success("Configurações de notificação salvas!");
+  };
+
+  const handleSaveEscal = async () => {
+    setSavingEscal(true);
+    try {
+      await api.updateEscalonamento(escal);
+      notify.success("Escalonamento atualizado!");
+    } catch (e: any) {
+      notify.error(e.message);
+    } finally {
+      setSavingEscal(false);
+    }
+  };
+
+  const handleVerificarEscal = async () => {
+    setVerificando(true);
+    try {
+      const r = await api.verificarEscalonamento();
+      notify.success(`${r.notificacoes_criadas} notificações criadas, ${r.escalonadas} escalonadas.`);
+    } catch (e: any) {
+      notify.error(e.message);
+    } finally {
+      setVerificando(false);
+    }
   };
 
   return (
@@ -345,28 +388,67 @@ export default function ConfiguracoesPage() {
         </div>
 
         <div className="border-t border-surface-border pt-6">
-          <h3 className="text-body-sm font-medium text-text-title mb-3">
-            Escalonamento
-          </h3>
-          <label className="flex items-center justify-between py-2 px-3 rounded-btn hover:bg-surface-bg transition-colors cursor-pointer">
-            <div>
-              <span className="text-body-sm text-text-body">Escalonar ao assessor quando atrasado</span>
-              <p className="text-meta text-text-subtle">
-                Notificar o assessor automaticamente quando uma tarefa estiver atrasada
-              </p>
-            </div>
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-body-sm font-medium text-text-title">
+              Escalonamento de Atrasos
+            </h3>
             <button
               type="button"
-              onClick={() => setEscalonarAssessor(!escalonarAssessor)}
+              onClick={() => setEscal({ ...escal, ativo: !escal.ativo })}
               className="text-text-subtle hover:text-text-body transition-colors"
             >
-              {escalonarAssessor ? (
+              {escal.ativo ? (
                 <ToggleRight className="w-6 h-6 text-[#067647]" />
               ) : (
                 <ToggleLeft className="w-6 h-6" />
               )}
             </button>
-          </label>
+          </div>
+          <p className="text-body-sm text-text-body mb-4">
+            Notifique automaticamente os responsáveis conforme os dias de atraso de cada tarefa.
+          </p>
+
+          {loadingEscal ? (
+            <div className="space-y-2">
+              <Skeleton variant="text" className="h-10" />
+              <Skeleton variant="text" className="h-10" />
+              <Skeleton variant="text" className="h-10" />
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              {[
+                { key: "dia_responsavel", label: "Responsável (nível 1)" },
+                { key: "dia_coordenador", label: "Coordenador (nível 2)" },
+                { key: "dia_gestor", label: "Gestor (nível 3)" },
+              ].map((item) => (
+                <div key={item.key}>
+                  <label className="block text-meta text-text-subtle mb-1">
+                    {item.label} — dias de atraso
+                  </label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={365}
+                    disabled={!escal.ativo}
+                    value={(escal as any)[item.key]}
+                    onChange={(e) =>
+                      setEscal({ ...escal, [item.key]: Number(e.target.value) })
+                    }
+                    className="w-full border border-surface-border rounded-btn px-3 py-1.5 text-body-sm focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]"
+                  />
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2 justify-end mt-4">
+            <Button variant="secondary" size="sm" icon={Bell} loading={verificando} onClick={handleVerificarEscal}>
+              Verificar agora
+            </Button>
+            <Button size="sm" icon={Save} loading={savingEscal} onClick={handleSaveEscal}>
+              Salvar Escalonamento
+            </Button>
+          </div>
         </div>
 
         <div className="border-t border-surface-border pt-6">

@@ -18,6 +18,8 @@ if TYPE_CHECKING:
     from app.models.evento_timeline import EventoTimeline
     from app.models.notificacao import Notificacao
     from app.models.setor import Setor
+    from app.models.tarefa_dependencia import TarefaDependencia
+    from app.models.tarefa_prazo_historico import TarefaPrazoHistorico
     from app.models.user import User
 
 
@@ -61,6 +63,10 @@ class Tarefa(Base, TimestampMixin, SoftDeleteMixin):
     prazo: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True,
         comment="Prazo final para conclusão da tarefa"
+    )
+    prazo_interno: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True,
+        comment="Prazo interno definido pelo assessor (menor que o externo, para margem de revisão)"
     )
     status: Mapped[StatusTarefa] = mapped_column(
         String(30), nullable=False, default=StatusTarefa.AGUARDANDO_ACEITE
@@ -123,6 +129,27 @@ class Tarefa(Base, TimestampMixin, SoftDeleteMixin):
         "Notificacao", back_populates="tarefa", lazy="selectin",
         cascade="all, delete-orphan",
     )
+    dependencias: Mapped[List["TarefaDependencia"]] = relationship(
+        "TarefaDependencia", back_populates="tarefa", foreign_keys="TarefaDependencia.tarefa_id",
+        lazy="selectin", cascade="all, delete-orphan",
+    )
+    dependentes: Mapped[List["TarefaDependencia"]] = relationship(
+        "TarefaDependencia", back_populates="depende_de", foreign_keys="TarefaDependencia.depende_de_id",
+        lazy="selectin", cascade="all, delete-orphan",
+    )
+    historico_prazos: Mapped[List["TarefaPrazoHistorico"]] = relationship(
+        "TarefaPrazoHistorico", back_populates="tarefa", lazy="selectin",
+        cascade="all, delete-orphan", order_by="TarefaPrazoHistorico.created_at",
+    )
+
+    @property
+    def bloqueada_por(self) -> list[str]:
+        """Títulos das tarefas das quais esta depende e que ainda não foram concluídas."""
+        nao_concluidas: list[str] = []
+        for dep in self.dependencias:
+            if dep.depende_de and dep.depende_de.status != "CONCLUIDA":
+                nao_concluidas.append(dep.depende_de.titulo)
+        return nao_concluidas
 
     @property
     def atrasada(self) -> bool:
@@ -131,7 +158,10 @@ class Tarefa(Base, TimestampMixin, SoftDeleteMixin):
             return False
         if self.prazo is None:
             return False
-        return datetime.now(timezone.utc) > self.prazo
+        prazo = self.prazo
+        if prazo.tzinfo is None:
+            prazo = prazo.replace(tzinfo=timezone.utc)
+        return datetime.now(timezone.utc) > prazo
 
     def __repr__(self) -> str:
-        return f"<Tarefa {self.titulo} [{self.status.value}]>"
+        return f"<Tarefa {self.titulo} [{self.status}]>"

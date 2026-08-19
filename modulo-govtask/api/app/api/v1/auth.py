@@ -7,8 +7,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user, get_user_permissions
 from app.core.database import get_db
+from app.core.config import settings
 from app.core.security import (
     create_access_token,
     create_refresh_token,
@@ -37,6 +38,7 @@ class UserMeResponse(BaseModel):
     email: str
     name: str
     roles: list[dict]
+    permissions: list[str]
     organization_id: str | None
 
     model_config = {"from_attributes": True}
@@ -44,6 +46,8 @@ class UserMeResponse(BaseModel):
 
 @router.post("/auth/login", response_model=LoginResponse)
 async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
+    if not settings.ALLOW_LOCAL_AUTH:
+        raise HTTPException(status_code=404, detail="Use o login da plataforma GovSistem")
     result = await db.execute(
         select(User)
         .where(User.email == body.email, User.deleted_at.is_(None))
@@ -90,6 +94,8 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 @router.post("/auth/refresh")
 async def refresh_token(body: dict, db: AsyncSession = Depends(get_db)):
+    if not settings.ALLOW_LOCAL_AUTH:
+        raise HTTPException(status_code=404, detail="Use o login da plataforma GovSistem")
     from app.core.security import decode_token
     try:
         payload = decode_token(body["refresh_token"])
@@ -146,5 +152,6 @@ async def me(user: User = Depends(get_current_user)):
             {"id": str(ur.role.id), "name": ur.role.name, "label": ur.role.label}
             for ur in user.user_roles
         ],
+        "permissions": sorted(get_user_permissions(user)),
         "organization_id": str(user.organization_id) if user.organization_id else None,
     }

@@ -22,9 +22,7 @@ const iconCache: Record<string, string> = {
 function InlineIcon({ name }: { name: string }) {
   const pathData = iconCache[name];
   if (!pathData) {
-    return <div className="w-12 h-12 rounded-full bg-surface-bg flex items-center justify-center mb-4">
-      <span className="text-2xl text-text-subtle">—</span>
-    </div>;
+    return <span className="text-xl text-[#2563EB]">—</span>;
   }
 
   const paths = pathData.split(" M").filter(Boolean).map((d, i) => {
@@ -35,10 +33,10 @@ function InlineIcon({ name }: { name: string }) {
   return (
     <svg
       xmlns="http://www.w3.org/2000/svg"
-      width="48"
-      height="48"
+      width="28"
+      height="28"
       viewBox="0 0 24 24"
-      className="text-text-subtle mb-4"
+      className="text-[#2563EB]"
     >
       {paths}
     </svg>
@@ -48,13 +46,13 @@ function InlineIcon({ name }: { name: string }) {
 export function EmptyState({ icon, title, description, action, className }: EmptyStateProps) {
   return (
     <div className={cn("flex flex-col items-center justify-center py-16 px-4 text-center", className)}>
-      {icon ? (
-        <InlineIcon name={icon} />
-      ) : (
-        <div className="w-12 h-12 rounded-full bg-surface-bg flex items-center justify-center mb-4">
-          <span className="text-2xl text-text-subtle">—</span>
-        </div>
-      )}
+      <div className="w-16 h-16 rounded-2xl bg-gradient-subtle border border-[#2563EB]/15 flex items-center justify-center mb-5 shadow-sm">
+        {icon ? (
+          <InlineIcon name={icon} />
+        ) : (
+          <span className="text-2xl text-[#2563EB]">—</span>
+        )}
+      </div>
       <h3 className="text-h3 text-text-title mb-1">{title}</h3>
       {description && <p className="text-body-sm text-text-body max-w-sm mb-6">{description}</p>}
       {action && (

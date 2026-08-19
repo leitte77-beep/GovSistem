@@ -110,6 +110,12 @@ async def get_current_user(
             detail="Inactive user",
         )
 
+    if user.organization_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User is not associated with an organization",
+        )
+
     return user
 
 
@@ -117,6 +123,32 @@ def require_roles(*roles: str):
     async def _check(user: User = Depends(get_current_user)) -> User:
         user_roles = {ur.role.name for ur in user.user_roles}
         if not user_roles.intersection(roles):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient permissions",
+            )
+        return user
+
+    return _check
+
+
+def get_user_permissions(user: User) -> set[str]:
+    """Resolve o conjunto de permissões granulares do usuário a partir das roles."""
+    perms: set[str] = set()
+    for ur in user.user_roles:
+        for rp in ur.role.permissions:
+            perms.add(rp.permission)
+    return perms
+
+
+def require_permission(*permissions: str):
+    """Dependency que exige ao menos uma das permissões granulares (RBAC por recurso).
+
+    Uso: `user: User = Depends(require_permission(Perm.RESOURCE_DELETE))`.
+    """
+    async def _check(user: User = Depends(get_current_user)) -> User:
+        user_perms = get_user_permissions(user)
+        if not user_perms.intersection(permissions):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Insufficient permissions",

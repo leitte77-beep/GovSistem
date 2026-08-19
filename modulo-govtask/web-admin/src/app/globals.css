@@ -11,6 +11,10 @@
   * {
     @apply border-[#E4E7EC];
   }
+
+  ::selection {
+    background: rgba(37, 99, 235, 0.18);
+  }
 }
 
 @layer components {
@@ -70,5 +74,23 @@
   .scrollbar-thin {
     scrollbar-width: thin;
     scrollbar-color: #E4E7EC transparent;
+  }
+
+  /* ── Premium primitives ───────────────────────────────── */
+  .bg-gradient-primary {
+    background-image: linear-gradient(135deg, #2563eb 0%, #4f46e5 55%, #7c3aed 100%);
+  }
+  .bg-gradient-subtle {
+    background-image: linear-gradient(160deg, #eff6ff 0%, #eef2ff 55%, #f5f3ff 100%);
+  }
+  .ring-focus {
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white;
+  }
+  .card-hover-lift {
+    @apply transition-all duration-200 hover:-translate-y-0.5 hover:shadow-elevated hover:border-[#2563EB]/30;
+  }
+  .soft-blob {
+    background: radial-gradient(circle at 20% 20%, rgba(37,99,235,0.28), transparent 45%),
+                radial-gradient(circle at 80% 70%, rgba(124,58,237,0.22), transparent 45%);
   }
 }

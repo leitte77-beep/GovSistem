@@ -127,6 +127,7 @@ export default function ContestarTarefaPage() {
   return (
     <div className="space-y-6 max-w-2xl">
       <PageHeader
+        eyebrow="Tarefa"
         title="Contestar Tarefa"
         description="Solicite alteração do prazo e justifique o motivo."
         breadcrumbs={breadcrumbs}

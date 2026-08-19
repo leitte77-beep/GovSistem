@@ -24,6 +24,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { DataTable } from "@/components/ui/DataTable";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import {
   Clock,
@@ -194,19 +195,16 @@ export default function TarefasPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-bold text-gray-900">Tarefas</h2>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="ghost"
-            size="sm"
-            icon={Filter}
-            onClick={() => setShowFilters(!showFilters)}
-          >
+      <PageHeader
+        eyebrow="Tarefas"
+        title="Quadro de Tarefas"
+        description="Visualize e gerencie as tarefas do órgão em quadro ou lista."
+        actions={
+          <Button variant="ghost" size="sm" icon={Filter} onClick={() => setShowFilters(!showFilters)}>
             Filtros
           </Button>
-        </div>
-      </div>
+        }
+      />
 
       <div className="flex flex-wrap items-center gap-3">
         {(["minhas", "todas", "atrasadas"] as const).map((f) => (
