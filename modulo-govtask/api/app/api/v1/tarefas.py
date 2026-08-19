@@ -53,7 +53,7 @@ async def listar_tarefas(
     atrasadas: bool = Query(False),
     convenio_id: uuid.UUID | None = Query(None),
     skip: int = Query(0, ge=0),
-    limit: int = Query(20, ge=1, le=100),
+    limit: int = Query(20, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
