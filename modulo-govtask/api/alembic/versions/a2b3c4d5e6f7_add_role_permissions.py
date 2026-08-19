@@ -59,7 +59,7 @@ def upgrade() -> None:
                 INSERT INTO role_permissions (id, role_id, permission)
                 SELECT gen_random_uuid(), r.id, p.permission
                 FROM roles r
-                CROSS JOIN unnest(:perms) AS p(permission)
+                CROSS JOIN unnest(CAST(:perms AS VARCHAR[])) AS p(permission)
                 WHERE r.name = :role_name
                 """
             ).bindparams(
