@@ -61,15 +61,23 @@ export function ItemCanal({ canal, ativo, opId, onClick, naoLidas, onDelete }) {
           : subtitulo,
       ),
     ),
-    onDelete && showDelete && React.createElement('button', {
-      onClick: (e) => { e.stopPropagation(); onDelete(canal.id); },
-      'aria-label': 'Excluir canal',
-      style: {
-        background: 'none', border: 'none', cursor: 'pointer', padding: 4,
-        color: T.textMuted, borderRadius: 4, display: 'flex',
-        position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
-      },
-      title: 'Excluir canal',
-    }, React.createElement(Trash2, { size: 15 })),
+    // Coluna propria em vez de position:absolute — sobreposto, o botao cobria o
+    // contador de nao lidas. O espaco fica reservado mesmo escondido, para o
+    // conteudo nao "pular" quando o mouse entra no item.
+    onDelete && React.createElement('div', {
+      style: { width: 26, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' },
+    },
+      React.createElement('button', {
+        onClick: (e) => { e.stopPropagation(); onDelete(canal.id); },
+        'aria-label': 'Excluir canal',
+        tabIndex: showDelete ? 0 : -1,
+        style: {
+          background: 'none', border: 'none', cursor: 'pointer', padding: 4,
+          color: T.textMuted, borderRadius: 4, display: 'flex',
+          visibility: showDelete ? 'visible' : 'hidden',
+        },
+        title: 'Excluir canal',
+      }, React.createElement(Trash2, { size: 15 })),
+    ),
   );
 }
