@@ -22,7 +22,7 @@ import { useSocket } from './context/SocketContext';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { T } from './theme';
 import { fetchConversa, fetchWhatsAppStatus, fetchCanaisInternos } from './api';
-import { fetchNotificacoesStatus } from './api/evolucoes';
+import { fetchNotificacoesStatus, fetchNaoLidasInternas } from './api/evolucoes';
 import { useNotificacoesDesktop } from './hooks/useNotificacoesDesktop';
 
 export function ChatGov() {
@@ -50,6 +50,9 @@ export function ChatGov() {
   const [recarregar, setRecarregar] = useState(0);
   const [protocolosRefresh, setProtocolosRefresh] = useState(0);
   const [notifCount, setNotifCount] = useState(0);
+  // Nao lidas do chat interno: alimenta o badge de "Equipe" no menu lateral,
+  // para a pessoa ver que chegou mensagem sem precisar abrir a tela.
+  const [equipeNaoLidas, setEquipeNaoLidas] = useState(0);
   const [waStatus, setWaStatus] = useState({ status: 'desconectado', numero: null });
 
   // Protocolo
@@ -78,6 +81,9 @@ export function ChatGov() {
     const atualizar = () => {
       fetchNotificacoesStatus()
         .then(({ total }) => setNotifCount(total || 0))
+        .catch(() => {});
+      fetchNaoLidasInternas()
+        .then(({ total }) => setEquipeNaoLidas(total || 0))
         .catch(() => {});
     };
 
@@ -176,6 +182,31 @@ export function ChatGov() {
     window.addEventListener('notificacao:abrir-conversa', handler);
     return () => window.removeEventListener('notificacao:abrir-conversa', handler);
   }, [socket, handleChangeView, handleSelectConversa]);
+
+  // Badge de Equipe reage na hora: sobe ao chegar mensagem, recalcula ao ler.
+  useEffect(() => {
+    if (!socket) return;
+    const aoChegar = () => setEquipeNaoLidas((n) => n + 1);
+    const aoLer = () => {
+      fetchNaoLidasInternas().then(({ total }) => setEquipeNaoLidas(total || 0)).catch(() => {});
+    };
+    socket.on('interno:notificacao', aoChegar);
+    socket.on('mensagem:lida', aoLer);
+    return () => {
+      socket.off('interno:notificacao', aoChegar);
+      socket.off('mensagem:lida', aoLer);
+    };
+  }, [socket]);
+
+  // Ao abrir um canal, as mensagens dele sao marcadas como lidas no backend;
+  // recalcula para o badge nao ficar preso num numero antigo.
+  useEffect(() => {
+    if (!canalAtivo?.id) return;
+    const t = setTimeout(() => {
+      fetchNaoLidasInternas().then(({ total }) => setEquipeNaoLidas(total || 0)).catch(() => {});
+    }, 800);
+    return () => clearTimeout(t);
+  }, [canalAtivo?.id]);
 
   // Clique na notificacao de mensagem da equipe: abre a tela Equipe no canal.
   useEffect(() => {
@@ -325,7 +356,7 @@ export function ChatGov() {
     // Rail: lateral no desktop/tablet, bottom-tab fixo no mobile.
     // Some quando um chat está aberto no celular (tela cheia, estilo WhatsApp).
     !chatMobileAberto && React.createElement(RailNavegacao, {
-      view, onChange: handleChangeView, isAdmin, verRelatorios, notifCount, breakpoint, waStatus,
+      view, onChange: handleChangeView, isAdmin, verRelatorios, notifCount, equipeNaoLidas, breakpoint, waStatus,
     }),
 
     // Views de tela cheia

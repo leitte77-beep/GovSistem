@@ -107,8 +107,8 @@ function BotaoRail({ view, ativo, onClick, badge, somenteIcone }) {
     badge > 0 && React.createElement('span', {
       style: {
         flexShrink: 0,
-        background: filled ? T.primary : T.surfaceMuted,
-        color: filled ? '#fff' : T.textSecondary,
+        background: T.primary,
+        color: '#fff',
         borderRadius: 9999, minWidth: 20, height: 20,
         fontSize: 11, fontWeight: 700,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -171,7 +171,7 @@ function BotaoRailMobile({ view, ativo, onClick, badge }) {
   );
 }
 
-export function RailNavegacao({ view, onChange, isAdmin, verRelatorios, notifCount, breakpoint, waStatus }) {
+export function RailNavegacao({ view, onChange, isAdmin, verRelatorios, notifCount, equipeNaoLidas, breakpoint, waStatus }) {
   const { auth, logout } = useAuth();
   const { isDark, toggle } = useTheme();
   const op = auth?.operador;
@@ -207,6 +207,7 @@ export function RailNavegacao({ view, onChange, isAdmin, verRelatorios, notifCou
 
   const badgeDe = (key) => {
     if (key === 'notificacoes') return notifCount || 0;
+    if (key === 'interno') return equipeNaoLidas || 0;
     return 0;
   };
 
