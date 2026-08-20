@@ -8,7 +8,7 @@ import { config } from './config.js';
 import db from './db.js';
 import { runMigrations } from './migrations/run.js';
 import { WhatsAppManager } from './whatsapp/WhatsAppManager.js';
-import { iniciarGateway, buscarAvatarContato } from './realtime/gateway.js';
+import { iniciarGateway, buscarAvatarContato, salas } from './realtime/gateway.js';
 import { createStorage } from './storage/index.js';
 import { authMiddleware, requirePapel } from './auth/middleware.js';
 import { rateLimiter } from './auth/ratelimit.js';
@@ -997,6 +997,15 @@ app.post('/api/internal/sync-user', async (req, res) => {
     res.json({ status, numero });
   });
 
+  async function removerDaSalaDoCanal(operadorId, canalId) {
+    try {
+      const sockets = await io.in(salas.operador(operadorId)).fetchSockets();
+      for (const s of sockets) s.leave(salas.canal(canalId));
+    } catch (err) {
+      console.error('[canais] falha ao remover socket da sala:', err.message);
+    }
+  }
+
   app.get('/api/canais-internos', async (req, res) => {
     try {
       const op = req.operador;
@@ -1032,6 +1041,13 @@ app.post('/api/internal/sync-user', async (req, res) => {
          JOIN canal_membros cm ON cm.canal_id = ci.id
          JOIN operadores o ON o.id = cm.operador_id
          WHERE ci.tenant_id = $1
+           -- Privacidade: so devolve canais dos quais o proprio operador participa.
+           -- Sem este EXISTS a lista expunha todas as conversas do tenant (com a
+           -- ultima mensagem embutida) para qualquer pessoa da equipe.
+           AND EXISTS (
+             SELECT 1 FROM canal_membros meu
+             WHERE meu.canal_id = ci.id AND meu.operador_id = $2
+           )
          GROUP BY ci.id
          ORDER BY ci.criado_em DESC`,
         [op.tenantId, op.id]
@@ -1054,9 +1070,16 @@ app.post('/api/internal/sync-user', async (req, res) => {
         [op.tenantId, nome || null, tipo || 'dm', op.id]
       );
 
-      const idsMembros = membros || [op.id];
+      // O criador entra sempre: sem isso ele criaria um canal do qual nao
+      // participa (e que, com o filtro de privacidade, nem apareceria para ele).
+      const idsMembros = [op.id, ...(Array.isArray(membros) ? membros : [])];
       const uniqueMembros = [...new Set(idsMembros)];
-      for (const membroId of uniqueMembros) {
+      // So aceita operadores do proprio tenant.
+      const validos = await db.manyOrNone(
+        'SELECT id FROM operadores WHERE id = ANY($1::uuid[]) AND tenant_id = $2',
+        [uniqueMembros, op.tenantId]
+      );
+      for (const { id: membroId } of validos) {
         await db.none(
           'INSERT INTO canal_membros (canal_id, operador_id, tenant_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
           [canal.id, membroId, op.tenantId]
@@ -1135,7 +1158,22 @@ app.post('/api/internal/sync-user', async (req, res) => {
       if (!Array.isArray(membros) || membros.length === 0) {
         return res.status(400).json({ erro: 'Lista de membros obrigatoria' });
       }
-      for (const membroId of membros) {
+      // Uma conversa direta e so entre as duas pessoas: incluir um terceiro
+      // daria a ele acesso a todo o historico ja trocado. Para envolver mais
+      // gente, cria-se um grupo.
+      const canalAlvo = await db.oneOrNone(
+        'SELECT tipo FROM canais_internos WHERE id = $1 AND tenant_id = $2',
+        [id, op.tenantId]
+      );
+      if (!canalAlvo) return res.status(404).json({ erro: 'Canal nao encontrado' });
+      if (canalAlvo.tipo === 'dm') {
+        return res.status(403).json({ erro: 'Nao e possivel adicionar pessoas a uma conversa direta. Crie um grupo.' });
+      }
+      const validos = await db.manyOrNone(
+        'SELECT id FROM operadores WHERE id = ANY($1::uuid[]) AND tenant_id = $2',
+        [[...new Set(membros)], op.tenantId]
+      );
+      for (const { id: membroId } of validos) {
         await db.none(
           'INSERT INTO canal_membros (canal_id, operador_id, tenant_id) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
           [id, membroId, op.tenantId]
@@ -1163,6 +1201,7 @@ app.post('/api/internal/sync-user', async (req, res) => {
         'DELETE FROM canal_membros WHERE canal_id = $1 AND operador_id = $2 AND tenant_id = $3',
         [id, operadorId, op.tenantId]
       );
+      await removerDaSalaDoCanal(operadorId, id);
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ erro: 'Erro ao remover membro' });
@@ -1177,6 +1216,7 @@ app.post('/api/internal/sync-user', async (req, res) => {
         'DELETE FROM canal_membros WHERE canal_id = $1 AND operador_id = $2 AND tenant_id = $3',
         [id, op.id, op.tenantId]
       );
+      await removerDaSalaDoCanal(op.id, id);
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ erro: 'Erro ao sair do canal' });

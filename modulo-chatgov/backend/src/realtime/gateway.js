@@ -27,7 +27,7 @@ import { normalizePhone } from '../domain/phone.js';
 import { extrairContatosCompartilhados } from '../domain/contato-compartilhado.js';
 import { createStorage } from '../storage/index.js';
 
-const salas = {
+export const salas = {
   tenant: (id) => `tenant:${id}`,
   conversa: (id) => `conversa:${id}`,
   operador: (id) => `operador:${id}`,
@@ -877,8 +877,19 @@ export function iniciarGateway(httpServer, wa, storage) {
       }
     });
 
-    socket.on('interno:abrir', async (canalId) => {
-      socket.join(salas.canal(canalId));
+    socket.on('interno:abrir', async (canalId, ack) => {
+      // Sem esta checagem qualquer operador podia entrar na sala de um canal
+      // alheio e passar a receber, em tempo real, as mensagens de uma conversa
+      // da qual nao participa.
+      try {
+        await assertMembroCanal(op.tenantId, canalId, op.id);
+        socket.join(salas.canal(canalId));
+        if (typeof ack === 'function') ack({ ok: true });
+      } catch (err) {
+        socket.leave(salas.canal(canalId));
+        console.warn('[Socket] interno:abrir negado:', op.id, canalId, err.message);
+        if (typeof ack === 'function') ack({ ok: false, erro: 'Sem permissao neste canal' });
+      }
     });
 
     socket.on('interno:enviar', async ({ canalId, conteudo, tipo, mediaUrl, mediaMime, mediaBase64, mediaNome, respondendoA }, ack) => {
