@@ -1009,6 +1009,9 @@ app.post('/api/internal/sync-user', async (req, res) => {
   app.get('/api/canais-internos', async (req, res) => {
     try {
       const op = req.operador;
+      // O admin do tenant supervisiona a equipe e enxerga todos os canais; os
+      // demais so veem aqueles de que participam.
+      const ehAdmin = op.papel === 'admin';
       const canais = await db.manyOrNone(
         `SELECT ci.*,
                 array_agg(json_build_object('id', cm.operador_id, 'nome', o.nome, 'online', o.online)) as membros,
@@ -1041,16 +1044,17 @@ app.post('/api/internal/sync-user', async (req, res) => {
          JOIN canal_membros cm ON cm.canal_id = ci.id
          JOIN operadores o ON o.id = cm.operador_id
          WHERE ci.tenant_id = $1
-           -- Privacidade: so devolve canais dos quais o proprio operador participa.
-           -- Sem este EXISTS a lista expunha todas as conversas do tenant (com a
-           -- ultima mensagem embutida) para qualquer pessoa da equipe.
-           AND EXISTS (
+           -- Privacidade: so devolve canais dos quais o proprio operador participa
+           -- (o admin passa direto). Sem este filtro a lista expunha todas as
+           -- conversas do tenant, com a ultima mensagem embutida, para qualquer
+           -- pessoa da equipe.
+           AND ($3::boolean OR EXISTS (
              SELECT 1 FROM canal_membros meu
              WHERE meu.canal_id = ci.id AND meu.operador_id = $2
-           )
+           ))
          GROUP BY ci.id
          ORDER BY ci.criado_em DESC`,
-        [op.tenantId, op.id]
+        [op.tenantId, op.id, ehAdmin]
       );
       res.json(canais);
     } catch (err) {
@@ -1096,15 +1100,25 @@ app.post('/api/internal/sync-user', async (req, res) => {
     try {
       const { id } = req.params;
       const op = req.operador;
-      const { listarMensagensCanal, assertMembroCanal, getReacoes } = await import('./services/mensagens.js');
+      const { listarMensagensCanal, assertPodeVerCanal, ehMembroCanal, ehAdminDoTenant, getReacoes } = await import('./services/mensagens.js');
       const antesDe = req.query.antesDe || null;
       const limite = req.query.limite || 50;
       try {
-        await assertMembroCanal(op.tenantId, id, op.id);
+        await assertPodeVerCanal(op.tenantId, id, op);
       } catch (e) {
         return res.status(403).json({ erro: e.message });
       }
-      const mensagens = await listarMensagensCanal(op.tenantId, id, op.id, { antesDe, limite });
+      // Admin lendo conversa de que nao participa fica registrado: o acesso e
+      // permitido, mas nao e invisivel.
+      const comoAdmin = ehAdminDoTenant(op) && !(await ehMembroCanal(op.tenantId, id, op.id));
+      if (comoAdmin && !antesDe) {
+        await db.none(
+          `INSERT INTO auditoria (tenant_id, operador_id, acao, detalhe, origem, entidade, entidade_id)
+           VALUES ($1,$2,'chat_interno.acesso_admin',$3,'usuario','canal_interno',$4)`,
+          [op.tenantId, op.id, { canal_id: id }, id]
+        ).catch(() => {});
+      }
+      const mensagens = await listarMensagensCanal(op.tenantId, id, op.id, { antesDe, limite, comoAdmin });
       // Inclui reações nas mensagens do histórico
       if (mensagens.length > 0) {
         const ids = mensagens.map((m) => m.id);
@@ -1290,9 +1304,9 @@ app.post('/api/internal/sync-user', async (req, res) => {
       const { id } = req.params;
       const op = req.operador;
       const { q } = req.query;
-      const { assertMembroCanal } = await import('./services/mensagens.js');
+      const { assertPodeVerCanal } = await import('./services/mensagens.js');
       try {
-        await assertMembroCanal(op.tenantId, id, op.id);
+        await assertPodeVerCanal(op.tenantId, id, op);
       } catch (e) {
         return res.status(403).json({ erro: e.message });
       }

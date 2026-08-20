@@ -14,7 +14,7 @@ import { atualizarPresenca } from '../services/presenca.js';
 import {
   editarMensagem, excluirMensagem, encaminharMensagem,
   fixarMensagem, desafixarMensagem, adicionarReacao, removerReacao,
-  marcarLido, assertMembroCanal
+  marcarLido, assertMembroCanal, assertPodeVerCanal
 } from '../services/mensagens.js';
 import { criarNotificacao } from '../services/notificacoes.js';
 import { transitionConversation } from '../services/status-transitions.js';
@@ -882,7 +882,7 @@ export function iniciarGateway(httpServer, wa, storage) {
       // alheio e passar a receber, em tempo real, as mensagens de uma conversa
       // da qual nao participa.
       try {
-        await assertMembroCanal(op.tenantId, canalId, op.id);
+        await assertPodeVerCanal(op.tenantId, canalId, op);
         socket.join(salas.canal(canalId));
         if (typeof ack === 'function') ack({ ok: true });
       } catch (err) {
@@ -1251,7 +1251,7 @@ export function iniciarGateway(httpServer, wa, storage) {
     socket.on('mensagem:ler', async ({ canalId }, ack) => {
       try {
         await setTenantContext(op.tenantId);
-        await marcarLido(op.tenantId, canalId, op.id);
+        await marcarLido(op.tenantId, canalId, op.id, { comoAdmin: op.papel === 'admin' });
         io.to(salas.canal(canalId)).emit('mensagem:lida', {
           canalId,
           operadorId: op.id,
