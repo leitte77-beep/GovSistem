@@ -163,15 +163,18 @@ export function BolhaMensagem({ msg, isMe, agrupada, opId, operadores, onContext
         onDoubleClick: (e) => onContextMenu?.(e, msg),
         'aria-label': `${msg.remetente_nome || 'Operador'} disse: ${msg.conteudo || tipo}`,
         style: {
-          background: isMe ? '#DCF8C6' : '#FFFFFF',
-          color: T.text, padding: '6px 9px 4px 9px',
+          background: isMe ? T.bubbleOut : T.bubbleIn,
+          color: T.text, padding: '7px 10px 5px 10px',
+          // minWidth impede que "oi" vire uma coluna de uma letra com a hora
+          // embaixo; maxWidth mantem a linha em extensao legivel em telas largas.
+          minWidth: 96, maxWidth: 'min(640px, 80%)',
           borderRadius: isMe ? '12px 4px 12px 12px' : '4px 12px 12px 12px',
           boxShadow: '0 1px 2px rgba(16,26,42,0.08)', position: 'relative',
           cursor: 'context-menu',
         },
       },
         !isMe && mostrarAutor && msg.remetente_nome && React.createElement('div', {
-          style: { fontSize: 12, fontWeight: 600, color: '#2563EB', marginBottom: 2 },
+          style: { fontSize: 12, fontWeight: 700, color: T.bubbleOutAuthor, marginBottom: 3 },
         }, msg.remetente_nome),
         msg.respondendo_a && React.createElement('div', {
           style: { fontSize: 11, color: T.textMuted, marginBottom: 3, paddingLeft: 6, borderLeft: `2px solid ${T.primary}` },
@@ -186,15 +189,15 @@ export function BolhaMensagem({ msg, isMe, agrupada, opId, operadores, onContext
                 React.createElement(MediaPreview, { msg, isMe, onOpenLightbox: abrirLightbox }),
               ),
               msg.conteudo && React.createElement('div', {
-                style: { fontSize: 14, lineHeight: '20px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
+                style: { fontSize: 14, lineHeight: '21px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'normal' },
               }, renderizarMarkdown(msg.conteudo)),
 
               // Enquete
               tipo === 'enquete' && React.createElement(EnqueteWidget, { msg, opId }),
             ),
-        React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 5, marginTop: 2 } },
-          msg.editada && React.createElement('span', { title: `Editada em ${formatarHora(msg.editada_em || msg.editadaEm)}`, style: { fontSize: 10, color: T.textMuted } }, '(editado)'),
-          React.createElement('span', { style: { fontSize: 10, color: T.textMuted } }, formatarHora(msg.criado_em || msg.criadoEm)),
+        React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 5, marginTop: 3 } },
+          msg.editada && React.createElement('span', { title: `Editada em ${formatarHora(msg.editada_em || msg.editadaEm)}`, style: { fontSize: 10, color: T.bubbleOutMeta } }, '(editado)'),
+          React.createElement('span', { style: { fontSize: 10, color: T.bubbleOutMeta, whiteSpace: 'nowrap' } }, formatarHora(msg.criado_em || msg.criadoEm)),
         ),
         React.createElement(Reacoes, { msg, operadores }),
       ),

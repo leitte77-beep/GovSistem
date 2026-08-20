@@ -312,6 +312,45 @@ async function podeVerConversa(op, convId) {
   return podeAcessarConversa(db, op, convId);
 }
 
+/**
+ * Avisa os membros de um canal interno sobre uma mensagem nova, na sala pessoal
+ * de cada um. O evento 'interno:nova' so chega a quem esta com o canal aberto;
+ * este aqui alcanca quem esta em outra tela — e o que permite tocar o som e
+ * mostrar a notificacao de mensagem da equipe.
+ */
+async function notificarMembrosDoCanal(io, tenantId, canalId, msg, remetente) {
+  try {
+    const membros = await db.manyOrNone(
+      `SELECT cm.operador_id FROM canal_membros cm
+       WHERE cm.canal_id = $1 AND cm.tenant_id = $2 AND cm.operador_id <> $3`,
+      [canalId, tenantId, remetente.id]
+    );
+    if (!membros.length) return;
+    const canal = await db.oneOrNone(
+      'SELECT nome, tipo FROM canais_internos WHERE id = $1 AND tenant_id = $2',
+      [canalId, tenantId]
+    );
+    const trecho = msg.conteudo
+      ? String(msg.conteudo).slice(0, 140)
+      : (msg.tipo === 'enquete' ? 'Enviou uma enquete' : 'Enviou um arquivo');
+    const payload = {
+      canalId,
+      canalNome: canal?.nome || null,
+      canalTipo: canal?.tipo || 'dm',
+      mensagemId: msg.id,
+      remetenteId: remetente.id,
+      remetenteNome: remetente.nome,
+      trecho,
+      criadoEm: msg.criado_em || new Date().toISOString(),
+    };
+    for (const { operador_id } of membros) {
+      io.to(salas.operador(operador_id)).emit('interno:notificacao', payload);
+    }
+  } catch (err) {
+    console.error('[Socket] notificarMembrosDoCanal error:', err.message);
+  }
+}
+
 export function iniciarGateway(httpServer, wa, storage) {
 
   const io = new Server(httpServer, {
@@ -934,6 +973,7 @@ export function iniciarGateway(httpServer, wa, storage) {
           remetente_nome: op.nome,
           respondendo_a: respondendoA || null,
         });
+        notificarMembrosDoCanal(io, op.tenantId, canalId, msg, op);
         if (ack) ack({ ok: true, mensagem: msg });
       } catch (err) {
         console.error('[Socket] interno:enviar error:', err.message);
@@ -1239,6 +1279,7 @@ export function iniciarGateway(httpServer, wa, storage) {
           ...msg,
           remetente_nome: op.nome,
         });
+        notificarMembrosDoCanal(io, op.tenantId, canalDestinoId, msg, op);
         if (ack) ack({ ok: true });
       } catch (err) {
         console.error('[Socket] mensagem:encaminhar error:', err.message);
@@ -1286,6 +1327,7 @@ export function iniciarGateway(httpServer, wa, storage) {
           remetente_nome: op.nome,
           respondendo_a: respondendoA || null,
         });
+        notificarMembrosDoCanal(io, op.tenantId, canalId, msg, op);
         if (ack) ack({ ok: true, mensagem: msg });
       } catch (err) {
         console.error('[Socket] interno:responder error:', err.message);
@@ -2306,3 +2348,5 @@ async function _auditar(tenantId, operadorId, acao, detalhe) {
     console.error('[Auditoria] Error:', err.message);
   }
 }
+
+export { notificarMembrosDoCanal };

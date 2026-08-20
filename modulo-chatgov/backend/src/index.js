@@ -8,7 +8,7 @@ import { config } from './config.js';
 import db from './db.js';
 import { runMigrations } from './migrations/run.js';
 import { WhatsAppManager } from './whatsapp/WhatsAppManager.js';
-import { iniciarGateway, buscarAvatarContato, salas } from './realtime/gateway.js';
+import { iniciarGateway, buscarAvatarContato, salas, notificarMembrosDoCanal } from './realtime/gateway.js';
 import { createStorage } from './storage/index.js';
 import { authMiddleware, requirePapel } from './auth/middleware.js';
 import { rateLimiter } from './auth/ratelimit.js';
@@ -1257,6 +1257,7 @@ app.post('/api/internal/sync-user', async (req, res) => {
       );
       msg.remetente_nome = op.nome;
       io.to(salas.canal(id)).emit('interno:nova', msg);
+      notificarMembrosDoCanal(io, op.tenantId, id, msg, op);
       res.json({ ok: true, mensagem: msg });
     } catch (err) {
       console.error('[Socket] enquete criar error:', err.message);

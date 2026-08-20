@@ -21,7 +21,7 @@ import { useAuth } from './context/AuthContext';
 import { useSocket } from './context/SocketContext';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { T } from './theme';
-import { fetchConversa, fetchWhatsAppStatus } from './api';
+import { fetchConversa, fetchWhatsAppStatus, fetchCanaisInternos } from './api';
 import { fetchNotificacoesStatus } from './api/evolucoes';
 import { useNotificacoesDesktop } from './hooks/useNotificacoesDesktop';
 
@@ -59,7 +59,7 @@ export function ChatGov() {
     return match ? { id: decodeURIComponent(match[1]) } : null;
   });
 
-  useNotificacoesDesktop({ conversaAtivaId: conversaAtiva?.id });
+  useNotificacoesDesktop({ conversaAtivaId: conversaAtiva?.id, canalAtivoId: canalAtivo?.id, opId: auth?.operador?.id });
 
   // Lembretes da agenda pessoal. Ficam aqui, e não dentro do painel central,
   // porque precisam avisar o atendente esteja ele onde estiver — inclusive com
@@ -176,6 +176,22 @@ export function ChatGov() {
     window.addEventListener('notificacao:abrir-conversa', handler);
     return () => window.removeEventListener('notificacao:abrir-conversa', handler);
   }, [socket, handleChangeView, handleSelectConversa]);
+
+  // Clique na notificacao de mensagem da equipe: abre a tela Equipe no canal.
+  useEffect(() => {
+    const handler = async (e) => {
+      const { canalId } = e.detail || {};
+      if (!canalId) return;
+      handleChangeView('interno');
+      try {
+        const canais = await fetchCanaisInternos();
+        const alvo = canais.find((c) => c.id === canalId);
+        if (alvo) setCanalAtivo(alvo);
+      } catch { /* a lista recarrega sozinha ao entrar na tela */ }
+    };
+    window.addEventListener('notificacao:abrir-canal', handler);
+    return () => window.removeEventListener('notificacao:abrir-canal', handler);
+  }, [handleChangeView]);
 
   const handleConversaUpdated = useCallback(() => setRecarregar((n) => n + 1), []);
 
