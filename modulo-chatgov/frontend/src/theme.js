@@ -34,6 +34,9 @@ var _LIGHT = {
 
   bubbleIn: '#FFFFFF',
   bubbleOut: '#E8F0FE',
+  bubbleInBorda: '#E6E9EF',
+  bubbleOutBorda: '#D5E2F7',
+  bubbleCheckLida: '#2563EB',
   bubbleOutMeta: '#667781',
   bubbleOutReplyBg: 'rgba(0,0,0,0.05)',
   bubbleOutReplyBorder: '#2563EB',
@@ -109,6 +112,10 @@ var _DARK = {
   // Bolhas do WhatsApp
   bubbleIn: '#24344D',
   bubbleOut: '#005C4B',
+  bubbleInBorda: 'rgba(255,255,255,0.07)',
+  bubbleOutBorda: 'rgba(255,255,255,0.10)',
+  // sobre a bolha verde do tema escuro o azul do primary quase some
+  bubbleCheckLida: '#7FE3C4',
   bubbleOutMeta: '#94A3B8',
   bubbleOutReplyBg: '#00473A',
   bubbleOutReplyBorder: '#2A9D8F',
