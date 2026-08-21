@@ -82,3 +82,14 @@ ROLE_DEFAULT_PERMISSIONS: dict[str, set[str]] = {
         Perm.EXPORT,
     },
 }
+
+
+def default_permissions_for_role(role_name: str) -> set[str]:
+    """Permissões padrão de uma role, usadas como fallback.
+
+    Roles sem nenhuma linha em `role_permissions` (criadas antes do RBAC
+    granular ou provisionadas pelo SaaS) caem neste mapa, para que a migração
+    de `require_roles` para `require_permission` não retire acesso de quem já
+    trabalhava no módulo.
+    """
+    return set(ROLE_DEFAULT_PERMISSIONS.get(role_name, set()))

@@ -1,4 +1,6 @@
 "use client";
+import { RequirePermission } from "@/components/RequirePermission";
+import { PERM } from "@/lib/perfil";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -54,7 +56,7 @@ interface FormErrors {
   titulo?: string;
 }
 
-export default function NovoConvenioPage() {
+function NovoConvenioConteudo() {
   const router = useRouter();
   const [form, setForm] = useState<FormData>({
     titulo: "",
@@ -630,5 +632,13 @@ export default function NovoConvenioPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <RequirePermission anyOf={[PERM.CREATE]}>
+      <NovoConvenioConteudo />
+    </RequirePermission>
   );
 }

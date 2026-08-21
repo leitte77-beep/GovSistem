@@ -78,6 +78,9 @@ class PrestacaoItem(Base, TimestampMixin, SoftDeleteMixin):
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     data_conferencia: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    anexo_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("anexos.id", ondelete="SET NULL"), nullable=True
+    )
 
     prestacao: Mapped["PrestacaoContas"] = relationship("PrestacaoContas", back_populates="itens")
     conferido_por: Mapped[Optional["User"]] = relationship("User", foreign_keys=[conferido_por_id])

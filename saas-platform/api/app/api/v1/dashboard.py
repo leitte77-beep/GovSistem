@@ -1,5 +1,7 @@
-from datetime import datetime, timezone
+import asyncio
 import shutil
+import time
+from datetime import datetime, timezone
 
 import httpx
 from fastapi import APIRouter, Depends
@@ -16,7 +18,7 @@ from app.models.organization import Organization
 from app.models.sso_session import SsoSession
 from app.models.subscription import Subscription
 from app.models.user import User
-from app.schemas.schemas import DashboardStats, DiskInfo, ModuleInfo
+from app.schemas.schemas import DashboardStats, DiskInfo, ModuleHealth, ModuleInfo
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
@@ -42,33 +44,108 @@ def _time_ago(dt: datetime) -> str:
 
 
 async def _get_last_publication() -> str:
+    """Ultima edicao publicada no Diario.
+
+    Usa a rota publica /public/editions: a rota autenticada /editions exige JWT de
+    usuario (a chave interna nao serve) e sempre devolvia 401, por isso o card
+    mostrava "—".
+    """
     diario_url = settings.DIARIO_MODULE_INTERNAL_API_URL
     if not diario_url:
         return "—"
     try:
-        internal_key = settings.INTERNAL_API_KEY.get_secret_value()
-        headers = {"X-Internal-Key": internal_key}
         async with httpx.AsyncClient(timeout=5) as client:
             resp = await client.get(
-                f"{diario_url}/api/v1/editions",
-                params={"per_page": 1, "sort": "created_at", "order": "desc"},
-                headers=headers,
+                f"{diario_url.rstrip('/')}/public/editions",
+                params={"limit": 1},
             )
-            if resp.status_code == 200:
-                data = resp.json()
-                editions = data if isinstance(data, list) else data.get("data", [])
-                if editions:
-                    pub_at = editions[0].get("published_at") or editions[0].get(
-                        "created_at"
-                    )
-                    if pub_at:
-                        dt = datetime.fromisoformat(
-                            pub_at.replace("Z", "+00:00")
-                        )
-                        return _time_ago(dt)
+        if resp.status_code != 200:
+            return "—"
+        editions = resp.json()
+        if not isinstance(editions, list) or not editions:
+            return "—"
+        pub_at = editions[0].get("publication_date") or editions[0].get("created_at")
+        if not pub_at:
+            return "—"
+        dt = datetime.fromisoformat(str(pub_at).replace("Z", "+00:00"))
+        return _time_ago(dt)
     except Exception:
-        pass
-    return "—"
+        return "—"
+
+
+MODULE_HEALTH_URLS = {
+    "diario": ("DIARIO_MODULE_INTERNAL_API_URL", "/health"),
+    "chatgov": ("CHATGOV_MODULE_INTERNAL_API_URL", "/health"),
+    "govtask": ("GOVTASK_MODULE_INTERNAL_API_URL", "/health"),
+    "govavalia": ("GOVAVALIA_MODULE_INTERNAL_API_URL", "/health"),
+    "govsocial": ("GOVSOCIAL_MODULE_INTERNAL_API_URL", "/health"),
+    "govdoc": ("GOVDOC_MODULE_INTERNAL_API_URL", "/health"),
+    "govpro": ("GOVPRO_MODULE_INTERNAL_API_URL", "/health"),
+}
+
+
+async def _check_module_health(slug: str, name: str) -> ModuleHealth:
+    """Sonda o /health do modulo.
+
+    Nem todo modulo expoe /health sem autenticacao: 401/403/404/405 significam que o
+    servico respondeu (esta de pe), so nao tem a rota liberada. Erro de conexao ou
+    5xx e que indicam problema de verdade.
+    """
+    if slug == "financeiro":
+        # Roda dentro da propria API da plataforma
+        return ModuleHealth(slug=slug, name=name, status="online", detail="Interno da plataforma")
+
+    config = MODULE_HEALTH_URLS.get(slug)
+    if not config:
+        return ModuleHealth(slug=slug, name=name, status="unknown", detail="Sem URL configurada")
+
+    setting_name, path = config
+    base_url = getattr(settings, setting_name, None)
+    if not base_url:
+        return ModuleHealth(slug=slug, name=name, status="unknown", detail="Sem URL configurada")
+
+    url = f"{base_url.rstrip('/')}{path}"
+    started = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=4) as client:
+            resp = await client.get(url)
+        latency = int((time.monotonic() - started) * 1000)
+        if resp.status_code >= 500:
+            return ModuleHealth(
+                slug=slug, name=name, status="degraded",
+                detail=f"HTTP {resp.status_code}", latency_ms=latency,
+            )
+        if resp.status_code == 200:
+            try:
+                payload = resp.json()
+            except Exception:
+                payload = {}
+            if isinstance(payload, dict) and payload.get("status") not in (None, "ok", "healthy", "up"):
+                return ModuleHealth(
+                    slug=slug, name=name, status="degraded",
+                    detail=str(payload.get("status")), latency_ms=latency,
+                )
+            return ModuleHealth(slug=slug, name=name, status="online", detail="Operacional", latency_ms=latency)
+        return ModuleHealth(
+            slug=slug, name=name, status="online",
+            detail=f"Respondendo (HTTP {resp.status_code})", latency_ms=latency,
+        )
+    except Exception as e:
+        return ModuleHealth(slug=slug, name=name, status="offline", detail=type(e).__name__)
+
+
+async def _check_modules_health(modules) -> list[ModuleHealth]:
+    results = await asyncio.gather(
+        *[_check_module_health(m.slug, m.name) for m in modules],
+        return_exceptions=True,
+    )
+    out: list[ModuleHealth] = []
+    for module, result in zip(modules, results):
+        if isinstance(result, ModuleHealth):
+            out.append(result)
+        else:
+            out.append(ModuleHealth(slug=module.slug, name=module.name, status="unknown"))
+    return out
 
 
 @router.get("", response_model=DashboardStats)
@@ -77,6 +154,12 @@ async def get_dashboard_stats(
     db: AsyncSession = Depends(get_db),
 ):
     is_platform_admin = user.is_platform_admin or user.platform_role == "SUPER_ADMIN"
+
+    organization_name = None
+    if user.organization_id:
+        organization_name = await db.scalar(
+            select(Organization.name).where(Organization.id == user.organization_id)
+        )
 
     modules_result = await db.execute(
         select(Module).where(Module.is_active.is_(True)).order_by(Module.name)
@@ -130,37 +213,38 @@ async def get_dashboard_stats(
         )
     )
 
-    system_status = "100% Operacional"
-    try:
-        diario_url = settings.DIARIO_MODULE_INTERNAL_API_URL
-        if diario_url:
-            async with httpx.AsyncClient(timeout=5) as client:
-                resp = await client.get(f"{diario_url}/api/v1/health")
-            if resp.status_code != 200 or resp.json().get("status") != "ok":
-                system_status = "Falha no módulo Diário"
-    except Exception:
-        pass
-    try:
-        govdoc_url = settings.GOVDOC_MODULE_INTERNAL_API_URL
-        if govdoc_url:
-            async with httpx.AsyncClient(timeout=5) as client:
-                resp = await client.get(f"{govdoc_url}/health/live")
-            if resp.status_code != 200 or resp.json().get("status") != "ok":
-                system_status = "Falha no módulo GovDoc"
-    except Exception:
-        pass
+    module_health: list[ModuleHealth] = []
+    if is_platform_admin:
+        module_health = await _check_modules_health(all_modules)
+        offline = [m for m in module_health if m.status == "offline"]
+        degraded = [m for m in module_health if m.status == "degraded"]
+        if offline:
+            names = ", ".join(m.name for m in offline[:2])
+            extra = f" +{len(offline) - 2}" if len(offline) > 2 else ""
+            system_status = f"Fora do ar: {names}{extra}"
+        elif degraded:
+            system_status = f"Instável: {', '.join(m.name for m in degraded[:2])}"
+        else:
+            system_status = "100% Operacional"
+    else:
+        system_status = "100% Operacional"
 
-    # Disk usage
-    try:
-        disk_usage = shutil.disk_usage("/")
-        disk_info = DiskInfo(
-            total_gb=round(disk_usage.total / (1024 ** 3), 2),
-            used_gb=round(disk_usage.used / (1024 ** 3), 2),
-            free_gb=round(disk_usage.free / (1024 ** 3), 2),
-            percent_used=round((disk_usage.used / disk_usage.total) * 100, 1),
-        )
-    except Exception:
-        disk_info = None
+    # Uso de disco e sessoes ativas sao dados de infraestrutura: so para admin da plataforma
+    if not is_platform_admin:
+        online_count = 0
+
+    disk_info = None
+    if is_platform_admin:
+        try:
+            disk_usage = shutil.disk_usage("/")
+            disk_info = DiskInfo(
+                total_gb=round(disk_usage.total / (1024 ** 3), 2),
+                used_gb=round(disk_usage.used / (1024 ** 3), 2),
+                free_gb=round(disk_usage.free / (1024 ** 3), 2),
+                percent_used=round((disk_usage.used / disk_usage.total) * 100, 1),
+            )
+        except Exception:
+            disk_info = None
 
     return DashboardStats(
         total_organizations=total_orgs or 0,
@@ -175,5 +259,8 @@ async def get_dashboard_stats(
         last_publication_ago=last_publication_ago,
         online_users_count=online_count or 0,
         system_status=system_status,
+        module_health=module_health,
+        is_platform_admin=is_platform_admin,
+        organization_name=organization_name,
         disk=disk_info,
     )

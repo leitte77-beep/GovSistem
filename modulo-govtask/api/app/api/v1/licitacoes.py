@@ -5,8 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_user, require_roles
+from app.core.auth import get_current_user, require_permission
 from app.core.database import get_db
+from app.core.permissions import Perm
 from app.models.convenio import Convenio
 from app.models.enums import TipoEvento
 from app.models.licitacao import Licitacao
@@ -65,7 +66,7 @@ async def criar_licitacao(
     convenio_id: uuid.UUID,
     body: LicitacaoCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.LICITACAO_MANAGE)),
 ):
     if not await _get_convenio(db, convenio_id, user):
         raise HTTPException(status_code=404, detail="Processo não encontrado")
@@ -115,7 +116,7 @@ async def atualizar_licitacao(
     licitacao_id: uuid.UUID,
     body: LicitacaoUpdate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.LICITACAO_MANAGE)),
 ):
     licitacao = await _get_licitacao(db, convenio_id, licitacao_id, user)
     if not licitacao:
@@ -139,7 +140,7 @@ async def excluir_licitacao(
     convenio_id: uuid.UUID,
     licitacao_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.LICITACAO_MANAGE)),
 ):
     licitacao = await _get_licitacao(db, convenio_id, licitacao_id, user)
     if not licitacao:

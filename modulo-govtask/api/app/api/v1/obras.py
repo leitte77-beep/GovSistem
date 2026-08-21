@@ -6,7 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.auth import get_current_user, require_roles
+from app.core.auth import get_current_user, require_permission
+from app.core.permissions import Perm
 from app.core.database import get_db
 from app.models.convenio import Convenio
 from app.models.obra import Obra, CronogramaItem, DiarioObra, RegistroFotografico, VistoriaObra
@@ -78,7 +79,7 @@ async def criar_obra(
     convenio_id: uuid.UUID,
     body: ObraCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN", "ENGENHEIRO_TECNICO")),
+    user: User = Depends(require_permission(Perm.ENGINEERING_MANAGE)),
 ):
     if not await _get_convenio(db, convenio_id, user):
         raise HTTPException(status_code=404, detail="Processo não encontrado")
@@ -123,7 +124,7 @@ async def atualizar_obra(
     obra_id: uuid.UUID,
     body: ObraUpdate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN", "ENGENHEIRO_TECNICO")),
+    user: User = Depends(require_permission(Perm.ENGINEERING_MANAGE)),
 ):
     obra = await _get_obra(db, convenio_id, obra_id, user)
     if not obra:
@@ -147,7 +148,7 @@ async def adicionar_cronograma(
     obra_id: uuid.UUID,
     body: CronogramaItemCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN", "ENGENHEIRO_TECNICO")),
+    user: User = Depends(require_permission(Perm.ENGINEERING_MANAGE)),
 ):
     obra = await _get_obra(db, convenio_id, obra_id, user)
     if not obra:
@@ -175,7 +176,7 @@ async def atualizar_cronograma(
     item_id: uuid.UUID,
     body: CronogramaItemUpdate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN", "ENGENHEIRO_TECNICO")),
+    user: User = Depends(require_permission(Perm.ENGINEERING_MANAGE)),
 ):
     obra = await _get_obra(db, convenio_id, obra_id, user)
     if not obra:
@@ -216,7 +217,7 @@ async def registrar_diario(
     obra_id: uuid.UUID,
     body: DiarioCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN", "ENGENHEIRO_TECNICO")),
+    user: User = Depends(require_permission(Perm.ENGINEERING_MANAGE)),
 ):
     obra = await _get_obra(db, convenio_id, obra_id, user)
     if not obra:
@@ -228,12 +229,76 @@ async def registrar_diario(
         data=body.data or datetime.now(timezone.utc),
         titulo=body.titulo,
         descricao=body.descricao,
+        clima=body.clima,
+        temperatura=body.temperatura,
+        efetivo=body.efetivo,
+        equipe=body.equipe,
+        atividades=body.atividades,
+        equipamentos=body.equipamentos,
+        ocorrencias=body.ocorrencias,
+        impedimentos=body.impedimentos,
         registrado_por_id=user.id,
     )
     db.add(registro)
     await db.commit()
     await db.refresh(registro)
     return registro
+
+
+@router.patch("/{obra_id}/diario/{registro_id}", response_model=DiarioOut)
+async def atualizar_diario(
+    convenio_id: uuid.UUID,
+    obra_id: uuid.UUID,
+    registro_id: uuid.UUID,
+    body: DiarioCreate,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission(Perm.ENGINEERING_MANAGE)),
+):
+    obra = await _get_obra(db, convenio_id, obra_id, user)
+    if not obra:
+        raise HTTPException(status_code=404, detail="Obra não encontrada")
+    result = await db.execute(
+        select(DiarioObra).where(
+            DiarioObra.id == registro_id,
+            DiarioObra.obra_id == obra_id,
+            DiarioObra.deleted_at.is_(None),
+        )
+    )
+    registro = result.scalar_one_or_none()
+    if not registro:
+        raise HTTPException(status_code=404, detail="Registro não encontrado")
+
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(registro, field, value)
+    await db.commit()
+    await db.refresh(registro)
+    return registro
+
+
+@router.delete("/{obra_id}/diario/{registro_id}", status_code=204)
+async def excluir_diario(
+    convenio_id: uuid.UUID,
+    obra_id: uuid.UUID,
+    registro_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission(Perm.ENGINEERING_MANAGE)),
+):
+    obra = await _get_obra(db, convenio_id, obra_id, user)
+    if not obra:
+        raise HTTPException(status_code=404, detail="Obra não encontrada")
+    result = await db.execute(
+        select(DiarioObra).where(
+            DiarioObra.id == registro_id,
+            DiarioObra.obra_id == obra_id,
+            DiarioObra.deleted_at.is_(None),
+        )
+    )
+    registro = result.scalar_one_or_none()
+    if not registro:
+        raise HTTPException(status_code=404, detail="Registro não encontrado")
+    registro.deleted_at = datetime.now(timezone.utc)
+    await db.commit()
+    return None
 
 
 @router.get("/{obra_id}/fotos", response_model=list[FotoOut])
@@ -258,7 +323,7 @@ async def registrar_foto(
     obra_id: uuid.UUID,
     body: FotoCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN", "ENGENHEIRO_TECNICO")),
+    user: User = Depends(require_permission(Perm.ENGINEERING_MANAGE)),
 ):
     obra = await _get_obra(db, convenio_id, obra_id, user)
     if not obra:
@@ -287,7 +352,7 @@ async def anexar_foto(
     foto_id: uuid.UUID,
     anexo_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN", "ENGENHEIRO_TECNICO")),
+    user: User = Depends(require_permission(Perm.ENGINEERING_MANAGE)),
 ):
     obra = await _get_obra(db, convenio_id, obra_id, user)
     if not obra:
@@ -324,7 +389,7 @@ async def registrar_vistoria(
     obra_id: uuid.UUID,
     body: VistoriaCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN", "ENGENHEIRO_TECNICO")),
+    user: User = Depends(require_permission(Perm.ENGINEERING_MANAGE)),
 ):
     obra = await _get_obra(db, convenio_id, obra_id, user)
     if not obra:
@@ -356,7 +421,7 @@ async def atualizar_vistoria(
     vistoria_id: uuid.UUID,
     body: VistoriaUpdate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN", "ENGENHEIRO_TECNICO")),
+    user: User = Depends(require_permission(Perm.ENGINEERING_MANAGE)),
 ):
     obra = await _get_obra(db, convenio_id, obra_id, user)
     if not obra:
@@ -383,7 +448,7 @@ async def excluir_vistoria(
     obra_id: uuid.UUID,
     vistoria_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.RESOURCE_DELETE)),
 ):
     obra = await _get_obra(db, convenio_id, obra_id, user)
     if not obra:
@@ -402,7 +467,7 @@ async def excluir_obra(
     convenio_id: uuid.UUID,
     obra_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.RESOURCE_DELETE)),
 ):
     obra = await _get_obra(db, convenio_id, obra_id, user)
     if not obra:

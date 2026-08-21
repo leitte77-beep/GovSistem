@@ -1,4 +1,6 @@
 "use client";
+import { RequirePermission } from "@/components/RequirePermission";
+import { PERM } from "@/lib/perfil";
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -18,7 +20,7 @@ type ObraExec = {
   previsao_conclusao: string | null; valor_contrato: number | null; situacao: string;
 };
 
-export default function ExecutivoPage() {
+function ExecutivoConteudo() {
   const [loading, setLoading] = useState(true);
   const [resumo, setResumo] = useState<any>(null);
   const [obras, setObras] = useState<ObraExec[]>([]);
@@ -241,5 +243,13 @@ export default function ExecutivoPage() {
         </>
       )}
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <RequirePermission anyOf={[PERM.FINANCIAL_VIEW, PERM.FINANCIAL_MANAGE]}>
+      <ExecutivoConteudo />
+    </RequirePermission>
   );
 }

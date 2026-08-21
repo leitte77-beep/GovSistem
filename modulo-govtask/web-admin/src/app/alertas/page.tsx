@@ -1,4 +1,6 @@
 "use client";
+import { RequirePermission } from "@/components/RequirePermission";
+import { PERM } from "@/lib/perfil";
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
@@ -33,7 +35,7 @@ const RISCO_COLOR: Record<string, string> = {
   "Crítico": "bg-[#7A271A]/10 text-[#7A271A]",
 };
 
-export default function AlertasPage() {
+function AlertasConteudo() {
   const [alertas, setAlertas] = useState<Alerta[]>([]);
   const [riscos, setRiscos] = useState<Risco[]>([]);
   const [loading, setLoading] = useState(true);
@@ -145,5 +147,13 @@ export default function AlertasPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <RequirePermission anyOf={[PERM.VIEW]}>
+      <AlertasConteudo />
+    </RequirePermission>
   );
 }

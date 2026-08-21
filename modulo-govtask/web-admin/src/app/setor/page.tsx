@@ -1,4 +1,6 @@
 "use client";
+import { RequirePermission } from "@/components/RequirePermission";
+import { PERM } from "@/lib/perfil";
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -22,7 +24,7 @@ const statusColumns = [
   { key: "CONTESTADA", label: "Contestadas", color: "bg-[#B54708]/10 text-[#B54708]" },
 ];
 
-export default function SetorPage() {
+function SetorConteudo() {
   const [setores, setSetores] = useState<Setor[]>([]);
   const [selected, setSelected] = useState<string>("");
   const [tarefasPorSetor, setTarefasPorSetor] = useState<Record<string, TarefaListItem[]>>({});
@@ -181,5 +183,13 @@ export default function SetorPage() {
         </>
       )}
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <RequirePermission anyOf={[PERM.VIEW]}>
+      <SetorConteudo />
+    </RequirePermission>
   );
 }

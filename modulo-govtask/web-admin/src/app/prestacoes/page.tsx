@@ -1,4 +1,6 @@
 "use client";
+import { RequirePermission } from "@/components/RequirePermission";
+import { PERM } from "@/lib/perfil";
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -20,7 +22,7 @@ type PrestacaoItem = {
 
 type Filtro = "todas" | "pendentes" | "aprovadas" | "analise" | "encerradas";
 
-export default function PrestacoesPage() {
+function PrestacoesConteudo() {
   const [prestacoes, setPrestacoes] = useState<PrestacaoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<Filtro>("todas");
@@ -112,5 +114,13 @@ export default function PrestacoesPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <RequirePermission anyOf={[PERM.ACCOUNTABILITY]}>
+      <PrestacoesConteudo />
+    </RequirePermission>
   );
 }

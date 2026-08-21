@@ -8,6 +8,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.api.v1.auth import get_current_user
+from app.core.auth import get_user_permissions, require_permission
+from app.core.permissions import Perm
 from app.core.database import get_db
 from app.models.user import User
 from app.models.convenio import Convenio
@@ -36,7 +38,7 @@ def user_has_role(user: User, role_name: str) -> bool:
 
 @router.get("")
 async def get_dashboard(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_permission(Perm.RESOURCE_VIEW)),
     db: AsyncSession = Depends(get_db),
 ):
     now = datetime.now(timezone.utc)
@@ -55,9 +57,14 @@ async def get_dashboard(
     except Exception:
         pass
 
-    is_assessor = user_has_role(current_user, "ASSESSOR") or user_has_role(current_user, "ADMIN")
-    is_engenheiro = user_has_role(current_user, "ENGENHEIRO_TECNICO")
-    is_gestor = user_has_role(current_user, "GESTOR") and not is_assessor
+    # A visão exibida decorre das permissões da role, não do seu nome — assim
+    # uma role nova ("Fiscal de Obra", "Controle Interno") recebe o painel certo
+    # apenas por ter as permissões correspondentes.
+    perms = get_user_permissions(current_user)
+    is_assessor = bool(perms & {Perm.TASK_ASSIGN, Perm.RESOURCE_EDIT})
+    is_engenheiro = Perm.ENGINEERING_MANAGE in perms and not is_assessor
+    pode_ver_financeiro = bool(perms & {Perm.FINANCIAL_VIEW, Perm.FINANCIAL_MANAGE})
+    is_gestor = pode_ver_financeiro and not is_assessor and not is_engenheiro
 
     base = {
         "convenios_ativos": 0, "tarefas_abertas": 0, "tarefas_atrasadas": 0,
@@ -65,7 +72,7 @@ async def get_dashboard(
         "tarefas_atribuidas": 0, "tarefas_entregues": 0,
         "prazos_proximos": [], "atividade_recente": [],
         "convenios_por_etapa": [], "acoes_necessarias": [],
-        "valor_aprovado": 0, "valor_captado": 0, "valor_executado": 0,
+        "valor_aprovado": 0, "valor_captado": 0, "valor_executado": 0, "valor_pago": 0,
         "obras_em_andamento": 0, "diligencias_abertas": 0,
         "prestacoes_pendentes": 0, "processos_por_situacao": [],
     }
@@ -172,9 +179,20 @@ async def get_dashboard(
 
         # Atividade recente
         eventos = (await db.execute(
-            select(EventoTimeline).where(tenant_event).order_by(EventoTimeline.ocorrido_em.desc()).limit(10)
+            select(EventoTimeline)
+            .options(selectinload(EventoTimeline.ator))
+            .where(tenant_event)
+            .order_by(EventoTimeline.ocorrido_em.desc())
+            .limit(12)
         )).scalars().all()
-        base["atividade_recente"] = [{"descricao": e.descricao, "time": e.ocorrido_em.isoformat()} for e in eventos]
+        base["atividade_recente"] = [
+            {
+                "descricao": e.descricao,
+                "ator": e.ator.name if e.ator else None,
+                "time": e.ocorrido_em.isoformat(),
+            }
+            for e in eventos
+        ]
 
     elif is_engenheiro:
         base["tarefas_atribuidas"] = (await db.execute(
@@ -248,8 +266,8 @@ async def get_dashboard(
             select(func.count(Etapa.id)).where(tenant_stage, Etapa.status == "AGUARDANDO_GOVERNO", Etapa.deleted_at.is_(None))
         )).scalar() or 0
 
-    # Métricas executivas (assessor/admin e gestor)
-    if is_assessor or is_gestor:
+    # Métricas financeiras — somente para quem tem permissão de vê-las.
+    if pode_ver_financeiro:
         convenios_all = (await db.execute(
             select(Convenio).where(
                 Convenio.organization_id == tenant_id,
@@ -268,7 +286,19 @@ async def get_dashboard(
                 MovimentoFinanceiro.deleted_at.is_(None),
             )
         )).scalar() or 0
-        base["valor_executado"] = float(executado)
+        base["valor_executado"] = float(
+            sum(c.valor_executado or 0 for c in convenios_all) or executado
+        )
+
+        # Valor pago = soma dos pagamentos efetivamente registrados
+        pago = (await db.execute(
+            select(func.coalesce(func.sum(MovimentoFinanceiro.valor), 0)).where(
+                MovimentoFinanceiro.convenio.has(Convenio.organization_id == tenant_id),
+                MovimentoFinanceiro.tipo == "PAGAMENTO",
+                MovimentoFinanceiro.deleted_at.is_(None),
+            )
+        )).scalar() or 0
+        base["valor_pago"] = float(pago or sum(c.valor_pago or 0 for c in convenios_all))
 
         # Obras em andamento
         base["obras_em_andamento"] = (await db.execute(

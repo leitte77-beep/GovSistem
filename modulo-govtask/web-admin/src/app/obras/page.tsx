@@ -1,4 +1,6 @@
 "use client";
+import { RequirePermission } from "@/components/RequirePermission";
+import { PERM } from "@/lib/perfil";
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
@@ -21,7 +23,7 @@ type ObraItem = {
 
 type Filtro = "todas" | "andamento" | "concluidas" | "atrasadas";
 
-export default function ObrasPage() {
+function ObrasConteudo() {
   const [obras, setObras] = useState<ObraItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<Filtro>("todas");
@@ -137,5 +139,13 @@ export default function ObrasPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <RequirePermission anyOf={[PERM.VIEW]}>
+      <ObrasConteudo />
+    </RequirePermission>
   );
 }

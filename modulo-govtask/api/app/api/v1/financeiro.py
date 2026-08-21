@@ -41,7 +41,7 @@ async def resumo_financeiro(
     request: Request,
     convenio_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission(Perm.FINANCIAL_VIEW, Perm.FINANCIAL_MANAGE)),
 ):
     convenio = await _get_convenio(db, convenio_id, user)
     if not convenio:
@@ -116,7 +116,7 @@ async def listar_movimentos(
     convenio_id: uuid.UUID,
     tipo: TipoMovimento | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission(Perm.FINANCIAL_VIEW, Perm.FINANCIAL_MANAGE)),
 ):
     if not await _get_convenio(db, convenio_id, user):
         raise HTTPException(status_code=404, detail="Processo não encontrado")

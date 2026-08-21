@@ -6,6 +6,7 @@ import { useAuth } from "@/lib/auth";
 import { Sidebar } from "@/components/ui/Sidebar";
 import { Topbar } from "@/components/ui/Topbar";
 import { CommandPalette } from "@/components/CommandPalette";
+import { homeDoPerfil, perfilDoUsuario } from "@/lib/perfil";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, loading, logout } = useAuth();
@@ -16,6 +17,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!loading && !user && pathname !== "/login") {
       router.push("/login");
+      return;
+    }
+    // Cada perfil abre no painel que corresponde ao seu trabalho: quem não
+    // coordena processos não precisa passar pelo dashboard de coordenação.
+    if (!loading && user && pathname === "/") {
+      const destino = homeDoPerfil(perfilDoUsuario(user.permissions ?? []));
+      if (destino !== "/") router.replace(destino);
     }
   }, [loading, user, pathname, router]);
 

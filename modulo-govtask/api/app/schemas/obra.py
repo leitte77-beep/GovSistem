@@ -108,6 +108,14 @@ class DiarioCreate(BaseModel):
     data: datetime | None = None
     titulo: str | None = Field(None, max_length=300)
     descricao: str | None = None
+    clima: str | None = Field(None, max_length=30)
+    temperatura: str | None = Field(None, max_length=20)
+    efetivo: int | None = None
+    equipe: str | None = None
+    atividades: str | None = None
+    equipamentos: str | None = None
+    ocorrencias: str | None = None
+    impedimentos: str | None = None
 
 
 class DiarioOut(BaseModel):
@@ -117,6 +125,14 @@ class DiarioOut(BaseModel):
     data: datetime | None
     titulo: str | None
     descricao: str | None
+    clima: str | None = None
+    temperatura: str | None = None
+    efetivo: int | None = None
+    equipe: str | None = None
+    atividades: str | None = None
+    equipamentos: str | None = None
+    ocorrencias: str | None = None
+    impedimentos: str | None = None
     registrado_por_id: uuid.UUID | None
     created_at: datetime
 

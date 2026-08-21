@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_user, require_roles
+from app.core.auth import get_current_user, require_permission
+from app.core.permissions import Perm
 from app.core.database import get_db
 from app.models.contestacao import Contestacao
 from app.models.convenio import Convenio
@@ -88,7 +89,7 @@ async def decidir_contestacao(
     contestacao_id: uuid.UUID,
     body: ContestacaoDecidir,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.TASK_APPROVE)),
 ):
     result = await db.execute(
         select(Contestacao)

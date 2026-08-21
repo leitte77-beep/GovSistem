@@ -2,82 +2,32 @@
 
 import Link from "next/link";
 import {
-  LayoutDashboard,
-  FileText,
-  CheckSquare,
-  Bell,
-  BarChart3,
   FileStack,
   Settings,
   LogOut,
   ChevronDown,
   ChevronUp,
-  CalendarDays,
-  Building2,
-  ClipboardCheck,
-  ListChecks,
-  Search,
-  LayoutGrid,
-  HardHat,
   Landmark,
   X,
   Menu,
   Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
-import type { LucideIcon } from "lucide-react";
+import { useMemo, useState } from "react";
+import {
+  PERM,
+  PERFIL_LABEL,
+  navGroupsDoPerfil,
+  perfilDoUsuario,
+  type NavItem,
+} from "@/lib/perfil";
 
 type SidebarUser = {
   name: string;
   email: string;
   roles: { name: string }[];
+  permissions?: string[];
 };
-
-type NavItem = {
-  key: string;
-  href: string;
-  label: string;
-  icon: LucideIcon;
-};
-
-type NavGroup = { title: string; items: NavItem[] };
-
-const NAV_GROUPS: NavGroup[] = [
-  {
-    title: "Visão Geral",
-    items: [
-      { key: "dashboard", href: "/", label: "Dashboard", icon: LayoutDashboard },
-      { key: "pendencias", href: "/pendencias", label: "Minhas Pendências", icon: CheckSquare },
-      { key: "coordenador", href: "/coordenador", label: "Painel do Coordenador", icon: ListChecks },
-    ],
-  },
-  {
-    title: "Gestão",
-    items: [
-      { key: "convenios", href: "/convenios", label: "Processos", icon: FileText },
-      { key: "tarefas", href: "/tarefas", label: "Quadro de Tarefas", icon: LayoutGrid },
-      { key: "setor", href: "/setor", label: "Demandas do Setor", icon: Building2 },
-    ],
-  },
-  {
-    title: "Acompanhamento",
-    items: [
-      { key: "obras", href: "/obras", label: "Obras", icon: HardHat },
-      { key: "prestacoes", href: "/prestacoes", label: "Prestações de Contas", icon: ClipboardCheck },
-      { key: "calendario", href: "/calendario", label: "Calendário", icon: CalendarDays },
-    ],
-  },
-  {
-    title: "Insights",
-    items: [
-      { key: "relatorios", href: "/convenios/relatorios", label: "Relatórios", icon: BarChart3 },
-      { key: "alertas", href: "/alertas", label: "Alertas", icon: Bell },
-      { key: "busca", href: "/busca", label: "Busca Global", icon: Search },
-      { key: "notificacoes", href: "/notificacoes", label: "Notificações", icon: Bell },
-    ],
-  },
-];
 
 const ADMIN_ITEMS: NavItem[] = [
   { key: "templates", href: "/admin/templates", label: "Templates", icon: FileStack },
@@ -85,21 +35,6 @@ const ADMIN_ITEMS: NavItem[] = [
 ];
 
 const SAAS_URL = process.env.NEXT_PUBLIC_SAAS_URL || "http://localhost:3000";
-
-const ROLE_LABEL: Record<string, string> = {
-  ADMIN: "Administrador",
-  ASSESSOR: "Assessor / Coordenador",
-  ENGENHEIRO_TECNICO: "Engenharia",
-  COMPRAS_LICITACAO: "Compras & Licitações",
-  GESTOR: "Gestão",
-};
-
-function roleLabel(roles: { name: string }[]): string {
-  for (const r of roles) {
-    if (ROLE_LABEL[r.name]) return ROLE_LABEL[r.name];
-  }
-  return "Colaborador";
-}
 
 type SidebarProps = {
   user: SidebarUser | null;
@@ -112,7 +47,11 @@ type SidebarProps = {
 export function Sidebar({ user, pathname, onLogout, open, onClose }: SidebarProps) {
   const [collapsed, setCollapsed] = useState(false);
 
-  const isAdmin = user?.roles?.some((r) => r.name === "ADMIN");
+  const perms = useMemo(() => user?.permissions ?? [], [user]);
+  const perfil = useMemo(() => perfilDoUsuario(perms), [perms]);
+  const navGroups = useMemo(() => navGroupsDoPerfil(perfil, perms), [perfil, perms]);
+
+  const isAdmin = perms.includes(PERM.ADMIN);
   const initials = user?.name
     ? user.name.split(" ").slice(0, 2).map((s) => s[0]).join("").toUpperCase()
     : "GT";
@@ -189,7 +128,7 @@ export function Sidebar({ user, pathname, onLogout, open, onClose }: SidebarProp
 
         {/* Navegação agrupada */}
         <nav className="flex-1 px-3 py-4 space-y-4 overflow-y-auto scrollbar-thin">
-          {NAV_GROUPS.map((group) => (
+          {navGroups.map((group) => (
             <div key={group.title}>
               {!collapsed && (
                 <p className="px-3 mb-1 text-[10px] font-semibold text-navy-muted uppercase tracking-[0.12em]">
@@ -236,7 +175,7 @@ export function Sidebar({ user, pathname, onLogout, open, onClose }: SidebarProp
                   </div>
                   <div className="min-w-0">
                     <p className="text-[13px] font-semibold text-white truncate">{user.name}</p>
-                    <p className="text-[11px] text-navy-muted truncate">{roleLabel(user.roles || [])}</p>
+                    <p className="text-[11px] text-navy-muted truncate">{PERFIL_LABEL[perfil]}</p>
                   </div>
                 </div>
               )}

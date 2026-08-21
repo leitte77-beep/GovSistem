@@ -72,7 +72,17 @@ async def listar_tarefas(
     if convenio_id:
         query = query.where(Tarefa.convenio_id == convenio_id)
 
-    query = query.offset(skip).limit(limit).order_by(Tarefa.prazo.asc())
+    query = (
+        query.options(
+            selectinload(Tarefa.atribuida_a),
+            selectinload(Tarefa.setor_destino),
+            selectinload(Tarefa.etapa),
+            selectinload(Tarefa.convenio),
+        )
+        .offset(skip)
+        .limit(limit)
+        .order_by(Tarefa.prazo.asc())
+    )
 
     result = await db.execute(query)
     tarefas = result.scalars().all()
@@ -80,7 +90,31 @@ async def listar_tarefas(
     if atrasadas:
         tarefas = [t for t in tarefas if t.atrasada]
 
-    return tarefas
+    # Monta explicitamente: os relacionamentos usam nomes diferentes de `name`
+    # e o lazy load fora do greenlet quebraria a serialização.
+    return [
+        {
+            "id": t.id,
+            "convenio_id": t.convenio_id,
+            "etapa_id": t.etapa_id,
+            "titulo": t.titulo,
+            "descricao": t.descricao,
+            "atribuida_a_id": t.atribuida_a_id,
+            "atribuida_a": {"id": t.atribuida_a.id, "name": t.atribuida_a.name} if t.atribuida_a else None,
+            "setor_destino_id": t.setor_destino_id,
+            "setor_destino": {"id": t.setor_destino.id, "nome": t.setor_destino.nome} if t.setor_destino else None,
+            "etapa": {"id": t.etapa.id, "nome": t.etapa.nome} if t.etapa else None,
+            "convenio": {"id": t.convenio.id, "titulo": t.convenio.titulo} if t.convenio else None,
+            "prioridade": t.prioridade,
+            "prazo": t.prazo,
+            "prazo_interno": t.prazo_interno,
+            "status": t.status,
+            "atrasada": t.atrasada,
+            "recorrente": t.recorrente,
+            "created_at": t.created_at,
+        }
+        for t in tarefas
+    ]
 
 
 @router.post("/etapas/{etapa_id}/tarefas", response_model=TarefaOut, status_code=201)

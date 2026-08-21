@@ -6,7 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.auth import get_current_user, require_roles
+from app.core.auth import get_current_user, require_permission
+from app.core.permissions import Perm
 from app.core.database import get_db
 from app.models.convenio import Convenio
 from app.models.enums import NaturezaEtapa, StatusEtapa, TipoEvento
@@ -52,7 +53,7 @@ async def criar_etapa(
     convenio_id: uuid.UUID,
     body: EtapaCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.RESOURCE_EDIT)),
 ):
     result = await db.execute(
         select(Convenio).where(Convenio.id == convenio_id, Convenio.organization_id == user.organization_id, Convenio.deleted_at.is_(None))
@@ -96,7 +97,7 @@ async def atualizar_etapa(
     etapa_id: uuid.UUID,
     body: EtapaUpdate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.RESOURCE_EDIT)),
 ):
     result = await db.execute(
         select(Etapa).join(Convenio, Etapa.convenio_id == Convenio.id).where(Etapa.id == etapa_id, Convenio.organization_id == user.organization_id, Etapa.deleted_at.is_(None))
@@ -132,7 +133,7 @@ async def encaminhar_governo(
     etapa_id: uuid.UUID,
     body: EncaminharGovernoRequest | None = None,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.RESOURCE_EDIT)),
 ):
     result = await db.execute(
         select(Etapa).join(Convenio, Etapa.convenio_id == Convenio.id).where(Etapa.id == etapa_id, Convenio.organization_id == user.organization_id, Etapa.deleted_at.is_(None))
@@ -161,7 +162,7 @@ async def registrar_resposta_governo(
     etapa_id: uuid.UUID,
     body: RespostaGovernoRequest,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.RESOURCE_EDIT)),
 ):
     result = await db.execute(
         select(Etapa).join(Convenio, Etapa.convenio_id == Convenio.id).where(Etapa.id == etapa_id, Convenio.organization_id == user.organization_id, Etapa.deleted_at.is_(None))
@@ -190,7 +191,7 @@ async def registrar_resposta_governo(
 async def concluir_etapa_endpoint(
     etapa_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.RESOURCE_EDIT)),
 ):
     result = await db.execute(
         select(Etapa).join(Convenio, Etapa.convenio_id == Convenio.id).where(Etapa.id == etapa_id, Convenio.organization_id == user.organization_id, Etapa.deleted_at.is_(None))
@@ -210,7 +211,7 @@ async def concluir_etapa_endpoint(
 async def excluir_etapa(
     etapa_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.RESOURCE_EDIT)),
 ):
     result = await db.execute(
         select(Etapa).join(Convenio, Etapa.convenio_id == Convenio.id).where(Etapa.id == etapa_id, Convenio.organization_id == user.organization_id, Etapa.deleted_at.is_(None))

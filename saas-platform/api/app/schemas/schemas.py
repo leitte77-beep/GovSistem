@@ -633,6 +633,14 @@ class DiskInfo(BaseModel):
     percent_used: float
 
 
+class ModuleHealth(BaseModel):
+    slug: str
+    name: str
+    status: str  # online | degraded | offline | unknown
+    detail: Optional[str] = None
+    latency_ms: Optional[int] = None
+
+
 class DashboardStats(BaseModel):
     total_organizations: int
     active_organizations: int
@@ -646,4 +654,7 @@ class DashboardStats(BaseModel):
     last_publication_ago: str = "—"
     online_users_count: int = 0
     system_status: str = "Operacional"
+    module_health: list[ModuleHealth] = []
+    is_platform_admin: bool = False
+    organization_name: Optional[str] = None
     disk: Optional[DiskInfo] = None

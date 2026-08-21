@@ -10,6 +10,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.permissions import default_permissions_for_role
 from app.core.security import decode_token
 from app.models.user import User
 from app.models.user_role import UserRole
@@ -119,25 +120,18 @@ async def get_current_user(
     return user
 
 
-def require_roles(*roles: str):
-    async def _check(user: User = Depends(get_current_user)) -> User:
-        user_roles = {ur.role.name for ur in user.user_roles}
-        if not user_roles.intersection(roles):
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Insufficient permissions",
-            )
-        return user
-
-    return _check
-
-
 def get_user_permissions(user: User) -> set[str]:
-    """Resolve o conjunto de permissões granulares do usuário a partir das roles."""
+    """Resolve o conjunto de permissões granulares do usuário a partir das roles.
+
+    Quando uma role não possui nenhuma permissão configurada em
+    `role_permissions`, aplica-se o padrão do catálogo — assim uma base ainda
+    não migrada continua funcionando, e o administrador segue livre para
+    ajustar as permissões de cada role sem alterar código.
+    """
     perms: set[str] = set()
     for ur in user.user_roles:
-        for rp in ur.role.permissions:
-            perms.add(rp.permission)
+        configuradas = {rp.permission for rp in ur.role.permissions}
+        perms |= configuradas or default_permissions_for_role(ur.role.name)
     return perms
 
 

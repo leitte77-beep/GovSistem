@@ -158,12 +158,45 @@ async def alternar_item(
     if not item:
         raise HTTPException(status_code=404, detail="Item não encontrado")
 
-    item.conferido = body.conferido
-    item.conferido_por_id = user.id
-    item.data_conferencia = datetime.now(timezone.utc)
+    if body.conferido is not None:
+        item.conferido = body.conferido
+        item.conferido_por_id = user.id
+        item.data_conferencia = datetime.now(timezone.utc)
+    # vincular_anexo permite desvincular enviando anexo_id nulo explicitamente
+    if body.vincular_anexo or body.anexo_id is not None:
+        item.anexo_id = body.anexo_id
     await db.commit()
     await db.refresh(item)
     return item
+
+
+@router.delete("/{prestacao_id}/itens/{item_id}", status_code=204)
+async def excluir_item(
+    request: Request,
+    convenio_id: uuid.UUID,
+    prestacao_id: uuid.UUID,
+    item_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission(Perm.ACCOUNTABILITY_MANAGE)),
+):
+    result = await db.execute(
+        select(PrestacaoItem)
+        .join(PrestacaoContas, PrestacaoContas.id == PrestacaoItem.prestacao_id)
+        .join(Convenio, Convenio.id == PrestacaoContas.convenio_id)
+        .where(
+            PrestacaoItem.id == item_id,
+            PrestacaoContas.id == prestacao_id,
+            Convenio.id == convenio_id,
+            Convenio.organization_id == user.organization_id,
+            PrestacaoItem.deleted_at.is_(None),
+        )
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item não encontrado")
+    item.deleted_at = datetime.now(timezone.utc)
+    await db.commit()
+    return None
 
 
 @router.post("/{prestacao_id}/enviar", response_model=PrestacaoOut)

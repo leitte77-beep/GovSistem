@@ -99,6 +99,14 @@ class DiarioObra(Base, TimestampMixin, SoftDeleteMixin):
     data: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     titulo: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     descricao: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    clima: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    temperatura: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    efetivo: Mapped[Optional[int]] = mapped_column(nullable=True)
+    equipe: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    atividades: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    equipamentos: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ocorrencias: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    impedimentos: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     registrado_por_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

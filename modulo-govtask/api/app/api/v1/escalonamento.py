@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_user, require_permission, require_roles
+from app.core.auth import get_current_user, require_permission
 from app.core.permissions import Perm
 from app.core.database import get_db
 from app.models.escalonamento import EscalonamentoConfig
@@ -78,7 +78,7 @@ async def atualizar_config(
 @router.post("/verificar")
 async def verificar_agora(
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ADMIN", "ASSESSOR")),
+    user: User = Depends(require_permission(Perm.ADMIN_CONFIG, Perm.TASK_APPROVE)),
 ):
     """Executa a verificação de prazos/escalonamento imediatamente."""
     resultado = await verificar_prazos(db, user.organization_id)

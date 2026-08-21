@@ -6,7 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_user, require_roles
+from app.core.auth import get_current_user, require_permission
+from app.core.permissions import Perm
 from app.core.database import get_db
 from app.models.convenio import Convenio
 from app.models.enums import StatusRepasse, TipoEvento
@@ -50,7 +51,7 @@ async def listar_repasses(
     request: Request,
     convenio_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission(Perm.FINANCIAL_VIEW, Perm.FINANCIAL_MANAGE)),
 ):
     if not await _get_convenio(db, convenio_id, user):
         raise HTTPException(status_code=404, detail="Processo não encontrado")
@@ -68,7 +69,7 @@ async def criar_repasse(
     convenio_id: uuid.UUID,
     body: RepasseCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.FINANCIAL_MANAGE)),
 ):
     if not await _get_convenio(db, convenio_id, user):
         raise HTTPException(status_code=404, detail="Processo não encontrado")
@@ -115,7 +116,7 @@ async def receber_repasse(
     repasse_id: uuid.UUID,
     body: RepasseReceber,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.FINANCIAL_MANAGE)),
 ):
     repasse = await _get_repasse(db, convenio_id, repasse_id, user)
     if not repasse:
@@ -166,7 +167,7 @@ async def atualizar_repasse(
     repasse_id: uuid.UUID,
     body: RepasseUpdate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.FINANCIAL_MANAGE)),
 ):
     repasse = await _get_repasse(db, convenio_id, repasse_id, user)
     if not repasse:
@@ -192,7 +193,7 @@ async def excluir_repasse(
     convenio_id: uuid.UUID,
     repasse_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.FINANCIAL_MANAGE)),
 ):
     repasse = await _get_repasse(db, convenio_id, repasse_id, user)
     if not repasse:

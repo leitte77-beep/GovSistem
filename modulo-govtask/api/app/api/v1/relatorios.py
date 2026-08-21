@@ -148,7 +148,12 @@ async def gerar_dossie(
         )
         .options(
             selectinload(Convenio.etapas),
-            selectinload(Convenio.tarefas),
+            selectinload(Convenio.tarefas).options(
+                selectinload(Tarefa.setor_destino),
+                selectinload(Tarefa.atribuida_a),
+                selectinload(Tarefa.etapa),
+                selectinload(Tarefa.convenio),
+            ),
             selectinload(Convenio.anexos),
             selectinload(Convenio.repasses),
             selectinload(Convenio.medicoes),

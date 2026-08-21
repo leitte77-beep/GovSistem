@@ -25,6 +25,8 @@ from app.api.v1.relatorios import router as relatorios_router
 from app.api.v1.alertas import router as alertas_router
 from app.api.v1.status_processo import router as status_processo_router
 from app.api.v1.escalonamento import router as escalonamento_router
+from app.api.v1.contratacoes import router as contratacoes_router
+from app.api.v1.fluxo import router as fluxo_router
 
 api_router = APIRouter()
 api_router.include_router(internal_router)
@@ -52,3 +54,5 @@ api_router.include_router(relatorios_router)
 api_router.include_router(alertas_router)
 api_router.include_router(status_processo_router)
 api_router.include_router(escalonamento_router)
+api_router.include_router(contratacoes_router)
+api_router.include_router(fluxo_router)

@@ -199,6 +199,14 @@ async def _sync_user_to_modules(user: User, db: AsyncSession) -> None:
 router = APIRouter(prefix="/users", tags=["users"])
 
 
+SORTABLE_USER_FIELDS = {
+    "name": User.name,
+    "email": User.email,
+    "created_at": User.created_at,
+    "is_active": User.is_active,
+}
+
+
 @router.get("", response_model=PaginatedResponse)
 async def list_users(
     page: int = Query(1, ge=1),
@@ -206,6 +214,9 @@ async def list_users(
     search: str | None = Query(None),
     organization_id: uuid.UUID | None = Query(None),
     is_active: bool | None = Query(None),
+    is_platform_admin: bool | None = Query(None),
+    sort: str = Query("name"),
+    order: str = Query("asc", pattern="^(asc|desc)$"),
     _: User = Depends(get_current_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -214,20 +225,31 @@ async def list_users(
 
     if search:
         like = f"%{search}%"
-        query = query.where(User.name.ilike(like) | User.email.ilike(like))
-        count_query = count_query.where(User.name.ilike(like) | User.email.ilike(like))
+        term = search.strip()
+        digits = re.sub(r"\D", "", term)
+        criteria = User.name.ilike(like) | User.email.ilike(like)
+        if digits:
+            criteria = criteria | User.cpf.ilike(f"%{digits}%")
+        query = query.where(criteria)
+        count_query = count_query.where(criteria)
     if organization_id:
         query = query.where(User.organization_id == organization_id)
         count_query = count_query.where(User.organization_id == organization_id)
     if is_active is not None:
         query = query.where(User.is_active == is_active)
         count_query = count_query.where(User.is_active == is_active)
+    if is_platform_admin is not None:
+        query = query.where(User.is_platform_admin == is_platform_admin)
+        count_query = count_query.where(User.is_platform_admin == is_platform_admin)
 
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
 
+    sort_column = SORTABLE_USER_FIELDS.get(sort, User.name)
+    query = query.order_by(desc(sort_column) if order == "desc" else sort_column)
+
     skip = (page - 1) * per_page
-    query = query.offset(skip).limit(per_page).order_by(User.name)
+    query = query.offset(skip).limit(per_page)
     result = await db.execute(query)
     items = result.scalars().all()
 

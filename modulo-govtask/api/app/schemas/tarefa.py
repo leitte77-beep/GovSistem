@@ -97,15 +97,42 @@ class TarefaOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class UserRefOut(BaseModel):
+    id: uuid.UUID
+    name: str
+
+    model_config = {"from_attributes": True}
+
+
+class NomeRefOut(BaseModel):
+    id: uuid.UUID
+    nome: str
+
+    model_config = {"from_attributes": True}
+
+
+class ConvenioRefOut(BaseModel):
+    id: uuid.UUID
+    titulo: str
+
+    model_config = {"from_attributes": True}
+
+
 class TarefaListItem(BaseModel):
     id: uuid.UUID
     convenio_id: uuid.UUID
     etapa_id: uuid.UUID
     titulo: str
+    descricao: str | None = None
     atribuida_a_id: uuid.UUID | None
+    atribuida_a: UserRefOut | None = None
     setor_destino_id: uuid.UUID | None
+    setor_destino: NomeRefOut | None = None
+    etapa: NomeRefOut | None = None
+    convenio: ConvenioRefOut | None = None
     prioridade: Prioridade
     prazo: datetime | None
+    prazo_interno: datetime | None = None
     status: StatusTarefa
     atrasada: bool
     recorrente: bool

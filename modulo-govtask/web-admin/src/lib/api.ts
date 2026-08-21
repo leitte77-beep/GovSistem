@@ -1,4 +1,4 @@
-import type { Convenio, ConvenioListItem, Etapa, TimelineEvent, Anexo, Tarefa, TarefaListItem, Comentario, Contestacao, Notificacao, TemplateFluxo, Setor, Diligencia, Repasse, Medicao, MovimentoFinanceiro, ResumoFinanceiro, Contrato, Aditivo, Licitacao, Prestacao, EntregaObjeto, AuditoriaRegistro, Obra, DiarioObra, RegistroFoto, VistoriaObra } from "@/types/govtask";
+import type { Convenio, ConvenioListItem, Etapa, TimelineEvent, Anexo, Tarefa, TarefaListItem, Comentario, Contestacao, Notificacao, TemplateFluxo, Setor, Diligencia, Repasse, Medicao, MovimentoFinanceiro, ResumoFinanceiro, Contrato, Aditivo, Licitacao, Prestacao, EntregaObjeto, AuditoriaRegistro, Obra, DiarioObra, RegistroFoto, VistoriaObra, MesaDoAssessor, CaixaDoDepartamento } from "@/types/govtask";
 
 const BASE_URL = "/api/govtask";
 const ACCESS_TOKEN_KEY = "govtask_access_token";
@@ -36,6 +36,17 @@ function getHeaders(isFormData = false): Record<string, string> {
   return headers;
 }
 
+/** Monta a query string ignorando valores vazios. */
+function qs(params?: Record<string, unknown>): string {
+  if (!params) return "";
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== "") q.set(k, String(v));
+  }
+  const s = q.toString();
+  return s ? `?${s}` : "";
+}
+
 async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const isFormData = options.body instanceof FormData;
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -57,7 +68,14 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
 export const api = {
   me() {
-    return request<{ id: string; email: string; name: string; roles: { id: string; name: string; label: string }[] }>("/auth/me");
+    return request<{
+      id: string;
+      email: string;
+      name: string;
+      roles: { id: string; name: string; label: string }[];
+      permissions: string[];
+      organization_id: string | null;
+    }>("/auth/me");
   },
 
   listConvenios(params?: { status?: string; tipo?: string; esfera?: string; categoria?: string; situacao?: string; search?: string; skip?: number; limit?: number }) {
@@ -88,6 +106,35 @@ export const api = {
 
   registrarProtocolo(id: string, data: { numero_protocolo: string; data_protocolo?: string }) {
     return request<Convenio>(`/convenios/${id}/protocolo`, { method: "POST", body: JSON.stringify(data) });
+  },
+
+  registrarObservacaoTimeline(convenioId: string, descricao: string) {
+    return request(`/convenios/${convenioId}/timeline`, {
+      method: "POST",
+      body: JSON.stringify({ descricao }),
+    });
+  },
+
+  atualizarDiario(convenioId: string, obraId: string, registroId: string, data: Record<string, unknown>) {
+    return request(`/convenios/${convenioId}/obras/${obraId}/diario/${registroId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+
+  excluirDiario(convenioId: string, obraId: string, registroId: string) {
+    return request<void>(`/convenios/${convenioId}/obras/${obraId}/diario/${registroId}`, { method: "DELETE" });
+  },
+
+  vincularDocumentoItemPrestacao(convenioId: string, prestacaoId: string, itemId: string, anexoId: string | null) {
+    return request(`/convenios/${convenioId}/prestacoes/${prestacaoId}/itens/${itemId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ anexo_id: anexoId, vincular_anexo: true }),
+    });
+  },
+
+  excluirItemPrestacao(convenioId: string, prestacaoId: string, itemId: string) {
+    return request<void>(`/convenios/${convenioId}/prestacoes/${prestacaoId}/itens/${itemId}`, { method: "DELETE" });
   },
 
   getTimeline(convenioId: string) {
@@ -343,6 +390,18 @@ export const api = {
     return request<void>(`/convenios/${convenioId}/licitacoes/${licitacaoId}`, { method: "DELETE" });
   },
 
+  // ── Contratações do tenant (área de Compras & Licitações) ──
+  listLicitacoesDoTenant(params?: { situacao?: string; limit?: number }) {
+    return request<(Licitacao & { processo_titulo?: string })[]>(
+      `/licitacoes${qs(params as Record<string, unknown>)}`
+    );
+  },
+  listContratosDoTenant(params?: { status?: string; limit?: number }) {
+    return request<(Contrato & { processo_titulo?: string })[]>(
+      `/contratos${qs(params as Record<string, unknown>)}`
+    );
+  },
+
   // ── Prestações de Contas ──
   listPrestacoes(convenioId: string) {
     return request<Prestacao[]>(`/convenios/${convenioId}/prestacoes`);
@@ -420,6 +479,20 @@ export const api = {
 
   listSetores() {
     return request<Setor[]>("/admin/setores");
+  },
+
+  // ── Fluxo de trabalho (assessor ↔ departamento) ──
+  getMesa() {
+    return request<MesaDoAssessor>("/mesa");
+  },
+  getMinhasDemandas(setorId?: string) {
+    return request<CaixaDoDepartamento>(`/minhas-demandas${qs({ setor_id: setorId })}`);
+  },
+  encaminharDemanda(convenioId: string, data: Record<string, unknown>) {
+    return request<{ id: string; etapa_id: string; setor: string; aviso: string | null }>(
+      `/convenios/${convenioId}/encaminhar`,
+      { method: "POST", body: JSON.stringify(data) }
+    );
   },
 
   listUsers() {
@@ -530,6 +603,13 @@ export const api = {
   registrarFoto(convenioId: string, obraId: string, data: Record<string, unknown>) {
     return request<RegistroFoto>(`/convenios/${convenioId}/obras/${obraId}/fotos`, { method: "POST", body: JSON.stringify(data) });
   },
+  anexarFoto(convenioId: string, obraId: string, fotoId: string, anexoId: string) {
+    return request(
+      `/convenios/${convenioId}/obras/${obraId}/fotos/${fotoId}/anexar?anexo_id=${anexoId}`,
+      { method: "POST" }
+    );
+  },
+
   listVistorias(convenioId: string, obraId: string) {
     return request<VistoriaObra[]>(`/convenios/${convenioId}/obras/${obraId}/vistorias`);
   },

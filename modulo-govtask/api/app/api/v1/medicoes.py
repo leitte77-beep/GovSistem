@@ -5,7 +5,8 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_user, require_roles
+from app.core.auth import get_current_user, require_permission
+from app.core.permissions import Perm
 from app.core.database import get_db
 from app.models.convenio import Convenio
 from app.models.enums import StatusMedicao, TipoEvento
@@ -66,7 +67,7 @@ async def criar_medicao(
     convenio_id: uuid.UUID,
     body: MedicaoCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN", "ENGENHEIRO_TECNICO")),
+    user: User = Depends(require_permission(Perm.ENGINEERING_MANAGE)),
 ):
     if not await _get_convenio(db, convenio_id, user):
         raise HTTPException(status_code=404, detail="Processo não encontrado")
@@ -115,7 +116,7 @@ async def aprovar_medicao(
     convenio_id: uuid.UUID,
     medicao_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.TASK_APPROVE)),
 ):
     medicao = await _get_medicao(db, convenio_id, medicao_id, user)
     if not medicao:
@@ -155,7 +156,7 @@ async def atualizar_medicao(
     medicao_id: uuid.UUID,
     body: MedicaoUpdate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN", "ENGENHEIRO_TECNICO")),
+    user: User = Depends(require_permission(Perm.ENGINEERING_MANAGE)),
 ):
     medicao = await _get_medicao(db, convenio_id, medicao_id, user)
     if not medicao:
@@ -178,7 +179,7 @@ async def excluir_medicao(
     convenio_id: uuid.UUID,
     medicao_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.TASK_APPROVE)),
 ):
     medicao = await _get_medicao(db, convenio_id, medicao_id, user)
     if not medicao:

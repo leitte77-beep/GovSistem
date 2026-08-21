@@ -2,14 +2,17 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { notify } from "@/components/ui/Toast";
-import { formatDate, STATUS_PRESTACAO_LABELS, RECURSOS_STATUS_COLORS } from "@/lib/utils";
-import type { Prestacao } from "@/types/govtask";
-import { Plus, X, CheckCircle, Send, ClipboardCheck } from "lucide-react";
+import {
+  cn,
+  formatDate,
+  pct,
+  CATEGORIA_DOCUMENTO_LABELS,
+  STATUS_PRESTACAO_LABELS,
+  RECURSOS_STATUS_COLORS,
+} from "@/lib/utils";
+import type { Anexo, Prestacao } from "@/types/govtask";
+import { Plus, CheckCircle2, Link2, Trash2, Send } from "lucide-react";
 
 type Props = { convenioId: string; canEdit: boolean };
 
@@ -17,7 +20,7 @@ const CHECKLIST_PADRAO = [
   "Relatório de execução",
   "Relatório fotográfico",
   "Notas fiscais",
-  "Comprovantes de pagamento",
+  "Pagamentos",
   "Extratos bancários",
   "Medições",
   "Documentos licitatórios",
@@ -28,17 +31,22 @@ const CHECKLIST_PADRAO = [
 
 export function PrestacoesTab({ convenioId, canEdit }: Props) {
   const [prestacoes, setPrestacoes] = useState<Prestacao[]>([]);
+  const [anexos, setAnexos] = useState<Anexo[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCriar, setShowCriar] = useState(false);
-  const [titulo, setTitulo] = useState("");
+  const [criando, setCriando] = useState(false);
+  const [novoItem, setNovoItem] = useState<Record<string, string>>({});
   const [enviando, setEnviando] = useState<string | null>(null);
   const [formEnvio, setFormEnvio] = useState({ sistema_envio: "", protocolo: "", observacao: "" });
-  const [decidindo, setDecidindo] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setPrestacoes(await api.listPrestacoes(convenioId));
+      const [p, c] = await Promise.all([
+        api.listPrestacoes(convenioId),
+        api.getConvenio(convenioId).catch(() => null),
+      ]);
+      setPrestacoes(p);
+      setAnexos(((c as any)?.anexos || []) as Anexo[]);
     } catch (e: any) {
       notify.error(e.message);
     } finally {
@@ -46,26 +54,61 @@ export function PrestacoesTab({ convenioId, canEdit }: Props) {
     }
   }, [convenioId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
 
   const criar = async () => {
+    setCriando(true);
     try {
-      const p = await api.criarPrestacao(convenioId, { titulo: titulo || undefined });
+      const p = await api.criarPrestacao(convenioId, {});
       for (const item of CHECKLIST_PADRAO) {
         await api.adicionarItemPrestacao(convenioId, p.id, item);
       }
-      notify.success("Prestação criada com checklist padrão!");
-      setShowCriar(false);
-      setTitulo("");
+      notify.success("Prestação criada com o checklist padrão!");
       load();
     } catch (e: any) {
       notify.error(e.message);
+    } finally {
+      setCriando(false);
     }
   };
 
   const alternarItem = async (prestacaoId: string, itemId: string, conferido: boolean) => {
     try {
       await api.alternarItemPrestacao(convenioId, prestacaoId, itemId, !conferido);
+      load();
+    } catch (e: any) {
+      notify.error(e.message);
+    }
+  };
+
+  const vincular = async (prestacaoId: string, itemId: string, anexoId: string) => {
+    try {
+      await api.vincularDocumentoItemPrestacao(convenioId, prestacaoId, itemId, anexoId || null);
+      notify.success(anexoId ? "Documento vinculado!" : "Documento desvinculado!");
+      load();
+    } catch (e: any) {
+      notify.error(e.message);
+    }
+  };
+
+  const excluirItem = async (prestacaoId: string, itemId: string) => {
+    if (!window.confirm("Remover este item do checklist?")) return;
+    try {
+      await api.excluirItemPrestacao(convenioId, prestacaoId, itemId);
+      load();
+    } catch (e: any) {
+      notify.error(e.message);
+    }
+  };
+
+  const adicionarItem = async (prestacaoId: string) => {
+    const descricao = (novoItem[prestacaoId] || "").trim();
+    if (descricao.length < 3) return notify.error("Descreva o item do checklist");
+    try {
+      await api.adicionarItemPrestacao(convenioId, prestacaoId, descricao);
+      setNovoItem((prev) => ({ ...prev, [prestacaoId]: "" }));
       load();
     } catch (e: any) {
       notify.error(e.message);
@@ -88,124 +131,245 @@ export function PrestacoesTab({ convenioId, canEdit }: Props) {
     }
   };
 
-  const decidir = async (id: string, status: string) => {
-    const parecer = status.includes("REJEITADA") || status.includes("DILIGENCIA")
-      ? window.prompt("Justificativa/parecer:")
-      : undefined;
-    try {
-      await api.decidirPrestacao(convenioId, id, { status, parecer: parecer || undefined });
-      notify.success("Decisão registrada!");
-      setDecidindo(null);
-      load();
-    } catch (e: any) {
-      notify.error(e.message);
-    }
-  };
+  const inputCls =
+    "w-full rounded-lg border border-[#E4E7EC] bg-white px-3.5 py-2.5 text-[14px] text-[#101828] placeholder:text-[#98A2B3] focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/20 focus:border-[#1D4ED8]";
 
-  const inputCls = "w-full border border-surface-border rounded-btn px-3 py-2 text-sm bg-white text-text-title placeholder:text-text-subtle focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/20 focus:border-[#1D4ED8]";
+  if (loading) {
+    return <div className="skeleton h-72 rounded-xl" />;
+  }
+
+  if (prestacoes.length === 0) {
+    return (
+      <div className="bg-white border border-[#E4E7EC] rounded-xl p-10 text-center">
+        <p className="text-[14px] text-[#475467]">
+          Este processo ainda não possui prestação de contas iniciada.
+        </p>
+        {canEdit && (
+          <button
+            type="button"
+            onClick={criar}
+            disabled={criando}
+            className="inline-flex items-center gap-2 rounded-lg bg-[#1D4ED8] text-white px-4 py-2.5 text-[13px] font-semibold hover:bg-[#1E40AF] disabled:bg-[#A4BCFD] transition-colors mt-4"
+          >
+            <Plus className="w-4 h-4" /> Iniciar prestação de contas
+          </button>
+        )}
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-body-sm text-text-body">Prestações de contas com checklist de conferência.</p>
-        {canEdit && <Button size="sm" icon={Plus} onClick={() => setShowCriar(true)}>Nova Prestação</Button>}
-      </div>
-
-      {loading ? (
-        <div className="skeleton h-32 rounded-card" />
-      ) : prestacoes.length === 0 ? (
-        <EmptyState icon="clipboard-list" title="Nenhuma prestação" description="Crie a prestação de contas quando o recurso estiver em fase de prestação." />
-      ) : (
-        <div className="space-y-4">
-          {prestacoes.map((p) => (
-            <Card key={p.id} padding="p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <ClipboardCheck className="w-5 h-5 text-[#1D4ED8]" />
-                  <h3 className="text-h3 text-text-title">{p.titulo || "Prestação de Contas"}</h3>
-                  <Badge label={STATUS_PRESTACAO_LABELS[p.status] || p.status} color={RECURSOS_STATUS_COLORS[p.status] || "bg-[#F6F7F9] text-[#667085]"} />
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <div className="lg:col-span-8 space-y-6">
+        {prestacoes.map((p) => {
+          const conferidos = p.itens.filter((i) => i.conferido).length;
+          return (
+            <div key={p.id} className="bg-white border border-[#E4E7EC] rounded-xl p-5">
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0">
+                  <h3 className="text-[15px] font-semibold text-[#101828]">
+                    {p.titulo || "Checklist da prestação"}
+                  </h3>
+                  <p className="text-[13px] text-[#98A2B3] mt-0.5">
+                    {conferidos} de {p.itens.length} documentos recebidos
+                  </p>
                 </div>
-                <div className="text-right shrink-0">
-                  <p className="text-h2 text-text-title tabular-nums">{p.percentual_preparacao}%</p>
-                  <p className="text-meta text-text-subtle">preparada</p>
+                <span
+                  className={cn(
+                    "inline-flex items-center rounded-pill px-2.5 py-1 text-[12px] font-medium shrink-0",
+                    RECURSOS_STATUS_COLORS[p.status] || "bg-[#F2F4F7] text-[#475467]"
+                  )}
+                >
+                  {STATUS_PRESTACAO_LABELS[p.status] || p.status}
+                </span>
+              </div>
+
+              {/* Preparação */}
+              <div className="mt-4">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[12px] text-[#667085]">Prestação de contas preparada</span>
+                  <span className="text-[12px] text-[#475467] tabular-nums">
+                    {Math.round(pct(p.percentual_preparacao))}%
+                  </span>
+                </div>
+                <div className="h-1.5 bg-[#F2F4F7] rounded-pill overflow-hidden">
+                  <div
+                    className="h-full bg-[#9E77ED] rounded-pill transition-all duration-700"
+                    style={{ width: `${pct(p.percentual_preparacao)}%` }}
+                  />
                 </div>
               </div>
 
-              <div className="flex justify-between items-center text-meta text-text-subtle mb-1 mt-2">
-                <span>Checklist de conferência</span>
-                <span>{p.itens.filter((i) => i.conferido).length} de {p.itens.length} documentos</span>
-              </div>
-              <div className="h-2 bg-[#F6F7F9] rounded-pill overflow-hidden mb-3">
-                <div className="h-full bg-[#067647] transition-all duration-700" style={{ width: `${p.percentual_preparacao}%` }} />
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+              {/* Itens */}
+              <div className="mt-5 space-y-4">
                 {p.itens.map((item) => (
-                  <button
-                    key={item.id}
-                    disabled={!canEdit || ["ENVIADA", "EM_ANALISE", "APROVADA", "APROVADA_COM_OBSERVACAO", "ENCERRADA"].includes(p.status)}
-                    onClick={() => alternarItem(p.id, item.id, item.conferido)}
-                    className={`flex items-center gap-2 p-2 rounded-btn text-body-sm text-left transition-colors ${canEdit ? "hover:bg-[#F6F7F9]" : ""} ${item.conferido ? "text-[#067647]" : "text-text-body"}`}
-                  >
-                    <span className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${item.conferido ? "bg-[#067647] border-[#067647]" : "border-[#D0D5DD] bg-white"}`}>
-                      {item.conferido && <CheckCircle className="w-3 h-3 text-white" />}
-                    </span>
-                    {item.descricao}
-                  </button>
+                  <div key={item.id} className="flex items-start gap-3">
+                    <button
+                      type="button"
+                      disabled={!canEdit}
+                      onClick={() => alternarItem(p.id, item.id, item.conferido)}
+                      className="mt-0.5 shrink-0 disabled:cursor-not-allowed"
+                      aria-label={item.conferido ? "Marcar como pendente" : "Marcar como recebido"}
+                    >
+                      {item.conferido ? (
+                        <CheckCircle2 className="w-5 h-5 text-[#12B76A]" />
+                      ) : (
+                        <span className="block w-5 h-5 rounded-md border border-[#D0D5DD] bg-white" />
+                      )}
+                    </button>
+
+                    <div className="min-w-0 flex-1">
+                      <p
+                        className={cn(
+                          "text-[14px]",
+                          item.conferido ? "text-[#98A2B3] line-through" : "text-[#101828]"
+                        )}
+                      >
+                        {item.descricao}
+                      </p>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <Link2 className="w-3.5 h-3.5 text-[#98A2B3] shrink-0" />
+                        <select
+                          value={item.anexo_id || ""}
+                          disabled={!canEdit}
+                          onChange={(e) => vincular(p.id, item.id, e.target.value)}
+                          className="flex-1 max-w-md rounded-lg border border-[#E4E7EC] bg-white px-3 py-1.5 text-[13px] text-[#475467] focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/20 disabled:bg-[#F9FAFB]"
+                        >
+                          <option value="">Vincular documento...</option>
+                          {anexos.map((a) => (
+                            <option key={a.id} value={a.id}>
+                              {(a.descricao || a.nome_arquivo).slice(0, 60)} —{" "}
+                              {CATEGORIA_DOCUMENTO_LABELS[a.categoria] || a.categoria}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => excluirItem(p.id, item.id)}
+                        className="p-1.5 rounded-lg text-[#D0D5DD] hover:text-[#B42318] hover:bg-[#B42318]/5 transition-colors shrink-0"
+                        title="Remover item"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
                 ))}
               </div>
 
-              {p.data_envio && (
-                <p className="text-meta text-text-subtle mt-2">
-                  Enviada em {formatDate(p.data_envio)}{p.sistema_envio ? ` via ${p.sistema_envio}` : ""}{p.protocolo ? ` — Protocolo ${p.protocolo}` : ""}
-                </p>
-              )}
-              {p.parecer && <p className="text-body-sm text-text-body mt-2 bg-[#F6F7F9] p-2 rounded-btn">Parecer: {p.parecer}</p>}
-
-              {canEdit && ["EM_PREPARACAO", "PRONTA"].includes(p.status) && (
-                <div className="flex gap-2 mt-3 pt-3 border-t border-surface-border">
-                  <Button size="sm" icon={Send} onClick={() => setEnviando(p.id)}>Enviar ao órgão</Button>
+              {canEdit && (
+                <div className="flex items-center gap-2 mt-5 pt-4 border-t border-[#F2F4F7]">
+                  <input
+                    value={novoItem[p.id] || ""}
+                    onChange={(e) => setNovoItem((prev) => ({ ...prev, [p.id]: e.target.value }))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") adicionarItem(p.id);
+                    }}
+                    placeholder="Adicionar item ao checklist..."
+                    className={inputCls}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => adicionarItem(p.id)}
+                    className="rounded-lg border border-[#E4E7EC] bg-white text-[#344054] px-4 py-2.5 text-[13px] font-medium hover:bg-[#F9FAFB] transition-colors shrink-0"
+                  >
+                    Adicionar
+                  </button>
                 </div>
               )}
-              {canEdit && ["ENVIADA", "EM_ANALISE"].includes(p.status) && (
-                <div className="flex gap-2 mt-3 pt-3 border-t border-surface-border flex-wrap">
-                  <Button size="sm" icon={CheckCircle} onClick={() => decidir(p.id, "APROVADA")}>Aprovar</Button>
-                  <Button size="sm" variant="secondary" onClick={() => decidir(p.id, "EM_DILIGENCIA")}>Diligência</Button>
-                  <Button size="sm" variant="danger" onClick={() => decidir(p.id, "REJEITADA")}>Rejeitar</Button>
-                </div>
-              )}
+            </div>
+          );
+        })}
+      </div>
 
-              {enviando === p.id && (
-                <div className="mt-3 pt-3 border-t border-surface-border space-y-2">
-                  <input value={formEnvio.sistema_envio} onChange={(e) => setFormEnvio({ ...formEnvio, sistema_envio: e.target.value })} className={inputCls} placeholder="Sistema (ex: Transferegov)" />
-                  <input value={formEnvio.protocolo} onChange={(e) => setFormEnvio({ ...formEnvio, protocolo: e.target.value })} className={inputCls} placeholder="Protocolo" />
-                  <div className="flex gap-2 justify-end">
-                    <Button variant="secondary" size="sm" onClick={() => { setEnviando(null); setFormEnvio({ sistema_envio: "", protocolo: "", observacao: "" }); }}>Cancelar</Button>
-                    <Button size="sm" icon={Send} onClick={() => enviar(p.id)}>Confirmar Envio</Button>
+      {/* Envio da prestação */}
+      <div className="lg:col-span-4 space-y-6">
+        {prestacoes.map((p) => (
+          <div key={p.id} className="bg-white border border-[#E4E7EC] rounded-xl p-5">
+            <h3 className="text-[15px] font-semibold text-[#101828] mb-4">Envio ao órgão</h3>
+            <dl className="space-y-2.5">
+              <Linha label="Situação" valor={STATUS_PRESTACAO_LABELS[p.status] || p.status} />
+              <Linha label="Sistema" valor={p.sistema_envio || "—"} />
+              <Linha label="Protocolo" valor={p.protocolo || "—"} />
+              <Linha label="Data de envio" valor={p.data_envio ? formatDate(p.data_envio) : "—"} />
+            </dl>
+            {p.parecer && (
+              <div className="mt-4 bg-[#F9FAFB] border border-[#F2F4F7] rounded-lg p-3">
+                <p className="text-[12px] text-[#98A2B3] mb-0.5">Parecer</p>
+                <p className="text-[13px] text-[#475467]">{p.parecer}</p>
+              </div>
+            )}
+
+            {canEdit && !p.data_envio && (
+              <>
+                {enviando === p.id ? (
+                  <div className="mt-4 space-y-3">
+                    <input
+                      value={formEnvio.sistema_envio}
+                      onChange={(e) => setFormEnvio({ ...formEnvio, sistema_envio: e.target.value })}
+                      placeholder="Sistema (ex: Transferegov)"
+                      className={inputCls}
+                    />
+                    <input
+                      value={formEnvio.protocolo}
+                      onChange={(e) => setFormEnvio({ ...formEnvio, protocolo: e.target.value })}
+                      placeholder="Protocolo"
+                      className={inputCls}
+                    />
+                    <div className="flex justify-end gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setEnviando(null)}
+                        className="px-3 py-2 text-[13px] font-medium text-[#475467] hover:text-[#101828] transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => enviar(p.id)}
+                        className="inline-flex items-center gap-2 rounded-lg bg-[#1D4ED8] text-white px-3.5 py-2 text-[13px] font-semibold hover:bg-[#1E40AF] transition-colors"
+                      >
+                        <Send className="w-4 h-4" /> Enviar
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {showCriar && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-card p-6 w-full max-w-md shadow-elevated">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-h3 text-text-title">Nova Prestação de Contas</h3>
-              <button onClick={() => setShowCriar(false)} className="text-text-subtle hover:text-text-title"><X className="w-5 h-5" /></button>
-            </div>
-            <p className="text-body-sm text-text-body mb-3">Um checklist padrão de documentos será criado automaticamente.</p>
-            <input value={titulo} onChange={(e) => setTitulo(e.target.value)} className={inputCls} placeholder="Título (opcional)" />
-            <div className="flex gap-3 justify-end mt-5">
-              <Button variant="secondary" onClick={() => setShowCriar(false)}>Cancelar</Button>
-              <Button icon={Plus} onClick={criar}>Criar Prestação</Button>
-            </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setEnviando(p.id)}
+                    className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-[#1D4ED8] text-white px-4 py-2.5 text-[13px] font-semibold hover:bg-[#1E40AF] transition-colors mt-4"
+                  >
+                    <Send className="w-4 h-4" /> Registrar envio
+                  </button>
+                )}
+              </>
+            )}
           </div>
-        </div>
-      )}
+        ))}
+
+        {canEdit && (
+          <button
+            type="button"
+            onClick={criar}
+            disabled={criando}
+            className="w-full inline-flex items-center justify-center gap-2 rounded-lg border border-[#E4E7EC] bg-white text-[#344054] px-4 py-2.5 text-[13px] font-medium hover:bg-[#F9FAFB] disabled:opacity-60 transition-colors"
+          >
+            <Plus className="w-4 h-4" /> Nova prestação
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function Linha({ label, valor }: { label: string; valor: string }) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <dt className="text-[13px] text-[#98A2B3] shrink-0">{label}</dt>
+      <dd className="text-[13px] text-[#101828] text-right font-medium min-w-0 truncate">{valor}</dd>
     </div>
   );
 }

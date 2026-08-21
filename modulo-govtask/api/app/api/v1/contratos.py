@@ -6,8 +6,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.auth import get_current_user, require_roles
+from app.core.auth import get_current_user, require_permission
 from app.core.database import get_db
+from app.core.permissions import Perm
 from app.models.contrato import Aditivo, Contrato
 from app.models.convenio import Convenio
 from app.models.enums import TipoEvento
@@ -74,7 +75,7 @@ async def criar_contrato(
     convenio_id: uuid.UUID,
     body: ContratoCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.LICITACAO_MANAGE)),
 ):
     if not await _get_convenio(db, convenio_id, user):
         raise HTTPException(status_code=404, detail="Processo não encontrado")
@@ -126,7 +127,7 @@ async def atualizar_contrato(
     contrato_id: uuid.UUID,
     body: ContratoUpdate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.LICITACAO_MANAGE)),
 ):
     contrato = await _get_contrato(db, convenio_id, contrato_id, user)
     if not contrato:
@@ -149,7 +150,7 @@ async def criar_aditivo(
     contrato_id: uuid.UUID,
     body: AditivoCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.LICITACAO_MANAGE)),
 ):
     contrato = await _get_contrato(db, convenio_id, contrato_id, user)
     if not contrato:
@@ -210,7 +211,7 @@ async def excluir_contrato(
     convenio_id: uuid.UUID,
     contrato_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.LICITACAO_MANAGE)),
 ):
     contrato = await _get_contrato(db, convenio_id, contrato_id, user)
     if not contrato:

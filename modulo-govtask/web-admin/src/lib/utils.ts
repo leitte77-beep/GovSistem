@@ -108,9 +108,9 @@ export const PRIORITY_COLORS: Record<string, string> = {
 
 export const PRIORITY_LABELS: Record<string, string> = {
   BAIXA: "Baixa",
-  NORMAL: "Normal",
+  NORMAL: "Média",
   ALTA: "Alta",
-  URGENTE: "Urgente",
+  URGENTE: "Crítica",
 };
 
 export const TIPO_CONVENIO_LABELS: Record<string, string> = {
@@ -145,9 +145,9 @@ export const ESFERA_LABELS: Record<string, string> = {
 
 export const PRIORIDADE_PROCESSO_LABELS: Record<string, string> = {
   BAIXA: "Baixa",
-  NORMAL: "Normal",
+  NORMAL: "Média",
   ALTA: "Alta",
-  URGENTE: "Urgente",
+  URGENTE: "Crítica",
 };
 
 export const SITUACAO_PROCESSO_LABELS: Record<string, string> = {
@@ -363,6 +363,10 @@ export const RECURSOS_STATUS_COLORS: Record<string, string> = {
   RECEBIMENTO_PROVISORIO: "bg-[#B54708]/10 text-[#B54708]",
   RECEBIMENTO_DEFINITIVO: "bg-[#067647]/10 text-[#067647]",
   INAUGURADA: "bg-[#067647]/10 text-[#067647]",
+  // Vistorias de obra
+  AGENDADA: "bg-[#F2F4F7] text-[#475467]",
+  REALIZADA: "bg-[#EFF8FF] text-[#175CD3]",
+  COM_RESSALVA: "bg-[#FEF0C7] text-[#B54708]",
   // Classificação documental
   PUBLICO: "bg-[#067647]/10 text-[#067647]",
   INTERNO: "bg-[#1D4ED8]/10 text-[#1D4ED8]",
@@ -372,4 +376,75 @@ export const RECURSOS_STATUS_COLORS: Record<string, string> = {
 
 export function cn(...classes: (string | boolean | undefined | null)[]): string {
   return classes.filter(Boolean).join(" ");
+}
+
+// ── Situação do processo: pill colorida (padrão das telas de recursos) ──
+export const SITUACAO_PROCESSO_COLORS: Record<string, string> = {
+  OPORTUNIDADE: "bg-[#F2F4F7] text-[#475467]",
+  EM_ARTICULACAO: "bg-[#F2F4F7] text-[#475467]",
+  PREPARANDO_PROPOSTA: "bg-[#EFF8FF] text-[#175CD3]",
+  PROPOSTA_CADASTRADA: "bg-[#EFF8FF] text-[#175CD3]",
+  EM_ANALISE_GOVERNO: "bg-[#EFF8FF] text-[#175CD3]",
+  EM_DILIGENCIA: "bg-[#FEF0C7] text-[#B54708]",
+  AGUARDANDO_DOCUMENTACAO: "bg-[#FEF0C7] text-[#B54708]",
+  DOCUMENTACAO_INTERNA: "bg-[#EFF8FF] text-[#175CD3]",
+  AGUARDANDO_APROVACAO: "bg-[#FEF0C7] text-[#B54708]",
+  APROVADO: "bg-[#ECFDF3] text-[#067647]",
+  FORMALIZACAO: "bg-[#EFF8FF] text-[#175CD3]",
+  INSTRUMENTO_CELEBRADO: "bg-[#ECFDF3] text-[#067647]",
+  AGUARDANDO_REPASSE: "bg-[#FEF0C7] text-[#B54708]",
+  RECURSO_RECEBIDO: "bg-[#ECFDF3] text-[#067647]",
+  PREPARANDO_CONTRATACAO: "bg-[#EFF8FF] text-[#175CD3]",
+  EM_LICITACAO: "bg-[#EFF8FF] text-[#175CD3]",
+  LICITACAO_CONCLUIDA: "bg-[#ECFDF3] text-[#067647]",
+  CONTRATO_CELEBRADO: "bg-[#ECFDF3] text-[#067647]",
+  AGUARDANDO_INICIO: "bg-[#FEF0C7] text-[#B54708]",
+  EM_EXECUCAO: "bg-[#EFF8FF] text-[#175CD3]",
+  OBRA_ANDAMENTO: "bg-[#EFF8FF] text-[#175CD3]",
+  AQUISICAO_ANDAMENTO: "bg-[#EFF8FF] text-[#175CD3]",
+  EM_MEDICAO: "bg-[#EFF8FF] text-[#175CD3]",
+  SUSPENSO: "bg-[#F2F4F7] text-[#475467]",
+  PARALISADO: "bg-[#FEE4E2] text-[#B42318]",
+  EM_PRESTACAO: "bg-[#F4F3FF] text-[#5925DC]",
+  PRESTACAO_ENVIADA: "bg-[#F4F3FF] text-[#5925DC]",
+  PRESTACAO_EM_ANALISE: "bg-[#F4F3FF] text-[#5925DC]",
+  PRESTACAO_EM_DILIGENCIA: "bg-[#FEF0C7] text-[#B54708]",
+  PRESTACAO_APROVADA: "bg-[#ECFDF3] text-[#067647]",
+  CONCLUIDO: "bg-[#ECFDF3] text-[#067647]",
+  CANCELADO: "bg-[#F2F4F7] text-[#475467]",
+};
+
+/** Rótulo da situação do processo, caindo para o status quando não houver situação. */
+export function situacaoLabel(situacao?: string | null, status?: string | null): string {
+  if (situacao) return SITUACAO_PROCESSO_LABELS[situacao] || situacao;
+  if (status) return STATUS_LABELS[status] || status;
+  return "—";
+}
+
+/** Cor da pill da situação do processo, caindo para a cor do status. */
+export function situacaoColor(situacao?: string | null, status?: string | null): string {
+  if (situacao && SITUACAO_PROCESSO_COLORS[situacao]) return SITUACAO_PROCESSO_COLORS[situacao];
+  if (status && STATUS_COLORS[status]) return STATUS_COLORS[status];
+  return "bg-[#F2F4F7] text-[#475467]";
+}
+
+/** "18/08 — 05:30" — formato curto usado na timeline e nos resumos. */
+export function formatDayTime(dateStr: string | null | undefined): string {
+  if (!dateStr) return "—";
+  const d = new Date(dateStr);
+  const dia = d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
+  const hora = d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  return `${dia} — ${hora}`;
+}
+
+/** Percentual sem casa decimal supérflua (a API serializa Decimal como string). */
+export function pct(value: number | string | null | undefined): number {
+  const n = Number(value ?? 0);
+  return Number.isFinite(n) ? Math.min(100, Math.max(0, n)) : 0;
+}
+
+export function pctLabel(value: number | string | null | undefined): string {
+  const n = Number(value ?? 0);
+  if (!Number.isFinite(n)) return "0";
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
 }

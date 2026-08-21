@@ -2,17 +2,20 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.auth import get_current_user, require_permission, require_roles
+from app.core.auth import get_current_user, require_permission
 from app.core.permissions import Perm
 from app.core.database import get_db
 from app.models.convenio import Convenio
 from app.models.etapa import Etapa
+from app.models.evento_timeline import EventoTimeline
 from app.models.enums import SituacaoProcesso, StatusConvenio, TipoEvento
 from app.models.template_fluxo import TemplateFluxo
+from app.models.tarefa import Tarefa
 from app.models.user import User
 from app.schemas.convenio import (
     ConvenioCreate,
@@ -172,7 +175,7 @@ async def listar_convenios(
     skip: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission(Perm.RESOURCE_VIEW)),
 ):
     query = select(Convenio).where(
         Convenio.organization_id == user.organization_id,
@@ -303,7 +306,7 @@ async def criar_convenio(
 async def obter_convenio(
     convenio_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission(Perm.RESOURCE_VIEW)),
 ):
     result = await db.execute(
         select(Convenio)
@@ -315,7 +318,15 @@ async def obter_convenio(
         .options(
             selectinload(Convenio.etapas),
             selectinload(Convenio.anexos),
-            selectinload(Convenio.tarefas),
+            # A lista de tarefas do detalhe expõe setor, responsável e etapa;
+            # sem carregá-los aqui, a serialização tentaria IO fora do contexto
+            # assíncrono (MissingGreenlet).
+            selectinload(Convenio.tarefas).options(
+                selectinload(Tarefa.setor_destino),
+                selectinload(Tarefa.atribuida_a),
+                selectinload(Tarefa.etapa),
+                selectinload(Tarefa.convenio),
+            ),
             selectinload(Convenio.obras),
             selectinload(Convenio.medicoes),
             selectinload(Convenio.movimentos_financeiros),
@@ -486,7 +497,7 @@ async def registrar_protocolo(
     convenio_id: uuid.UUID,
     body: ProtocoloRequest,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.RESOURCE_EDIT)),
 ):
     result = await db.execute(
         select(Convenio).where(
@@ -521,7 +532,7 @@ async def registrar_protocolo(
 async def obter_timeline(
     convenio_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_permission(Perm.RESOURCE_VIEW)),
 ):
     result = await db.execute(
         select(Convenio)
@@ -530,7 +541,7 @@ async def obter_timeline(
             Convenio.organization_id == user.organization_id,
             Convenio.deleted_at.is_(None),
         )
-        .options(selectinload(Convenio.eventos))
+        .options(selectinload(Convenio.eventos).selectinload(EventoTimeline.ator))
     )
     convenio = result.scalar_one_or_none()
     if not convenio:
@@ -541,6 +552,7 @@ async def obter_timeline(
             "id": str(e.id),
             "tipo_evento": e.tipo_evento.value if hasattr(e.tipo_evento, "value") else e.tipo_evento,
             "ator_id": str(e.ator_id),
+            "ator": {"id": str(e.ator.id), "name": e.ator.name} if e.ator else None,
             "descricao": e.descricao,
             "metadados": e.metadados,
             "ocorrido_em": e.ocorrido_em.isoformat(),
@@ -548,6 +560,49 @@ async def obter_timeline(
         }
         for e in convenio.eventos
     ]
+
+
+class ObservacaoTimeline(BaseModel):
+    descricao: str = Field(..., min_length=3, max_length=2000)
+
+
+@router.post("/{convenio_id}/timeline", status_code=201)
+async def registrar_observacao_timeline(
+    convenio_id: uuid.UUID,
+    body: ObservacaoTimeline,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission(Perm.RESOURCE_VIEW)),
+):
+    """Registra uma observação/movimentação manual na linha do tempo do processo."""
+    result = await db.execute(
+        select(Convenio).where(
+            Convenio.id == convenio_id,
+            Convenio.organization_id == user.organization_id,
+            Convenio.deleted_at.is_(None),
+        )
+    )
+    convenio = result.scalar_one_or_none()
+    if not convenio:
+        raise HTTPException(status_code=404, detail="Convênio não encontrado")
+
+    evento = await registrar_evento(
+        db,
+        convenio_id=convenio_id,
+        tipo_evento=TipoEvento.OBSERVACAO_REGISTRADA,
+        ator_id=user.id,
+        descricao=body.descricao,
+    )
+    await db.commit()
+    return {
+        "id": str(evento.id),
+        "tipo_evento": TipoEvento.OBSERVACAO_REGISTRADA.value,
+        "ator_id": str(user.id),
+        "ator": {"id": str(user.id), "name": user.name},
+        "descricao": evento.descricao,
+        "metadados": None,
+        "ocorrido_em": evento.ocorrido_em.isoformat(),
+        "tarefa_id": None,
+    }
 
 
 @router.delete("/{convenio_id}", status_code=204)

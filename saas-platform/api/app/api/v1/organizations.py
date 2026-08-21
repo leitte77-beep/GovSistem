@@ -2,14 +2,16 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import select, func
+from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_client_info, get_current_platform_admin, get_current_user
 from app.core.database import get_db
 from app.core.security import hash_password
 from app.models.audit_event import AuditEvent
+from app.models.module import Module
 from app.models.organization import Organization
+from app.models.organization_module import OrganizationModule
 from app.models.user import User
 from app.schemas.schemas import (
     OrganizationCreate,
@@ -21,12 +23,22 @@ from app.schemas.schemas import (
 router = APIRouter(prefix="/organizations", tags=["organizations"])
 
 
+SORTABLE_ORG_FIELDS = {
+    "name": Organization.name,
+    "slug": Organization.slug,
+    "created_at": Organization.created_at,
+    "is_active": Organization.is_active,
+}
+
+
 @router.get("", response_model=PaginatedResponse)
 async def list_organizations(
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=200),
     search: str | None = Query(None),
     is_active: bool | None = Query(None),
+    sort: str = Query("name"),
+    order: str = Query("asc", pattern="^(asc|desc)$"),
     user: User = Depends(get_current_platform_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -52,13 +64,18 @@ async def list_organizations(
     total_result = await db.execute(count_query)
     total = total_result.scalar() or 0
 
+    sort_column = SORTABLE_ORG_FIELDS.get(sort, Organization.name)
+    query = query.order_by(desc(sort_column) if order == "desc" else sort_column)
+
     skip = (page - 1) * per_page
-    query = query.offset(skip).limit(per_page).order_by(Organization.name)
+    query = query.offset(skip).limit(per_page)
     result = await db.execute(query)
     items = result.scalars().all()
 
     org_ids = [o.id for o in items]
     user_counts = {}
+    active_user_counts = {}
+    org_modules: dict[uuid.UUID, list[dict]] = {}
     if org_ids:
         count_result = await db.execute(
             select(User.organization_id, func.count(User.id))
@@ -68,10 +85,36 @@ async def list_organizations(
         for org_id, cnt in count_result:
             user_counts[org_id] = cnt
 
+        active_result = await db.execute(
+            select(User.organization_id, func.count(User.id))
+            .where(
+                User.organization_id.in_(org_ids),
+                User.deleted_at.is_(None),
+                User.is_active.is_(True),
+            )
+            .group_by(User.organization_id)
+        )
+        for org_id, cnt in active_result:
+            active_user_counts[org_id] = cnt
+
+        modules_result = await db.execute(
+            select(OrganizationModule.organization_id, Module.slug, Module.name)
+            .join(Module, Module.id == OrganizationModule.module_id)
+            .where(
+                OrganizationModule.organization_id.in_(org_ids),
+                OrganizationModule.is_active.is_(True),
+            )
+            .order_by(Module.name)
+        )
+        for org_id, slug, name in modules_result:
+            org_modules.setdefault(org_id, []).append({"slug": slug, "name": name})
+
     data = []
     for o in items:
         org_dict = OrganizationResponse.model_validate(o).model_dump()
         org_dict["user_count"] = user_counts.get(o.id, 0)
+        org_dict["active_user_count"] = active_user_counts.get(o.id, 0)
+        org_dict["modules"] = org_modules.get(o.id, [])
         data.append(org_dict)
 
     return PaginatedResponse(data=data, total=total, page=page, per_page=per_page)

@@ -6,7 +6,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.auth import get_current_user, require_roles
+from app.core.auth import get_current_user, require_permission
+from app.core.permissions import Perm
 from app.core.database import get_db
 from app.models.convenio import Convenio
 from app.models.diligencia import Diligencia
@@ -53,7 +54,7 @@ async def criar_diligencia(
     convenio_id: uuid.UUID,
     body: DiligenciaCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.RESOURCE_EDIT)),
 ):
     result = await db.execute(
         select(Convenio).where(
@@ -171,7 +172,7 @@ async def atualizar_diligencia(
     diligencia_id: uuid.UUID,
     body: DiligenciaUpdate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.RESOURCE_EDIT)),
 ):
     diligencias = await _get_diligencia(db, diligencia_id, user)
     if not diligencias:
@@ -220,7 +221,7 @@ async def responder_diligencia(
     diligencia_id: uuid.UUID,
     body: DiligenciaResponder,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN", "ENGENHEIRO_TECNICO")),
+    user: User = Depends(require_permission(Perm.RESOURCE_EDIT, Perm.ENGINEERING_MANAGE)),
 ):
     diligencias = await _get_diligencia(db, diligencia_id, user, include_convenio=True)
     if not diligencias:
@@ -268,7 +269,7 @@ async def protocolar_resposta(
     diligencia_id: uuid.UUID,
     body: DiligenciaProtocolar,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.RESOURCE_EDIT)),
 ):
     diligencias = await _get_diligencia(db, diligencia_id, user, include_convenio=True)
     if not diligencias:
@@ -296,7 +297,7 @@ async def excluir_diligencia(
     request: Request,
     diligencia_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ASSESSOR", "ADMIN")),
+    user: User = Depends(require_permission(Perm.RESOURCE_EDIT)),
 ):
     diligencias = await _get_diligencia(db, diligencia_id, user)
     if not diligencias:

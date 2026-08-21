@@ -127,11 +127,16 @@ export type StatusTarefa = "AGUARDANDO_ACEITE" | "EM_ANDAMENTO" | "ENTREGUE" | "
 
 export interface TarefaListItem {
   id: string;
+  convenio_id?: string;
+  etapa_id?: string | null;
   titulo: string;
+  descricao?: string | null;
   status: StatusTarefa;
   prioridade: string;
   prazo: string | null;
+  prazo_interno?: string | null;
   atribuida_a: { id: string; name: string } | null;
+  setor_destino?: { id: string; nome: string } | null;
   etapa?: { id: string; nome: string } | null;
   convenio?: { id: string; titulo: string } | null;
   atrasada: boolean;
@@ -218,12 +223,13 @@ export interface DashboardData {
   tarefas_atribuidas: number;
   tarefas_entregues: number;
   prazos_proximos: { item: string; prazo: string; link: string }[];
-  atividade_recente: { descricao: string; time: string }[];
+  atividade_recente: { descricao: string; ator?: string | null; time: string }[];
   convenios_por_etapa: { nome: string; count: number }[];
   acoes_necessarias: { tipo: string; item: string; descricao: string; link: string }[];
   valor_aprovado: number;
   valor_captado: number;
   valor_executado: number;
+  valor_pago: number;
   obras_em_andamento: number;
   diligencias_abertas: number;
   prestacoes_pendentes: number;
@@ -383,6 +389,7 @@ export interface PrestacaoItem {
   prestacao_id: string;
   descricao: string;
   conferido: boolean;
+  anexo_id?: string | null;
   conferido_por_id: string | null;
   data_conferencia: string | null;
   created_at: string;
@@ -488,6 +495,14 @@ export interface DiarioObra {
   data: string | null;
   titulo: string | null;
   descricao: string | null;
+  clima?: string | null;
+  temperatura?: string | null;
+  efetivo?: number | null;
+  equipe?: string | null;
+  atividades?: string | null;
+  equipamentos?: string | null;
+  ocorrencias?: string | null;
+  impedimentos?: string | null;
   registrado_por_id: string | null;
   created_at: string;
 }
@@ -522,7 +537,73 @@ export interface VistoriaObra {
   created_at: string;
 }
 
-export const VISTORIA_TIPOS = ["ROTINEIRA", "FISCALIZACAO", "RECEBIMENTO", "ESPECIAL", "OUTRA"];
-export const VISTORIA_STATUS = ["AGENDADA", "REALIZADA", "EM_ANDAMENTO", "CANCELADA"];
+export const VISTORIA_TIPOS: Record<string, string> = {
+  ROTINEIRA: "Rotineira",
+  FISCALIZACAO: "Fiscalização",
+  RECEBIMENTO: "Recebimento",
+  ESPECIAL: "Especial",
+  OUTRA: "Outra",
+};
+
+export const VISTORIA_STATUS: Record<string, string> = {
+  AGENDADA: "Agendada",
+  EM_ANDAMENTO: "Em andamento",
+  REALIZADA: "Realizada",
+  APROVADA: "Aprovada",
+  COM_RESSALVA: "Com ressalva",
+  REPROVADA: "Reprovada",
+  CANCELADA: "Cancelada",
+};
 
 export const DIARIO_TIPOS = ["VISITA", "OCORRENCIA", "CHUVA", "PARALISACAO", "AVANCO", "PROBLEMA_TECNICO", "DETERMINACAO", "FISCALIZACAO", "REUNIAO", "NOTIFICACAO"];
+
+// ── Fluxo de trabalho: o que o assessor coordena e o que o departamento recebe ──
+
+export type DemandaItem = {
+  id: string;
+  titulo: string;
+  convenio_id: string;
+  processo: string | null;
+  setor: string | null;
+  setor_id: string | null;
+  responsavel: string | null;
+  status: string;
+  prioridade: string;
+  prazo: string | null;
+  prazo_interno: string | null;
+  atrasada: boolean;
+  dias_parada: number | null;
+};
+
+export type SetorResumo = {
+  setor_id: string | null;
+  setor: string;
+  total: number;
+  atrasadas: number;
+  demandas: DemandaItem[];
+};
+
+export type ProcessoPendente = {
+  id: string;
+  titulo: string;
+  situacao: string | null;
+  etapa_atual: string | null;
+  dias_parado: number | null;
+};
+
+export type MesaDoAssessor = {
+  para_analisar: DemandaItem[];
+  devolvidas: DemandaItem[];
+  nos_setores: SetorResumo[];
+  para_protocolar: ProcessoPendente[];
+  aguardando_governo: ProcessoPendente[];
+  prazos_criticos: DemandaItem[];
+  sem_movimentacao: ProcessoPendente[];
+};
+
+export type CaixaDoDepartamento = {
+  novas: DemandaItem[];
+  em_andamento: DemandaItem[];
+  devolvidas: DemandaItem[];
+  aguardando_analise: DemandaItem[];
+};

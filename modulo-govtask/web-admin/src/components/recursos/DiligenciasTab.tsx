@@ -2,15 +2,16 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
-import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
-import { Badge } from "@/components/ui/Badge";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { notify } from "@/components/ui/Toast";
-import { formatDate, ORIGEM_DILIGENCIA_LABELS, STATUS_DILIGENCIA_LABELS, RECURSOS_STATUS_COLORS, cn } from "@/lib/utils";
-import type { Diligencia } from "@/types/govtask";
-import { AlertCircle, Plus, Send, CheckCircle, X, MessageSquare } from "lucide-react";
+import {
+  cn,
+  formatDate,
+  ORIGEM_DILIGENCIA_LABELS,
+  STATUS_DILIGENCIA_LABELS,
+  RECURSOS_STATUS_COLORS,
+} from "@/lib/utils";
+import type { Diligencia, Setor } from "@/types/govtask";
+import { Plus, MessageSquare, Send } from "lucide-react";
 
 type Props = {
   convenioId: string;
@@ -18,21 +19,21 @@ type Props = {
 };
 
 export function DiligenciasTab({ convenioId, canEdit }: Props) {
-  const { user } = useAuth();
   const [diligencias, setDiligencias] = useState<Diligencia[]>([]);
+  const [setores, setSetores] = useState<Setor[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showCriar, setShowCriar] = useState(false);
+  const [showForm, setShowForm] = useState(false);
+  const [salvando, setSalvando] = useState(false);
   const [respondendo, setRespondendo] = useState<string | null>(null);
-
-  const [form, setForm] = useState({
-    origem: "GOVERNO_FEDERAL",
-    origem_descricao: "",
-    descricao: "",
-    prazo: "",
-    protocolo: "",
-  });
   const [resposta, setResposta] = useState("");
   const [protocoloResposta, setProtocoloResposta] = useState("");
+
+  const [form, setForm] = useState({
+    descricao: "",
+    origem_descricao: "",
+    setor_destino_id: "",
+    prazo: "",
+  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -45,21 +46,41 @@ export function DiligenciasTab({ convenioId, canEdit }: Props) {
     }
   }, [convenioId]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  useEffect(() => {
+    api.listSetores().then(setSetores).catch(() => {});
+  }, []);
 
   const criar = async () => {
     if (!form.descricao.trim()) return notify.error("Informe a descrição da diligência");
+    setSalvando(true);
     try {
       await api.criarDiligencia(convenioId, {
-        origem: form.origem,
+        // A origem do enum não é escolhida na tela: o texto informado descreve o órgão.
+        origem: "CONCEDENTE",
         origem_descricao: form.origem_descricao || undefined,
         descricao: form.descricao,
+        setor_destino_id: form.setor_destino_id || undefined,
         prazo: form.prazo || undefined,
-        protocolo: form.protocolo || undefined,
       });
       notify.success("Diligência registrada!");
-      setShowCriar(false);
-      setForm({ origem: "GOVERNO_FEDERAL", origem_descricao: "", descricao: "", prazo: "", protocolo: "" });
+      setForm({ descricao: "", origem_descricao: "", setor_destino_id: "", prazo: "" });
+      setShowForm(false);
+      load();
+    } catch (e: any) {
+      notify.error(e.message);
+    } finally {
+      setSalvando(false);
+    }
+  };
+
+  const mudarStatus = async (d: Diligencia, status: string) => {
+    try {
+      await api.atualizarDiligencia(d.id, { status });
+      notify.success("Situação da diligência atualizada!");
       load();
     } catch (e: any) {
       notify.error(e.message);
@@ -83,168 +104,204 @@ export function DiligenciasTab({ convenioId, canEdit }: Props) {
     }
   };
 
-  const protocolar = async (id: string) => {
-    const proto = window.prompt("Número do protocolo da resposta enviada:");
-    if (!proto) return;
-    try {
-      await api.protocolarDiligencia(id, { resposta_protocolo: proto });
-      notify.success("Resposta protocolada!");
-      load();
-    } catch (e: any) {
-      notify.error(e.message);
-    }
-  };
+  const inputCls =
+    "w-full rounded-lg border border-[#E4E7EC] bg-white px-3.5 py-2.5 text-[14px] text-[#101828] placeholder:text-[#98A2B3] focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/20 focus:border-[#1D4ED8]";
+  const labelCls = "block text-[13px] text-[#475467] mb-1.5";
 
-  const encerrar = async (d: Diligencia) => {
-    if (!window.confirm("Encerrar esta diligência?")) return;
-    try {
-      await api.atualizarDiligencia(d.id, { status: "ENCERRADA" });
-      notify.success("Diligência encerrada!");
-      load();
-    } catch (e: any) {
-      notify.error(e.message);
-    }
-  };
-
-  const inputCls = "w-full border border-surface-border rounded-btn px-3 py-2 text-sm bg-white text-text-title placeholder:text-text-subtle focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/20 focus:border-[#1D4ED8]";
-
-  const podeResponder = canEdit || user?.roles?.some((r) => r.name === "ENGENHEIRO_TECNICO");
+  const setorNome = (id: string | null) => setores.find((s) => s.id === id)?.nome;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <p className="text-body-sm text-text-body">
-          Diligências e pendências externas recebidas do órgão concedente.
-        </p>
+        <p className="text-[14px] text-[#475467]">{diligencias.length} diligência(s)</p>
         {canEdit && (
-          <Button size="sm" icon={Plus} onClick={() => setShowCriar(true)}>
-            Nova Diligência
-          </Button>
+          <button
+            type="button"
+            onClick={() => setShowForm((v) => !v)}
+            className="inline-flex items-center gap-2 rounded-lg bg-[#1D4ED8] text-white px-4 py-2.5 text-[13px] font-semibold hover:bg-[#1E40AF] transition-colors"
+          >
+            <Plus className="w-4 h-4" /> Registrar diligência
+          </button>
         )}
       </div>
 
+      {showForm && canEdit && (
+        <div className="bg-white border border-[#E4E7EC] rounded-xl p-5">
+          <div className="space-y-4">
+            <div>
+              <label className={labelCls}>Descrição *</label>
+              <textarea
+                value={form.descricao}
+                onChange={(e) => setForm({ ...form, descricao: e.target.value })}
+                rows={3}
+                placeholder="Ex: Governo solicitou correção do orçamento da estrutura."
+                className={`${inputCls} resize-y`}
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className={labelCls}>Origem</label>
+                <input
+                  value={form.origem_descricao}
+                  onChange={(e) => setForm({ ...form, origem_descricao: e.target.value })}
+                  placeholder="Ex: Ministério da Educação"
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Departamento responsável</label>
+                <select
+                  value={form.setor_destino_id}
+                  onChange={(e) => setForm({ ...form, setor_destino_id: e.target.value })}
+                  className={inputCls}
+                >
+                  <option value="">—</option>
+                  {setores.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.nome}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div className="sm:w-1/2">
+              <label className={labelCls}>Prazo</label>
+              <input
+                type="date"
+                value={form.prazo}
+                onChange={(e) => setForm({ ...form, prazo: e.target.value })}
+                className={inputCls}
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-end gap-3 mt-5">
+            <button
+              type="button"
+              onClick={() => setShowForm(false)}
+              className="px-4 py-2.5 text-[13px] font-medium text-[#475467] hover:text-[#101828] transition-colors"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              onClick={criar}
+              disabled={!form.descricao.trim() || salvando}
+              className="rounded-lg bg-[#1D4ED8] text-white px-4 py-2.5 text-[13px] font-semibold hover:bg-[#1E40AF] disabled:bg-[#A4BCFD] disabled:cursor-not-allowed transition-colors"
+            >
+              Registrar
+            </button>
+          </div>
+        </div>
+      )}
+
       {loading ? (
-        <div className="space-y-2">
-          {[0, 1].map((i) => <div key={i} className="skeleton h-24 rounded-card" />)}
+        <div className="space-y-3">
+          {[0, 1].map((i) => (
+            <div key={i} className="skeleton h-24 rounded-xl" />
+          ))}
         </div>
       ) : diligencias.length === 0 ? (
-        <EmptyState
-          icon="alert-triangle"
-          title="Nenhuma diligência"
-          description="Quando o órgão concedente solicitar correções ou documentos, registre aqui para acompanhamento."
-        />
+        <p className="text-[13px] text-[#98A2B3] text-center py-10">
+          Nenhuma diligência registrada neste processo.
+        </p>
       ) : (
         <div className="space-y-3">
           {diligencias.map((d) => (
-            <Card key={d.id} padding="p-4">
-              <div className="flex items-start justify-between gap-3">
+            <div key={d.id} className="bg-white border border-[#E4E7EC] rounded-xl p-4">
+              <div className="flex items-start justify-between gap-4">
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <Badge label={ORIGEM_DILIGENCIA_LABELS[d.origem] || d.origem} color="bg-[#1D4ED8]/10 text-[#1D4ED8]" />
-                    <Badge label={STATUS_DILIGENCIA_LABELS[d.status] || d.status} color={RECURSOS_STATUS_COLORS[d.status] || "bg-[#F6F7F9] text-[#667085]"} />
-                    {d.prazo && <span className="text-meta text-text-subtle">Prazo: {formatDate(d.prazo)}</span>}
-                    {d.protocolo && <span className="text-meta text-text-subtle">Protocolo: {d.protocolo}</span>}
+                  <p className="text-[14px] text-[#101828]">{d.descricao}</p>
+                  <div className="flex items-center gap-2.5 mt-2.5 flex-wrap text-[12px] text-[#667085]">
+                    <span
+                      className={cn(
+                        "inline-flex items-center rounded-pill px-2.5 py-1 font-medium",
+                        RECURSOS_STATUS_COLORS[d.status] || "bg-[#F2F4F7] text-[#475467]"
+                      )}
+                    >
+                      {STATUS_DILIGENCIA_LABELS[d.status] || d.status}
+                    </span>
+                    <span>
+                      Origem: {d.origem_descricao || ORIGEM_DILIGENCIA_LABELS[d.origem] || d.origem}
+                    </span>
+                    {setorNome(d.setor_destino_id) && <span>{setorNome(d.setor_destino_id)}</span>}
+                    {d.prazo && <span>Prazo: {formatDate(d.prazo)}</span>}
+                    {d.protocolo && <span>Protocolo: {d.protocolo}</span>}
                   </div>
-                  <p className="text-body-sm font-medium text-text-title mt-2">{d.descricao}</p>
-                  {d.origem_descricao && (
-                    <p className="text-meta text-text-subtle mt-0.5">Origem: {d.origem_descricao}</p>
-                  )}
                   {d.resposta_interna && (
-                    <div className="mt-2 bg-[#F6F7F9] rounded-btn p-2 text-body-sm text-text-body">
-                      <p className="text-meta text-text-subtle mb-0.5">Resposta interna:</p>
-                      {d.resposta_interna}
-                      {d.resposta_protocolo && <p className="text-meta text-[#067647] mt-1">Protocolada: {d.resposta_protocolo}</p>}
+                    <div className="mt-3 bg-[#F9FAFB] border border-[#F2F4F7] rounded-lg p-3">
+                      <p className="text-[12px] text-[#98A2B3] mb-0.5">Resposta interna</p>
+                      <p className="text-[13px] text-[#475467]">{d.resposta_interna}</p>
+                      {d.resposta_protocolo && (
+                        <p className="text-[12px] text-[#067647] mt-1">Protocolada: {d.resposta_protocolo}</p>
+                      )}
                     </div>
                   )}
-                  <p className="text-meta text-text-subtle mt-1">Recebida em {formatDate(d.data_recebimento || d.created_at)}</p>
                 </div>
-                {canEdit && d.status !== "ENCERRADA" && (
-                  <div className="flex flex-col gap-1 shrink-0">
-                    <Button variant="secondary" size="sm" icon={MessageSquare} onClick={() => setRespondendo(d.id)}>
-                      Responder
-                    </Button>
-                    {d.status === "RESPONDIDA_INTERNAMENTE" && (
-                      <Button variant="secondary" size="sm" icon={Send} onClick={() => protocolar(d.id)}>
-                        Protocolar
-                      </Button>
-                    )}
-                    <Button variant="ghost" size="sm" icon={CheckCircle} onClick={() => encerrar(d)}>
-                      Encerrar
-                    </Button>
+
+                {canEdit && (
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setRespondendo(respondendo === d.id ? null : d.id)}
+                      className="p-2 rounded-lg text-[#98A2B3] hover:text-[#1D4ED8] hover:bg-[#1D4ED8]/5 transition-colors"
+                      title="Responder diligência"
+                    >
+                      <MessageSquare className="w-[18px] h-[18px]" />
+                    </button>
+                    <select
+                      value={d.status}
+                      onChange={(e) => mudarStatus(d, e.target.value)}
+                      className="rounded-lg border border-[#E4E7EC] bg-white px-3 py-2 text-[13px] text-[#344054] focus:outline-none focus:ring-2 focus:ring-[#1D4ED8]/20"
+                    >
+                      {Object.entries(STATUS_DILIGENCIA_LABELS).map(([k, v]) => (
+                        <option key={k} value={k}>
+                          {v}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 )}
               </div>
 
-              {respondendo === d.id && (
-                <div className="mt-3 pt-3 border-t border-surface-border space-y-2">
+              {respondendo === d.id && canEdit && (
+                <div className="mt-4 pt-4 border-t border-[#F2F4F7] space-y-3">
                   <textarea
                     value={resposta}
                     onChange={(e) => setResposta(e.target.value)}
                     placeholder="Resposta elaborada internamente..."
                     rows={3}
-                    className={inputCls}
+                    className={`${inputCls} resize-y`}
                   />
                   <input
                     value={protocoloResposta}
                     onChange={(e) => setProtocoloResposta(e.target.value)}
-                    placeholder="Protocolo (opcional)"
+                    placeholder="Protocolo da resposta (opcional)"
                     className={inputCls}
                   />
-                  <div className="flex gap-2 justify-end">
-                    <Button variant="secondary" size="sm" onClick={() => { setRespondendo(null); setResposta(""); setProtocoloResposta(""); }}>
+                  <div className="flex justify-end gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRespondendo(null);
+                        setResposta("");
+                        setProtocoloResposta("");
+                      }}
+                      className="px-4 py-2.5 text-[13px] font-medium text-[#475467] hover:text-[#101828] transition-colors"
+                    >
                       Cancelar
-                    </Button>
-                    <Button size="sm" icon={Send} onClick={() => responder(d.id)}>
-                      Registrar Resposta
-                    </Button>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => responder(d.id)}
+                      className="inline-flex items-center gap-2 rounded-lg bg-[#1D4ED8] text-white px-4 py-2.5 text-[13px] font-semibold hover:bg-[#1E40AF] transition-colors"
+                    >
+                      <Send className="w-4 h-4" /> Registrar resposta
+                    </button>
                   </div>
                 </div>
               )}
-            </Card>
+            </div>
           ))}
-        </div>
-      )}
-
-      {showCriar && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-card p-6 w-full max-w-lg shadow-elevated max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-h3 text-text-title">Registrar Diligência</h3>
-              <button onClick={() => setShowCriar(false)} className="text-text-subtle hover:text-text-title">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <label className="text-label text-text-body mb-1 block">Origem</label>
-                <select value={form.origem} onChange={(e) => setForm({ ...form, origem: e.target.value })} className={inputCls}>
-                  {Object.entries(ORIGEM_DILIGENCIA_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-label text-text-body mb-1 block">Órgão/descrição da origem</label>
-                <input value={form.origem_descricao} onChange={(e) => setForm({ ...form, origem_descricao: e.target.value })} className={inputCls} placeholder="Ex: Ministério da Educação" />
-              </div>
-              <div>
-                <label className="text-label text-text-body mb-1 block">Descrição *</label>
-                <textarea value={form.descricao} onChange={(e) => setForm({ ...form, descricao: e.target.value })} rows={3} className={inputCls} placeholder="O que foi solicitado pelo órgão?" />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-label text-text-body mb-1 block">Prazo</label>
-                  <input type="date" value={form.prazo} onChange={(e) => setForm({ ...form, prazo: e.target.value })} className={inputCls} />
-                </div>
-                <div>
-                  <label className="text-label text-text-body mb-1 block">Protocolo</label>
-                  <input value={form.protocolo} onChange={(e) => setForm({ ...form, protocolo: e.target.value })} className={inputCls} />
-                </div>
-              </div>
-            </div>
-            <div className="flex gap-3 justify-end mt-5">
-              <Button variant="secondary" onClick={() => setShowCriar(false)}>Cancelar</Button>
-              <Button icon={Plus} onClick={criar}>Registrar</Button>
-            </div>
-          </div>
         </div>
       )}
     </div>

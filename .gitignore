@@ -65,3 +65,9 @@ apps/api/uploads/
 
 # Backups de producao (dumps, volumes, .env) — nunca versionar
 backup-prod/
+
+# Sensitive env backups / junk
+.env.bak*
+.env.audit-bak*
+.env.*.bak-*
+xxx/

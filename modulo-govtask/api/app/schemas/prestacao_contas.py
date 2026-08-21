@@ -17,7 +17,9 @@ class PrestacaoItemCreate(BaseModel):
 
 
 class PrestacaoItemToggle(BaseModel):
-    conferido: bool
+    conferido: bool | None = None
+    anexo_id: uuid.UUID | None = None
+    vincular_anexo: bool = False
 
 
 class PrestacaoEnviar(BaseModel):
@@ -39,6 +41,7 @@ class PrestacaoItemOut(BaseModel):
     conferido: bool
     conferido_por_id: uuid.UUID | None
     data_conferencia: datetime | None
+    anexo_id: uuid.UUID | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
