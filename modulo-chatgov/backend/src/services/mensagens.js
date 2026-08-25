@@ -33,6 +33,24 @@ export async function assertMembroCanal(tenantId, canalId, operadorId) {
   }
 }
 
+/** Administrador do tenant: enxerga todos os canais, inclusive os que nao integra. */
+export function ehAdminDoTenant(op) {
+  return op?.papel === 'admin';
+}
+
+/**
+ * Permissao de LEITURA de um canal. Participantes sempre podem; o admin tambem,
+ * por decisao da prefeitura (supervisao da equipe).
+ *
+ * Escrever (enviar, responder, reagir, fixar, criar enquete) continua exigindo
+ * `assertMembroCanal`: ver a conversa de outra pessoa e uma coisa, falar dentro
+ * dela sem participar e outra.
+ */
+export async function assertPodeVerCanal(tenantId, canalId, op) {
+  if (ehAdminDoTenant(op)) return;
+  await assertMembroCanal(tenantId, canalId, op?.id);
+}
+
 export async function listarMembrosCanal(tenantId, canalId) {
   return db.manyOrNone(
     `SELECT o.id, o.nome, o.online
@@ -162,7 +180,10 @@ export async function getReacoes(tenantId, mensagemIds) {
   );
 }
 
-export async function marcarLido(tenantId, canalId, operadorId) {
+export async function marcarLido(tenantId, canalId, operadorId, { comoAdmin = false } = {}) {
+  // Admin apenas observando um canal alheio nao registra leitura — e sair sem
+  // erro evita que a tela dele viva estourando 'Sem permissao neste canal'.
+  if (comoAdmin && !(await ehMembroCanal(tenantId, canalId, operadorId))) return;
   await assertMembroCanal(tenantId, canalId, operadorId);
   await db.none(
     `INSERT INTO leituras_mensagens (operador_id, canal_id, lido_ate)
@@ -239,8 +260,8 @@ export async function buscarMensagens(tenantId, operadorId, termo, filtros = {})
   return db.manyOrNone(query, params);
 }
 
-export async function listarMensagensCanal(tenantId, canalId, operadorId, { antesDe, limite = 50 } = {}) {
-  await assertMembroCanal(tenantId, canalId, operadorId);
+export async function listarMensagensCanal(tenantId, canalId, operadorId, { antesDe, limite = 50, comoAdmin = false } = {}) {
+  if (!comoAdmin) await assertMembroCanal(tenantId, canalId, operadorId);
   const lim = Math.min(Math.max(parseInt(limite, 10) || 50, 1), 200);
   const params = [canalId, tenantId];
   let query = `SELECT mi.*, o.nome as remetente_nome

@@ -129,10 +129,14 @@ function pararPiscarTitulo() {
   document.title = tituloOriginal;
 }
 
-export function useNotificacoesDesktop({ conversaAtivaId }) {
+export function useNotificacoesDesktop({ conversaAtivaId, canalAtivoId, opId }) {
   const { socket } = useSocket();
   const conversaAtivaRef = useRef(conversaAtivaId);
   conversaAtivaRef.current = conversaAtivaId;
+  const canalAtivoRef = useRef(canalAtivoId);
+  canalAtivoRef.current = canalAtivoId;
+  const opIdRef = useRef(opId);
+  opIdRef.current = opId;
 
   // Pede permissão e destrava áudio na primeira interação.
   useEffect(() => {
@@ -215,5 +219,60 @@ export function useNotificacoesDesktop({ conversaAtivaId }) {
 
     socket.on('mensagem:recebida', handler);
     return () => socket.off('mensagem:recebida', handler);
+  }, [socket]);
+
+  // ── Mensagens da equipe (chat interno) ────────────────────────────────
+  // O backend emite 'interno:notificacao' na sala pessoal de cada membro do
+  // canal, entao o aviso chega mesmo com a conversa fechada ou em outra tela.
+  useEffect(() => {
+    if (!socket) return;
+
+    const handler = async (msg) => {
+      if (!msg || msg.remetenteId === opIdRef.current) return; // eco do proprio envio
+      const olhandoEsteCanal = msg.canalId === canalAtivoRef.current && !document.hidden;
+      if (olhandoEsteCanal) return;
+
+      const config = await getConfigCached();
+      if (!foraDoNaoPerturbe(config)) return;
+
+      if (config?.som_ativado !== false) tocarSom();
+
+      if (!document.hidden) return;
+
+      naoLidas += 1;
+      piscarTitulo();
+
+      const podeNotificar = 'Notification' in window && Notification.permission === 'granted';
+      if (!podeNotificar || config?.push_ativo === false) return;
+
+      // Em grupo, o titulo mostra o grupo e o corpo diz quem falou.
+      const ehGrupo = msg.canalTipo === 'grupo';
+      const titulo = ehGrupo ? (msg.canalNome || 'Equipe') : (msg.remetenteNome || 'Equipe');
+      const corpo = ehGrupo ? `${msg.remetenteNome}: ${msg.trecho}` : msg.trecho;
+
+      try {
+        const notif = new Notification(titulo, {
+          body: corpo,
+          icon: ICONE,
+          badge: ICONE,
+          tag: `interno-${msg.canalId}`,
+          renotify: true,
+          data: { canalId: msg.canalId },
+          silent: true,
+        });
+        notif.onclick = () => {
+          window.focus();
+          pararPiscarTitulo();
+          window.dispatchEvent(new CustomEvent('notificacao:abrir-canal', {
+            detail: { canalId: msg.canalId },
+          }));
+          notif.close();
+        };
+        setTimeout(() => notif.close(), 8000);
+      } catch { /* navegador pode bloquear Notification */ }
+    };
+
+    socket.on('interno:notificacao', handler);
+    return () => socket.off('interno:notificacao', handler);
   }, [socket]);
 }

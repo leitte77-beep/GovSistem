@@ -149,12 +149,31 @@ export function BolhaMensagem({ msg, isMe, agrupada, opId, operadores, onContext
   const abrirLightbox = (src, t, mime, nome) => setLightbox({ src, tipo: t, mime, nome });
   const fecharLightbox = () => setLightbox(null);
 
+  // Hora (e, nas proprias, a confirmacao de leitura). `inline` faz o bloco
+  // flutuar no fim do texto em vez de ocupar uma linha inteira embaixo.
+  const meta = (inline) => React.createElement('span', {
+    style: inline
+      ? { float: 'right', marginLeft: 10, marginTop: 7, fontSize: 10.5, lineHeight: '12px', color: T.bubbleOutMeta, whiteSpace: 'nowrap', display: 'inline-flex', alignItems: 'center', gap: 4 }
+      : { marginTop: 3, fontSize: 10.5, color: T.bubbleOutMeta, whiteSpace: 'nowrap', display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 4 },
+  },
+    msg.editada && React.createElement('span', {
+      title: `Editada em ${formatarHora(msg.editada_em || msg.editadaEm)}`,
+    }, 'editado'),
+    React.createElement('span', null, formatarHora(msg.criado_em || msg.criadoEm)),
+    isMe && React.createElement('span', {
+      title: msg.lida ? 'Lida' : 'Enviada',
+      style: { color: msg.lida ? T.bubbleCheckLida : T.bubbleOutMeta, fontSize: 11, letterSpacing: -2, paddingRight: 2 },
+    }, msg.lida ? '\u2713\u2713' : '\u2713'),
+  );
+
+  const textoSimples = !msg.excluida && msg.conteudo && !hasMedia && tipo !== 'enquete';
+
   return React.createElement(React.Fragment, null,
     React.createElement('div', {
       'data-msg-id': msg.id,
       style: {
         display: 'flex', justifyContent: isMe ? 'flex-end' : 'flex-start',
-        marginBottom: agrupada ? 1 : 6, paddingLeft: isMe ? 60 : 0, paddingRight: isMe ? 0 : 60,
+        marginBottom: agrupada ? 2 : 10, paddingLeft: isMe ? 56 : 0, paddingRight: isMe ? 0 : 56,
       },
     },
       React.createElement('div', {
@@ -163,15 +182,18 @@ export function BolhaMensagem({ msg, isMe, agrupada, opId, operadores, onContext
         onDoubleClick: (e) => onContextMenu?.(e, msg),
         'aria-label': `${msg.remetente_nome || 'Operador'} disse: ${msg.conteudo || tipo}`,
         style: {
-          background: isMe ? '#DCF8C6' : '#FFFFFF',
-          color: T.text, padding: '6px 9px 4px 9px',
-          borderRadius: isMe ? '12px 4px 12px 12px' : '4px 12px 12px 12px',
-          boxShadow: '0 1px 2px rgba(16,26,42,0.08)', position: 'relative',
+          background: isMe ? T.bubbleOut : T.bubbleIn,
+          color: T.text, padding: '6px 10px 6px 11px',
+          // maxWidth mantem a linha em extensao legivel em telas largas.
+          maxWidth: 'min(620px, 78%)',
+          borderRadius: isMe ? '14px 5px 14px 14px' : '5px 14px 14px 14px',
+          border: `1px solid ${isMe ? T.bubbleOutBorda : T.bubbleInBorda}`,
+          boxShadow: '0 1px 1px rgba(16,26,42,0.05)', position: 'relative',
           cursor: 'context-menu',
         },
       },
         !isMe && mostrarAutor && msg.remetente_nome && React.createElement('div', {
-          style: { fontSize: 12, fontWeight: 600, color: '#2563EB', marginBottom: 2 },
+          style: { fontSize: 12, fontWeight: 700, color: T.bubbleOutAuthor, marginBottom: 3 },
         }, msg.remetente_nome),
         msg.respondendo_a && React.createElement('div', {
           style: { fontSize: 11, color: T.textMuted, marginBottom: 3, paddingLeft: 6, borderLeft: `2px solid ${T.primary}` },
@@ -185,17 +207,14 @@ export function BolhaMensagem({ msg, isMe, agrupada, opId, operadores, onContext
               hasMedia && React.createElement('div', { style: { marginBottom: msg.conteudo ? 4 : 0 } },
                 React.createElement(MediaPreview, { msg, isMe, onOpenLightbox: abrirLightbox }),
               ),
-              msg.conteudo && React.createElement('div', {
-                style: { fontSize: 14, lineHeight: '20px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' },
-              }, renderizarMarkdown(msg.conteudo)),
+              msg.conteudo && tipo !== 'enquete' && React.createElement('div', {
+                style: { fontSize: 14, lineHeight: '21px', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere', wordBreak: 'normal' },
+              }, renderizarMarkdown(msg.conteudo), textoSimples ? meta(true) : null),
 
               // Enquete
               tipo === 'enquete' && React.createElement(EnqueteWidget, { msg, opId }),
             ),
-        React.createElement('div', { style: { display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 5, marginTop: 2 } },
-          msg.editada && React.createElement('span', { title: `Editada em ${formatarHora(msg.editada_em || msg.editadaEm)}`, style: { fontSize: 10, color: T.textMuted } }, '(editado)'),
-          React.createElement('span', { style: { fontSize: 10, color: T.textMuted } }, formatarHora(msg.criado_em || msg.criadoEm)),
-        ),
+        !textoSimples && meta(false),
         React.createElement(Reacoes, { msg, operadores }),
       ),
     ),

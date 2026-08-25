@@ -14,7 +14,7 @@ import { atualizarPresenca } from '../services/presenca.js';
 import {
   editarMensagem, excluirMensagem, encaminharMensagem,
   fixarMensagem, desafixarMensagem, adicionarReacao, removerReacao,
-  marcarLido, assertMembroCanal
+  marcarLido, assertMembroCanal, assertPodeVerCanal
 } from '../services/mensagens.js';
 import { criarNotificacao } from '../services/notificacoes.js';
 import { transitionConversation } from '../services/status-transitions.js';
@@ -27,7 +27,7 @@ import { normalizePhone } from '../domain/phone.js';
 import { extrairContatosCompartilhados } from '../domain/contato-compartilhado.js';
 import { createStorage } from '../storage/index.js';
 
-const salas = {
+export const salas = {
   tenant: (id) => `tenant:${id}`,
   conversa: (id) => `conversa:${id}`,
   operador: (id) => `operador:${id}`,
@@ -310,6 +310,45 @@ async function atualizarContatoDaConversaComJidResolvido(tenantId, convId, resol
 // Conversa excluída administrativamente não é visível para ninguém.
 async function podeVerConversa(op, convId) {
   return podeAcessarConversa(db, op, convId);
+}
+
+/**
+ * Avisa os membros de um canal interno sobre uma mensagem nova, na sala pessoal
+ * de cada um. O evento 'interno:nova' so chega a quem esta com o canal aberto;
+ * este aqui alcanca quem esta em outra tela — e o que permite tocar o som e
+ * mostrar a notificacao de mensagem da equipe.
+ */
+async function notificarMembrosDoCanal(io, tenantId, canalId, msg, remetente) {
+  try {
+    const membros = await db.manyOrNone(
+      `SELECT cm.operador_id FROM canal_membros cm
+       WHERE cm.canal_id = $1 AND cm.tenant_id = $2 AND cm.operador_id <> $3`,
+      [canalId, tenantId, remetente.id]
+    );
+    if (!membros.length) return;
+    const canal = await db.oneOrNone(
+      'SELECT nome, tipo FROM canais_internos WHERE id = $1 AND tenant_id = $2',
+      [canalId, tenantId]
+    );
+    const trecho = msg.conteudo
+      ? String(msg.conteudo).slice(0, 140)
+      : (msg.tipo === 'enquete' ? 'Enviou uma enquete' : 'Enviou um arquivo');
+    const payload = {
+      canalId,
+      canalNome: canal?.nome || null,
+      canalTipo: canal?.tipo || 'dm',
+      mensagemId: msg.id,
+      remetenteId: remetente.id,
+      remetenteNome: remetente.nome,
+      trecho,
+      criadoEm: msg.criado_em || new Date().toISOString(),
+    };
+    for (const { operador_id } of membros) {
+      io.to(salas.operador(operador_id)).emit('interno:notificacao', payload);
+    }
+  } catch (err) {
+    console.error('[Socket] notificarMembrosDoCanal error:', err.message);
+  }
 }
 
 export function iniciarGateway(httpServer, wa, storage) {
@@ -877,8 +916,19 @@ export function iniciarGateway(httpServer, wa, storage) {
       }
     });
 
-    socket.on('interno:abrir', async (canalId) => {
-      socket.join(salas.canal(canalId));
+    socket.on('interno:abrir', async (canalId, ack) => {
+      // Sem esta checagem qualquer operador podia entrar na sala de um canal
+      // alheio e passar a receber, em tempo real, as mensagens de uma conversa
+      // da qual nao participa.
+      try {
+        await assertPodeVerCanal(op.tenantId, canalId, op);
+        socket.join(salas.canal(canalId));
+        if (typeof ack === 'function') ack({ ok: true });
+      } catch (err) {
+        socket.leave(salas.canal(canalId));
+        console.warn('[Socket] interno:abrir negado:', op.id, canalId, err.message);
+        if (typeof ack === 'function') ack({ ok: false, erro: 'Sem permissao neste canal' });
+      }
     });
 
     socket.on('interno:enviar', async ({ canalId, conteudo, tipo, mediaUrl, mediaMime, mediaBase64, mediaNome, respondendoA }, ack) => {
@@ -923,6 +973,7 @@ export function iniciarGateway(httpServer, wa, storage) {
           remetente_nome: op.nome,
           respondendo_a: respondendoA || null,
         });
+        notificarMembrosDoCanal(io, op.tenantId, canalId, msg, op);
         if (ack) ack({ ok: true, mensagem: msg });
       } catch (err) {
         console.error('[Socket] interno:enviar error:', err.message);
@@ -1228,6 +1279,7 @@ export function iniciarGateway(httpServer, wa, storage) {
           ...msg,
           remetente_nome: op.nome,
         });
+        notificarMembrosDoCanal(io, op.tenantId, canalDestinoId, msg, op);
         if (ack) ack({ ok: true });
       } catch (err) {
         console.error('[Socket] mensagem:encaminhar error:', err.message);
@@ -1240,7 +1292,7 @@ export function iniciarGateway(httpServer, wa, storage) {
     socket.on('mensagem:ler', async ({ canalId }, ack) => {
       try {
         await setTenantContext(op.tenantId);
-        await marcarLido(op.tenantId, canalId, op.id);
+        await marcarLido(op.tenantId, canalId, op.id, { comoAdmin: op.papel === 'admin' });
         io.to(salas.canal(canalId)).emit('mensagem:lida', {
           canalId,
           operadorId: op.id,
@@ -1275,6 +1327,7 @@ export function iniciarGateway(httpServer, wa, storage) {
           remetente_nome: op.nome,
           respondendo_a: respondendoA || null,
         });
+        notificarMembrosDoCanal(io, op.tenantId, canalId, msg, op);
         if (ack) ack({ ok: true, mensagem: msg });
       } catch (err) {
         console.error('[Socket] interno:responder error:', err.message);
@@ -2295,3 +2348,5 @@ async function _auditar(tenantId, operadorId, acao, detalhe) {
     console.error('[Auditoria] Error:', err.message);
   }
 }
+
+export { notificarMembrosDoCanal };

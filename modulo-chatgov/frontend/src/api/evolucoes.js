@@ -92,6 +92,12 @@ export async function fetchNotificacoesStatus() {
   return res.json();
 }
 
+export async function fetchNaoLidasInternas() {
+  const res = await fetch('/api/evolucoes/canais-internos/nao-lidas', { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!res.ok) return { total: 0 };
+  return res.json();
+}
+
 export async function marcarNotificacaoLidaApi(id) {
   return jsonReq(`/api/evolucoes/notificacoes/${id}/ler`, 'POST');
 }

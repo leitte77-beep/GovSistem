@@ -121,9 +121,9 @@ router.post('/canais-internos/:canalId/mensagens/:msgId/encaminhar', async (req,
 router.get('/canais-internos/:canalId/fixadas', async (req, res) => {
   try {
     const op = req.operador;
-    const { assertMembroCanal } = await import('../services/mensagens.js');
+    const { assertPodeVerCanal } = await import('../services/mensagens.js');
     try {
-      await assertMembroCanal(op.tenantId, req.params.canalId, op.id);
+      await assertPodeVerCanal(op.tenantId, req.params.canalId, op);
     } catch (e) {
       return res.status(403).json({ erro: e.message });
     }
@@ -163,9 +163,9 @@ router.delete('/canais-internos/:canalId/mensagens/:msgId/fixar', async (req, re
 router.get('/canais-internos/:canalId/mensagens/:msgId/reacoes', async (req, res) => {
   try {
     const op = req.operador;
-    const { assertMembroCanal } = await import('../services/mensagens.js');
+    const { assertPodeVerCanal } = await import('../services/mensagens.js');
     try {
-      await assertMembroCanal(op.tenantId, req.params.canalId, op.id);
+      await assertPodeVerCanal(op.tenantId, req.params.canalId, op);
     } catch (e) {
       return res.status(403).json({ erro: e.message });
     }
@@ -219,7 +219,7 @@ router.post('/canais-internos/:canalId/ler', async (req, res) => {
     } catch (e) {
       return res.status(403).json({ erro: e.message });
     }
-    await marcarLido(op.tenantId, req.params.canalId, op.id);
+    await marcarLido(op.tenantId, req.params.canalId, op.id, { comoAdmin: op.papel === 'admin' });
     res.json({ ok: true });
   } catch (err) {
     res.status(500).json({ erro: 'Erro ao marcar lido' });

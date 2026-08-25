@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Send, Paperclip, Smile, ShieldCheck, Clock, User, UserPlus, CheckCircle2, Building2, MessageSquare, Tag, StickyNote, ChevronDown, ChevronRight, Archive, Trash2, ArrowRightLeft, Undo2, UserCheck, X, MoreVertical, ArrowDown, Loader2, Mic, Square, Play, Pause, RotateCcw, Images, Mail, Search, ArrowLeft, CalendarPlus, FileText, Copy, Check, Pen } from 'lucide-react';
+import { Send, Paperclip, Smile, ShieldCheck, Clock, User, UserPlus, CheckCircle2, Building2, MessageSquare, Tag, StickyNote, ChevronDown, ChevronRight, Archive, Trash2, ArrowRightLeft, Undo2, UserCheck, X, MoreVertical, ArrowDown, Loader2, Mic, Square, Play, Pause, RotateCcw, Images, Mail, Search, ArrowLeft, CalendarPlus, FileText, Copy, Check, Pen, Printer } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { BolhaConversa } from './BolhaConversa';
 import { DeptBadge } from './DeptBadge';
@@ -16,6 +16,7 @@ import { SeparadorData } from './SeparadorData';
 import { PainelMinhaAgenda } from './agenda/PainelMinhaAgenda';
 import { ModalCompromisso } from './agenda/ModalCompromisso';
 import { notificarAgendaAtualizada } from './agenda/eventos';
+import { imprimirConversa } from '../utils/imprimirConversa';
 import { T } from '../theme';
 
 const EMOJIS_RAPIDOS = ['😀', '😅', '👍', '🙏', '❤️', '😊', '👏', '✅', '⚠️', '📎'];
@@ -322,6 +323,38 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
       .catch(console.error)
       .finally(() => setCarregandoMais(false));
   }, [carregandoMais, temMais, mensagens, conversa?.id]);
+
+  // Impressão do atendimento. A lista em tela é paginada, então antes de
+  // imprimir buscamos o histórico inteiro — senão a folha sairia só com o
+  // último lote carregado.
+  const [imprimindo, setImprimindo] = useState(false);
+  const imprimir = useCallback(async () => {
+    if (!conversa?.id || imprimindo) return;
+    setImprimindo(true);
+    try {
+      let todas = mensagens;
+      let mais = temMais;
+      // Teto de segurança: 200 lotes cobrem conversas enormes sem risco de
+      // laço infinito caso o backend nunca zere o `temMais`.
+      for (let i = 0; mais && todas.length && i < 200; i += 1) {
+        const r = await fetchMensagens(conversa.id, { antesDe: todas[0].criado_em });
+        if (!r.mensagens.length) break;
+        todas = [...r.mensagens, ...todas];
+        mais = r.temMais;
+      }
+      await imprimirConversa({
+        conversa,
+        mensagens: todas,
+        nomeCidadao: conversa.contato_nome || conversa.contato_telefone || 'Cidadão',
+        atendente: conversa.operador_nome || auth?.operador?.nome || '',
+      });
+    } catch (e) {
+      console.error(e);
+      notificar('Não foi possível preparar a impressão da conversa.', 'erro');
+    } finally {
+      setImprimindo(false);
+    }
+  }, [conversa, mensagens, temMais, imprimindo, auth?.operador?.nome, notificar]);
 
   useEffect(() => {
     if (!socket) return;
@@ -1337,6 +1370,12 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
         'aria-label': 'Gerar protocolo', title: 'Gerar protocolo a partir desta conversa',
         style: { ...acaoBtn, padding: '7px 9px', color: conversa?.protocolo_numero ? T.success : T.textSecondary, borderColor: conversa?.protocolo_numero ? T.success : undefined },
       }, React.createElement(FileText, { size: 16 })),
+      // Imprimir a conversa inteira (só o histórico, sem o app em volta)
+      React.createElement('button', {
+        onClick: imprimir, disabled: imprimindo,
+        'aria-label': 'Imprimir conversa', title: 'Imprimir conversa — histórico completo do atendimento',
+        style: { ...acaoBtn, padding: '7px 9px', color: T.textSecondary, opacity: imprimindo ? 0.6 : 1, cursor: imprimindo ? 'default' : 'pointer' },
+      }, React.createElement(imprimindo ? Loader2 : Printer, { size: 16, className: imprimindo ? 'spin' : undefined })),
       // Ficha do cidadão: alterna o painel lateral direito.
       React.createElement('button', {
         onClick: () => setShowCidadao((v) => {
@@ -2001,6 +2040,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
       onGerarProtocolo && acaoSheetItem(FileText, 'Gerar protocolo', () => { setShowAcoes(false); onGerarProtocolo(); }),
       acaoSheetItem(CalendarPlus, 'Criar lembrete', () => { setShowAcoes(false); setShowNovoCompromisso(true); }),
       acaoSheetItem(Images, 'Ver mídias', () => { setShowAcoes(false); abrirGaleria(); }),
+      acaoSheetItem(Printer, 'Imprimir conversa', () => { setShowAcoes(false); imprimir(); }),
       acaoSheetItem(Mail, 'Marcar como não lida', () => { setShowAcoes(false); marcarNaoLida(); }),
       ehArquivada
         ? acaoSheetItem(Archive, 'Desarquivar', () => { setShowAcoes(false); desarquivar(); }, T.primary)

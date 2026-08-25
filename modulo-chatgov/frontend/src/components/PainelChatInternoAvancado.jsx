@@ -874,10 +874,15 @@ export function PainelChatInternoAvancado({ canal, breakpoint, onVoltar }) {
         const tsAnterior = msgAnterior?.criado_em || msgAnterior?.criadoEm;
         if (gi === 0 || !mesmaData(tsAnterior, tsAtual)) {
           acc.push(React.createElement(SeparadorData, { key: `sep-${msgAtual?.id}-${gi}`, label: formatarDataSeparador(tsAtual) }));
+        } else if (tsAnterior && tsAtual && (new Date(tsAtual) - new Date(tsAnterior)) > 20 * 60 * 1000) {
+          // Retomada depois de um intervalo longo: sem esta marca, a conversa
+          // parece continua e "18:09 -> 18:25" so aparece lendo a hora de cada
+          // bolha.
+          acc.push(React.createElement(SeparadorData, { key: `hora-${msgAtual?.id}-${gi}`, label: formatarHora(tsAtual) }));
         }
-        acc.push(React.createElement('div', { key: `${grupo.autorId}-${msgAtual?.id}-${gi}`, style: { display: 'flex', flexDirection: 'column', alignItems: isMe ? 'flex-end' : 'flex-start' } },
+        acc.push(React.createElement('div', { key: `${grupo.autorId}-${msgAtual?.id}-${gi}`, style: { display: 'flex', flexDirection: 'column', alignItems: 'stretch' } },
           ...grupo.msgs.map((msg, mi) => React.createElement(BolhaMensagem, {
-            key: msg.id, msg, isMe: msg._isMe, agrupada: mi > 0, opId, operadores: operadoresMap, onContextMenu: handleContextMenu, mostrarAutor: mi === 0,
+            key: msg.id, msg, isMe: msg._isMe, agrupada: mi > 0, opId, operadores: operadoresMap, onContextMenu: handleContextMenu, mostrarAutor: mi === 0 && canal.tipo !== 'dm',
             onTouchStart: () => handleTouchStart(msg.id), onTouchEnd: handleTouchEnd,
           })),
         ));
