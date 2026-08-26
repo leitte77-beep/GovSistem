@@ -72,6 +72,7 @@ def create_app() -> FastAPI:
             "govsocial": (settings.GOVSOCIAL_MODULE_INTERNAL_API_URL, "/api/govsocial/health"),
             "govavalia": (settings.GOVAVALIA_MODULE_INTERNAL_API_URL, "/avalia/health"),
             "govdoc": (settings.GOVDOC_MODULE_INTERNAL_API_URL, "/health/live"),
+            "govfrota": (settings.GOVFROTA_MODULE_INTERNAL_API_URL, "/health"),
         }
         for name, (base_url, health_path) in module_checks.items():
             if not base_url:

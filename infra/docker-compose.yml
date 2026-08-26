@@ -412,6 +412,101 @@ services:
       - internal
     restart: unless-stopped
 
+  govfrota-db-init:
+    image: postgres:16-alpine
+    logging: *default-logging
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        echo "Creating govfrota database if not exists..."
+        PGPASSWORD=${POSTGRES_PASSWORD:-doe_password} psql -h postgres -U ${POSTGRES_USER:-doe_user} -d ${POSTGRES_DB:-doe} -tc "SELECT 1 FROM pg_database WHERE datname = '${GOVFROTA_POSTGRES_DB:-govfrota}'" | grep -q 1 ||         PGPASSWORD=${POSTGRES_PASSWORD:-doe_password} psql -h postgres -U ${POSTGRES_USER:-doe_user} -d ${POSTGRES_DB:-doe} -c "CREATE DATABASE ${GOVFROTA_POSTGRES_DB:-govfrota}"
+        echo "GovFrota database ready"
+        exit 0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - doe-network
+
+  govfrota-api:
+    build:
+      context: ../modulo-govfrota/api
+      dockerfile: Dockerfile
+    logging: *default-logging
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${GOVFROTA_POSTGRES_DB:-govfrota}
+      POSTGRES_USER: ${POSTGRES_USER:-doe_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-doe_password}
+      CORS_ORIGINS: '["http://localhost:7601","http://localhost:7602","https://frota.govsistem.com.br"]'
+      DEBUG: ${API_DEBUG:-true}
+      SECRET_KEY: ${GOVFROTA_SECRET_KEY:-govfrota-dev-secret-key-change-in-production}
+      SAAS_JWT_SECRET: ${SAAS_JWT_SECRET:-dev-saas-secret-key-change-in-production}
+      # SSO: deve ser igual ao INTERNAL_API_KEY da saas-platform (protege /internal/sync-*).
+      INTERNAL_API_KEY: ${GOVFROTA_INTERNAL_API_KEY:-dev-internal-key-123}
+      # Armazenamento de arquivos (produção: MinIO; dev: local)
+      STORAGE_BACKEND: ${GOVFROTA_STORAGE_BACKEND:-minio}
+      STORAGE_LOCAL_PATH: /app/uploads
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minio_admin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minio_password}
+      MINIO_BUCKET: ${GOVFROTA_MINIO_BUCKET:-govfrota-files}
+      MINIO_SECURE: "false"
+    volumes:
+      - govfrota_uploads:/app/uploads
+    ports:
+      - "8301:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      govfrota-db-init:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/govfrota/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - doe-network
+      - internal
+    restart: unless-stopped
+
+  govfrota-web:
+    build:
+      context: ../modulo-govfrota/web-admin
+      dockerfile: Dockerfile
+    logging: *default-logging
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      NEXT_PUBLIC_API_URL: http://localhost:8301
+    ports:
+      - "7601:3000"
+    depends_on:
+      govfrota-api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://127.0.0.1:3000",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - doe-network
+      - internal
+    restart: unless-stopped
+
   govavalia:
     build:
       context: ../modulo-govavalia
@@ -553,6 +648,7 @@ volumes:
   chatgov_uploads:
     driver: local
   govtask_uploads:
+  govfrota_uploads:
     driver: local
   govsocial_uploads:
     driver: local

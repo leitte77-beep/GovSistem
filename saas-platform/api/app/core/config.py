@@ -77,6 +77,8 @@ class Settings(BaseSettings):
     GOVDOC_MODULE_ADMIN_URL: str | None = None
     GOVPRO_MODULE_INTERNAL_API_URL: str | None = None
     GOVPRO_MODULE_ADMIN_URL: str | None = None
+    GOVFROTA_MODULE_INTERNAL_API_URL: str | None = None
+    GOVFROTA_MODULE_ADMIN_URL: str | None = None
     PASSWORD_MIN_LENGTH: int = 8
     PASSWORD_MIN_UPPERCASE: int = 1
     PASSWORD_MIN_LOWERCASE: int = 1

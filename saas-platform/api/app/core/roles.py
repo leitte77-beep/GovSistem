@@ -35,6 +35,14 @@ MODULE_ROLE_CATALOG: dict[str, list[dict]] = {
         {"name": "COMPRAS_LICITACAO", "label": "Compras e Licitação"},
         {"name": "GESTOR", "label": "Gestor / Prefeito — somente leitura"},
     ],
+    "govfrota": [
+        {"name": "ADMIN", "label": "Administrador do GovFrota"},
+        {"name": "GESTOR_FROTA", "label": "Gestor da frota"},
+        {"name": "RESP_COMBUSTIVEL", "label": "Responsável pelo combustível"},
+        {"name": "RESP_MANUTENCAO", "label": "Responsável pela manutenção"},
+        {"name": "CONSULTA", "label": "Consulta — somente leitura"},
+        {"name": "AUDITOR", "label": "Auditor — leitura e logs de auditoria"},
+    ],
     "govsocial": [
         {"name": "GOVSOCIAL_ADMIN", "label": "Administrador do GovSocial"},
         {"name": "gestor_municipal", "label": "Gestor municipal — dashboards, RMA consolidado, configurações"},
