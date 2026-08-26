@@ -57,6 +57,29 @@ async function request<T>(
   return res.json();
 }
 
+/** Resultado paginado: corpo JSON + total de registros (header X-Total-Count). */
+export interface Paginado<T> {
+  itens: T[];
+  total: number;
+}
+
+async function requestPaginado<T>(path: string): Promise<Paginado<T>> {
+  const token = getToken(ACCESS_TOKEN_KEY);
+  const res = await fetch(`${BASE_URL}${path}`, { headers: getHeaders(ACCESS_TOKEN_KEY) });
+  if (res.status === 401) {
+    localStorage.removeItem(ACCESS_TOKEN_KEY);
+    window.dispatchEvent(new Event("auth:logout"));
+    throw new AuthError();
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: "Erro inesperado" }));
+    throw new Error(err.detail || `HTTP ${res.status}`);
+  }
+  const total = Number(res.headers.get("X-Total-Count") ?? "0");
+  const itens = (await res.json()) as T[];
+  return { itens, total };
+}
+
 /** Query string ignorando vazios */
 function qs(params?: Record<string, unknown>): string {
   if (!params) return "";
@@ -78,7 +101,11 @@ export const driverApi = {
       body: JSON.stringify({ login, pin }),
     });
     const data = await res.json();
-    if (!res.ok) throw new Error(data.detail || "Falha no login");
+    if (!res.ok) {
+      const e = new Error(data.detail || "Falha no login");
+      (e as Error & { status?: number }).status = res.status;
+      throw e;
+    }
     localStorage.setItem(DRIVER_TOKEN_KEY, data.access_token);
     return data.motorista as { id: string; nome: string };
   },
@@ -88,13 +115,20 @@ export const driverApi = {
   },
 
   me() {
-    return request<{ id: string; nome: string; organization_id: string; organization_name: string | null }>("/app/motorista/me", {}, DRIVER_TOKEN_KEY);
+    return request<{
+      id: string;
+      nome: string;
+      organization_id: string;
+      organization_name: string | null;
+      foto_bomba_obrigatoria: boolean;
+      foto_km_obrigatoria: boolean;
+    }>("/app/motorista/me", {}, DRIVER_TOKEN_KEY);
   },
 
   veiculos(search?: string) {
-    return request<
-      { id: string; placa: string; modelo: string | null; marca: string | null; foto_url: string | null; usa_horimetro: boolean; combustivel_principal_id: string | null }[]
-    >(`/app/motorista/veiculos${qs({ search })}`, {}, DRIVER_TOKEN_KEY);
+    return request<VeiculoApp[]>(
+      `/app/motorista/veiculos${qs({ search })}`, {}, DRIVER_TOKEN_KEY
+    );
   },
 
   tanques() {
@@ -108,7 +142,7 @@ export const driverApi = {
   },
 
   meusAbastecimentos() {
-    return request<{ id: string; data: string; veiculo_id: string; litros: number; km: number }[]>(
+    return request<AbastecimentoRecenteMotorista[]>(
       "/app/motorista/abastecimentos", {}, DRIVER_TOKEN_KEY
     );
   },
@@ -145,12 +179,26 @@ export const api = {
       roles: { id: string; name: string; label: string }[];
       permissions: string[];
       organization_id: string | null;
+      organization_name: string | null;
     }>("/auth/me");
   },
 
   // Veículos
-  listVeiculos(params?: { search?: string; situacao?: string; tipo?: string }) {
-    return request<VeiculoListItem[]>(`/veiculos${qs(params)}`);
+  listVeiculos(params?: {
+    search?: string;
+    situacao?: string;
+    tipo?: string;
+    combustivel_id?: string;
+    centro_custo?: string;
+    unidade?: string;
+    departamento?: string;
+    filial?: string;
+    sort_by?: string;
+    order?: "asc" | "desc";
+    skip?: number;
+    limit?: number;
+  }) {
+    return requestPaginado<VeiculoListItem>(`/veiculos${qs(params)}`);
   },
   getVeiculo(id: string) {
     return request<Veiculo>(`/veiculos/${id}`);
@@ -178,8 +226,18 @@ export const api = {
   },
 
   // Motoristas
-  listMotoristas(params?: { search?: string; ativo?: boolean }) {
-    return request<MotoristaListItem[]>(`/motoristas${qs(params)}`);
+  listMotoristas(params?: {
+    search?: string;
+    ativo?: boolean;
+    cnh_categoria?: string;
+    situacao_cnh?: string;
+    acesso_status?: string;
+    sort_by?: string;
+    order?: "asc" | "desc";
+    skip?: number;
+    limit?: number;
+  }) {
+    return requestPaginado<MotoristaListItem>(`/motoristas${qs(params)}`);
   },
   getMotorista(id: string) {
     return request<Motorista>(`/motoristas/${id}`);
@@ -196,6 +254,12 @@ export const api = {
   getAcesso(id: string) {
     return request<AcessoInfo>(`/motoristas/${id}/acesso`);
   },
+  gerarPinAcesso(id: string) {
+    return request<{ criado: boolean; login: string; pin_provisorio: string; url: string }>(
+      `/motoristas/${id}/acesso/gerar-pin`,
+      { method: "POST" }
+    );
+  },
   definirCredencial(id: string, login: string, senha: string) {
     return request(`/motoristas/${id}/acesso`, { method: "PUT", body: JSON.stringify({ login, senha }) });
   },
@@ -211,6 +275,9 @@ export const api = {
   // Combustíveis / tanques / estoque
   listCombustiveis(ativo?: boolean) {
     return request<Combustivel[]>(`/combustiveis${qs({ ativo })}`);
+  },
+  getCombustivel(id: string) {
+    return request<Combustivel>(`/combustiveis/${id}`);
   },
   createCombustivel(data: Record<string, unknown>) {
     return request("/combustiveis", { method: "POST", body: JSON.stringify(data) });
@@ -230,11 +297,16 @@ export const api = {
   updateTanque(id: string, data: Record<string, unknown>) {
     return request(`/tanques/${id}`, { method: "PATCH", body: JSON.stringify(data) });
   },
-  movimentacoesTanque(id: string) {
-    return request<Movimentacao[]>(`/tanques/${id}/movimentacoes`);
+  movimentacoesTanque(id: string, params?: Record<string, unknown>) {
+    return requestPaginado<Movimentacao>(`/tanques/${id}/movimentacoes${qs(params)}`);
   },
   resumoTanque(id: string) {
     return request<ResumoTanque>(`/tanques/${id}/resumo`);
+  },
+  evolucaoTanque(id: string, dias: number) {
+    return request<{ periodo_dias: number; pontos: { data: string; saldo: number }[] }>(
+      `/tanques/${id}/evolucao?dias=${dias}`
+    );
   },
   ajustarEstoque(tanque_id: string, quantidade: string, positivo: boolean, justificativa: string) {
     return request("/tanques/ajuste", { method: "POST", body: JSON.stringify({ tanque_id, quantidade, positivo, justificativa }) });
@@ -251,7 +323,10 @@ export const api = {
 
   // Entradas de combustível
   listEntradas(params?: Record<string, unknown>) {
-    return request<Entrada[]>(`/entradas${qs(params)}`);
+    return requestPaginado<Entrada>(`/entradas${qs(params)}`);
+  },
+  getEntrada(id: string) {
+    return request<Entrada>(`/entradas/${id}`);
   },
   createEntrada(data: Record<string, unknown>) {
     return request("/entradas", { method: "POST", body: JSON.stringify(data) });
@@ -261,8 +336,11 @@ export const api = {
   },
 
   // Fornecedores e oficinas
-  listFornecedores(params?: { categoria?: string; ativo?: boolean }) {
-    return request<Fornecedor[]>(`/fornecedores${qs(params)}`);
+  listFornecedores(params?: Record<string, unknown>) {
+    return requestPaginado<Fornecedor>(`/fornecedores${qs(params)}`);
+  },
+  getFornecedor(id: string) {
+    return request<Fornecedor & { historico_entradas: EntradaHist[] }>(`/fornecedores/${id}`);
   },
   createFornecedor(data: Record<string, unknown>) {
     return request("/fornecedores", { method: "POST", body: JSON.stringify(data) });
@@ -385,6 +463,40 @@ export const api = {
 
 export { bootstrapTokenFromQuery };
 
+/** Token de acesso administrativo (para requisições autenticadas de imagem). */
+export function getAccessToken(): string | null {
+  return getToken(ACCESS_TOKEN_KEY);
+}
+
+// ── Tipos do app do motorista ─────────────────────────────────────────────────
+
+export interface VeiculoApp {
+  id: string;
+  placa: string;
+  modelo: string | null;
+  marca: string | null;
+  foto_url: string | null;
+  usa_horimetro: boolean;
+  combustivel_principal_id: string | null;
+  combustivel_principal_nome: string | null;
+  combustivel_secundario_id: string | null;
+  combustivel_secundario_nome: string | null;
+  quilometragem_atual: number;
+  horimetro_atual: string | null;
+}
+
+export interface AbastecimentoRecenteMotorista {
+  id: string;
+  data: string;
+  veiculo_id: string;
+  placa: string | null;
+  modelo: string | null;
+  marca: string | null;
+  combustivel: string | null;
+  litros: number;
+  km: number;
+}
+
 // ── Tipos ────────────────────────────────────────────────────────────────────
 
 export interface VeiculoListItem {
@@ -396,6 +508,10 @@ export interface VeiculoListItem {
   situacao: string;
   quilometragem_atual: number;
   cor: string | null;
+  foto_url?: string | null;
+  usa_horimetro?: boolean;
+  horimetro_atual?: string | null;
+  combustivel_principal_id?: string | null;
   consumo_medio_km_l?: number | null;
   ultimo_abastecimento?: { data: string; litros: number } | null;
   ultima_manutencao?: { data: string; status: string } | null;
@@ -437,11 +553,16 @@ export interface MotoristaListItem {
   cnh_categoria: string | null;
   ativo: boolean;
   telefone: string | null;
-}
-export interface Motorista extends MotoristaListItem {
   matricula: string | null;
   email: string | null;
   cnh_numero: string | null;
+  foto_url: string | null;
+  acesso_login: string | null;
+  acesso_bloqueado: boolean;
+  ultimo_acesso: string | null;
+  situacao_cnh: string | null;
+}
+export interface Motorista extends MotoristaListItem {
   observacoes: string | null;
 }
 export interface AcessoInfo {
@@ -458,7 +579,11 @@ export interface Combustivel {
   id: string;
   nome: string;
   unidade: string;
+  descricao?: string | null;
+  foto_url?: string | null;
   ativo: boolean;
+  total_tanques?: number;
+  total_veiculos?: number;
 }
 export interface Tanque {
   id: string;
@@ -467,13 +592,24 @@ export interface Tanque {
   localizacao: string | null;
   combustivel_id: string;
   combustivel_nome: string | null;
+  combustivel_unidade?: string | null;
   capacidade_maxima: string;
   estoque_inicial: string;
   estoque_atual: string;
   estoque_minimo: string;
   percentual_disponivel: number | null;
   status_estoque: string | null;
+  foto_url?: string | null;
+  ultima_movimentacao?: {
+    id: string;
+    tipo: string;
+    sinal: number;
+    quantidade: number;
+    descricao: string | null;
+    created_at: string;
+  } | null;
   ativo: boolean;
+  observacoes: string | null;
 }
 export interface Movimentacao {
   id: string;
@@ -483,21 +619,54 @@ export interface Movimentacao {
   quantidade: string;
   descricao: string | null;
   saldo_apos: string | null;
+  responsavel_nome?: string | null;
+  tanque_destino_nome?: string | null;
+  tanque_origem_nome?: string | null;
   created_at: string;
 }
 export interface ResumoTanque {
   consumo_medio_diario_litros: number | null;
   previsao_dias_restantes: number | null;
+  autonomia_dias?: number | null;
+  custo_medio_por_litro?: number | null;
+  valor_estoque?: number | null;
   ultimos_abastecimentos: { id: string; data: string; litros: number }[];
+}
+export interface EntradaAnexo {
+  id: string;
+  nome: string;
+  tipo: string;
+  mime: string | null;
+  url: string;
 }
 export interface Entrada {
   id: string;
   tanque_id: string;
+  combustivel_id: string;
+  fornecedor_id: string | null;
   quantidade_litros: string;
   data_entrada: string;
   numero_nota: string | null;
+  serie_nota: string | null;
+  chave_nfe: string | null;
   valor_total: string | null;
   valor_por_litro: string | null;
+  observacoes: string | null;
+  cancelada: boolean;
+  cancelada_em?: string | null;
+  motivo_cancelamento?: string | null;
+  responsavel_usuario_id: string | null;
+  tanque_nome?: string | null;
+  combustivel_nome?: string | null;
+  fornecedor_nome?: string | null;
+  anexos?: EntradaAnexo[];
+}
+export interface EntradaHist {
+  id: string;
+  data: string;
+  litros: number;
+  valor: number | null;
+  nota: string | null;
   cancelada: boolean;
 }
 export interface Fornecedor {
@@ -506,8 +675,25 @@ export interface Fornecedor {
   nome_fantasia: string | null;
   cpf_cnpj: string | null;
   telefone: string | null;
+  email: string | null;
+  site: string | null;
+  contato: string | null;
+  cep: string | null;
+  logradouro: string | null;
+  numero: string | null;
+  complemento: string | null;
+  bairro: string | null;
+  cidade: string | null;
+  uf: string | null;
+  endereco: string | null;
+  foto_url?: string | null;
   categoria: string;
+  observacoes: string | null;
   ativo: boolean;
+  total_entradas?: number;
+  litros_fornecidos?: number;
+  valor_total?: number;
+  ultima_compra?: { id: string; data: string; litros: number; valor: number | null; nota: string | null; cancelada: boolean } | null;
 }
 export interface Oficina {
   id: string;
@@ -536,6 +722,7 @@ export interface Abastecimento {
   data_abastecimento: string;
   custo_total: string | null;
   custo_medio_litro: string | null;
+  consumo_km_l?: string | number | null;
   status: string;
   veiculo_placa?: string | null;
   combustivel_nome?: string | null;
@@ -581,6 +768,47 @@ export interface Ocorrencia {
   manutencao_id: string | null;
 }
 export interface Dashboard {
+  organizacao: { id: string | null; nome: string | null };
+  atualizado_em: string;
+  onboarding: {
+    veiculos: number;
+    motoristas: number;
+    tanques: number;
+    abastecimentos: number;
+    entradas: number;
+    pendente: boolean;
+  };
+  ultimos_abastecimentos: {
+    id: string;
+    data: string;
+    veiculo_id: string;
+    placa: string | null;
+    modelo: string | null;
+    motorista: string | null;
+    combustivel: string | null;
+    litros: number;
+    quilometragem: number;
+    custo_total: number;
+  }[];
+  proximas_preventivas: {
+    plano_id: string;
+    veiculo_id: string;
+    placa: string | null;
+    modelo: string | null;
+    nome: string;
+    base: string;
+    restante_km: number | null;
+    restante_dias: number | null;
+    situacao: "VENCIDA" | "PROXIMA" | "EM_DIA" | null;
+  }[];
+  documentos_vencendo: {
+    id: string;
+    veiculo_id: string;
+    placa: string | null;
+    descricao: string;
+    vencimento: string;
+    dias_restantes: number;
+  }[];
   frota: {
     total: number;
     disponiveis: number;
@@ -592,10 +820,10 @@ export interface Dashboard {
     id: string;
     nome: string;
     combustivel: string | null;
-    capacidade: number;
+    capacidade: number | null;
     estoque_atual: number;
     estoque_minimo: number;
-    percentual: number;
+    percentual: number | null;
     status_estoque: string;
   }[];
   abastecimentos: {
@@ -621,7 +849,7 @@ export interface Dashboard {
     consumo_7d: { litros: number; quantidade: number };
     consumo_30d: { litros: number; quantidade: number };
     consumo_12m: { litros: number; quantidade: number };
-    evolucao_mensal: { mes: string; litros: number; gasto: number }[];
+    evolucao_mensal: { mes: string; litros: number; gasto: number; quantidade: number }[];
     ranking_veiculos: {
       veiculo_id: string;
       placa: string | null;
@@ -629,6 +857,7 @@ export interface Dashboard {
       litros: number;
       custo_combustivel: number;
       custo_manutencao: number;
+      consumo_medio_km_l: number | null;
       custo_total: number;
     }[];
   };

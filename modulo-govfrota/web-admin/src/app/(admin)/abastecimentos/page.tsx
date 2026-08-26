@@ -20,8 +20,8 @@ function FormLancamento({ onSalvo }: { onSalvo: () => void }) {
   });
 
   useEffect(() => {
-    api.listVeiculos().then(setVeiculos).catch(() => {});
-    api.listMotoristas().then(setMotoristas).catch(() => {});
+    api.listVeiculos({ limit: 200 }).then((d) => setVeiculos(d.itens)).catch(() => {});
+    api.listMotoristas({ limit: 200 }).then((d) => setMotoristas(d.itens)).catch(() => {});
     api.listTanques().then(setTanques).catch(() => {});
     api.listCombustiveis(true).then(setCombustiveis).catch(() => {});
   }, []);

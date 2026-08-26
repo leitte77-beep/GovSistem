@@ -17,6 +17,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, SoftDeleteMixin, TimestampMixin
 
+from app.models.anexo import Anexo  # noqa: F401  (registro para relationship)
+
 
 class EntradaCombustivel(Base, TimestampMixin):
     """Compra/recebimento de combustível (entrada no tanque).
@@ -64,6 +66,39 @@ class EntradaCombustivel(Base, TimestampMixin):
     tanque: Mapped["Tanque"] = relationship()
     combustivel: Mapped["Combustivel"] = relationship()
     fornecedor: Mapped[Optional["Fornecedor"]] = relationship()
+    anexos: Mapped[list["EntradaAnexo"]] = relationship(
+        back_populates="entrada",
+        cascade="all, delete-orphan",
+    )
+
+
+class EntradaAnexo(Base, TimestampMixin):
+    """Associação N:N entre entrada de combustível e seus anexos (NF PDF/XML/foto).
+
+    Uma entrada pode ter vários documentos: XML da NF-e, PDF da NF, foto da NF,
+    etc. Cada um é um `Anexo` (armazenado no storage) já existente.
+    """
+
+    __tablename__ = "entrada_anexos"
+    __table_args__ = (
+        Index("ix_entrada_anexos_entrada", "entrada_id"),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    entrada_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("entradas_combustivel.id", ondelete="CASCADE"), nullable=False
+    )
+    anexo_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("anexos.id", ondelete="CASCADE"), nullable=False
+    )
+
+    entrada: Mapped["EntradaCombustivel"] = relationship(back_populates="anexos")
+    anexo: Mapped["Anexo"] = relationship()
 
 
 class MovimentacaoEstoque(Base, TimestampMixin):

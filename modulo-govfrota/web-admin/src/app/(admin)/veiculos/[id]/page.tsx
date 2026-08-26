@@ -1,14 +1,36 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import toast from "react-hot-toast";
-import { Pencil, Upload, Trash2, Gauge } from "lucide-react";
+import {
+  Archive,
+  ArrowLeft,
+  Fuel,
+  Gauge,
+  Pencil,
+  Trash2,
+  Upload,
+  Wrench,
+  X,
+} from "lucide-react";
 import { api, Abastecimento, Combustivel, DocumentoVeiculo, Manutencao, Ocorrencia, Veiculo } from "@/lib/api";
 import { RequirePermission } from "@/components/RequirePermission";
 import { useAuth } from "@/lib/auth";
+import { StatusBadge } from "@/components/veiculo/StatusBadge";
+import { FotoVeiculo } from "@/components/veiculo/FotoVeiculo";
+import { VeiculoFormDrawer } from "@/components/veiculo/VeiculoFormDrawer";
+import {
+  formatarConsumo,
+  formatarData,
+  formatarHorimetro,
+  formatarKm,
+  formatarMoeda,
+  nomeTipo,
+} from "@/lib/veiculos";
 
-type Aba = "resumo" | "abastecimentos" | "manutencoes" | "ocorrencias" | "documentos" | "custos" | "historico";
+type Aba = "resumo" | "abastecimentos" | "manutencoes" | "ocorrencias" | "custos" | "documentos" | "historico";
 
 const STATUS_MANUT_CLASSE: Record<string, string> = {
   ABERTA: "bg-gray-100 text-gray-600",
@@ -35,8 +57,10 @@ export default function DetalheVeiculoPage() {
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
   const [documentos, setDocumentos] = useState<DocumentoVeiculo[]>([]);
   const [combustiveis, setCombustiveis] = useState<Combustivel[]>([]);
+  const [tipoOrganizacao, setTipoOrganizacao] = useState("PUBLICO");
   const [aba, setAba] = useState<Aba>("resumo");
   const [editando, setEditando] = useState(false);
+  const [modalKm, setModalKm] = useState(false);
 
   const carregar = useCallback(async () => {
     try {
@@ -53,6 +77,11 @@ export default function DetalheVeiculoPage() {
   useEffect(() => {
     carregar();
     api.listCombustiveis(true).then(setCombustiveis).catch(() => {});
+    api.getConfiguracoes().then((c) => setTipoOrganizacao(c.tipo_organizacao || "PUBLICO")).catch(() => {});
+    // Abre a edição quando chega com ?editar=1 (vindo do menu da listagem).
+    if (typeof window !== "undefined" && new URLSearchParams(window.location.search).get("editar")) {
+      setEditando(true);
+    }
   }, [carregar]);
 
   if (!veiculo) return <p className="animate-pulse text-text-subtle">Carregando…</p>;
@@ -70,20 +99,18 @@ export default function DetalheVeiculoPage() {
     { chave: "abastecimentos", label: `Abastecimentos (${abastecimentos.length})` },
     { chave: "manutencoes", label: `Manutenções (${manutencoes.length})` },
     { chave: "ocorrencias", label: `Ocorrências (${ocorrencias.length})` },
-    { chave: "documentos", label: `Documentos (${documentos.length})` },
     { chave: "custos", label: "Custos" },
+    { chave: "documentos", label: `Documentos (${documentos.length})` },
     { chave: "historico", label: "Histórico" },
   ];
 
-  async function ajustarKm() {
-    if (!veiculo) return;
-    const km = window.prompt("Nova quilometragem atual:", String(veiculo.quilometragem_atual));
-    if (!km || isNaN(Number(km))) return;
-    const justificativa = window.prompt("Justificativa da alteração:");
-    if (!justificativa || justificativa.length < 5) return;
+  const combustivelPrincipal = combustiveis.find((c) => c.id === veiculo.combustivel_principal_id);
+
+  async function baixarVeiculo() {
+    if (!confirm("Baixar este veículo? Ele permanecerá no histórico, mas deixará de estar ativo na frota.")) return;
     try {
-      await api.alterarKm(id, Number(km), justificativa);
-      toast.success("Quilometragem ajustada.");
+      await api.updateVeiculo(id, { situacao: "BAIXADO" });
+      toast.success("Veículo baixado.");
       carregar();
     } catch (e) {
       toast.error((e as Error).message);
@@ -95,10 +122,7 @@ export default function DetalheVeiculoPage() {
     if (!descricao) return;
     const vencimento = window.prompt("Vencimento (AAAA-MM-DD) — opcional:");
     try {
-      await api.criarDocumento(id, {
-        descricao,
-        vencimento: vencimento || undefined,
-      });
+      await api.criarDocumento(id, { descricao, vencimento: vencimento || undefined });
       toast.success("Documento anexado.");
       carregar();
     } catch (e) {
@@ -129,45 +153,69 @@ export default function DetalheVeiculoPage() {
 
   return (
     <RequirePermission perms="vehicle.view">
+      <VeiculoFormDrawer
+        aberto={editando}
+        onClose={() => setEditando(false)}
+        veiculo={veiculo}
+        combustiveis={combustiveis}
+        tipoOrganizacao={tipoOrganizacao}
+        onSalvo={carregar}
+      />
+
       <div className="space-y-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="text-h2 text-text-title">{[veiculo.marca, veiculo.modelo].filter(Boolean).join(" ")}</h1>
-            <p className="text-body-sm text-text-subtle">
-              Placa <strong>{veiculo.placa}</strong> · {veiculo.quilometragem_atual.toLocaleString("pt-BR")} km ·{" "}
-              {veiculo.situacao.replace("_", " ")}
+        <Link href="/veiculos" className="inline-flex items-center gap-1 text-body-sm text-text-subtle hover:text-[#1D4ED8]">
+          <ArrowLeft size={15} /> Veículos
+        </Link>
+
+        {/* Cabeçalho da ficha */}
+        <div className="flex flex-col gap-4 rounded-card border border-surface-border bg-white p-5 shadow-card md:flex-row md:items-center">
+          <FotoVeiculo src={veiculo.foto_url} className="h-24 w-32 rounded-btn border border-surface-border" />
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-3">
+              <h1 className="text-h2 text-text-title">{veiculo.placa}</h1>
+              <StatusBadge situacao={veiculo.situacao} />
+            </div>
+            <p className="text-body text-text-body">
+              {[veiculo.marca, veiculo.modelo, veiculo.versao].filter(Boolean).join(" ") || "—"}
             </p>
+            <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-body-sm tabular-nums text-text-subtle">
+              <span>{veiculo.usa_horimetro ? formatarHorimetro(veiculo.horimetro_atual) : formatarKm(veiculo.quilometragem_atual)}</span>
+              <span className="inline-flex items-center gap-1"><Fuel size={14} /> {combustivelPrincipal?.nome ?? "—"}</span>
+              {veiculo.unidade && <span>{veiculo.unidade}</span>}
+              {veiculo.departamento && <span>{veiculo.departamento}</span>}
+              {veiculo.centro_custo && <span>CC: {veiculo.centro_custo}</span>}
+            </div>
           </div>
           <div className="flex flex-wrap gap-2">
             {hasPermission("vehicle.manage") && (
               <>
-                <button className="btn btn-secondary btn-sm" onClick={() => setEditando(!editando)}>
+                <button className="btn btn-secondary btn-sm" onClick={() => setEditando(true)}>
                   <Pencil size={14} /> Editar
                 </button>
-                <button className="btn btn-secondary btn-sm" onClick={ajustarKm}>
-                  <Gauge size={14} /> Ajustar KM
+                <button className="btn btn-secondary btn-sm" onClick={() => setModalKm(true)}>
+                  <Gauge size={14} /> Corrigir {veiculo.usa_horimetro ? "horímetro" : "KM"}
                 </button>
               </>
             )}
-            {hasPermission("vehicle.manage") && (
-              <button className="btn btn-secondary btn-sm" onClick={adicionarDocumento}>
-                <Upload size={14} /> Documento
+            {hasPermission("refueling.view") && (
+              <Link href="/abastecimentos" className="btn btn-secondary btn-sm">
+                <Fuel size={14} /> Abastecimento
+              </Link>
+            )}
+            {hasPermission("maintenance.view") && (
+              <Link href="/manutencoes" className="btn btn-secondary btn-sm">
+                <Wrench size={14} /> Manutenção
+              </Link>
+            )}
+            {hasPermission("vehicle.manage") && veiculo.situacao !== "BAIXADO" && (
+              <button className="btn btn-secondary btn-sm text-[#B42318]" onClick={baixarVeiculo}>
+                <Archive size={14} /> Baixar
               </button>
             )}
           </div>
         </div>
 
-        {editando && hasPermission("vehicle.manage") && (
-          <FormEditarVeiculo
-            veiculo={veiculo}
-            combustiveis={combustiveis}
-            onSalvo={() => {
-              setEditando(false);
-              carregar();
-            }}
-          />
-        )}
-
+        {/* Abas */}
         <div className="flex gap-1 overflow-x-auto border-b border-surface-border">
           {abas.map((a) => (
             <button
@@ -184,80 +232,80 @@ export default function DetalheVeiculoPage() {
 
         {aba === "resumo" && (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Info titulo="Situação" valor={veiculo.situacao.replace("_", " ")} />
-            <Info titulo="KM atual" valor={`${veiculo.quilometragem_atual.toLocaleString("pt-BR")} km`} />
-            <Info titulo="Litros abastecidos" valor={litrosTotal.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} />
-            <Info titulo="Gasto com combustível" valor={`R$ ${gastoCombustivel.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`} />
-            <Info titulo="Consumo médio" valor={consumoMedio != null ? `${consumoMedio.toFixed(2)} km/L` : "—"} />
-            <Info titulo="Tipo" valor={veiculo.tipo.replace("_", " ")} />
-            {veiculo.unidade && <Info titulo="Unidade" valor={veiculo.unidade} />}
-            {veiculo.centro_custo && <Info titulo="Centro de custo" valor={veiculo.centro_custo} />}
+            <Info titulo={veiculo.usa_horimetro ? "Horímetro atual" : "KM atual"} valor={veiculo.usa_horimetro ? formatarHorimetro(veiculo.horimetro_atual) : formatarKm(veiculo.quilometragem_atual)} />
+            <Info titulo="Consumo médio" valor={formatarConsumo(consumoMedio)} />
+            <Info titulo="Litros no mês" valor={`${litrosTotal.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} L`} />
+            <Info titulo="Gasto com combustível" valor={formatarMoeda(gastoCombustivel)} />
+            <Info titulo="Custo de manutenção" valor={formatarMoeda(custoManutencao)} />
+            <Info titulo="Custo por km" valor={veiculo.quilometragem_atual > 0 ? formatarMoeda((gastoCombustivel + custoManutencao) / Math.max(veiculo.quilometragem_atual, 1)) : "—"} />
+            <Info titulo="Tipo" valor={nomeTipo(veiculo.tipo)} />
+            <Info titulo="Combustível" valor={combustivelPrincipal?.nome ?? "—"} />
+            {veiculo.ano_fabricacao && <Info titulo="Ano fab./modelo" valor={[veiculo.ano_fabricacao, veiculo.ano_modelo].filter(Boolean).join(" / ") || "—"} />}
+            {veiculo.cor && <Info titulo="Cor" valor={veiculo.cor} />}
+            {veiculo.renavam && <Info titulo="RENAVAM" valor={veiculo.renavam} />}
             {veiculo.patrimonio && <Info titulo="Patrimônio" valor={veiculo.patrimonio} />}
+            {veiculo.observacoes && <Info titulo="Observações" valor={veiculo.observacoes} />}
           </div>
         )}
 
         {aba === "abastecimentos" && (
-          <div className="overflow-x-auto rounded-card border border-surface-border bg-white shadow-card">
-            <table className="w-full min-w-160 text-body-sm">
-              <thead>
-                <tr className="border-b border-surface-border bg-surface-bg text-left text-meta text-text-subtle">
-                  <th className="px-4 py-3">Data</th>
-                  <th className="px-4 py-3">Litros</th>
-                  <th className="px-4 py-3">KM</th>
-                  <th className="px-4 py-3">Custo</th>
-                  <th className="px-4 py-3">Origem</th>
-                  <th className="px-4 py-3">Status</th>
+          <Tabela>
+            <thead>
+              <tr className="border-b border-surface-border bg-surface-bg text-left text-meta text-text-subtle">
+                <th className="px-4 py-3">Data</th>
+                <th className="px-4 py-3">Motorista</th>
+                <th className="px-4 py-3">Combustível</th>
+                <th className="px-4 py-3">Litros</th>
+                <th className="px-4 py-3">KM</th>
+                <th className="px-4 py-3">Consumo</th>
+                <th className="px-4 py-3">Valor</th>
+                <th className="px-4 py-3">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {abastecimentos.length === 0 && <Vazio colSpan={8} texto="Sem abastecimentos." />}
+              {abastecimentos.map((a) => (
+                <tr key={a.id} className="border-b border-surface-border last:border-0">
+                  <td className="px-4 py-3">{formatarData(a.data_abastecimento)}</td>
+                  <td className="px-4 py-3">{a.motorista_nome ?? "—"}</td>
+                  <td className="px-4 py-3">{a.combustivel_nome ?? "—"}</td>
+                  <td className="px-4 py-3 tabular-nums">{Number(a.quantidade_litros).toLocaleString("pt-BR")} L</td>
+                  <td className="px-4 py-3 tabular-nums">{a.quilometragem.toLocaleString("pt-BR")}</td>
+                  <td className="px-4 py-3 tabular-nums">{a.consumo_km_l ? formatarConsumo(a.consumo_km_l) : "—"}</td>
+                  <td className="px-4 py-3 tabular-nums">{a.custo_total ? formatarMoeda(a.custo_total) : "—"}</td>
+                  <td className="px-4 py-3">{a.status === "CONFIRMADO" ? "Confirmado" : "Cancelado"}</td>
                 </tr>
-              </thead>
-              <tbody>
-                {abastecimentos.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-text-subtle">Sem abastecimentos.</td></tr>
-                )}
-                {abastecimentos.map((a) => (
-                  <tr key={a.id} className="border-b border-surface-border last:border-0">
-                    <td className="px-4 py-3">{new Date(a.data_abastecimento).toLocaleDateString("pt-BR")}</td>
-                    <td className="px-4 py-3">{Number(a.quantidade_litros).toLocaleString("pt-BR")} L</td>
-                    <td className="px-4 py-3">{a.quilometragem.toLocaleString("pt-BR")}</td>
-                    <td className="px-4 py-3">{a.custo_total ? `R$ ${Number(a.custo_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}</td>
-                    <td className="px-4 py-3">{a.origem === "APP_MOTORISTA" ? "Motorista" : "Admin"}</td>
-                    <td className="px-4 py-3">{a.status === "CONFIRMADO" ? "Confirmado" : "Cancelado"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </Tabela>
         )}
 
         {aba === "manutencoes" && (
-          <div className="overflow-x-auto rounded-card border border-surface-border bg-white shadow-card">
-            <table className="w-full min-w-160 text-body-sm">
-              <thead>
-                <tr className="border-b border-surface-border bg-surface-bg text-left text-meta text-text-subtle">
-                  <th className="px-4 py-3">Solicitação</th>
-                  <th className="px-4 py-3">Tipo</th>
-                  <th className="px-4 py-3">Descrição</th>
-                  <th className="px-4 py-3">Valor</th>
-                  <th className="px-4 py-3">Status</th>
+          <Tabela>
+            <thead>
+              <tr className="border-b border-surface-border bg-surface-bg text-left text-meta text-text-subtle">
+                <th className="px-4 py-3">Solicitação</th>
+                <th className="px-4 py-3">Tipo</th>
+                <th className="px-4 py-3">Descrição</th>
+                <th className="px-4 py-3">Valor</th>
+                <th className="px-4 py-3">Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {manutencoes.length === 0 && <Vazio colSpan={5} texto="Sem manutenções." />}
+              {manutencoes.map((m) => (
+                <tr key={m.id} className="border-b border-surface-border last:border-0">
+                  <td className="px-4 py-3">{formatarData(m.data_solicitacao)}</td>
+                  <td className="px-4 py-3 capitalize">{m.tipo.replace("_", " ")}</td>
+                  <td className="px-4 py-3 text-text-subtle">{m.descricao_problema ?? "—"}</td>
+                  <td className="px-4 py-3 tabular-nums">{formatarMoeda(m.valor_total)}</td>
+                  <td className="px-4 py-3">
+                    <span className={`rounded-pill px-2 py-0.5 text-meta ${STATUS_MANUT_CLASSE[m.status] ?? ""}`}>{m.status.replace("_", " ")}</span>
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {manutencoes.length === 0 && (
-                  <tr><td colSpan={5} className="px-4 py-8 text-center text-text-subtle">Sem manutenções.</td></tr>
-                )}
-                {manutencoes.map((m) => (
-                  <tr key={m.id} className="border-b border-surface-border last:border-0">
-                    <td className="px-4 py-3">{new Date(m.data_solicitacao + "T12:00").toLocaleDateString("pt-BR")}</td>
-                    <td className="px-4 py-3">{m.tipo.replace("_", " ")}</td>
-                    <td className="px-4 py-3 text-text-subtle">{m.descricao_problema ?? "—"}</td>
-                    <td className="px-4 py-3">R$ {Number(m.valor_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</td>
-                    <td className="px-4 py-3">
-                      <span className={`rounded-pill px-2 py-0.5 text-meta ${STATUS_MANUT_CLASSE[m.status] ?? ""}`}>{m.status.replace("_", " ")}</span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+              ))}
+            </tbody>
+          </Tabela>
         )}
 
         {aba === "ocorrencias" && (
@@ -272,15 +320,34 @@ export default function DetalheVeiculoPage() {
                     <span className="ml-2 text-meta text-text-subtle">{o.status.replace("_", " ")}</span>
                     <p className="text-meta text-text-subtle">{o.descricao}</p>
                   </div>
-                  <span className="text-meta text-text-subtle">{new Date(o.data_ocorrencia + "T12:00").toLocaleDateString("pt-BR")}</span>
+                  <span className="text-meta text-text-subtle">{formatarData(o.data_ocorrencia)}</span>
                 </li>
               ))}
             </ul>
           </div>
         )}
 
+        {aba === "custos" && (
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Info titulo="Combustível" valor={formatarMoeda(gastoCombustivel)} />
+            <Info titulo="Manutenção" valor={formatarMoeda(custoManutencao)} />
+            <Info titulo="Custo total" valor={formatarMoeda(gastoCombustivel + custoManutencao)} />
+            <Info titulo="Custo por km" valor={veiculo.quilometragem_atual > 0 ? formatarMoeda((gastoCombustivel + custoManutencao) / Math.max(veiculo.quilometragem_atual, 1)) : "—"} />
+            <Info titulo="Consumo médio" valor={formatarConsumo(consumoMedio)} />
+            <Info titulo="Custo combustível por km" valor={veiculo.quilometragem_atual > 0 ? formatarMoeda(gastoCombustivel / Math.max(veiculo.quilometragem_atual, 1)) : "—"} />
+          </div>
+        )}
+
         {aba === "documentos" && (
           <div className="rounded-card border border-surface-border bg-white p-4 shadow-card">
+            <div className="mb-2 flex items-center justify-between">
+              <h3 className="text-label font-semibold text-text-title">Documentos do veículo</h3>
+              {hasPermission("vehicle.manage") && (
+                <button className="btn btn-secondary btn-sm" onClick={adicionarDocumento}>
+                  <Upload size={14} /> Adicionar documento
+                </button>
+              )}
+            </div>
             <ul className="divide-y divide-surface-border">
               {documentos.length === 0 && <li className="py-4 text-text-subtle">Nenhum documento anexado.</li>}
               {documentos.map((d) => (
@@ -289,7 +356,7 @@ export default function DetalheVeiculoPage() {
                     <span className="text-body-sm">{d.descricao}</span>
                     {d.vencimento && (
                       <span className={`ml-2 text-meta ${new Date(d.vencimento + "T12:00") < new Date() ? "text-[#B42318]" : "text-text-subtle"}`}>
-                        {new Date(d.vencimento + "T12:00") < new Date() ? "Vencido" : `Vence em ${new Date(d.vencimento + "T12:00").toLocaleDateString("pt-BR")}`}
+                        {new Date(d.vencimento + "T12:00") < new Date() ? "Vencido" : `Vence em ${formatarData(d.vencimento)}`}
                       </span>
                     )}
                   </div>
@@ -315,17 +382,6 @@ export default function DetalheVeiculoPage() {
           </div>
         )}
 
-        {aba === "custos" && (
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Info titulo="Combustível" valor={`R$ ${gastoCombustivel.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`} />
-            <Info titulo="Manutenção" valor={`R$ ${custoManutencao.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`} />
-            <Info titulo="Custo total" valor={`R$ ${(gastoCombustivel + custoManutencao).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`} />
-            <Info titulo="Custo por km" valor={veiculo.quilometragem_atual > 0 ? `R$ ${((gastoCombustivel + custoManutencao) / Math.max(veiculo.quilometragem_atual, 1)).toFixed(3)}` : "—"} />
-            <Info titulo="Consumo médio" valor={consumoMedio != null ? `${consumoMedio.toFixed(2)} km/L` : "—"} />
-            <Info titulo="Custo combustível por km" valor={veiculo.quilometragem_atual > 0 ? `R$ ${(gastoCombustivel / Math.max(veiculo.quilometragem_atual, 1)).toFixed(3)}` : "—"} />
-          </div>
-        )}
-
         {aba === "historico" && (
           <div className="rounded-card border border-surface-border bg-white shadow-card">
             <ul className="divide-y divide-surface-border">
@@ -338,104 +394,95 @@ export default function DetalheVeiculoPage() {
                     </span>{" "}
                     <span className="text-text-body">{h.texto}</span>
                   </div>
-                  <span className="text-meta text-text-subtle">
-                    {new Date(h.data).toLocaleDateString("pt-BR")} · {h.extra}
-                  </span>
+                  <span className="text-meta text-text-subtle">{formatarData(h.data)} · {h.extra}</span>
                 </li>
               ))}
             </ul>
           </div>
         )}
       </div>
+
+      {/* Modal de correção de KM/Horímetro */}
+      {modalKm && (
+        <ModalKm
+          veiculo={veiculo}
+          onClose={() => setModalKm(false)}
+          onSalvo={() => {
+            setModalKm(false);
+            carregar();
+          }}
+        />
+      )}
     </RequirePermission>
   );
 }
 
-function FormEditarVeiculo({ veiculo, combustiveis, onSalvo }: { veiculo: Veiculo; combustiveis: Combustivel[]; onSalvo: () => void }) {
+function ModalKm({ veiculo, onClose, onSalvo }: { veiculo: Veiculo; onClose: () => void; onSalvo: () => void }) {
   const [salvando, setSalvando] = useState(false);
-  const [form, setForm] = useState({
-    marca: veiculo.marca ?? "",
-    modelo: veiculo.modelo ?? "",
-    tipo: veiculo.tipo,
-    cor: veiculo.cor ?? "",
-    ano_fabricacao: veiculo.ano_fabricacao ?? "",
-    combustivel_principal_id: veiculo.combustivel_principal_id ?? "",
-    capacidade_tanque_litros: veiculo.capacidade_tanque_litros ?? "",
-    unidade: veiculo.unidade ?? "",
-    departamento: veiculo.departamento ?? "",
-    filial: veiculo.filial ?? "",
-    centro_custo: veiculo.centro_custo ?? "",
-    patrimonio: veiculo.patrimonio ?? "",
-    situacao: veiculo.situacao,
-  });
+  const ehHorimetro = veiculo.usa_horimetro;
+  const [valor, setValor] = useState(ehHorimetro ? String(veiculo.horimetro_atual ?? "") : String(veiculo.quilometragem_atual));
+  const [justificativa, setJustificativa] = useState("");
 
-  const campo = (k: string) => ({
-    value: (form as never)[k] as string,
-    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-      setForm((f) => ({ ...f, [k]: e.target.value })),
-    className:
-      "w-full rounded-btn border border-surface-border px-3 py-2 text-body-sm focus:border-[#1D4ED8] focus:outline-none",
-  });
+  async function enviar(e: React.FormEvent) {
+    e.preventDefault();
+    if (justificativa.length < 5) {
+      toast.error("Informe uma justificativa (mínimo 5 caracteres).");
+      return;
+    }
+    setSalvando(true);
+    try {
+      await api.alterarKm(veiculo.id, Number(valor), justificativa);
+      toast.success(ehHorimetro ? "Horímetro ajustado." : "Quilometragem ajustada.");
+      onSalvo();
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setSalvando(false);
+    }
+  }
 
   return (
-    <form
-      className="grid gap-3 rounded-card border border-surface-border bg-white p-4 shadow-card sm:grid-cols-3 lg:grid-cols-4"
-      onSubmit={async (e) => {
-        e.preventDefault();
-        setSalvando(true);
-        try {
-          await api.updateVeiculo(veiculo.id, {
-            ...form,
-            ano_fabricacao: form.ano_fabricacao ? Number(form.ano_fabricacao) : undefined,
-            capacidade_tanque_litros: form.capacidade_tanque_litros || undefined,
-            combustivel_principal_id: form.combustivel_principal_id || undefined,
-          });
-          toast.success("Veículo atualizado.");
-          onSalvo();
-        } catch (err) {
-          toast.error((err as Error).message);
-        } finally {
-          setSalvando(false);
-        }
-      }}
-    >
-      <label className="text-meta">Marca<input {...campo("marca")} /></label>
-      <label className="text-meta">Modelo<input {...campo("modelo")} /></label>
-      <label className="text-meta">Tipo
-        <select {...campo("tipo")}>
-          {["CARRO", "UTILITARIO", "CAMINHONETE", "CAMINHAO", "ONIBUS", "MICRO_ONIBUS", "VAN", "MOTOCICLETA", "MAQUINA", "TRATOR", "EQUIPAMENTO", "OUTRO"].map((t) => (
-            <option key={t} value={t}>{t.replace("_", "-")}</option>
-          ))}
-        </select>
-      </label>
-      <label className="text-meta">Situação
-        <select {...campo("situacao")}>
-          {["DISPONIVEL", "EM_USO", "EM_MANUTENCAO", "INDISPONIVEL", "BAIXADO"].map((s) => (
-            <option key={s} value={s}>{s.replace("_", " ")}</option>
-          ))}
-        </select>
-      </label>
-      <label className="text-meta">Cor<input {...campo("cor")} /></label>
-      <label className="text-meta">Ano fabricação<input type="number" {...campo("ano_fabricacao")} /></label>
-      <label className="text-meta">Combustível principal
-        <select {...campo("combustivel_principal_id")}>
-          <option value="">—</option>
-          {combustiveis.map((c) => (
-            <option key={c.id} value={c.id}>{c.nome}</option>
-          ))}
-        </select>
-      </label>
-      <label className="text-meta">Capacidade tanque (L)<input type="number" step="0.01" {...campo("capacidade_tanque_litros")} /></label>
-      <label className="text-meta">Unidade<input {...campo("unidade")} /></label>
-      <label className="text-meta">Departamento<input {...campo("departamento")} /></label>
-      <label className="text-meta">Filial<input {...campo("filial")} /></label>
-      <label className="text-meta">Centro de custo<input {...campo("centro_custo")} /></label>
-      <label className="text-meta">Patrimônio<input {...campo("patrimonio")} /></label>
-      <div className="sm:col-span-2 lg:col-span-4 flex justify-end gap-2">
-        <button type="button" onClick={onSalvo} className="btn btn-secondary btn-sm">Cancelar</button>
-        <button disabled={salvando} className="btn btn-primary btn-sm">{salvando ? "Salvando…" : "Salvar alterações"}</button>
-      </div>
-    </form>
+    <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+      <form onSubmit={enviar} className="relative w-full max-w-md rounded-card border border-surface-border bg-white p-5 shadow-elevated">
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-h3 text-text-title">Corrigir {ehHorimetro ? "horímetro" : "quilometragem"}</h3>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={onClose}><X size={18} /></button>
+        </div>
+        <p className="mb-4 text-body-sm text-text-subtle">
+          A correção é auditada e exige justificativa. {ehHorimetro ? "O valor do horímetro" : "A quilometragem"} atual é{" "}
+          <strong className="tabular-nums">{ehHorimetro ? formatarHorimetro(veiculo.horimetro_atual) : formatarKm(veiculo.quilometragem_atual)}</strong>.
+        </p>
+        <label className="text-meta">
+          Novo valor {ehHorimetro ? "(h)" : "(km)"}
+          <input type="number" step={ehHorimetro ? "0.1" : "1"} min={0} value={valor} onChange={(e) => setValor(e.target.value)} className="input mt-1" required />
+        </label>
+        <label className="mt-3 block text-meta">
+          Justificativa *
+          <textarea rows={3} value={justificativa} onChange={(e) => setJustificativa(e.target.value)} className="input mt-1" placeholder="Motivo da correção" required />
+        </label>
+        <div className="mt-4 flex justify-end gap-2">
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onClose} disabled={salvando}>Cancelar</button>
+          <button type="submit" className="btn btn-primary btn-sm" disabled={salvando}>{salvando ? "Salvando…" : "Confirmar correção"}</button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+function Tabela({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="overflow-x-auto rounded-card border border-surface-border bg-white shadow-card">
+      <table className="w-full min-w-160 text-body-sm">{children}</table>
+    </div>
+  );
+}
+
+function Vazio({ colSpan, texto }: { colSpan: number; texto: string }) {
+  return (
+    <tr>
+      <td colSpan={colSpan} className="px-4 py-8 text-center text-text-subtle">{texto}</td>
+    </tr>
   );
 }
 
@@ -443,7 +490,7 @@ function Info({ titulo, valor }: { titulo: string; valor: string }) {
   return (
     <div className="rounded-card border border-surface-border bg-white p-4 shadow-card">
       <div className="text-meta text-text-subtle">{titulo}</div>
-      <div className="text-h3 capitalize text-text-title">{valor}</div>
+      <div className="text-h3 text-text-title">{valor}</div>
     </div>
   );
 }

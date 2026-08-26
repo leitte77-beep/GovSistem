@@ -21,7 +21,7 @@ export default function OcorrenciasPage() {
   const carregar = useCallback(async () => {
     try {
       setLista(await api.listOcorrencias({ status: filtroStatus || undefined }));
-      setVeiculos(await api.listVeiculos());
+      setVeiculos((await api.listVeiculos({ limit: 200 })).itens);
     } catch (e) {
       toast.error((e as Error).message);
     }

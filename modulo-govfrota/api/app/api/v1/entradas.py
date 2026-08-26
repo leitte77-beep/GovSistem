@@ -1,17 +1,20 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy import func as sa_func
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.auth import get_current_user, require_permission
 from app.core.database import get_db
 from app.core.permissions import Perm
+from app.models.anexo import Anexo
 from app.models.auth_models import User
 from app.models.combustivel import Combustivel, Fornecedor, Tanque
-from app.models.estoque import EntradaCombustivel, MovimentacaoEstoque
+from app.models.estoque import EntradaAnexo, EntradaCombustivel, MovimentacaoEstoque
 from app.models.enums import OrigemMovimentacao, TipoMovimentacao
 from app.schemas.schemas import EntradaCancelamento, EntradaCreate, EntradaResponse
 from app.services.auditoria import registrar_auditoria
@@ -23,7 +26,14 @@ router = APIRouter(prefix="/entradas", tags=["entradas de combustível"])
 
 async def _get_entrada(db: AsyncSession, user: User, entrada_id: uuid.UUID) -> EntradaCombustivel:
     result = await db.execute(
-        select(EntradaCombustivel).where(
+        select(EntradaCombustivel)
+        .options(
+            selectinload(EntradaCombustivel.tanque),
+            selectinload(EntradaCombustivel.combustivel),
+            selectinload(EntradaCombustivel.fornecedor),
+            selectinload(EntradaCombustivel.anexos).selectinload(EntradaAnexo.anexo),
+        )
+        .where(
             EntradaCombustivel.id == entrada_id,
             EntradaCombustivel.organization_id == user.organization_id,
         )
@@ -34,38 +44,114 @@ async def _get_entrada(db: AsyncSession, user: User, entrada_id: uuid.UUID) -> E
     return entrada
 
 
+async def _montar_entrada(db: AsyncSession, entrada: EntradaCombustivel) -> EntradaResponse:
+    anexos = []
+    for ea in entrada.anexos:
+        if ea.anexo is not None:
+            anexos.append({
+                "id": str(ea.anexo.id),
+                "nome": ea.anexo.nome_arquivo,
+                "tipo": ea.anexo.tipo,
+                "mime": ea.anexo.mime_type,
+                "url": f"/api/govfrota/uploads/{ea.anexo.id}",
+            })
+    return EntradaResponse(
+        id=entrada.id,
+        tanque_id=entrada.tanque_id,
+        combustivel_id=entrada.combustivel_id,
+        fornecedor_id=entrada.fornecedor_id,
+        quantidade_litros=entrada.quantidade_litros,
+        data_entrada=entrada.data_entrada,
+        numero_nota=entrada.numero_nota,
+        serie_nota=entrada.serie_nota,
+        chave_nfe=entrada.chave_nfe,
+        valor_total=entrada.valor_total,
+        valor_por_litro=entrada.valor_por_litro,
+        observacoes=entrada.observacoes,
+        cancelada=entrada.cancelada,
+        cancelada_em=entrada.cancelada_em,
+        motivo_cancelamento=entrada.motivo_cancelamento,
+        responsavel_usuario_id=entrada.responsavel_usuario_id,
+        tanque_nome=entrada.tanque.nome if entrada.tanque else None,
+        combustivel_nome=entrada.combustivel.nome if entrada.combustivel else None,
+        fornecedor_nome=(
+            entrada.fornecedor.razao_social or entrada.fornecedor.nome_fantasia
+            if entrada.fornecedor else None
+        ),
+        anexos=anexos,
+    )
+
+
+async def _validar_anexos(
+    db: AsyncSession, organization_id: uuid.UUID, anexos_ids: list[uuid.UUID] | None
+) -> list[Anexo]:
+    """Valida que todos os anexos pertencem à organização (isolamento por tenant)."""
+    if not anexos_ids:
+        return []
+    unicos = list(dict.fromkeys(anexos_ids))
+    result = await db.execute(
+        select(Anexo).where(
+            Anexo.id.in_(unicos),
+            Anexo.organization_id == organization_id,
+            Anexo.deleted_at.is_(None),
+        )
+    )
+    anexos = {a.id: a for a in result.scalars().all()}
+    for aid in unicos:
+        if aid not in anexos:
+            raise HTTPException(status_code=422, detail="Anexo inválido.")
+    return list(anexos.values())
+
+
 @router.get("", response_model=list[EntradaResponse])
 async def listar(
     tanque_id: uuid.UUID | None = None,
     fornecedor_id: uuid.UUID | None = None,
     data_inicio: str | None = None,
     data_fim: str | None = None,
+    numero_nota: str | None = None,
+    cancelada: bool | None = None,
     skip: int = 0,
     limit: int = 50,
+    response: Response = None,  # type: ignore[assignment]
     user: User = Depends(require_permission(Perm.REFUELING_VIEW)),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(EntradaCombustivel).where(
+    base = select(EntradaCombustivel).where(
         EntradaCombustivel.organization_id == user.organization_id
     )
     if tanque_id:
-        stmt = stmt.where(EntradaCombustivel.tanque_id == tanque_id)
+        base = base.where(EntradaCombustivel.tanque_id == tanque_id)
     if fornecedor_id:
-        stmt = stmt.where(EntradaCombustivel.fornecedor_id == fornecedor_id)
+        base = base.where(EntradaCombustivel.fornecedor_id == fornecedor_id)
     if data_inicio:
-        from datetime import date
-
-        stmt = stmt.where(EntradaCombustivel.data_entrada >= date.fromisoformat(data_inicio))
+        base = base.where(EntradaCombustivel.data_entrada >= date.fromisoformat(data_inicio))
     if data_fim:
-        from datetime import date
+        base = base.where(EntradaCombustivel.data_entrada <= date.fromisoformat(data_fim))
+    if numero_nota:
+        base = base.where(EntradaCombustivel.numero_nota.ilike(f"%{numero_nota}%"))
+    if cancelada is not None:
+        base = base.where(EntradaCombustivel.cancelada == cancelada)
 
-        stmt = stmt.where(EntradaCombustivel.data_entrada <= date.fromisoformat(data_fim))
+    total = await db.scalar(
+        select(sa_func.count()).select_from(base.order_by(None).subquery())
+    )
+    if response is not None:
+        response.headers["X-Total-Count"] = str(int(total or 0))
+
     stmt = (
-        stmt.order_by(EntradaCombustivel.data_entrada.desc())
+        base.options(
+            selectinload(EntradaCombustivel.tanque),
+            selectinload(EntradaCombustivel.combustivel),
+            selectinload(EntradaCombustivel.fornecedor),
+            selectinload(EntradaCombustivel.anexos).selectinload(EntradaAnexo.anexo),
+        )
+        .order_by(EntradaCombustivel.data_entrada.desc(), EntradaCombustivel.created_at.desc())
         .offset(skip)
         .limit(min(limit, 200))
     )
-    return (await db.execute(stmt)).scalars().all()
+    entradas = (await db.execute(stmt)).scalars().all()
+    return [_montar_entrada(db, e) for e in entradas]
 
 
 @router.post("", response_model=EntradaResponse, status_code=201)
@@ -125,14 +211,27 @@ async def criar(
         else None
     )
 
+    # Unifica anexos: múltiplos (novo) ou único legado.
+    anexos_ids = list(body.anexos_ids or [])
+    if body.anexo_id and body.anexo_id not in anexos_ids:
+        anexos_ids.append(body.anexo_id)
+    anexos = await _validar_anexos(db, user.organization_id, anexos_ids)
+
     entrada = EntradaCombustivel(
-        **body.model_dump(),
+        **body.model_dump(exclude={"anexos_ids"}),
         organization_id=user.organization_id,
         responsavel_usuario_id=user.id,
         valor_por_litro=valor_por_litro,
     )
     db.add(entrada)
     await db.flush()
+
+    for anexo in anexos:
+        db.add(EntradaAnexo(
+            organization_id=user.organization_id,
+            entrada_id=entrada.id,
+            anexo_id=anexo.id,
+        ))
 
     try:
         await aplicar_movimentacao(
@@ -144,6 +243,7 @@ async def criar(
             quantidade=body.quantidade_litros,
             combustivel_id=body.combustivel_id,
             tanque_id=tanque.id,
+            referencia_id=entrada.id,
             referencia_tipo="ENTRADA_COMBUSTIVEL",
             custo_unitario=valor_por_litro,
             descricao=f"NF {body.numero_nota or '-'}",
@@ -169,8 +269,20 @@ async def criar(
         },
     )
     await db.commit()
+
     await db.refresh(entrada)
-    return entrada
+    entrada = await _get_entrada(db, user, entrada.id)
+    return await _montar_entrada(db, entrada)
+
+
+@router.get("/{entrada_id}", response_model=EntradaResponse)
+async def obter(
+    entrada_id: uuid.UUID,
+    user: User = Depends(require_permission(Perm.REFUELING_VIEW)),
+    db: AsyncSession = Depends(get_db),
+):
+    entrada = await _get_entrada(db, user, entrada_id)
+    return await _montar_entrada(db, entrada)
 
 
 @router.post("/{entrada_id}/cancelar", status_code=200)
@@ -188,9 +300,8 @@ async def cancelar(
     if entrada.cancelada:
         raise HTTPException(status_code=422, detail="Entrada já cancelada.")
 
-    # Segurança (§11): o estorno não pode gerar estoque negativo. Se o saldo
-    # atual do tanque for inferior ao volume da entrada, o cancelamento é
-    # inviável e deve ser orientado um ajuste administrativo.
+    # Segurança: o estorno não pode gerar estoque negativo. Se o saldo atual do
+    # tanque for inferior ao volume da entrada, orienta-se ajuste administrativo.
     tanque = (
         await db.execute(
             select(Tanque).where(
@@ -212,7 +323,7 @@ async def cancelar(
         )
 
     try:
-        movimentacao_estorno = await aplicar_movimentacao(
+        await aplicar_movimentacao(
             db,
             organization_id=user.organization_id,
             tipo=TipoMovimentacao.ESTORNO.value,
@@ -221,6 +332,7 @@ async def cancelar(
             quantidade=entrada.quantidade_litros,
             combustivel_id=entrada.combustivel_id,
             tanque_id=entrada.tanque_id,
+            referencia_id=entrada.id,
             referencia_tipo="CANCELAMENTO_ENTRADA",
             descricao=f"Estorno da NF {entrada.numero_nota or '-'}: {body.justificativa}",
             responsavel_usuario_id=user.id,

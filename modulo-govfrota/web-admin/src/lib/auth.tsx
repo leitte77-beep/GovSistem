@@ -9,6 +9,7 @@ interface User {
   name: string;
   roles: { id: string; name: string; label: string }[];
   permissions?: string[];
+  organization_name?: string | null;
 }
 
 interface AuthContextType {

@@ -44,7 +44,7 @@ export default function ManutencoesPage() {
         veiculo_id: filtros.veiculo_id || undefined,
       }));
       setPlanos(await api.listPlanosPreventivos());
-      setVeiculos(await api.listVeiculos());
+      setVeiculos((await api.listVeiculos({ limit: 200 })).itens);
       setOficinas(await api.listOficinas());
     } catch (e) {
       toast.error((e as Error).message);

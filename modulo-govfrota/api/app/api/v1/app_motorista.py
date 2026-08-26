@@ -152,11 +152,14 @@ async def me(
             select(Organization).where(Organization.id == motorista.organization_id)
         )
     ).scalar_one_or_none()
+    config = await get_configuracoes(db, motorista.organization_id)
     return {
         "id": str(motorista.id),
         "nome": motorista.nome,
         "organization_id": str(motorista.organization_id),
         "organization_name": org.name if org else None,
+        "foto_bomba_obrigatoria": config.foto_bomba_obrigatoria,
+        "foto_km_obrigatoria": config.foto_km_obrigatoria,
     }
 
 
@@ -167,18 +170,38 @@ async def veiculos_disponiveis(
     db: AsyncSession = Depends(get_db),
 ):
     """Veículos autorizados da organização do motorista (exclui baixados/inativos)."""
+    from app.models.combustivel import Combustivel
+
     stmt = select(Veiculo).where(
         Veiculo.organization_id == motorista.organization_id,
         Veiculo.deleted_at.is_(None),
         Veiculo.situacao != "BAIXADO",
     )
     if search:
-        like = f"%{search.replace('-', '')}%"
+        like = f"%{search.replace('-', '').replace(' ', '')}%"
         stmt = stmt.where(
             (Veiculo.placa.ilike(like)) | (Veiculo.modelo.ilike(like))
         )
     stmt = stmt.order_by(Veiculo.placa).limit(50)
     veiculos = (await db.execute(stmt)).scalars().all()
+
+    # Nomes dos combustíveis — evita N+1.
+    combustiveis = {}
+    ids = {
+        v.combustivel_principal_id
+        for v in veiculos
+        if v.combustivel_principal_id is not None
+    } | {
+        v.combustivel_secundario_id
+        for v in veiculos
+        if v.combustivel_secundario_id is not None
+    }
+    if ids:
+        comb_result = await db.execute(
+            select(Combustivel).where(Combustivel.id.in_(ids))
+        )
+        combustiveis = {c.id: c.nome for c in comb_result.scalars().all()}
+
     return [
         VeiculoAppResponse(
             id=v.id,
@@ -188,6 +211,11 @@ async def veiculos_disponiveis(
             foto_url=v.foto_url,
             usa_horimetro=v.usa_horimetro,
             combustivel_principal_id=v.combustivel_principal_id,
+            combustivel_principal_nome=combustiveis.get(v.combustivel_principal_id),
+            combustivel_secundario_id=v.combustivel_secundario_id,
+            combustivel_secundario_nome=combustiveis.get(v.combustivel_secundario_id),
+            quilometragem_atual=v.quilometragem_atual,
+            horimetro_atual=v.horimetro_atual,
         )
         for v in veiculos
     ]
@@ -384,9 +412,20 @@ async def meus_abastecimentos(
     motorista: Motorista = Depends(get_current_motorista),
     db: AsyncSession = Depends(get_db),
 ):
-    """Últimos abastecimentos do próprio motorista."""
+    """Últimos abastecimentos do próprio motorista (com placa/modelo/combustível)."""
+    from app.models.combustivel import Combustivel, Tanque
+
     result = await db.execute(
-        select(Abastecimento)
+        select(
+            Abastecimento,
+            Veiculo.placa,
+            Veiculo.modelo,
+            Veiculo.marca,
+            Combustivel.nome,
+        )
+        .join(Veiculo, Veiculo.id == Abastecimento.veiculo_id)
+        .join(Tanque, Tanque.id == Abastecimento.tanque_id, isouter=True)
+        .outerjoin(Combustivel, Combustivel.id == Abastecimento.combustivel_id)
         .where(
             Abastecimento.organization_id == motorista.organization_id,
             Abastecimento.motorista_id == motorista.id,
@@ -394,16 +433,22 @@ async def meus_abastecimentos(
         .order_by(Abastecimento.data_abastecimento.desc())
         .limit(10)
     )
-    return [
-        {
-            "id": str(a.id),
-            "data": a.data_abastecimento.isoformat(),
-            "veiculo_id": str(a.veiculo_id),
-            "litros": float(a.quantidade_litros),
-            "km": a.quilometragem,
-        }
-        for a in result.scalars().all()
-    ]
+    itens = []
+    for a, placa, modelo, marca, combustivel in result.all():
+        itens.append(
+            {
+                "id": str(a.id),
+                "data": a.data_abastecimento.isoformat(),
+                "veiculo_id": str(a.veiculo_id),
+                "placa": placa,
+                "modelo": modelo,
+                "marca": marca,
+                "combustivel": combustivel,
+                "litros": float(a.quantidade_litros),
+                "km": a.quilometragem,
+            }
+        )
+    return itens
 
 
 @router.post("/motorista/problemas", status_code=201)

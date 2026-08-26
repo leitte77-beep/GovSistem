@@ -32,6 +32,7 @@ class Combustivel(Base, TimestampMixin, SoftDeleteMixin):
     nome: Mapped[str] = mapped_column(String(100), nullable=False)
     unidade: Mapped[str] = mapped_column(String(20), default="litro", nullable=False)
     descricao: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
+    foto_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     ativo: Mapped[bool] = mapped_column(Boolean(), default=True, nullable=False)
 
 
@@ -52,6 +53,7 @@ class Tanque(Base, TimestampMixin, SoftDeleteMixin):
     nome: Mapped[str] = mapped_column(String(150), nullable=False)
     codigo: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     localizacao: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    foto_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     combustivel_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("combustiveis.id"), nullable=False
     )
@@ -85,8 +87,18 @@ class Fornecedor(Base, TimestampMixin, SoftDeleteMixin):
     cpf_cnpj: Mapped[Optional[str]] = mapped_column(String(20), nullable=True, index=True)
     telefone: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    endereco: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    site: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     contato: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    cep: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    logradouro: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    numero: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    complemento: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    bairro: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    cidade: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
+    uf: Mapped[Optional[str]] = mapped_column(String(2), nullable=True)
+    # Mantém compatibilidade com o campo texto único (dado legado).
+    endereco: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    foto_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     categoria: Mapped[str] = mapped_column(String(30), default="COMBUSTIVEL", nullable=False, index=True)
     observacoes: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
     ativo: Mapped[bool] = mapped_column(Boolean(), default=True, nullable=False)

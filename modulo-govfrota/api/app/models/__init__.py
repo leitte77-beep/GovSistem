@@ -18,7 +18,7 @@ from app.models.configuracoes import ConfiguracaoGovFrota
 from app.models.veiculo import AlteracaoQuilometragem, Veiculo, VeiculoDocumento
 from app.models.motorista import AcessoMotorista, Motorista
 from app.models.combustivel import Combustivel, Fornecedor, Oficina, Tanque
-from app.models.estoque import EntradaCombustivel, InventarioTanque, MovimentacaoEstoque
+from app.models.estoque import EntradaAnexo, EntradaCombustivel, InventarioTanque, MovimentacaoEstoque
 from app.models.abastecimento import Abastecimento, CorrecaoAbastecimento
 from app.models.manutencao import Manutencao, ManutencaoItem, PlanoPreventivo
 from app.models.ocorrencia import Ocorrencia
@@ -57,6 +57,7 @@ __all__ = [
     "Fornecedor",
     "Oficina",
     "EntradaCombustivel",
+    "EntradaAnexo",
     "MovimentacaoEstoque",
     "InventarioTanque",
     "Abastecimento",

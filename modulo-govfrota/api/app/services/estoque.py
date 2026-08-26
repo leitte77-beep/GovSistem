@@ -20,6 +20,15 @@ from app.models.enums import OrigemMovimentacao, TipoMovimentacao
 from app.models.estoque import MovimentacaoEstoque
 
 
+def status_estoque(estoque_atual: Decimal, estoque_minimo: Decimal) -> str:
+    """Regra única de status do estoque de um tanque (usada em tanques e dashboard)."""
+    if estoque_atual <= 0:
+        return "CRITICO"
+    if estoque_minimo > 0 and estoque_atual <= estoque_minimo:
+        return "BAIXO"
+    return "NORMAL"
+
+
 class EstoqueError(Exception):
     def __init__(self, codigo: str, mensagem: str):
         self.codigo = codigo

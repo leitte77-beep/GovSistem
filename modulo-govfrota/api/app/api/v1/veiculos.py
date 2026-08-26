@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import func as sa_func
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -22,8 +22,20 @@ from app.schemas.schemas import (
     VeiculoUpdate,
 )
 from app.services.auditoria import registrar_auditoria
+from app.services.placa import normalizar_chassi, normalizar_placa, normalizar_renavam
 
 router = APIRouter(prefix="/veiculos", tags=["veículos"])
+
+# Colunas ordenáveis na listagem (whitelist — evita SQL injection por sort_by).
+_SORTABLE = {
+    "placa": Veiculo.placa,
+    "marca": Veiculo.marca,
+    "modelo": Veiculo.modelo,
+    "tipo": Veiculo.tipo,
+    "situacao": Veiculo.situacao,
+    "quilometragem_atual": Veiculo.quilometragem_atual,
+    "created_at": Veiculo.created_at,
+}
 
 
 async def _get_veiculo_tenant(
@@ -47,34 +59,62 @@ async def listar(
     search: str | None = None,
     situacao: str | None = None,
     tipo: str | None = None,
+    combustivel_id: str | None = None,
     centro_custo: str | None = None,
+    unidade: str | None = None,
+    departamento: str | None = None,
+    filial: str | None = None,
+    sort_by: str = "placa",
+    order: str = "asc",
     skip: int = 0,
     limit: int = 50,
+    response: Response = None,  # type: ignore[assignment]
     user: User = Depends(require_permission(Perm.VEHICLE_VIEW)),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(Veiculo).where(
+    base = select(Veiculo).where(
         Veiculo.organization_id == user.organization_id,
         Veiculo.deleted_at.is_(None),
     )
     if search:
         like = f"%{search}%"
-        stmt = stmt.where(
+        base = base.where(
             (Veiculo.placa.ilike(like))
+            | (Veiculo.renavam.ilike(like))
+            | (Veiculo.chassi.ilike(like))
             | (Veiculo.modelo.ilike(like))
             | (Veiculo.marca.ilike(like))
             | (Veiculo.codigo_interno.ilike(like))
             | (Veiculo.patrimonio.ilike(like))
         )
     if situacao:
-        stmt = stmt.where(Veiculo.situacao == situacao.upper())
+        base = base.where(Veiculo.situacao == situacao.upper())
     if tipo:
-        stmt = stmt.where(Veiculo.tipo == tipo.upper())
+        base = base.where(Veiculo.tipo == tipo.upper())
+    if combustivel_id:
+        base = base.where(Veiculo.combustivel_principal_id == combustivel_id)
     if centro_custo:
-        stmt = stmt.where(Veiculo.centro_custo == centro_custo)
-    stmt = stmt.order_by(Veiculo.placa).offset(skip).limit(min(limit, 200))
+        base = base.where(Veiculo.centro_custo == centro_custo)
+    if unidade:
+        base = base.where(Veiculo.unidade == unidade)
+    if departamento:
+        base = base.where(Veiculo.departamento == departamento)
+    if filial:
+        base = base.where(Veiculo.filial == filial)
+
+    # Total de registros (para paginação server-side) via header.
+    total = await db.scalar(
+        select(sa_func.count()).select_from(base.order_by(None).subquery())
+    )
+    total = int(total or 0)
+
+    coluna = _SORTABLE.get(sort_by, Veiculo.placa)
+    ordenado = coluna.desc() if order.lower() == "desc" else coluna.asc()
+    stmt = base.order_by(ordenado).offset(skip).limit(min(limit, 200))
     result = await db.execute(stmt)
     veiculos = list(result.scalars().all())
+    if response is not None:
+        response.headers["X-Total-Count"] = str(total)
     if not veiculos:
         return veiculos
 
@@ -199,20 +239,48 @@ async def criar(
     user: User = Depends(require_permission(Perm.VEHICLE_MANAGE)),
     db: AsyncSession = Depends(get_db),
 ):
+    placa = normalizar_placa(body.placa)
     existente = await db.execute(
         select(Veiculo.id).where(
             Veiculo.organization_id == user.organization_id,
-            Veiculo.placa == body.placa.upper().replace("-", "").strip(),
+            Veiculo.placa == placa,
             Veiculo.deleted_at.is_(None),
         )
     )
     if existente.scalar_one_or_none():
         raise HTTPException(status_code=422, detail="Já existe um veículo com esta placa.")
 
+    # Normaliza identificadores opcionais e bloqueia duplicidade por organização.
+    dados = body.model_dump(exclude={"placa"})
+    renavam = normalizar_renavam(body.renavam)
+    chassi = normalizar_chassi(body.chassi)
+    dados["renavam"] = renavam or None
+    dados["chassi"] = chassi or None
+
+    for campo, valor, rotulo in (
+        ("renavam", renavam, "RENAVAM"),
+        ("chassi", chassi, "chassi"),
+    ):
+        if not valor:
+            continue
+        duplicado = await db.scalar(
+            select(Veiculo.id)
+            .where(
+                Veiculo.organization_id == user.organization_id,
+                getattr(Veiculo, campo) == valor,
+                Veiculo.deleted_at.is_(None),
+            )
+            .limit(1)
+        )
+        if duplicado:
+            raise HTTPException(
+                status_code=422, detail=f"Já existe um veículo com este {rotulo}."
+            )
+
     veiculo = Veiculo(
-        **body.model_dump(exclude={"placa"}),
+        **dados,
         organization_id=user.organization_id,
-        placa=body.placa.upper().replace("-", "").strip(),
+        placa=placa,
     )
     db.add(veiculo)
     await db.flush()

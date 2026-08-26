@@ -3,7 +3,9 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+
+from app.services.placa import normalizar_placa, placa_valida
 
 
 class ORMModel(BaseModel):
@@ -57,6 +59,16 @@ class TokenMotoristaResponse(BaseModel):
 class VeiculoCreate(BaseModel):
     placa: str = Field(min_length=5, max_length=10)
     renavam: Optional[str] = None
+
+    @field_validator("placa")
+    @classmethod
+    def _validar_placa(cls, v: str) -> str:
+        v = normalizar_placa(v)
+        if not placa_valida(v):
+            raise ValueError(
+                "Placa inválida. Use o formato padrão (ABC1234) ou Mercosul (ABC1D23)."
+            )
+        return v
     chassi: Optional[str] = None
     codigo_interno: Optional[str] = None
     patrimonio: Optional[str] = None
@@ -184,6 +196,7 @@ class MotoristaCreate(BaseModel):
     cnh_categoria: Optional[str] = None
     cnh_validade: Optional[date] = None
     observacoes: Optional[str] = None
+    foto_url: Optional[str] = None
     ativo: bool = True
 
 
@@ -196,6 +209,7 @@ class MotoristaUpdate(BaseModel):
     cnh_categoria: Optional[str] = None
     cnh_validade: Optional[date] = None
     observacoes: Optional[str] = None
+    foto_url: Optional[str] = None
     ativo: Optional[bool] = None
 
 
@@ -226,7 +240,17 @@ class MotoristaResponse(ORMModel):
     cnh_categoria: Optional[str]
     cnh_validade: Optional[date]
     observacoes: Optional[str]
+    foto_url: Optional[str] = None
     ativo: bool
+
+
+class MotoristaListaResponse(MotoristaResponse):
+    """Item da listagem com dados de acesso e situação da CNH (evita N+1)."""
+
+    acesso_login: Optional[str] = None
+    acesso_bloqueado: bool = False
+    ultimo_acesso: Optional[datetime] = None
+    situacao_cnh: Optional[str] = None
 
 
 # ── Combustíveis / tanques ──────────────────────────────────────────────────
@@ -236,6 +260,7 @@ class CombustivelCreate(BaseModel):
     nome: str = Field(min_length=1, max_length=100)
     unidade: str = "litro"
     descricao: Optional[str] = None
+    foto_url: Optional[str] = None
     ativo: bool = True
 
 
@@ -244,7 +269,11 @@ class CombustivelResponse(ORMModel):
     nome: str
     unidade: str
     descricao: Optional[str]
+    foto_url: Optional[str] = None
     ativo: bool
+    # Associados (preenchidos na listagem) — evita N+1 no frontend
+    total_tanques: int = 0
+    total_veiculos: int = 0
 
 
 class TanqueCreate(BaseModel):
@@ -256,16 +285,19 @@ class TanqueCreate(BaseModel):
     estoque_inicial: Decimal = Field(default=Decimal("0"), ge=0)
     estoque_minimo: Decimal = Field(default=Decimal("0"), ge=0)
     observacoes: Optional[str] = None
+    foto_url: Optional[str] = None
 
 
 class TanqueUpdate(BaseModel):
     nome: Optional[str] = None
     codigo: Optional[str] = None
     localizacao: Optional[str] = None
+    combustivel_id: Optional[uuid.UUID] = None
     capacidade_maxima: Optional[Decimal] = None
     estoque_minimo: Optional[Decimal] = None
     ativo: Optional[bool] = None
     observacoes: Optional[str] = None
+    foto_url: Optional[str] = None
 
 
 class TanqueResponse(ORMModel):
@@ -275,12 +307,15 @@ class TanqueResponse(ORMModel):
     localizacao: Optional[str]
     combustivel_id: uuid.UUID
     combustivel_nome: Optional[str] = None
+    combustivel_unidade: Optional[str] = None
     capacidade_maxima: Decimal
     estoque_inicial: Decimal
     estoque_atual: Decimal
     estoque_minimo: Decimal
     percentual_disponivel: Optional[float] = None
     status_estoque: Optional[str] = None
+    foto_url: Optional[str] = None
+    ultima_movimentacao: Optional[dict] = None
     ativo: bool
     observacoes: Optional[str]
 
@@ -294,8 +329,17 @@ class FornecedorCreate(BaseModel):
     cpf_cnpj: Optional[str] = None
     telefone: Optional[str] = None
     email: Optional[str] = None
-    endereco: Optional[str] = None
+    site: Optional[str] = None
     contato: Optional[str] = None
+    cep: Optional[str] = None
+    logradouro: Optional[str] = None
+    numero: Optional[str] = None
+    complemento: Optional[str] = None
+    bairro: Optional[str] = None
+    cidade: Optional[str] = None
+    uf: Optional[str] = None
+    endereco: Optional[str] = None
+    foto_url: Optional[str] = None
     categoria: str = "COMBUSTIVEL"
     observacoes: Optional[str] = None
     ativo: bool = True
@@ -307,8 +351,17 @@ class FornecedorUpdate(BaseModel):
     cpf_cnpj: Optional[str] = None
     telefone: Optional[str] = None
     email: Optional[str] = None
-    endereco: Optional[str] = None
+    site: Optional[str] = None
     contato: Optional[str] = None
+    cep: Optional[str] = None
+    logradouro: Optional[str] = None
+    numero: Optional[str] = None
+    complemento: Optional[str] = None
+    bairro: Optional[str] = None
+    cidade: Optional[str] = None
+    uf: Optional[str] = None
+    endereco: Optional[str] = None
+    foto_url: Optional[str] = None
     categoria: Optional[str] = None
     observacoes: Optional[str] = None
     ativo: Optional[bool] = None
@@ -321,11 +374,30 @@ class FornecedorResponse(ORMModel):
     cpf_cnpj: Optional[str]
     telefone: Optional[str]
     email: Optional[str]
-    endereco: Optional[str]
+    site: Optional[str]
     contato: Optional[str]
+    cep: Optional[str]
+    logradouro: Optional[str]
+    numero: Optional[str]
+    complemento: Optional[str]
+    bairro: Optional[str]
+    cidade: Optional[str]
+    uf: Optional[str]
+    endereco: Optional[str]
+    foto_url: Optional[str] = None
     categoria: str
     observacoes: Optional[str]
     ativo: bool
+    # Indicadores agregados (preenchidos na listagem/detalhe)
+    total_entradas: int = 0
+    litros_fornecidos: float = 0
+    valor_total: float = 0
+    ultima_compra: Optional[dict] = None
+
+
+class FornecedorDetalheResponse(FornecedorResponse):
+    """Ficha do fornecedor: dados + histórico de entradas associadas."""
+    historico_entradas: list[dict] = []
 
 
 class OficinaCreate(BaseModel):
@@ -383,6 +455,8 @@ class EntradaCreate(BaseModel):
     valor_total: Optional[Decimal] = None
     observacoes: Optional[str] = None
     anexo_id: Optional[uuid.UUID] = None
+    # Anexos múltiplos (NF PDF/XML/foto). Aceita também o anexo único legado.
+    anexos_ids: Optional[list[uuid.UUID]] = None
 
 
 class EntradaCancelamento(BaseModel):
@@ -403,7 +477,15 @@ class EntradaResponse(ORMModel):
     valor_por_litro: Optional[Decimal]
     observacoes: Optional[str]
     cancelada: bool
+    cancelada_em: Optional[datetime] = None
+    motivo_cancelamento: Optional[str] = None
     responsavel_usuario_id: Optional[uuid.UUID]
+    # Nomes juntados (preenchidos na listagem/detalhe) — evita N+1
+    tanque_nome: Optional[str] = None
+    combustivel_nome: Optional[str] = None
+    fornecedor_nome: Optional[str] = None
+    # Anexos associados (id, nome, tipo, mime, url)
+    anexos: list[dict] = []
 
 
 # ── Estoque ────────────────────────────────────────────────────────────────
@@ -423,7 +505,13 @@ class MovimentacaoResponse(ORMModel):
     descricao: Optional[str]
     custo_unitario: Optional[Decimal]
     saldo_apos: Optional[Decimal]
+    responsavel_usuario_id: Optional[uuid.UUID]
+    responsavel_motorista_id: Optional[uuid.UUID]
     created_at: datetime
+    # Nomes juntados (preenchidos na listagem) — evita N+1
+    responsavel_nome: Optional[str] = None
+    tanque_destino_nome: Optional[str] = None
+    tanque_origem_nome: Optional[str] = None
 
 
 class AjusteRequest(BaseModel):
@@ -461,6 +549,22 @@ class InventarioResponse(ORMModel):
     justificativa: Optional[str]
     ajuste_aplicado: bool
     usuario_id: Optional[uuid.UUID]
+
+
+class TanqueEvolucaoResponse(BaseModel):
+    """Série temporal do saldo de estoque para o gráfico (7/30/90 dias)."""
+    periodo_dias: int
+    pontos: list[dict]
+
+
+class TanqueResumoResponse(BaseModel):
+    """Indicadores da ficha do tanque — somente dados confiáveis."""
+    consumo_medio_diario_litros: Optional[float] = None
+    previsao_dias_restantes: Optional[float] = None
+    custo_medio_por_litro: Optional[float] = None
+    valor_estoque: Optional[float] = None
+    autonomia_dias: Optional[float] = None
+    ultimos_abastecimentos: list[dict] = []
 
 
 # ── Abastecimentos ──────────────────────────────────────────────────────────
@@ -686,6 +790,11 @@ class VeiculoAppResponse(BaseModel):
     foto_url: Optional[str]
     usa_horimetro: bool
     combustivel_principal_id: Optional[uuid.UUID]
+    combustivel_principal_nome: Optional[str] = None
+    combustivel_secundario_id: Optional[uuid.UUID] = None
+    combustivel_secundario_nome: Optional[str] = None
+    quilometragem_atual: int = 0
+    horimetro_atual: Optional[Decimal] = None
 
 
 class OcorrenciaAppCreate(BaseModel):

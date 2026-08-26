@@ -1,7 +1,8 @@
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy import func as sa_func
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -18,6 +19,7 @@ from app.schemas.schemas import (
     CredencialCreate,
     CredencialUpdate,
     MotoristaCreate,
+    MotoristaListaResponse,
     MotoristaResponse,
     MotoristaUpdate,
 )
@@ -25,9 +27,34 @@ from app.services.auditoria import registrar_auditoria
 
 router = APIRouter(prefix="/motoristas", tags=["motoristas"])
 
+# Colunas ordenáveis na listagem (whitelist).
+_SORTABLE = {
+    "nome": Motorista.nome,
+    "cnh_validade": Motorista.cnh_validade,
+    "ativo": Motorista.ativo,
+    "ultimo_acesso": AcessoMotorista.ultimo_acesso,
+}
+
 
 def _normalizar_cpf(cpf: str) -> str:
     return cpf.replace(".", "").replace("-", "").strip()
+
+
+def _situacao_cnh(validade: date | None) -> str | None:
+    """Classifica a situação da CNH conforme a proximidade do vencimento."""
+    if validade is None:
+        return None
+    hoje = date.today()
+    dias = (validade - hoje).days
+    if dias < 0:
+        return "VENCIDA"
+    if dias <= 7:
+        return "A_VENCER_7"
+    if dias <= 30:
+        return "A_VENCER_30"
+    if dias <= 60:
+        return "A_VENCER_60"
+    return "VALIDA"
 
 
 async def _get_motorista_tenant(
@@ -46,31 +73,89 @@ async def _get_motorista_tenant(
     return motorista
 
 
-@router.get("", response_model=list[MotoristaResponse])
+@router.get("", response_model=list[MotoristaListaResponse])
 async def listar(
     search: str | None = None,
     ativo: bool | None = None,
+    cnh_categoria: str | None = None,
+    situacao_cnh: str | None = None,
+    acesso_status: str | None = None,
+    sort_by: str = "nome",
+    order: str = "asc",
     skip: int = 0,
     limit: int = 50,
+    response: Response = None,  # type: ignore[assignment]
     user: User = Depends(require_permission(Perm.VEHICLE_VIEW)),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(Motorista).where(
+    cond = [
         Motorista.organization_id == user.organization_id,
         Motorista.deleted_at.is_(None),
-    )
+    ]
     if search:
         like = f"%{search}%"
-        stmt = stmt.where(
+        cond.append(
             (Motorista.nome.ilike(like))
             | (Motorista.cpf.ilike(like))
             | (Motorista.matricula.ilike(like))
+            | (Motorista.cnh_numero.ilike(like))
         )
     if ativo is not None:
-        stmt = stmt.where(Motorista.ativo == ativo)
-    stmt = stmt.order_by(Motorista.nome).offset(skip).limit(min(limit, 200))
+        cond.append(Motorista.ativo == ativo)
+    if cnh_categoria:
+        cond.append(Motorista.cnh_categoria == cnh_categoria.upper())
+    hoje = date.today()
+    if situacao_cnh == "VENCIDA":
+        cond.append(Motorista.cnh_validade < hoje)
+    elif situacao_cnh in ("A_VENCER_7", "A_VENCER_30", "A_VENCER_60"):
+        dias = int(situacao_cnh.split("_")[-1])
+        cond.append(
+            Motorista.cnh_validade >= hoje,
+            Motorista.cnh_validade <= hoje + timedelta(days=dias),
+        )
+    elif situacao_cnh == "VALIDA":
+        cond.append(Motorista.cnh_validade > hoje + timedelta(days=60))
+    if acesso_status == "SEM_ACESSO":
+        cond.append(AcessoMotorista.motorista_id.is_(None))
+    elif acesso_status == "COM_ACESSO":
+        cond.append(AcessoMotorista.motorista_id.isnot(None))
+    elif acesso_status == "BLOQUEADO":
+        cond.append(AcessoMotorista.bloqueado.is_(True))
+
+    # Join com a credencial — permite acesso/último acesso na listagem (sem N+1).
+    base = (
+        select(Motorista, AcessoMotorista)
+        .outerjoin(AcessoMotorista, AcessoMotorista.motorista_id == Motorista.id)
+        .where(*cond)
+    )
+
+    total = await db.scalar(
+        select(sa_func.count())
+        .select_from(base.order_by(None).subquery())
+    )
+    if response is not None:
+        response.headers["X-Total-Count"] = str(int(total or 0))
+
+    coluna = _SORTABLE.get(sort_by, Motorista.nome)
+    ordenado = coluna.desc() if order.lower() == "desc" else coluna.asc()
+    if sort_by == "ultimo_acesso" and order.lower() == "desc":
+        # Nulos (nunca acessou) por último na ordenação desc.
+        ordenado = AcessoMotorista.ultimo_acesso.desc().nulls_last()
+    stmt = base.order_by(ordenado).offset(skip).limit(min(limit, 200))
     result = await db.execute(stmt)
-    return result.scalars().all()
+
+    from pydantic import TypeAdapter
+
+    adapter = TypeAdapter(list[MotoristaListaResponse])
+    itens = []
+    for m, acesso in result.all():
+        dados = MotoristaListaResponse.model_validate(m, from_attributes=True).model_dump()
+        dados["acesso_login"] = acesso.login if acesso else None
+        dados["acesso_bloqueado"] = bool(acesso.bloqueado) if acesso else False
+        dados["ultimo_acesso"] = acesso.ultimo_acesso if acesso else None
+        dados["situacao_cnh"] = _situacao_cnh(m.cnh_validade)
+        itens.append(dados)
+    return adapter.validate_python(itens)
 
 
 @router.post("", response_model=MotoristaResponse, status_code=201)
@@ -297,6 +382,79 @@ async def atualizar_credencial(
     await db.commit()
     await db.refresh(acesso)
     return acesso
+
+
+@router.post("/{motorista_id}/acesso/gerar-pin")
+async def gerar_pin_acesso(
+    motorista_id: uuid.UUID,
+    user: User = Depends(require_permission(Perm.DRIVER_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Cria o acesso (login global único) ou redefine o PIN do motorista.
+
+    Gera um PIN provisório de 6 dígitos, armazena apenas o hash (bcrypt) e
+    devolve o PIN em texto claro UMA única vez — nunca mais será recuperável.
+    """
+    import re
+    import secrets
+
+    motorista = await _get_motorista_tenant(db, user, motorista_id)
+    acesso = (
+        await db.execute(
+            select(AcessoMotorista).where(AcessoMotorista.motorista_id == motorista.id)
+        )
+    ).scalar_one_or_none()
+
+    criado = acesso is None
+    if acesso is None:
+        # Login global único, derivado do nome.
+        base = re.sub(r"[^a-z0-9]+", ".", motorista.nome.lower()).strip(".")
+        base = base or "motorista"
+        login = base
+        n = 2
+        while True:
+            ocupado = await db.scalar(
+                select(AcessoMotorista.id).where(
+                    AcessoMotorista.login_normalized == login
+                )
+            )
+            if not ocupado:
+                break
+            login = f"{base}.{n}"
+            n += 1
+        acesso = AcessoMotorista(
+            organization_id=user.organization_id,
+            motorista_id=motorista.id,
+            login=login,
+            senha_hash="",
+        )
+        db.add(acesso)
+
+    pin = f"{secrets.randbelow(1_000_000):06d}"
+    acesso.senha_hash = hash_secret(pin)
+    acesso.bloqueado = False
+    acesso.falhas_login = 0
+    acesso.locked_until = None
+
+    acao = "motorista.acesso_criar" if criado else "motorista.acesso_redefinir"
+    await registrar_auditoria(
+        db,
+        organization_id=user.organization_id,
+        acao=acao,
+        entidade="acesso_motorista",
+        entidade_id=motorista.id,
+        usuario_id=user.id,
+        dados_novos={"login": acesso.login, "pin_gerado": True},
+    )
+    await db.commit()
+    await db.refresh(acesso)
+
+    return {
+        "criado": criado,
+        "login": acesso.login,
+        "pin_provisorio": pin,
+        "url": "/motorista",
+    }
 
 
 # ── Histórico administrativo do motorista ────────────────────────────────────
