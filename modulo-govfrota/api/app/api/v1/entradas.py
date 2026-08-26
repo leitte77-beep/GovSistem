@@ -205,11 +205,16 @@ async def criar(
         if fornecedor_ok is None:
             raise HTTPException(status_code=422, detail="Fornecedor inválido.")
 
-    valor_por_litro = (
-        (Decimal(body.valor_total) / Decimal(body.quantidade_litros)).quantize(Decimal("0.0001"))
-        if body.valor_total and Decimal(body.quantidade_litros) > 0
-        else None
-    )
+    # Valor por litro e valor total: aceita informar o total e/ou o unitário.
+    # - Só total → unitário = total ÷ quantidade.
+    # - Só unitário → total = unitário × quantidade.
+    # - Ambos → respeita os dois valores informados (unitário vira o custo médio).
+    valor_por_litro = body.valor_unitario
+    valor_total = body.valor_total
+    if body.valor_unitario is not None and body.valor_total is None:
+        valor_total = (Decimal(body.valor_unitario) * Decimal(body.quantidade_litros)).quantize(Decimal("0.01"))
+    if body.valor_total is not None and body.valor_unitario is None and Decimal(body.quantidade_litros) > 0:
+        valor_por_litro = (Decimal(body.valor_total) / Decimal(body.quantidade_litros)).quantize(Decimal("0.0001"))
 
     # Unifica anexos: múltiplos (novo) ou único legado.
     anexos_ids = list(body.anexos_ids or [])
@@ -218,10 +223,11 @@ async def criar(
     anexos = await _validar_anexos(db, user.organization_id, anexos_ids)
 
     entrada = EntradaCombustivel(
-        **body.model_dump(exclude={"anexos_ids"}),
+        **body.model_dump(exclude={"anexos_ids", "valor_unitario", "valor_total"}),
+        valor_total=valor_total,
+        valor_por_litro=valor_por_litro,
         organization_id=user.organization_id,
         responsavel_usuario_id=user.id,
-        valor_por_litro=valor_por_litro,
     )
     db.add(entrada)
     await db.flush()

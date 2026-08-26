@@ -199,6 +199,66 @@ class TestFornecedores:
 
 
 class TestEntradas:
+    async def test_valor_unitario_calcula_total(self, client, make_tenant, setup_frota):
+        """Informar apenas o valor unitário (R$/L) deve derivar o valor total."""
+        t = await make_tenant("ADMIN")
+        frota = await setup_frota(t["org"])
+
+        fornecedor = await client.post(
+            "/api/govfrota/fornecedores",
+            json={"razao_social": "Posto Vale", "categoria": "COMBUSTIVEL"},
+            headers=t["headers"],
+        )
+        f_id = fornecedor.json()["id"]
+
+        resp = await client.post(
+            "/api/govfrota/entradas",
+            json={
+                "tanque_id": str(frota["tanque"].id),
+                "combustivel_id": str(frota["combustivel"].id),
+                "fornecedor_id": f_id,
+                "quantidade_litros": "5000",
+                "data_entrada": date.today().isoformat(),
+                "numero_nota": "555",
+                "valor_unitario": "5.80",
+            },
+            headers=t["headers"],
+        )
+        assert resp.status_code == 201, resp.text
+        data = resp.json()
+        assert abs(float(data["valor_por_litro"]) - 5.8) < 0.0001
+        assert abs(float(data["valor_total"]) - 29000.0) < 0.01
+
+    async def test_valor_total_calcula_unitario(self, client, make_tenant, setup_frota):
+        """Informar apenas o valor total deve derivar o valor unitário (R$/L)."""
+        t = await make_tenant("ADMIN")
+        frota = await setup_frota(t["org"])
+
+        fornecedor = await client.post(
+            "/api/govfrota/fornecedores",
+            json={"razao_social": "Posto Norte", "categoria": "COMBUSTIVEL"},
+            headers=t["headers"],
+        )
+        f_id = fornecedor.json()["id"]
+
+        resp = await client.post(
+            "/api/govfrota/entradas",
+            json={
+                "tanque_id": str(frota["tanque"].id),
+                "combustivel_id": str(frota["combustivel"].id),
+                "fornecedor_id": f_id,
+                "quantidade_litros": "4000",
+                "data_entrada": date.today().isoformat(),
+                "numero_nota": "556",
+                "valor_total": "23200.00",
+            },
+            headers=t["headers"],
+        )
+        assert resp.status_code == 201, resp.text
+        data = resp.json()
+        assert abs(float(data["valor_por_litro"]) - 5.8) < 0.0001
+        assert abs(float(data["valor_total"]) - 23200.0) < 0.01
+
     async def test_anexos_multiplos_e_nomes(self, client, make_tenant, setup_frota):
         t = await make_tenant("ADMIN")
         frota = await setup_frota(t["org"])

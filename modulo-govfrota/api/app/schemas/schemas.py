@@ -453,6 +453,10 @@ class EntradaCreate(BaseModel):
     serie_nota: Optional[str] = None
     chave_nfe: Optional[str] = None
     valor_total: Optional[Decimal] = None
+    # Valor por litro (unitário) informado diretamente. Se não informado, é
+    # derivado de valor_total ÷ quantidade; se informado sem valor_total, o
+    # valor_total é calculado como unitário × quantidade.
+    valor_unitario: Optional[Decimal] = None
     observacoes: Optional[str] = None
     anexo_id: Optional[uuid.UUID] = None
     # Anexos múltiplos (NF PDF/XML/foto). Aceita também o anexo único legado.

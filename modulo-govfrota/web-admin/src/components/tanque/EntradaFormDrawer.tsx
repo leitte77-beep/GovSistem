@@ -33,6 +33,7 @@ export function EntradaFormDrawer({ aberto, onClose, tanques, fornecedores, onSa
     chave_nfe: "",
     data_entrada: new Date().toISOString().slice(0, 10),
     quantidade_litros: "",
+    valor_unitario: "",
     valor_total: "",
     observacoes: "",
   });
@@ -45,6 +46,9 @@ export function EntradaFormDrawer({ aberto, onClose, tanques, fornecedores, onSa
         ...f,
         tanque_id: tanqueInicialId ?? f.tanque_id,
         data_entrada: new Date().toISOString().slice(0, 10),
+        quantidade_litros: "",
+        valor_unitario: "",
+        valor_total: "",
       }));
       setAnexos([]);
       setSalvando(false);
@@ -62,8 +66,45 @@ export function EntradaFormDrawer({ aberto, onClose, tanques, fornecedores, onSa
 
   const litros = Number(form.quantidade_litros || 0);
   const valor = Number(form.valor_total || 0);
-  const valorPorLitro = litros > 0 && valor > 0 ? valor / litros : null;
+  const unitario = Number(form.valor_unitario || 0);
+  // Valor por litro exibido: prioriza o informado; senão deriva do total.
+  const valorPorLitro = unitario > 0 ? unitario : litros > 0 && valor > 0 ? valor / litros : null;
   const excedeCapacidade = capacidadeDisponivel !== null && litros > capacidadeDisponivel;
+
+  // Cálculo bidirecional entre valor unitário e valor total.
+  const mudarLitros = (qtd: string) => {
+    setForm((f) => {
+      const n = Number(qtd || 0);
+      const vu = Number(f.valor_unitario || 0);
+      const vt = Number(f.valor_total || 0);
+      const prox: typeof f = { ...f, quantidade_litros: qtd };
+      if (vu > 0 && n > 0) prox.valor_total = (vu * n).toFixed(2);
+      else if (vt > 0 && n > 0) prox.valor_unitario = (vt / n).toFixed(4);
+      return prox;
+    });
+  };
+
+  const mudarValorUnitario = (v: string) => {
+    setForm((f) => {
+      const n = Number(f.quantidade_litros || 0);
+      const vu = Number(v || 0);
+      const prox = { ...f, valor_unitario: v };
+      if (vu > 0 && n > 0) prox.valor_total = (vu * n).toFixed(2);
+      else if (!v) prox.valor_total = "";
+      return prox;
+    });
+  };
+
+  const mudarValorTotal = (v: string) => {
+    setForm((f) => {
+      const n = Number(f.quantidade_litros || 0);
+      const vt = Number(v || 0);
+      const prox = { ...f, valor_total: v };
+      if (vt > 0 && n > 0) prox.valor_unitario = (vt / n).toFixed(4);
+      else if (!v) prox.valor_unitario = "";
+      return prox;
+    });
+  };
 
   const campo = (k: keyof typeof form) => ({
     value: form[k],
@@ -110,6 +151,7 @@ export function EntradaFormDrawer({ aberto, onClose, tanques, fornecedores, onSa
         serie_nota: form.serie_nota || undefined,
         chave_nfe: form.chave_nfe || undefined,
         valor_total: valor > 0 ? valor : undefined,
+        valor_unitario: unitario > 0 ? unitario : undefined,
         observacoes: form.observacoes || undefined,
         anexos_ids: anexos_ids.length ? anexos_ids : undefined,
       };
@@ -214,14 +256,18 @@ export function EntradaFormDrawer({ aberto, onClose, tanques, fornecedores, onSa
         <Secao titulo="Quantidade e valor">
           <div className="grid gap-3 sm:grid-cols-2">
             <Label texto="Litros *">
-              <input required type="number" step="0.01" min={0} {...campo("quantidade_litros")} />
+              <input required type="number" step="0.01" min={0} className="input" value={form.quantidade_litros} onChange={(e) => mudarLitros(e.target.value)} />
+            </Label>
+            <Label texto="Valor unitário (R$/L)">
+              <input type="number" step="0.0001" min={0} className="input" value={form.valor_unitario} onChange={(e) => mudarValorUnitario(e.target.value)} placeholder="Ex.: 5,80" />
             </Label>
             <Label texto="Valor total (R$)">
-              <input type="number" step="0.01" min={0} {...campo("valor_total")} />
+              <input type="number" step="0.01" min={0} className="input" value={form.valor_total} onChange={(e) => mudarValorTotal(e.target.value)} placeholder="Ex.: 29000,00" />
             </Label>
             {valorPorLitro !== null && (
               <div className="sm:col-span-2 rounded-btn bg-[#EFF6FF] px-3 py-2 text-body-sm text-[#1D4ED8]">
                 Valor por litro: <strong>R$ {valorPorLitro.toFixed(4).replace(".", ",")}</strong>
+                {valor > 0 && <> · Total: <strong>R$ {valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong></>}
               </div>
             )}
           </div>
@@ -279,13 +325,8 @@ export function EntradaFormDrawer({ aberto, onClose, tanques, fornecedores, onSa
               <dt className="text-meta text-text-subtle">Quantidade</dt><dd className="text-right font-medium">{litros.toLocaleString("pt-BR")} L</dd>
               <dt className="text-meta text-text-subtle">Fornecedor</dt><dd className="text-right font-medium">{fornecedor?.nome_fantasia || fornecedor?.razao_social || "—"}</dd>
               <dt className="text-meta text-text-subtle">NF</dt><dd className="text-right font-medium">{form.numero_nota || "—"}</dd>
+              <dt className="text-meta text-text-subtle">Valor unitário</dt><dd className="text-right font-medium">{valorPorLitro !== null ? `R$ ${valorPorLitro.toFixed(4).replace(".", ",")}` : "—"}</dd>
               <dt className="text-meta text-text-subtle">Valor total</dt><dd className="text-right font-medium">{valor > 0 ? `R$ ${valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}</dd>
-              {valorPorLitro !== null && (
-                <>
-                  <dt className="text-meta text-text-subtle">Valor/L</dt>
-                  <dd className="text-right font-medium">R$ {valorPorLitro.toFixed(4).replace(".", ",")}</dd>
-                </>
-              )}
             </dl>
           </Secao>
         )}
