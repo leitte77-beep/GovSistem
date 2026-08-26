@@ -19,6 +19,7 @@ import { CombustivelFormDrawer } from "@/components/tanque/CombustivelFormDrawer
 import { FornecedorFormDrawer } from "@/components/tanque/FornecedorFormDrawer";
 import { EntradaFormDrawer } from "@/components/tanque/EntradaFormDrawer";
 import { AjusteModal, CancelarEntradaModal, InventarioModal, TransferenciaModal } from "@/components/tanque/AcoesModals";
+import { VerEntradaModal } from "@/components/tanque/VerEntradaModal";
 import { ConfirmarModal } from "@/components/tanque/Drawer";
 import { categoriaFornecedor, corStatusTanque, mascaraCpfCnpj, rotuloMovimentacao } from "@/lib/combustiveis";
 
@@ -67,6 +68,7 @@ export default function CombustiveisPage() {
   // Ações (modais)
   const [acaoTanque, setAcaoTanque] = useState<{ tipo: "ajuste" | "inventario" | "transferencia" | "inativar"; positivo?: boolean } | null>(null);
   const [cancelarEntrada, setCancelarEntrada] = useState<Entrada | null>(null);
+  const [verEntrada, setVerEntrada] = useState<Entrada | null>(null);
   const [inativarCombustivel, setInativarCombustivel] = useState<Combustivel | null>(null);
   const [inativarFornecedor, setInativarFornecedor] = useState<Fornecedor | null>(null);
 
@@ -216,6 +218,7 @@ export default function CombustiveisPage() {
                 podeGerenciar={podeGerenciar}
                 onNovo={() => setEntradaDrawer({ aberto: true })}
                 onCancelar={(e) => setCancelarEntrada(e)}
+                onVer={(e) => setVerEntrada(e)}
               />
             )}
 
@@ -335,6 +338,9 @@ export default function CombustiveisPage() {
           entradaRef={cancelarEntrada?.numero_nota ?? cancelarEntrada?.id ?? ""}
           onConcluido={recarregar}
         />
+
+        {/* Ver detalhes / NF */}
+        {verEntrada && <VerEntradaModal entrada={verEntrada} onClose={() => setVerEntrada(null)} />}
 
         {/* Inativar combustível / fornecedor */}
         <ConfirmarModal
@@ -530,6 +536,7 @@ function EntradasTab(props: {
   podeGerenciar: boolean;
   onNovo: () => void;
   onCancelar: (e: Entrada) => void;
+  onVer: (e: Entrada) => void;
 }) {
   const { entradas, total, skip, limit, setSkip, setLimit } = props;
   const paginas = Math.ceil(total / limit);
@@ -592,7 +599,7 @@ function EntradasTab(props: {
                   <th className="px-4 py-3">Valor total</th>
                   <th className="px-4 py-3">R$/L</th>
                   <th className="px-4 py-3">Status</th>
-                  {props.podeGerenciar && <th className="px-4 py-3">Ações</th>}
+                  <th className="px-4 py-3">Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -603,7 +610,16 @@ function EntradasTab(props: {
                     <td className="px-4 py-3">{e.combustivel_nome ?? "—"}</td>
                     <td className="px-4 py-3">{e.fornecedor_nome ?? "—"}</td>
                     <td className="px-4 py-3 font-medium">{Number(e.quantidade_litros).toLocaleString("pt-BR")} L</td>
-                    <td className="px-4 py-3">{e.numero_nota ?? "—"}</td>
+                    <td className="px-4 py-3">
+                      <span className="inline-flex items-center gap-1.5">
+                        {e.numero_nota ?? "—"}
+                        {(e.anexos?.length ?? 0) > 0 && (
+                          <span className="rounded-pill bg-[#EFF6FF] px-1.5 py-0.5 text-meta font-medium text-[#1D4ED8]">
+                            {e.anexos!.length} doc(s)
+                          </span>
+                        )}
+                      </span>
+                    </td>
                     <td className="px-4 py-3">{e.valor_total ? `R$ ${Number(e.valor_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}</td>
                     <td className="px-4 py-3">{e.valor_por_litro ? `R$ ${Number(e.valor_por_litro).toFixed(4)}` : "—"}</td>
                     <td className="px-4 py-3">
@@ -611,17 +627,16 @@ function EntradasTab(props: {
                         {e.cancelada ? "Cancelada" : "Confirmada"}
                       </span>
                     </td>
-                    {props.podeGerenciar && (
-                      <td className="px-4 py-3">
-                        {!e.cancelada && (
-                          <MenuAcoes
-                            acoes={[
-                              { key: "cancelar", label: "Cancelar entrada", icon: <X size={16} />, cor: "danger", onClick: () => props.onCancelar(e) },
-                            ]}
-                          />
-                        )}
-                      </td>
-                    )}
+                    <td className="px-4 py-3">
+                      <MenuAcoes
+                        acoes={[
+                          { key: "ver", label: "Ver detalhes / NF", icon: <Eye size={16} />, onClick: () => props.onVer(e) },
+                          ...(props.podeGerenciar && !e.cancelada
+                            ? [{ key: "cancelar", label: "Cancelar entrada", icon: <X size={16} />, cor: "danger" as const, onClick: () => props.onCancelar(e) }]
+                            : []),
+                        ]}
+                      />
+                    </td>
                   </tr>
                 ))}
               </tbody>

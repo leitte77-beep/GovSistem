@@ -459,6 +459,43 @@ export const api = {
     fd.append("file", file);
     return request<{ id: string; url: string }>("/uploads", { method: "POST", body: fd });
   },
+
+  // Anexos (NF PDF/XML/foto): visualizar e baixar exigem autenticação.
+  async abrirAnexo(anexo: { url: string; nome?: string; mime?: string | null }) {
+    const token = getAccessToken();
+    const res = await fetch(anexo.url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error("Falha ao carregar o documento.");
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.target = "_blank";
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+  },
+
+  async baixarAnexo(anexo: { url: string; nome?: string; mime?: string | null }) {
+    const token = getAccessToken();
+    const res = await fetch(anexo.url, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error("Falha ao baixar o documento.");
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const nome = anexo.nome || "anexo";
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = nome;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objectUrl);
+  },
 };
 
 export { bootstrapTokenFromQuery };
