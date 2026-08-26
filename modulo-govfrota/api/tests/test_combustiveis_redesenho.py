@@ -259,6 +259,20 @@ class TestEntradas:
         assert abs(float(data["valor_por_litro"]) - 5.8) < 0.0001
         assert abs(float(data["valor_total"]) - 23200.0) < 0.01
 
+    async def test_listagem_entradas(self, client, make_tenant, setup_frota):
+        """GET /entradas (listagem paginada) deve retornar com nomes juntados."""
+        t = await make_tenant("ADMIN")
+        frota = await setup_frota(t["org"])
+        await _entrada(client, t["headers"], frota["tanque"].id, frota["combustivel"].id, litros="1000", nota="777")
+
+        resp = await client.get("/api/govfrota/entradas?skip=0&limit=50", headers=t["headers"])
+        assert resp.status_code == 200, resp.text
+        assert resp.headers.get("X-Total-Count") == "1"
+        itens = resp.json()
+        assert len(itens) == 1
+        assert itens[0]["tanque_nome"] == frota["tanque"].nome
+        assert itens[0]["combustivel_nome"] == frota["combustivel"].nome
+
     async def test_anexos_multiplos_e_nomes(self, client, make_tenant, setup_frota):
         t = await make_tenant("ADMIN")
         frota = await setup_frota(t["org"])

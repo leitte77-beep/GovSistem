@@ -151,7 +151,10 @@ async def listar(
         .limit(min(limit, 200))
     )
     entradas = (await db.execute(stmt)).scalars().all()
-    return [_montar_entrada(db, e) for e in entradas]
+    respostas = []
+    for e in entradas:
+        respostas.append(await _montar_entrada(db, e))
+    return respostas
 
 
 @router.post("", response_model=EntradaResponse, status_code=201)
