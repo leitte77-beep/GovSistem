@@ -455,7 +455,9 @@ export async function fetchProtocolos(params = {}) {
   const qs = new URLSearchParams(params).toString();
   const res = await fetch(`/api/protocolos?${qs}`, { headers: { Authorization: `Bearer ${getToken()}` } });
   if (!res.ok) throw new Error('Erro ao buscar protocolos');
-  return res.json();
+  const total = Number(res.headers.get('X-Total-Count') || 0);
+  const lista = await res.json();
+  return { lista, total };
 }
 
 export async function fetchProtocolo(numero) {
@@ -466,6 +468,10 @@ export async function fetchProtocolo(numero) {
 
 export async function atualizarStatusProtocolo(id, body) {
   return jsonReq(`/api/protocolos/${id}/status`, 'PATCH', body);
+}
+
+export async function criarProtocolo(body) {
+  return jsonReq('/api/protocolos', 'POST', body);
 }
 
 // ===== Notas Internas =====

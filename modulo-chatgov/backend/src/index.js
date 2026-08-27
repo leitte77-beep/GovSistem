@@ -2426,9 +2426,12 @@ app.use('/api', rateLimiter);
     try {
       const op = req.operador;
       const { status, departamento_id, busca } = req.query;
+      const limit = Math.min(200, Math.max(1, Number(req.query.limit) || 200));
+      const offset = Math.max(0, Number(req.query.offset) || 0);
       let query = `
         SELECT p.*, c.nome AS contato_nome, c.telefone AS contato_telefone,
-               d.nome AS departamento_nome, o.nome AS operador_nome
+               d.nome AS departamento_nome, o.nome AS operador_nome,
+               replace(lower(COALESCE(NULLIF(p.status_operacional, ''), p.status)), 'encerrado', 'concluido') AS status_canonico
         FROM protocolos p
         LEFT JOIN contatos c ON c.id = p.contato_id
         LEFT JOIN departamentos d ON d.id = p.departamento_id
@@ -2437,12 +2440,15 @@ app.use('/api', rateLimiter);
       `;
       const params = [op.tenantId];
 
-      if (status) { query += ` AND p.status = $${params.length + 1}`; params.push(status); }
+      if (status) { query += ` AND replace(lower(COALESCE(NULLIF(p.status_operacional, ''), p.status)), 'encerrado', 'concluido') = $${params.length + 1}`; params.push(String(status).toLowerCase()); }
       if (departamento_id) { query += ` AND p.departamento_id = $${params.length + 1}`; params.push(departamento_id); }
       if (busca) { query += ` AND (p.numero ILIKE $${params.length + 1} OR c.nome ILIKE $${params.length + 1} OR c.cpf ILIKE $${params.length + 1})`; params.push(`%${busca}%`); }
 
-      query += ' ORDER BY p.atualizado_em DESC LIMIT 200';
+      const total = Number((await db.one(`SELECT count(*)::int AS n FROM (${query.replace(/ ORDER BY .*$/i, '')}) t`, params)).n);
+      query += ` ORDER BY p.atualizado_em DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+      params.push(limit, offset);
       const lista = await db.manyOrNone(query, params);
+      res.set('X-Total-Count', String(total));
       res.json(lista);
     } catch (err) {
       res.status(500).json({ erro: 'Erro ao buscar protocolos' });
@@ -2469,6 +2475,7 @@ app.use('/api', rateLimiter);
         op.tenantId, conversa_id || null, contato_id,
         departamento_id || null, op.id, assunto || null
       );
+      io.to(`tenant:${op.tenantId}`).emit('protocolo:atualizado', { id: proto.id, numero: proto.numero, status: proto.status_operacional, novo: true });
       res.json(proto);
     } catch (err) {
       res.status(500).json({ erro: 'Erro ao gerar protocolo' });
@@ -2489,6 +2496,8 @@ app.use('/api', rateLimiter);
         origem: 'usuario',
         ip: req.ip,
       });
+      // Atualiza a página de Protocolos em tempo real para todos da org.
+      io.to(`tenant:${op.tenantId}`).emit('protocolo:atualizado', { id: proto.id, numero: proto.numero, status: proto.status_operacional });
       res.json(proto);
     } catch (err) {
       res.status(/não encontrado/.test(err.message) ? 404 : 409).json({ erro: err.message });

@@ -683,6 +683,7 @@ export function iniciarGateway(httpServer, wa, storage) {
           try {
             await encerrarProtocolo(conv.protocolo_id, op.tenantId, 'Atendimento encerrado', op.id);
             await criarPesquisaNPS(op.tenantId, conv.protocolo_id, convId, conv.departamento_id, op.id);
+            io.to(salas.tenant(op.tenantId)).emit('protocolo:atualizado', { id: conv.protocolo_id, numero: null, status: 'CONCLUIDO' });
           } catch (e) {
             console.error('[Socket] conversa:resolver protocolo/nps error:', e.message);
           }

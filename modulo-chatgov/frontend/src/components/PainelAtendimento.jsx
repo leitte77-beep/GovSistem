@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Send, Paperclip, Smile, ShieldCheck, Clock, User, UserPlus, CheckCircle2, Building2, MessageSquare, Tag, StickyNote, ChevronDown, ChevronRight, Archive, Trash2, ArrowRightLeft, Undo2, UserCheck, X, MoreVertical, ArrowDown, Loader2, Mic, Square, Play, Pause, RotateCcw, Images, Mail, Search, ArrowLeft, CalendarPlus, Printer } from 'lucide-react';
+import { Send, Paperclip, Smile, ShieldCheck, Clock, User, UserPlus, CheckCircle2, Building2, MessageSquare, Tag, StickyNote, ChevronDown, ChevronRight, Archive, Trash2, ArrowRightLeft, Undo2, UserCheck, X, MoreVertical, ArrowDown, Loader2, Mic, Square, Play, Pause, RotateCcw, Images, Mail, Search, ArrowLeft, CalendarPlus, Printer, FileText } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { BolhaConversa } from './BolhaConversa';
 import { DeptBadge } from './DeptBadge';
@@ -10,7 +10,7 @@ import { GaleriaMidias } from './GaleriaMidias';
 import { PainelCidadao } from './PainelCidadao';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
-import { fetchMensagens, fetchDepartamentos, fetchTemplates, fetchEtiquetas, fetchEtiquetasConversa, fetchNotasInternas, editarContato, fetchTransferenciaPendente, excluirMensagemConversa, fetchMidiasConversa, marcarConversaNaoLida, criarContato, iniciarConversa } from '../api';
+import { fetchMensagens, fetchDepartamentos, fetchTemplates, fetchEtiquetas, fetchEtiquetasConversa, fetchNotasInternas, editarContato, fetchTransferenciaPendente, excluirMensagemConversa, fetchMidiasConversa, marcarConversaNaoLida, criarContato, iniciarConversa, criarProtocolo } from '../api';
 import { mimeParaTipo, encodeFileBase64, mesmaData, formatarDataSeparador, formatarHora, formatarTamanho } from '../utils/arquivo';
 import { SeparadorData } from './SeparadorData';
 import { PainelMinhaAgenda } from './agenda/PainelMinhaAgenda';
@@ -1439,6 +1439,24 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
             role: 'menuitem', title: 'Adiciona outro atendente à conversa sem trocar o responsável',
             onClick: () => { setShowMenuMais(false); setShowParticipantes(true); }, style: { ...dropdownItem, color: T.textSecondary },
           }, React.createElement(UserPlus, { size: 15 }), 'Anexar atendente'),
+          !conversa.protocolo_id && !(conversa.protocolo || conversa.protocolo_numero) && conversa.contato_id && React.createElement('button', {
+            role: 'menuitem',
+            title: 'Cria um protocolo de atendimento vinculado a esta conversa',
+            onClick: async () => {
+              setShowMenuMais(false);
+              try {
+                const proto = await criarProtocolo({
+                  conversa_id: conversa.id,
+                  contato_id: conversa.contato_id,
+                  departamento_id: conversa.departamento_id || null,
+                });
+                notificar(`Protocolo #${proto.numero} criado.`, 'ok');
+              } catch (e) {
+                notificar(e.message || 'Erro ao gerar protocolo.', 'erro');
+              }
+            },
+            style: { ...dropdownItem, color: T.textSecondary },
+          }, React.createElement(FileText, { size: 15 }), 'Gerar protocolo'),
           React.createElement('button', {
             role: 'menuitem', title: 'Categorizar o atendimento com etiquetas',
             onClick: () => { setShowMenuMais(false); setShowEtiquetas(true); }, style: { ...dropdownItem, color: T.textSecondary },

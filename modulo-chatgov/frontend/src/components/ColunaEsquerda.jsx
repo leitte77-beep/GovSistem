@@ -76,6 +76,7 @@ export function ColunaEsquerda({
   const [novoGrupoMembros, setNovoGrupoMembros] = useState([]);
   const [showMenu, setShowMenu] = useState(false);
   const [showFiltros, setShowFiltros] = useState(false);
+  const [buscaDep, setBuscaDep] = useState('');
   const [contagens, setContagens] = useState({
     todas: 0, minhas: 0, naolidas: 0, fila: 0,
     aguardando_cidadao: 0, aguardando_setor: 0, resolvidas: 0, arquivadas: 0,
@@ -486,20 +487,81 @@ export function ColunaEsquerda({
         id: 'chatgov-filtros-adicionais',
         role: 'group',
         'aria-label': 'Filtros adicionais de conversas',
-        style: { display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8, paddingTop: 8, borderTop: `1px solid ${T.border}` },
+        style: { marginTop: 8, paddingTop: 10, borderTop: `1px solid ${T.border}`, display: 'flex', flexDirection: 'column', gap: 10 },
       },
-        React.createElement(Chip, { label: 'Sem responsável', icone: 'person_off', titulo: 'Conversas abertas que ninguém assumiu', ativo: filtro === 'sem_responsavel', onClick: () => setFiltro('sem_responsavel'), badge: contagens.sem_responsavel }),
-        React.createElement(Chip, { label: 'Atrasadas', icone: 'running_with_errors', titulo: `Cidadão esperando resposta há mais de ${HORAS_ATRASO} horas`, ativo: filtro === 'atrasadas', onClick: () => setFiltro('atrasadas'), badge: contagens.atrasadas }),
-        React.createElement(Chip, { label: 'Com protocolo', icone: 'tag', titulo: 'Conversas com número de protocolo gerado', ativo: filtro === 'com_protocolo', onClick: () => setFiltro('com_protocolo'), badge: contagens.com_protocolo }),
-        React.createElement(Chip, { label: 'Aguardando cidadão', icone: 'hourglass_empty', titulo: 'Respondemos e estamos no aguardo do cidadão', ativo: filtro === 'aguardando_cidadao', onClick: () => setFiltro('aguardando_cidadao'), badge: contagens.aguardando_cidadao }),
-        React.createElement(Chip, { label: 'Aguardando setor', icone: 'apartment', titulo: 'Pendente de retorno do setor responsável', ativo: filtro === 'aguardando_setor', onClick: () => setFiltro('aguardando_setor'), badge: contagens.aguardando_setor }),
-        React.createElement(Chip, { label: 'Resolvidas', icone: 'task_alt', titulo: 'Atendimentos finalizados', ativo: filtro === 'resolvidas', onClick: () => setFiltro('resolvidas'), badge: contagens.resolvidas }),
-        React.createElement(Chip, { label: 'Arquivadas', icone: 'archive', titulo: 'Fora das listas principais', ativo: filtro === 'arquivadas', onClick: () => setFiltro('arquivadas'), badge: contagens.arquivadas }),
-        departamentos.map((dep) =>
-          React.createElement(Chip, {
-            key: dep.id, label: dep.nome, ativo: filtro === dep.id, cor: dep.cor,
-            onClick: () => setFiltro(filtro === dep.id ? 'todas' : dep.id),
-          })),
+        // Resumo do filtro ativo + ação para limpar
+        filtroSecundarioAtivo && React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 } },
+          React.createElement('span', {
+            style: {
+              display: 'inline-flex', alignItems: 'center', gap: 6, padding: '5px 12px', borderRadius: 999,
+              background: T.primarySoft, color: T.primary, fontSize: 12, fontWeight: 700,
+              maxWidth: '80%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+            },
+          },
+            React.createElement('span', { className: 'material-symbols-outlined', style: { fontSize: 14 } }, 'filter_alt'),
+            'Filtro: ' + (departamentos.find((d) => d.id === filtro)?.nome || filtro.replace('_', ' ')),
+          ),
+          React.createElement('button', {
+            type: 'button',
+            onClick: () => { setFiltro('todas'); setBuscaDep(''); },
+            style: { background: 'transparent', border: 'none', cursor: 'pointer', color: T.textMuted, fontSize: 11.5, fontWeight: 700, padding: '4px 6px', whiteSpace: 'nowrap' },
+          }, 'Limpar ✕'),
+        ),
+
+        // Status do atendimento
+        React.createElement('div', null,
+          React.createElement('div', { style: { fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.6, color: T.textMuted, marginBottom: 6 } }, 'Status do atendimento'),
+          React.createElement('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap' } },
+            React.createElement(Chip, { label: 'Sem responsável', icone: 'person_off', titulo: 'Conversas abertas que ninguém assumiu', ativo: filtro === 'sem_responsavel', onClick: () => setFiltro('sem_responsavel'), badge: contagens.sem_responsavel }),
+            React.createElement(Chip, { label: 'Atrasadas', icone: 'running_with_errors', titulo: `Cidadão esperando resposta há mais de ${HORAS_ATRASO} horas`, ativo: filtro === 'atrasadas', onClick: () => setFiltro('atrasadas'), badge: contagens.atrasadas }),
+            React.createElement(Chip, { label: 'Aguardando cidadão', icone: 'hourglass_empty', titulo: 'Respondemos e estamos no aguardo do cidadão', ativo: filtro === 'aguardando_cidadao', onClick: () => setFiltro('aguardando_cidadao'), badge: contagens.aguardando_cidadao }),
+            React.createElement(Chip, { label: 'Aguardando setor', icone: 'apartment', titulo: 'Pendente de retorno do setor responsável', ativo: filtro === 'aguardando_setor', onClick: () => setFiltro('aguardando_setor'), badge: contagens.aguardando_setor }),
+            React.createElement(Chip, { label: 'Resolvidas', icone: 'task_alt', titulo: 'Atendimentos finalizados', ativo: filtro === 'resolvidas', onClick: () => setFiltro('resolvidas'), badge: contagens.resolvidas }),
+            React.createElement(Chip, { label: 'Arquivadas', icone: 'archive', titulo: 'Fora das listas principais', ativo: filtro === 'arquivadas', onClick: () => setFiltro('arquivadas'), badge: contagens.arquivadas }),
+          ),
+        ),
+
+        // Protocolo
+        React.createElement('div', null,
+          React.createElement('div', { style: { fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.6, color: T.textMuted, marginBottom: 6 } }, 'Protocolo'),
+          React.createElement('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap' } },
+            React.createElement(Chip, { label: 'Com protocolo', icone: 'tag', titulo: 'Conversas com número de protocolo gerado', ativo: filtro === 'com_protocolo', onClick: () => setFiltro('com_protocolo'), badge: contagens.com_protocolo }),
+          ),
+        ),
+
+        // Setores (departamentos) com busca
+        departamentos.length > 0 && React.createElement('div', null,
+          React.createElement('div', { style: { fontSize: 10.5, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.6, color: T.textMuted, marginBottom: 6 } },
+            `Setores (${departamentos.length})`),
+          departamentos.length > 6 && React.createElement('input', {
+            value: buscaDep, onChange: (e) => setBuscaDep(e.target.value),
+            placeholder: 'Buscar setor…', 'aria-label': 'Buscar setor',
+            style: {
+              width: '100%', boxSizing: 'border-box', marginBottom: 6,
+              background: T.surfaceMuted, border: `1px solid ${T.border}`, borderRadius: 8,
+              padding: '7px 10px', fontSize: 12.5, color: T.text, outline: 'none',
+            },
+          }),
+          React.createElement('div', {
+            style: {
+              display: 'flex', gap: 6, flexWrap: 'wrap',
+              maxHeight: departamentos.length > 6 ? 120 : undefined,
+              overflowY: departamentos.length > 6 ? 'auto' : 'visible',
+              paddingRight: 2,
+            },
+          },
+            departamentos
+              .filter((dep) => (dep.nome || '').toLowerCase().includes(buscaDep.trim().toLowerCase()))
+              .map((dep) =>
+                React.createElement(Chip, {
+                  key: dep.id, label: dep.nome, ativo: filtro === dep.id, cor: dep.cor,
+                  onClick: () => setFiltro(filtro === dep.id ? 'todas' : dep.id),
+                })),
+            departamentos.length > 6 && buscaDep.trim() && departamentos.every((d) => !(d.nome || '').toLowerCase().includes(buscaDep.trim().toLowerCase()))
+              ? React.createElement('span', { style: { fontSize: 12, color: T.textMuted, padding: '8px 4px' } }, 'Nenhum setor encontrado.')
+              : null,
+          ),
+        ),
       ),
     ),
 

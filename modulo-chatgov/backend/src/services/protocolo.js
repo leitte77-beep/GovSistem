@@ -48,12 +48,19 @@ export async function gerarProtocolo(tenantId, conversaId, contatoId, departamen
 }
 
 export async function atualizarStatusProtocolo(protocoloId, tenantId, status, descricao, operadorId) {
+  // Mantém status_operacional (v2) em sincronia com o status legado — o caminho
+  // de resolução de conversa (gateway) usa esta função e, sem o sync, o
+  // transitionProtocol depois normalizaria a partir de um valor obsoleto.
+  const CANONICO = {
+    aberto: 'ABERTO', em_andamento: 'EM_ANDAMENTO', pendente: 'PENDENTE',
+    concluido: 'CONCLUIDO', encerrado: 'CONCLUIDO', cancelado: 'CANCELADO',
+  };
   const proto = await db.oneOrNone(
-    `UPDATE protocolos SET status = $1, atualizado_em = now(),
+    `UPDATE protocolos SET status = $1, status_operacional = $2, atualizado_em = now(),
        fechado_em = CASE WHEN $1 IN ('encerrado','concluido','cancelado') THEN now() ELSE fechado_em END
-     WHERE id = $2 AND tenant_id = $3
+     WHERE id = $3 AND tenant_id = $4
      RETURNING *`,
-    [status, protocoloId, tenantId]
+    [status, CANONICO[status] || (status || '').toUpperCase(), protocoloId, tenantId]
   );
 
   if (!proto) throw new Error('Protocolo não encontrado');
@@ -70,7 +77,8 @@ export async function atualizarStatusProtocolo(protocoloId, tenantId, status, de
 export async function consultarProtocolo(tenantId, numero) {
   const proto = await db.oneOrNone(
     `SELECT p.*, c.nome AS contato_nome, c.telefone AS contato_telefone,
-            d.nome AS departamento_nome, o.nome AS operador_nome
+            d.nome AS departamento_nome, o.nome AS operador_nome,
+            replace(lower(COALESCE(NULLIF(p.status_operacional, ''), p.status)), 'encerrado', 'concluido') AS status_canonico
      FROM protocolos p
      LEFT JOIN contatos c ON c.id = p.contato_id
      LEFT JOIN departamentos d ON d.id = p.departamento_id
