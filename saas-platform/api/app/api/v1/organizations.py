@@ -11,10 +11,12 @@ from app.core.security import hash_password
 from app.models.audit_event import AuditEvent
 from app.models.module import Module
 from app.models.organization import Organization
+from app.models.organization_membership import OrganizationMembership
 from app.models.organization_module import OrganizationModule
 from app.models.user import User
 from app.schemas.schemas import (
     OrganizationCreate,
+    OrganizationManagerRequest,
     OrganizationResponse,
     OrganizationUpdate,
     PaginatedResponse,
@@ -177,9 +179,22 @@ async def create_organization(
             email=body.admin_email,
             password_hash=hash_password(body.admin_password),
             is_platform_admin=False,
+            is_organization_admin=True,
             is_active=True,
         )
         db.add(admin_user)
+        await db.flush()
+        # Primeiro gestor no novo modelo multi-tenant: membership ORG_ADMIN ativo.
+        db.add(
+            OrganizationMembership(
+                organization_id=org.id,
+                user_id=admin_user.id,
+                membership_role="ORG_ADMIN",
+                status="active",
+                is_active=True,
+                created_by=user.id,
+            )
+        )
 
     client_info = get_client_info(request)
     audit = AuditEvent(
@@ -270,3 +285,217 @@ async def delete_organization(
     )
     db.add(audit)
     await db.commit()
+
+
+@router.post("/{org_id}/managers", status_code=status.HTTP_201_CREATED)
+async def set_organization_manager(
+    org_id: uuid.UUID,
+    body: OrganizationManagerRequest,
+    request: Request,
+    admin: User = Depends(get_current_platform_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Define/substitui/adiciona um gestor (ORG_ADMIN) do órgão.
+
+    Aceita `user_id` (promove usuário existente) ou `name`+`email`+`password`
+    (cria novo usuário já como gestor). Cria ou promove o membership ORG_ADMIN.
+    """
+    org = (
+        await db.execute(
+            select(Organization).where(Organization.id == org_id, Organization.deleted_at.is_(None))
+        )
+    ).scalar_one_or_none()
+    if not org:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organização não encontrada")
+
+    if body.user_id:
+        target = (
+            await db.execute(
+                select(User).where(User.id == body.user_id, User.deleted_at.is_(None))
+            )
+        ).scalar_one_or_none()
+        if not target:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não encontrado")
+    elif body.email:
+        existing = (
+            await db.execute(select(User).where(User.email == body.email, User.deleted_at.is_(None)))
+        ).scalar_one_or_none()
+        if existing:
+            target = existing  # identidade existente: vincula como gestor, preserva senha
+        else:
+            if not (body.name and body.password):
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="name e password são necessários para criar um novo usuário",
+                )
+            target = User(
+                organization_id=org.id,
+                name=body.name,
+                email=body.email,
+                password_hash=hash_password(body.password),
+                is_platform_admin=False,
+                is_organization_admin=True,
+                is_active=True,
+            )
+            db.add(target)
+            await db.flush()
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Informe user_id ou email",
+        )
+
+    # mantém compat legado
+    target.organization_id = org.id
+    target.is_organization_admin = True
+
+    mem = (
+        await db.execute(
+            select(OrganizationMembership).where(
+                OrganizationMembership.organization_id == org.id,
+                OrganizationMembership.user_id == target.id,
+                OrganizationMembership.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if mem:
+        mem.membership_role = "ORG_ADMIN"
+        mem.is_active = True
+        mem.status = "active"
+        mem.updated_by = admin.id
+    else:
+        db.add(
+            OrganizationMembership(
+                organization_id=org.id,
+                user_id=target.id,
+                membership_role="ORG_ADMIN",
+                status="active",
+                is_active=True,
+                created_by=admin.id,
+            )
+        )
+
+    client_info = get_client_info(request)
+    db.add(
+        AuditEvent(
+            actor_id=admin.id,
+            actor_email=admin.email,
+            organization_id=org.id,
+            action="manager_assign",
+            resource_type="organization",
+            resource_id=str(org.id),
+            details={"user_id": str(target.id), "email": target.email, "role": "ORG_ADMIN"},
+            ip_address=client_info["ip_address"],
+            user_agent=client_info["user_agent"],
+        )
+    )
+    await db.commit()
+    return {"organization_id": str(org.id), "user_id": str(target.id), "role": "ORG_ADMIN"}
+
+
+@router.get("/{org_id}/managers")
+async def list_organization_managers(
+    org_id: uuid.UUID,
+    user: User = Depends(get_current_platform_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lista os gestores (memberships ORG_ADMIN ativos) do órgão."""
+    rows = (
+        await db.execute(
+            select(OrganizationMembership, User)
+            .join(User, User.id == OrganizationMembership.user_id)
+            .where(
+                OrganizationMembership.organization_id == org_id,
+                OrganizationMembership.membership_role == "ORG_ADMIN",
+                OrganizationMembership.deleted_at.is_(None),
+            )
+            .order_by(User.name)
+        )
+    ).all()
+    return [
+        {
+            "user_id": str(m.user_id),
+            "membership_id": str(m.id),
+            "name": u.name,
+            "email": u.email,
+            "is_active": m.is_active,
+            "global_active": u.is_active,
+            "created_at": m.created_at.isoformat() if m.created_at else None,
+        }
+        for m, u in rows
+    ]
+
+
+@router.delete("/{org_id}/managers/{user_id}")
+async def remove_organization_manager(
+    org_id: uuid.UUID,
+    user_id: uuid.UUID,
+    request: Request,
+    admin: User = Depends(get_current_platform_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Remove um gestor (rebaixa o membership para ORG_MEMBER).
+
+    Protege o último gestor ativo do órgão.
+    """
+    org = (
+        await db.execute(
+            select(Organization).where(Organization.id == org_id, Organization.deleted_at.is_(None))
+        )
+    ).scalar_one_or_none()
+    if not org:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Organização não encontrada")
+
+    mem = (
+        await db.execute(
+            select(OrganizationMembership).where(
+                OrganizationMembership.organization_id == org_id,
+                OrganizationMembership.user_id == user_id,
+                OrganizationMembership.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if not mem:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Vínculo não encontrado")
+
+    if mem.membership_role == "ORG_ADMIN":
+        active_admins = (
+            await db.execute(
+                select(func.count(OrganizationMembership.id)).where(
+                    OrganizationMembership.organization_id == org_id,
+                    OrganizationMembership.membership_role == "ORG_ADMIN",
+                    OrganizationMembership.is_active.is_(True),
+                    OrganizationMembership.deleted_at.is_(None),
+                )
+            )
+        ).scalar() or 0
+        if active_admins <= 1:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Não é possível remover o último gestor ativo",
+            )
+
+    mem.membership_role = "ORG_MEMBER"
+    mem.updated_by = admin.id
+    target_user = (
+        await db.execute(select(User).where(User.id == user_id))
+    ).scalar_one_or_none()
+    if target_user:
+        target_user.is_organization_admin = False
+
+    client_info = get_client_info(request)
+    db.add(
+        AuditEvent(
+            actor_id=admin.id,
+            actor_email=admin.email,
+            organization_id=org.id,
+            action="manager_remove",
+            resource_type="organization",
+            resource_id=str(org.id),
+            details={"user_id": str(user_id)},
+            ip_address=client_info["ip_address"],
+            user_agent=client_info["user_agent"],
+        )
+    )
+    await db.commit()
+    return {"organization_id": str(org.id), "user_id": str(user_id), "role": "ORG_MEMBER"}

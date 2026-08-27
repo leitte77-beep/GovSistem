@@ -103,9 +103,55 @@ async def listar_auditoria(
         stmt = stmt.where(Auditoria.entidade == entidade)
     if acao:
         stmt = stmt.where(Auditoria.acao == acao)
-    return (
-        await db.execute(stmt.order_by(Auditoria.created_at.desc()).limit(min(limit, 500)))
-    ).scalars().all()
+    registros = list(
+        (await db.execute(stmt.order_by(Auditoria.created_at.desc()).limit(min(limit, 500))))
+        .scalars().all()
+    )
+    if not registros:
+        return registros
+
+    from app.models.motorista import Motorista
+    from app.models.auth_models import User as UserModel
+
+    ids_user = {r.usuario_id for r in registros if r.usuario_id}
+    ids_mot = {r.motorista_id for r in registros if r.motorista_id}
+
+    nomes_user: dict = {}
+    if ids_user:
+        nomes_user = {
+            u.id: u.name
+            for u in (
+                await db.execute(select(UserModel).where(UserModel.id.in_(ids_user)))
+            ).scalars().all()
+        }
+    nomes_mot: dict = {}
+    if ids_mot:
+        nomes_mot = {
+            m.id: m.nome
+            for m in (
+                await db.execute(select(Motorista).where(Motorista.id.in_(ids_mot)))
+            ).scalars().all()
+        }
+
+    from pydantic import TypeAdapter
+
+    adapter = TypeAdapter(list[AuditoriaResponse])
+    itens = []
+    for r in registros:
+        dados = AuditoriaResponse.model_validate(r, from_attributes=True).model_dump()
+        if r.usuario_id is not None:
+            dados["actor_type"] = "user"
+            dados["actor_id"] = r.usuario_id
+            dados["actor_name"] = nomes_user.get(r.usuario_id) or "Usuário removido"
+        elif r.motorista_id is not None:
+            dados["actor_type"] = "driver"
+            dados["actor_id"] = r.motorista_id
+            dados["actor_name"] = nomes_mot.get(r.motorista_id) or "Motorista removido"
+        else:
+            dados["actor_type"] = "system"
+            dados["actor_name"] = "Sistema"
+        itens.append(dados)
+    return adapter.validate_python(itens)
 
 
 @router.get("/notificacoes", response_model=list[NotificacaoResponse])

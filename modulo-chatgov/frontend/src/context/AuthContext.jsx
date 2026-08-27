@@ -117,7 +117,7 @@ export function AuthProvider({ children }) {
   const logout = useCallback(() => {
     localStorage.removeItem(STORAGE_KEY);
     setAuth(null);
-    window.location.href = DEV_SAAS_LOGIN_ENABLED ? '/' : 'https://admin.govsistem.com.br/';
+    window.location.href = DEV_SAAS_LOGIN_ENABLED ? '/' : 'https://app.govsistem.com.br/';
   }, []);
 
   return React.createElement(AuthContext.Provider, {

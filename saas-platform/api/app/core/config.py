@@ -45,7 +45,6 @@ class Settings(BaseSettings):
         "http://localhost:9002",
         "http://localhost:9102",
     ]
-
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
     def parse_cors_origins(cls, value):
@@ -58,7 +57,7 @@ class Settings(BaseSettings):
 
     SECRET_KEY: SecretStr = SecretStr("")
     JWT_ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 480
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
     MODULE_TOKEN_EXPIRE_MINUTES: int = 60
 
@@ -79,6 +78,23 @@ class Settings(BaseSettings):
     GOVPRO_MODULE_ADMIN_URL: str | None = None
     GOVFROTA_MODULE_INTERNAL_API_URL: str | None = None
     GOVFROTA_MODULE_ADMIN_URL: str | None = None
+
+    # ------------------------------------------------------------------
+    # Feature flags do novo modelo multi-tenant (defaults de ambiente;
+    # a fonte canônica é a tabela feature_flags — ver services/membership)
+    # ------------------------------------------------------------------
+    TENANT_PORTAL_ENABLED: bool = False
+    MEMBERSHIP_AUTH_V2_ENABLED: bool = False
+    MEMBERSHIP_GRANTS_V2_ENABLED: bool = False
+    LEGACY_MODULE_PERMISSIONS_FALLBACK: bool = True
+    LEGACY_SSO_CLAIMS_ENABLED: bool = True
+    NEW_SSO_CLAIMS_ENABLED: bool = False
+    PLATFORM_USERS_SEPARATION_ENABLED: bool = False
+    SSO_CODE_LAUNCH_ENABLED: bool = False
+    PLATFORM_INTERNAL_ORG_SLUG: str = "admin"
+    TENANT_PORTAL_BASE_URL: str = "https://app.govsistem.com.br"
+    ADMIN_BASE_URL: str = "https://admin.govsistem.com.br"
+
     PASSWORD_MIN_LENGTH: int = 8
     PASSWORD_MIN_UPPERCASE: int = 1
     PASSWORD_MIN_LOWERCASE: int = 1

@@ -20,6 +20,7 @@ from app.core.security import hash_password
 from app.models.audit_event import AuditEvent
 from app.models.module import Module
 from app.models.organization import Organization
+from app.models.organization_membership import OrganizationMembership
 from app.models.user import User
 from app.models.user_module_grant import UserModuleGrant
 from app.schemas.schemas import (
@@ -28,6 +29,7 @@ from app.schemas.schemas import (
     UserResponse,
     UserUpdate,
 )
+from app.services.feature_flag import is_feature_enabled
 
 logger = logging.getLogger("saas.users")
 
@@ -223,6 +225,33 @@ async def list_users(
 ):
     query = select(User).where(User.deleted_at.is_(None))
     count_query = select(func.count(User.id)).where(User.deleted_at.is_(None))
+
+    # Separação plataforma x tenant: quando ativa, a listagem global do painel
+    # central (sem organização específica) limita a contas internas. Quando o
+    # admin filtra explicitamente por ?organization_id=X, mantém o suporte
+    # autorizado aos usuários do tenant (seção 17).
+    if await is_feature_enabled(db, "PLATFORM_USERS_SEPARATION_ENABLED") and organization_id is None:
+        internal_org = (
+            select(Organization.id)
+            .where(
+                Organization.slug == settings.PLATFORM_INTERNAL_ORG_SLUG,
+                Organization.deleted_at.is_(None),
+            )
+            .scalar_subquery()
+        )
+        internal_ids = select(OrganizationMembership.user_id).where(
+            OrganizationMembership.organization_id == internal_org,
+            OrganizationMembership.membership_role == "ORG_ADMIN",
+            OrganizationMembership.is_active.is_(True),
+            OrganizationMembership.deleted_at.is_(None),
+        )
+        internal_cond = (
+            (User.is_platform_admin.is_(True))
+            | (User.platform_role == "SUPER_ADMIN")
+            | User.id.in_(internal_ids)
+        )
+        query = query.where(internal_cond)
+        count_query = count_query.where(internal_cond)
 
     if search:
         like = f"%{search}%"

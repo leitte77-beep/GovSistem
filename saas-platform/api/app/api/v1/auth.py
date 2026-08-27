@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import re
 import secrets
@@ -9,11 +10,10 @@ from email.mime.multipart import MIMEMultipart
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel
 from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_client_info, get_current_user
+from app.core.auth import get_client_info, get_current_platform_admin, get_current_user
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.security import (
@@ -31,6 +31,8 @@ from app.models.organization_module import OrganizationModule
 from app.models.sso_session import SsoSession
 from app.models.user import User
 from app.models.user_module_grant import UserModuleGrant
+from app.services.membership import get_membership, resolve_module_roles
+from app.services.feature_flag import is_feature_enabled as _is_flag_enabled
 from app.schemas.schemas import (
     AccessLogEntry,
     ChangePasswordRequest,
@@ -42,6 +44,8 @@ from app.schemas.schemas import (
     ProfileUpdate,
     RefreshRequest,
     ResetPasswordRequest,
+    SsoExchangeRequest,
+    SwitchTenantRequest,
     TokenResponse,
     UserResponse,
 )
@@ -199,8 +203,114 @@ async def refresh_token(
     )
 
 
+@router.post("/switch-tenant", response_model=TokenResponse)
+async def switch_tenant(
+    body: SwitchTenantRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Troca o tenant ativo de um usuário multi-tenant.
+
+    Deriva o tenant do body (organization_id ou slug), valida o membership ativo
+    do usuário e re-emite um access token com `membership_id` + `active_organization_id`.
+    O slug NUNCA concede acesso; apenas aponta o tenant a validar.
+    """
+    org = None
+    if body.organization_id:
+        org = (
+            await db.execute(
+                select(Organization).where(
+                    Organization.id == body.organization_id,
+                    Organization.deleted_at.is_(None),
+                    Organization.is_active.is_(True),
+                )
+            )
+        ).scalar_one_or_none()
+    elif body.slug:
+        org = (
+            await db.execute(
+                select(Organization).where(
+                    Organization.slug == body.slug,
+                    Organization.deleted_at.is_(None),
+                    Organization.is_active.is_(True),
+                )
+            )
+        ).scalar_one_or_none()
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Informe organization_id ou slug",
+        )
+
+    if not org:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Organização não encontrada",
+        )
+
+    mem = await get_membership(db, user.id, org.id)
+    if not mem or not mem.is_active or mem.status != "active" or mem.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Sem vínculo ativo com a organização",
+        )
+
+    roles = []
+    if user.platform_role:
+        roles.append(user.platform_role)
+    if user.is_platform_admin:
+        roles.append("PLATFORM_ADMIN")
+    if mem.membership_role == "ORG_ADMIN":
+        roles.append("ADMIN")
+    roles.append("ORG_MEMBER")
+
+    access_token = create_access_token(
+        user_id=user.id,
+        roles=roles,
+        organization_id=org.id,
+        is_platform_admin=user.is_platform_admin,
+        membership_id=mem.id,
+        membership_role=mem.membership_role,
+    )
+    jti = uuid.uuid4()
+    refresh_token_str = create_refresh_token(user.id, jti)
+
+    client_info = get_client_info(request)
+    db.add(
+        AuditEvent(
+            actor_id=user.id,
+            actor_email=user.email,
+            organization_id=org.id,
+            action="tenant_switch",
+            resource_type="organization",
+            resource_id=str(org.id),
+            details={"slug": org.slug, "membership_role": mem.membership_role},
+            ip_address=client_info["ip_address"],
+            user_agent=client_info["user_agent"],
+        )
+    )
+    await db.commit()
+
+    return TokenResponse(
+        access_token=access_token,
+        refresh_token=refresh_token_str,
+        expires_in=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
+        force_password_reset=user.force_password_reset if hasattr(user, "force_password_reset") else False,
+    )
+
+
 @router.get("/me", response_model=UserResponse)
 async def get_me(user: User = Depends(get_current_user)):
+    return user
+
+
+@router.get("/me/admin", response_model=UserResponse)
+async def get_me_platform_admin(user: User = Depends(get_current_platform_admin)):
+    """Retorna o usuário somente se for conta interna de plataforma (403 caso contrário).
+
+    Usado pelo painel admin.govsistem.com.br para impedir acesso de gestores e
+    usuários comuns de tenants."""
     return user
 
 
@@ -406,10 +516,28 @@ async def get_module_access(
             detail="Module not found",
         )
 
-    if user.organization_id:
+    # Órgão ativo derivado do token (multitenant); fallback para o órgão legado.
+    from app.core.membership_deps import resolve_active_membership_from_request
+    active_membership = await resolve_active_membership_from_request(request, user, db)
+    org_id = active_membership.organization_id if active_membership else user.organization_id
+
+    # Isolamento por tenant: se o usuário possui membership suspenso/inativo no
+    # órgão legado (users.organization_id), NÃO usar o fallback para autorizar
+    # acesso. Isso impede que um usuário suspenso no tenant acesse o módulo.
+    if not active_membership and org_id:
+        pending_membership = await get_membership(db, user.id, org_id)
+        if pending_membership and not (pending_membership.is_active and pending_membership.status == "active"):
+            if await _is_flag_enabled(db, "MEMBERSHIP_AUTH_V2_ENABLED"):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="Usuário suspenso neste órgão",
+                )
+
+
+    if org_id:
         org_module_result = await db.execute(
             select(OrganizationModule).where(
-                OrganizationModule.organization_id == user.organization_id,
+                OrganizationModule.organization_id == org_id,
                 OrganizationModule.module_id == module.id,
                 OrganizationModule.is_active.is_(True),
             )
@@ -426,9 +554,9 @@ async def get_module_access(
         roles.append(user.platform_role)
     if user.is_platform_admin:
         roles.append("PLATFORM_ADMIN")
-    if user.is_organization_admin:
+    if active_membership and active_membership.membership_role == "ORG_ADMIN":
         roles.append("ADMIN")
-    if user.organization_id:
+    if org_id:
         roles.append("ORG_MEMBER")
 
     grant_result = await db.execute(
@@ -443,15 +571,36 @@ async def get_module_access(
     ]
     roles = list(dict.fromkeys(roles + module_grant_roles))
 
-    org_id = user.organization_id
+    # Novo modelo multi-tenant (aditivo): quando ativo, adiciona a claim
+    # namespaced module_roles e membership_id, mas NÃO reduz o claim legado
+    # `roles` (usado no sync e aceito pelos módulos), para não reduzir acesso.
+    from app.services.feature_flag import is_feature_enabled as _ffe
+    membership = None
+    module_roles_namespaced = None
+    membership_id_claim = None
+    used_legacy_fallback = False
+    if (
+        await _ffe(db, "MEMBERSHIP_GRANTS_V2_ENABLED")
+        and await _ffe(db, "NEW_SSO_CLAIMS_ENABLED")
+        and org_id
+    ):
+        from app.services.membership import get_membership as _gm, resolve_module_roles as _rmr
+        membership = active_membership or await _gm(db, user.id, org_id)
+        if membership:
+            resolved, _used = await _rmr(db, user, org_id, module.slug)
+            module_roles_namespaced = resolved or module_grant_roles
+            membership_id_claim = membership.id
+            used_legacy_fallback = bool(_used)
+
     if not org_id:
-        org_id = (
+        # compat legado: usuário sem vínculo ativo, deriva de qualquer org ativa
+        first_org = (
             await db.execute(
                 select(Organization).where(Organization.is_active.is_(True))
             )
         ).scalars().first()
-        if org_id:
-            org_id = org_id.id
+        if first_org:
+            org_id = first_org.id
 
     if not org_id:
         raise HTTPException(
@@ -481,7 +630,7 @@ async def get_module_access(
         action="module_access",
         resource_type="module",
         resource_id=str(module.id),
-        details={"module_slug": module.slug},
+        details={"module_slug": module.slug, "used_legacy_fallback": used_legacy_fallback},
         ip_address=client_info["ip_address"],
         user_agent=client_info["user_agent"],
     )
@@ -514,6 +663,8 @@ async def get_module_access(
         module_slug=module.slug,
         name=user.name,
         email=user.email,
+        membership_id=membership_id_claim,
+        module_roles=module_roles_namespaced,
     )
 
     module_url = module.admin_url or module.base_url
@@ -536,6 +687,205 @@ async def get_module_access(
         module_url=module_url,
         expires_in=settings.MODULE_TOKEN_EXPIRE_MINUTES * 60,
     )
+
+
+def _hash_code(code: str) -> str:
+    return hashlib.sha256(code.encode("utf-8")).hexdigest()
+
+
+@router.post("/sso/issue-code")
+async def sso_issue_code(
+    body: ModuleAccessRequest,
+    request: Request,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Emite um código temporário de uso único para SSO backend-to-backend.
+
+    Não coloca token/senha na URL: o navegador recebe apenas o `code` e o
+    redireciona ao módulo; o backend do módulo troca o `code` por um token
+    diretamente com o SaaS (endpoint /auth/sso/exchange).
+    """
+    from app.core.membership_deps import resolve_active_membership_from_request
+    from app.models.module import Module as _Module
+
+    module = (
+        await db.execute(
+            select(_Module).where(
+                _Module.slug == body.module_slug, _Module.is_active.is_(True)
+            )
+        )
+    ).scalar_one_or_none()
+    if not module:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Module not found")
+
+    active_membership = await resolve_active_membership_from_request(request, user, db)
+    org_id = active_membership.organization_id if active_membership else user.organization_id
+    if not org_id:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No organization assigned")
+
+    org_module = (
+        await db.execute(
+            select(OrganizationModule).where(
+                OrganizationModule.organization_id == org_id,
+                OrganizationModule.module_id == module.id,
+                OrganizationModule.is_active.is_(True),
+            )
+        )
+    ).scalar_one_or_none()
+    if not org_module:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Organization does not have access to this module")
+
+    code = secrets.token_urlsafe(32)
+    expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=2)
+    db.add(
+        SsoSession(
+            user_id=user.id,
+            organization_id=org_id,
+            module_slug=module.slug,
+            token_jti=_hash_code(code),
+            redirect_url=body.redirect_url,
+            expires_at=expires_at,
+            is_active=True,
+        )
+    )
+    client_info = get_client_info(request)
+    db.add(
+        AuditEvent(
+            actor_id=user.id,
+            actor_email=user.email,
+            organization_id=org_id,
+            action="sso_code_issued",
+            resource_type="module",
+            resource_id=str(module.id),
+            details={"module_slug": module.slug},
+            ip_address=client_info["ip_address"],
+            user_agent=client_info["user_agent"],
+        )
+    )
+    await db.commit()
+
+    module_url = module.admin_url or module.base_url
+    if module.slug == "diario" and settings.DIARIO_MODULE_ADMIN_URL:
+        module_url = settings.DIARIO_MODULE_ADMIN_URL
+    return {
+        "code": code,
+        "module_url": module_url,
+        "expires_in": 120,
+    }
+
+
+@router.post("/sso/exchange")
+async def sso_exchange(
+    body: SsoExchangeRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Troca o código temporário por um token de módulo (backend-to-backend).
+
+    O código é de uso único, tem validade curta e está vinculado a usuário,
+    tenant e módulo. O backend do módulo chama este endpoint com o `code` e o
+    `module_slug` para obter o token. Nenhum token viaja na URL.
+    """
+    return await _do_sso_exchange(body.code, body.module_slug, db)
+
+
+async def _do_sso_exchange(code: str, module_slug: str, db: AsyncSession) -> dict:
+    from app.core.roles import normalize_grant_role
+
+    hashed = _hash_code(code)
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    session = (
+        await db.execute(
+            select(SsoSession).where(
+                SsoSession.token_jti == hashed,
+                SsoSession.module_slug == module_slug,
+                SsoSession.is_active.is_(True),
+                SsoSession.expires_at > now,
+            )
+        )
+    ).scalar_one_or_none()
+    if not session or session.used_at is not None:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Código inválido ou expirado")
+
+    user = (
+        await db.execute(select(User).where(User.id == session.user_id, User.deleted_at.is_(None)))
+    ).scalar_one_or_none()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Usuário inválido ou inativo")
+
+    # uso único
+    session.is_active = False
+    session.used_at = now
+
+    # Membership do usuário no tenant da sessão (valida isolamento).
+    membership = await get_membership(db, user.id, session.organization_id) if session.organization_id else None
+    if membership and not (membership.is_active and membership.status == "active"):
+        if await _is_flag_enabled(db, "MEMBERSHIP_AUTH_V2_ENABLED"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Usuário suspenso neste órgão",
+            )
+
+    roles = []
+    if user.platform_role:
+        roles.append(user.platform_role)
+    if user.is_platform_admin:
+        roles.append("PLATFORM_ADMIN")
+    if membership and membership.membership_role == "ORG_ADMIN":
+        roles.append("ADMIN")
+    if session.organization_id:
+        roles.append("ORG_MEMBER")
+
+    grant_rows = (
+        await db.execute(
+            select(UserModuleGrant.role_name).where(
+                UserModuleGrant.user_id == user.id,
+                UserModuleGrant.module_slug == session.module_slug,
+            )
+        )
+    ).all()
+    for (r,) in grant_rows:
+        roles.append(normalize_grant_role(session.module_slug, r))
+    roles = list(dict.fromkeys(roles))
+    module_grant_roles = [
+        normalize_grant_role(session.module_slug, r) for (r,) in grant_rows
+    ]
+
+    # Novo modelo multi-tenant (aditivo): quando ativo, resolve roles do
+    # membership (membership_module_grants) e adiciona claims namespaced.
+    membership_id_claim = None
+    module_roles_namespaced = None
+    if (
+        await _is_flag_enabled(db, "MEMBERSHIP_GRANTS_V2_ENABLED")
+        and await _is_flag_enabled(db, "NEW_SSO_CLAIMS_ENABLED")
+        and membership
+    ):
+        resolved, _used = await resolve_module_roles(db, user, session.organization_id, session.module_slug)
+        module_roles_namespaced = resolved or module_grant_roles
+        membership_id_claim = membership.id
+
+    module_token = create_module_token(
+        user_id=user.id,
+        organization_id=session.organization_id,
+        roles=roles,
+        module_slug=session.module_slug,
+        name=user.name,
+        email=user.email,
+        membership_id=membership_id_claim,
+        module_roles=module_roles_namespaced,
+    )
+    db.add(
+        AuditEvent(
+            actor_id=user.id,
+            actor_email=user.email,
+            organization_id=session.organization_id,
+            action="sso_code_exchanged",
+            resource_type="module",
+            details={"module_slug": session.module_slug},
+        )
+    )
+    await db.commit()
+    return {"module_token": module_token, "module": session.module_slug}
 
 
 def _send_password_reset_email(to_email: str, reset_link: str):
@@ -609,8 +959,7 @@ async def forgot_password(
     user.reset_token_expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=30)
     await db.commit()
 
-    base_url = settings.APP_NAME  # placeholder — frontend handles the URL
-    reset_link = f"https://admin.govsistem.com.br/login/reset?token={token}"
+    reset_link = f"{settings.TENANT_PORTAL_BASE_URL}/login/reset?token={token}"
 
     _send_password_reset_email(user.email, reset_link)
 

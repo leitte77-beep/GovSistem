@@ -40,6 +40,7 @@ def create_driver_token(
     motorista_id: uuid.UUID,
     credential_id: uuid.UUID,
     organization_id: uuid.UUID,
+    credential_version: int = 0,
 ) -> str:
     now = datetime.now(timezone.utc)
     payload = {
@@ -48,6 +49,7 @@ def create_driver_token(
         "org": str(organization_id),
         "type": "driver_access",
         "module": "govfrota",
+        "ver": credential_version,
         "iat": now,
         "exp": now + timedelta(minutes=settings.DRIVER_TOKEN_EXPIRE_MINUTES),
     }

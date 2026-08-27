@@ -44,6 +44,50 @@ async def _get_manutencao(db: AsyncSession, user: User, manutencao_id: uuid.UUID
     return manutencao
 
 
+async def _enriquecer(db: AsyncSession, registros: list[Manutencao]) -> list[dict]:
+    """Junta veículo e ocorrência de origem em lote (sem N+1)."""
+    from app.models.ocorrencia import Ocorrencia
+
+    ids_veic = {r.veiculo_id for r in registros}
+    ids_ocorr = {r.ocorrencia_origem_id for r in registros if r.ocorrencia_origem_id}
+
+    veiculos = {}
+    if ids_veic:
+        veiculos = {
+            v.id: v
+            for v in (
+                await db.execute(select(Veiculo).where(Veiculo.id.in_(ids_veic)))
+            ).scalars().all()
+        }
+    ocorrencias = {}
+    if ids_ocorr:
+        ocorrencias = {
+            o.id: o
+            for o in (
+                await db.execute(select(Ocorrencia).where(Ocorrencia.id.in_(ids_ocorr)))
+            ).scalars().all()
+        }
+
+    from pydantic import TypeAdapter
+
+    adapter = TypeAdapter(list[ManutencaoResponse])
+    itens = []
+    for r in registros:
+        dados = ManutencaoResponse.model_validate(r, from_attributes=True).model_dump()
+        v = veiculos.get(r.veiculo_id)
+        dados["veiculo_placa"] = v.placa if v else None
+        dados["veiculo_modelo"] = v.modelo if v else None
+        dados["veiculo_marca"] = v.marca if v else None
+        dados["veiculo_foto_url"] = v.foto_url if v else None
+        dados["veiculo_usa_horimetro"] = v.usa_horimetro if v else None
+        o = ocorrencias.get(r.ocorrencia_origem_id)
+        ov = veiculos.get(o.veiculo_id) if o else None
+        dados["ocorrencia_placa"] = ov.placa if ov else None
+        dados["ocorrencia_descricao"] = o.descricao if o else None
+        itens.append(dados)
+    return adapter.validate_python(itens)
+
+
 @router.get("/manutencoes", response_model=list[ManutencaoResponse])
 async def listar_manutencoes(
     veiculo_id: uuid.UUID | None = None,
@@ -70,7 +114,10 @@ async def listar_manutencoes(
     stmt = stmt.order_by(Manutencao.data_solicitacao.desc()).offset(skip).limit(min(limit, 200))
     stmt = stmt.options(selectinload(Manutencao.itens))
     result = await db.execute(stmt)
-    return result.scalars().all()
+    registros = list(result.scalars().all())
+    if not registros:
+        return registros
+    return await _enriquecer(db, registros)
 
 
 @router.post("/manutencoes", response_model=ManutencaoResponse, status_code=201)
@@ -157,7 +204,8 @@ async def obter_manutencao(
     user: User = Depends(require_permission(Perm.MAINTENANCE_VIEW)),
     db: AsyncSession = Depends(get_db),
 ):
-    return await _get_manutencao(db, user, manutencao_id)
+    manutencao = await _get_manutencao(db, user, manutencao_id)
+    return (await _enriquecer(db, [manutencao]))[0]
 
 
 @router.patch("/manutencoes/{manutencao_id}", response_model=ManutencaoResponse)

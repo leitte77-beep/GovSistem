@@ -42,12 +42,42 @@ async def get_configuracoes(db: AsyncSession, organization_id: uuid.UUID) -> Con
     return config
 
 
-def _validar_combustivel_compativel(veiculo: Veiculo, combustivel_id: uuid.UUID) -> None:
-    compativeis = {veiculo.combustivel_principal_id, veiculo.combustivel_secundario_id}
-    if any(c is not None for c in compativeis) and combustivel_id not in compativeis:
+def _validar_combustivel_compativel(
+    veiculo: Veiculo, combustivel_id: uuid.UUID, tanques_veiculo: list
+) -> None:
+    """O produto deve ser aceito pelo veículo (principal ou reservatório auxiliar)."""
+    compativeis = {
+        t.combustivel_id
+        for t in tanques_veiculo
+        if t.ativo and t.deleted_at is None
+    }
+    compativeis |= {veiculo.combustivel_principal_id, veiculo.combustivel_secundario_id}
+    compativeis = {c for c in compativeis if c is not None}
+    if compativeis and combustivel_id not in compativeis:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Combustível incompatível com o veículo.",
+            detail="Produto/combustível incompatível com o veículo.",
+        )
+
+
+def _validar_quantidade(quantidade: Decimal, capacidade: Decimal | None, rotulo: str) -> None:
+    if quantidade <= 0:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Quantidade deve ser maior que zero.",
+        )
+    if capacidade is not None and quantidade > Decimal(capacidade) * Decimal("1.2"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=(
+                f"A quantidade informada ({quantidade} L) é superior à capacidade "
+                f"cadastrada do {rotulo} deste veículo ({capacidade} L)."
+            ),
+        )
+    if quantidade > Decimal("5000"):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Quantidade absurda informada.",
         )
 
 
@@ -78,26 +108,35 @@ def _validar_quilometragem(veiculo: Veiculo, km_informado: int, tolerancia_perce
     )
 
 
-def _validar_quantidade(quantidade: Decimal, veiculo: Veiculo) -> None:
-    if quantidade <= 0:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Quantidade deve ser maior que zero.",
+async def _reservatorio_veiculo(
+    db: AsyncSession, veiculo_id: uuid.UUID, combustivel_id: uuid.UUID
+) -> tuple[Decimal | None, str, list]:
+    """Carrega os reservatórios ativos do veículo e a capacidade do produto.
+
+    Retorna (capacidade, rótulo, tanques_veiculo) — o rótulo descreve o
+    reservatório para mensagens de validação (ex.: "tanque auxiliar de ARLA").
+    """
+    from app.models.veiculo import VeiculoTanque
+
+    tanques = (
+        await db.execute(
+            select(VeiculoTanque).where(
+                VeiculoTanque.veiculo_id == veiculo_id,
+                VeiculoTanque.deleted_at.is_(None),
+            )
         )
-    capacidade = veiculo.capacidade_tanque_litros
-    if capacidade is not None and quantidade > Decimal(capacidade) * Decimal("1.2"):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=(
-                f"Quantidade ({quantidade} L) excede 120% da capacidade cadastrada "
-                f"do tanque do veículo ({capacidade} L)."
-            ),
+    ).scalars().all()
+    alvo = next(
+        (t for t in tanques if t.ativo and t.combustivel_id == combustivel_id), None
+    )
+    if alvo is not None:
+        rotulo = alvo.identificacao or (
+            "tanque principal" if alvo.tank_type == "PRIMARY" else "tanque auxiliar"
         )
-    if quantidade > Decimal("5000"):
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Quantidade absurda informada.",
-        )
+        # capacidade 0 = não informada (legado) → sem limite de validação.
+        capacidade = alvo.capacidade if alvo.capacidade and alvo.capacidade > 0 else None
+        return capacidade, rotulo, list(tanques)
+    return None, "tanque do veículo", list(tanques)
 
 
 async def _detectar_duplicidade(
@@ -191,8 +230,11 @@ async def registrar_abastecimento(
 
     config = await get_configuracoes(db, organization_id)
 
-    _validar_combustivel_compativel(veiculo, combustivel_id)
-    _validar_quantidade(quantidade_litros, veiculo)
+    capacidade, rotulo, tanques_veiculo = await _reservatorio_veiculo(
+        db, veiculo.id, combustivel_id
+    )
+    _validar_combustivel_compativel(veiculo, combustivel_id, tanques_veiculo)
+    _validar_quantidade(quantidade_litros, capacidade, rotulo)
     _validar_quilometragem(veiculo, quilometragem, config.tolerancia_km_percentual)
 
     if await _detectar_duplicidade(

@@ -13,7 +13,7 @@ from app.core.database import get_db
 from app.core.permissions import default_permissions_for_role
 from app.core.security import decode_saas_token, decode_token
 from app.models.auth_models import Role, User, UserRole
-from app.models.motorista import AcessoMotorista, Motorista
+from app.models.motorista import Motorista
 
 logger = logging.getLogger(__name__)
 
@@ -164,6 +164,15 @@ async def get_current_motorista(
     acesso = motorista.acesso
     if acesso is None or acesso.bloqueado:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Acesso bloqueado")
+
+    # Revogação de sessão: o token embute a versão da credencial vigente no
+    # momento do login. Se a credencial foi alterada (login/PIN) ou bloqueada
+    # depois, a versão avançou ⇒ a sessão antiga é invalidada (401).
+    if payload.get("ver") != acesso.credential_version:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Sessão expirada. Faça login novamente.",
+        )
 
     return motorista
 

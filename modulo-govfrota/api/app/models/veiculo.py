@@ -4,6 +4,7 @@ from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy import (
+    Boolean,
     Date,
     DateTime,
     ForeignKey,
@@ -47,7 +48,8 @@ class Veiculo(Base, TimestampMixin, SoftDeleteMixin):
     cor: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
     tipo: Mapped[str] = mapped_column(String(30), default="CARRO", nullable=False)
 
-    # Combustível
+    # Combustível principal (legado — mantido para compatibilidade/leitura rápida).
+    # A fonte estruturada de reservatórios são as linhas de `VeiculoTanque`.
     combustivel_principal_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("combustiveis.id"), nullable=True
     )
@@ -81,6 +83,44 @@ class Veiculo(Base, TimestampMixin, SoftDeleteMixin):
     foto_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
 
     abastecimentos: Mapped[list["Abastecimento"]] = relationship(back_populates="veiculo")
+    tanques: Mapped[list["VeiculoTanque"]] = relationship(
+        back_populates="veiculo", cascade="all, delete-orphan"
+    )
+
+
+class VeiculoTanque(Base, TimestampMixin, SoftDeleteMixin):
+    """Reservatório do veículo (principal ou auxiliar).
+
+    Modelagem genérica escalável: permite tanque principal + um ou mais
+    reservatórios auxiliares (ex.: Diesel no principal, ARLA 32 no auxiliar).
+    `tank_type`: PRIMARY | AUXILIARY.
+    """
+
+    __tablename__ = "veiculos_tanques"
+    __table_args__ = (
+        Index("ix_veiculo_tanque_org_veiculo", "organization_id", "veiculo_id"),
+        Index("ix_veiculo_tanque_combustivel", "combustivel_id"),
+    )
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    veiculo_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("veiculos.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    combustivel_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("combustiveis.id"), nullable=False
+    )
+    tank_type: Mapped[str] = mapped_column(String(20), default="AUXILIARY", nullable=False)
+    capacidade: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    identificacao: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    ativo: Mapped[bool] = mapped_column(Boolean(), default=True, nullable=False)
+
+    veiculo: Mapped["Veiculo"] = relationship(back_populates="tanques")
+    combustivel: Mapped["Combustivel"] = relationship()  # noqa: F821
 
 
 class VeiculoDocumento(Base, TimestampMixin):

@@ -8,7 +8,7 @@ import { Skeleton } from "@/ui/Skeleton";
 // Plataforma SaaS: quando não há sessão SSO, o usuário volta para lá para
 // abrir o módulo pelo card (que injeta o token via ?token=).
 const PLATAFORMA_URL =
-  import.meta.env.VITE_PLATFORM_URL || "https://admin.govsistem.com.br/";
+  import.meta.env.VITE_PLATFORM_URL || "https://app.govsistem.com.br/";
 
 /**
  * Guarda de rota (§1.1): sem a capacidade exigida, mostra a página

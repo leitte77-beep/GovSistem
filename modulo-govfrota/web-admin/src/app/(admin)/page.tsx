@@ -855,7 +855,7 @@ export default function DashboardPage() {
         <section className="order-5 space-y-3 xl:order-4 xl:col-span-2">
           <div className="flex items-end justify-between gap-3">
             <div>
-              <h2 className="text-h3 text-text-title">Estoque de combustíveis</h2>
+              <h2 className="text-h3 text-text-title">Estoque de combustíveis e fluidos</h2>
               <p className="text-meta text-text-subtle">Nível atual de cada tanque</p>
             </div>
             <VerTodos href="/tanques" label="Gerenciar tanques" />

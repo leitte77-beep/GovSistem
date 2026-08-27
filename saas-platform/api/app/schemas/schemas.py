@@ -56,6 +56,11 @@ class RefreshRequest(BaseModel):
     refresh_token: str
 
 
+class SwitchTenantRequest(BaseModel):
+    organization_id: Optional[uuid.UUID] = None
+    slug: Optional[str] = None
+
+
 class ModuleAccessRequest(BaseModel):
     module_slug: str
     redirect_url: Optional[str] = None
@@ -63,7 +68,7 @@ class ModuleAccessRequest(BaseModel):
     @field_validator("module_slug")
     @classmethod
     def validate_module_slug(cls, v: str) -> str:
-        allowed = {"diario", "financeiro", "chatgov", "govtask", "govsocial", "govavalia", "govouve", "govdoc", "govfrota"}
+        allowed = {"diario", "financeiro", "chatgov", "govtask", "govsocial", "govavalia", "govouve", "govdoc", "govfrota", "govpro"}
         if v not in allowed:
             raise ValueError(f"Unknown module: {v}")
         return v
@@ -73,6 +78,11 @@ class ModuleTokenResponse(BaseModel):
     module_token: str
     module_url: str
     expires_in: int
+
+
+class SsoExchangeRequest(BaseModel):
+    code: str
+    module_slug: str
 
 
 import re
@@ -260,6 +270,18 @@ class OrganizationUpdate(BaseModel):
     logo_url: Optional[str] = None
     public_url: Optional[str] = None
     is_active: Optional[bool] = None
+
+
+class OrganizationManagerRequest(BaseModel):
+    """Define/substitui/adiciona um gestor (ORG_ADMIN) do órgão.
+
+    Use `user_id` para promover um usuário existente, ou `name`+`email`+`password`
+    para criar um novo usuário já como gestor.
+    """
+    user_id: Optional[uuid.UUID] = None
+    name: Optional[str] = None
+    email: Optional[str] = None
+    password: Optional[str] = None
 
 
 class PlanCreate(BaseModel):

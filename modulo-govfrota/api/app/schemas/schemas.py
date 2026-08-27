@@ -82,6 +82,8 @@ class VeiculoCreate(BaseModel):
     combustivel_principal_id: Optional[uuid.UUID] = None
     combustivel_secundario_id: Optional[uuid.UUID] = None
     capacidade_tanque_litros: Optional[Decimal] = None
+    # Reservatórios auxiliares (ex.: ARLA 32) — um ou mais.
+    tanques_auxiliares: list["VeiculoTanqueAuxIn"] = Field(default_factory=list)
     quilometragem_atual: int = 0
     horimetro_atual: Optional[Decimal] = None
     usa_horimetro: bool = False
@@ -93,6 +95,13 @@ class VeiculoCreate(BaseModel):
     observacoes: Optional[str] = None
     vencimento_licenciamento: Optional[date] = None
     vencimento_seguro: Optional[date] = None
+
+
+class VeiculoTanqueAuxIn(BaseModel):
+    """Reservatório auxiliar do veículo (ex.: tanque de ARLA 32)."""
+    combustivel_id: uuid.UUID
+    capacidade: Decimal = Field(gt=0)
+    identificacao: Optional[str] = Field(default=None, max_length=150)
 
 
 class VeiculoUpdate(BaseModel):
@@ -110,6 +119,7 @@ class VeiculoUpdate(BaseModel):
     combustivel_principal_id: Optional[uuid.UUID] = None
     combustivel_secundario_id: Optional[uuid.UUID] = None
     capacidade_tanque_litros: Optional[Decimal] = None
+    tanques_auxiliares: Optional[list["VeiculoTanqueAuxIn"]] = None
     horimetro_atual: Optional[Decimal] = None
     usa_horimetro: Optional[bool] = None
     unidade: Optional[str] = None
@@ -121,6 +131,16 @@ class VeiculoUpdate(BaseModel):
     vencimento_licenciamento: Optional[date] = None
     vencimento_seguro: Optional[date] = None
     foto_url: Optional[str] = None
+
+
+class VeiculoTanqueResponse(ORMModel):
+    id: uuid.UUID
+    combustivel_id: uuid.UUID
+    combustivel_nome: Optional[str] = None
+    tank_type: str
+    capacidade: Decimal
+    identificacao: Optional[str]
+    ativo: bool
 
 
 class AlterarKmRequest(BaseModel):
@@ -145,7 +165,7 @@ class VeiculoResponse(ORMModel):
     combustivel_principal_id: Optional[uuid.UUID]
     combustivel_secundario_id: Optional[uuid.UUID]
     capacidade_tanque_litros: Optional[Decimal]
-    quilometragem_atual: int
+    quilometragem_atual: int = 0
     horimetro_atual: Optional[Decimal]
     usa_horimetro: bool
     unidade: Optional[str]
@@ -157,6 +177,8 @@ class VeiculoResponse(ORMModel):
     vencimento_licenciamento: Optional[date]
     vencimento_seguro: Optional[date]
     foto_url: Optional[str]
+    # Reservatórios estruturados (principal + auxiliares)
+    tanques: list[VeiculoTanqueResponse] = []
     # Indicadores calculados (§63) — preenchidos apenas na listagem
     consumo_medio_km_l: Optional[Decimal] = None
     ultimo_abastecimento: Optional[dict] = None
@@ -213,20 +235,108 @@ class MotoristaUpdate(BaseModel):
     ativo: Optional[bool] = None
 
 
+def _validar_pin(pin: str) -> str:
+    """Valida o PIN do motorista.
+
+    PIN numérico com 6 a 12 dígitos. Não obriga senha complexa (motorista),
+    mas impede vazio e formatos previsíveis fora do escopo numérico.
+    """
+    pin = (pin or "").strip()
+    if not pin.isdigit() or not (6 <= len(pin) <= 12):
+        raise ValueError(
+            "O PIN deve conter de 6 a 12 dígitos numéricos."
+        )
+    return pin
+
+
 class CredencialCreate(BaseModel):
+    """Criação do acesso do motorista (login + PIN com confirmação).
+
+    `senha` é aceito como alias de compatibilidade para `pin` (fluxos/tests
+    antigos usavam `senha`); apenas um deve ser informado.
+    """
     login: str = Field(min_length=3, max_length=60)
-    senha: str = Field(min_length=4, max_length=60)
+    pin: Optional[str] = Field(default=None, max_length=60)
+    senha: Optional[str] = Field(default=None, max_length=60)
+    confirm_pin: Optional[str] = Field(default=None, max_length=60)
+
+    @model_validator(mode="after")
+    def _resolve_pin(self):
+        if self.pin is not None and self.senha is not None:
+            raise ValueError("Informe apenas um dos campos: pin ou senha.")
+        pin = self.pin if self.pin is not None else self.senha
+        pin = _validar_pin(pin or "")
+        if self.confirm_pin is not None and self.confirm_pin.strip() != pin:
+            raise ValueError("Os PINs informados não coincidem.")
+        object.__setattr__(self, "pin", pin)
+        object.__setattr__(self, "senha", None)
+        object.__setattr__(self, "confirm_pin", None)
+        return self
 
 
 class CredencialUpdate(BaseModel):
-    login: Optional[str] = None
-    nova_senha: Optional[str] = Field(default=None, min_length=4, max_length=60)
+    """Edição do acesso: altera login e/ou PIN.
+
+    Se `pin`/`nova_senha` vierem preenchidos, o PIN também é redefinido. Se
+    ficarem vazios, apenas o login é alterado (o administrador não é obrigado
+    a redefinir o PIN só porque alterou o usuário).
+    """
+    login: Optional[str] = Field(default=None, min_length=3, max_length=60)
+    pin: Optional[str] = Field(default=None, max_length=60)
+    nova_senha: Optional[str] = Field(default=None, max_length=60)
+    confirm_pin: Optional[str] = Field(default=None, max_length=60)
+
+    @property
+    def pin_efetivo(self) -> str | None:
+        """Retorna o PIN validado, ou None se o PIN não deve ser alterado."""
+        if self.pin is None and self.nova_senha is None:
+            return None
+        if self.pin is not None and self.nova_senha is not None:
+            raise ValueError("Informe apenas um dos campos: pin ou nova_senha.")
+        pin = self.pin if self.pin is not None else self.nova_senha
+        pin = _validar_pin(pin or "")
+        if self.confirm_pin is not None and self.confirm_pin.strip() != pin:
+            raise ValueError("Os PINs informados não coincidem.")
+        return pin
+
+
+class CredencialPinReset(BaseModel):
+    """Redefinição de PIN. Se `pin` vier vazio, o backend gera um aleatório."""
+    pin: Optional[str] = Field(default=None, max_length=60)
+    senha: Optional[str] = Field(default=None, max_length=60)
+    confirm_pin: Optional[str] = Field(default=None, max_length=60)
+
+    @model_validator(mode="after")
+    def _resolve_pin(self):
+        if self.pin is not None and self.senha is not None:
+            raise ValueError("Informe apenas um dos campos: pin ou senha.")
+        pin = self.pin if self.pin is not None else self.senha
+        if pin is not None:
+            pin = _validar_pin(pin)
+            if self.confirm_pin is not None and self.confirm_pin.strip() != pin:
+                raise ValueError("Os PINs informados não coincidem.")
+        object.__setattr__(self, "pin", pin)
+        object.__setattr__(self, "senha", None)
+        object.__setattr__(self, "confirm_pin", None)
+        return self
 
 
 class AcessoResponse(ORMModel):
+    """Leitura do acesso — NUNCA retorna PIN ou hash."""
     login: Optional[str]
     bloqueado: bool
     ultimo_acesso: Optional[datetime]
+
+
+class AcessoAlteradoResponse(AcessoResponse):
+    """Resposta de operações de escrita no acesso.
+
+    `pin_provisorio` é preenchido UMA única vez (apenas na resposta da operação
+    que definiu/alterou o PIN), para que o administrador possa entregá-lo ao
+    motorista. Nunca é recuperável novamente.
+    """
+    pin_alterado: bool = False
+    pin_provisorio: Optional[str] = None
 
 
 class MotoristaResponse(ORMModel):
@@ -259,6 +369,7 @@ class MotoristaListaResponse(MotoristaResponse):
 class CombustivelCreate(BaseModel):
     nome: str = Field(min_length=1, max_length=100)
     unidade: str = "litro"
+    categoria: str = "COMBUSTIVEL"
     descricao: Optional[str] = None
     foto_url: Optional[str] = None
     ativo: bool = True
@@ -268,8 +379,9 @@ class CombustivelResponse(ORMModel):
     id: uuid.UUID
     nome: str
     unidade: str
+    categoria: str
     descricao: Optional[str]
-    foto_url: Optional[str] = None
+    foto_url: Optional[str]
     ativo: bool
     # Associados (preenchidos na listagem) — evita N+1 no frontend
     total_tanques: int = 0
@@ -620,11 +732,39 @@ class AbastecimentoResponse(ORMModel):
     status: str
     ip_origem: Optional[str]
     idempotency_key: Optional[str] = None
+    created_at: Optional[datetime] = None
+    cancelado_em: Optional[datetime] = None
+    motivo_cancelamento: Optional[str] = None
     # Nomes juntados (preenchidos na listagem) — evita N+1 no frontend
     veiculo_placa: Optional[str] = None
+    veiculo_modelo: Optional[str] = None
+    veiculo_marca: Optional[str] = None
+    veiculo_foto_url: Optional[str] = None
+    veiculo_usa_horimetro: Optional[bool] = None
     combustivel_nome: Optional[str] = None
     tanque_nome: Optional[str] = None
     motorista_nome: Optional[str] = None
+    lancado_por_nome: Optional[str] = None
+    cancelado_por_nome: Optional[str] = None
+
+
+class ResumoAbastecimento(BaseModel):
+    hoje_quantidade: int = 0
+    hoje_litros: float = 0.0
+    mes_litros: float = 0.0
+    mes_gasto: float = 0.0
+    consumo_medio_frota: Optional[float] = None
+
+
+class CorrecaoAbastecimentoResponse(ORMModel):
+    id: uuid.UUID
+    abastecimento_id: uuid.UUID
+    tipo_correcao: str
+    dados_anteriores_json: Optional[str] = None
+    dados_novos_json: Optional[str] = None
+    justificativa: Optional[str] = None
+    usuario_id: Optional[uuid.UUID] = None
+    created_at: datetime
 
 
 # ── Manutenções ─────────────────────────────────────────────────────────────
@@ -692,6 +832,15 @@ class ManutencaoResponse(ORMModel):
     status: str
     observacoes: Optional[str]
     itens: list[ManutencaoItemOut] = []
+    # Origem em ocorrência (vínculo persistente) e dados do veículo
+    ocorrencia_origem_id: Optional[uuid.UUID] = None
+    ocorrencia_placa: Optional[str] = None
+    ocorrencia_descricao: Optional[str] = None
+    veiculo_placa: Optional[str] = None
+    veiculo_modelo: Optional[str] = None
+    veiculo_marca: Optional[str] = None
+    veiculo_foto_url: Optional[str] = None
+    veiculo_usa_horimetro: Optional[bool] = None
 
 
 class PlanoPreventivoCreate(BaseModel):
@@ -757,6 +906,19 @@ class OcorrenciaResponse(ORMModel):
     data_ocorrencia: date
     manutencao_id: Optional[uuid.UUID]
     origem: str
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    # Nomes juntados (preenchidos na listagem/detalhe) — evita N+1 no frontend
+    veiculo_placa: Optional[str] = None
+    veiculo_modelo: Optional[str] = None
+    veiculo_marca: Optional[str] = None
+    veiculo_foto_url: Optional[str] = None
+    veiculo_usa_horimetro: Optional[bool] = None
+    motorista_nome: Optional[str] = None
+
+
+class OcorrenciaResolver(BaseModel):
+    resolucao: str = Field(min_length=3, max_length=3000)
 
 
 # ── Configurações ───────────────────────────────────────────────────────────
@@ -786,6 +948,14 @@ class ConfiguracaoResponse(ConfiguracaoUpdate):
 # ── App do motorista ────────────────────────────────────────────────────────
 
 
+class ProdutoVeiculoApp(BaseModel):
+    """Produto/fluido que o veículo aceita, com a capacidade do reservatório."""
+    combustivel_id: uuid.UUID
+    nome: str
+    tank_type: str
+    capacidade: Optional[Decimal] = None
+
+
 class VeiculoAppResponse(BaseModel):
     id: uuid.UUID
     placa: str
@@ -799,6 +969,8 @@ class VeiculoAppResponse(BaseModel):
     combustivel_secundario_nome: Optional[str] = None
     quilometragem_atual: int = 0
     horimetro_atual: Optional[Decimal] = None
+    # Produtos suportados (principal + reservatórios auxiliares) — ex.: Diesel e ARLA
+    combustiveis: list[ProdutoVeiculoApp] = []
 
 
 class OcorrenciaAppCreate(BaseModel):
@@ -819,12 +991,17 @@ class AuditoriaResponse(ORMModel):
     motorista_id: Optional[uuid.UUID]
     acao: str
     entidade: str
-    entidade_id: Optional[uuid.UUID]
+    entidade_id: Optional[uuid.UUID] = None
     dados_anteriores: Optional[str]
     dados_novos: Optional[str]
     justificativa: Optional[str]
     ip_address: Optional[str]
     created_at: datetime
+    # Responsável resolvido no backend a partir dos IDs confiáveis
+    # (nunca confiando em nome vindo do frontend).
+    actor_type: Optional[str] = None  # user | driver | system
+    actor_id: Optional[uuid.UUID] = None
+    actor_name: Optional[str] = None
 
 
 class NotificacaoResponse(ORMModel):

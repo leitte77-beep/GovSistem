@@ -34,7 +34,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [capsLock, setCapsLock] = useState(false);
-  const { loading: authLoading, user, login } = useAuth();
+  const { loading: authLoading, user, restricted, login } = useAuth();
   const router = useRouter();
   const redirected = useRef(false);
   const passwordRef = useRef<HTMLInputElement>(null);
@@ -83,6 +83,13 @@ export default function LoginPage() {
       await login(email.trim(), password);
       if (remember) localStorage.setItem(REMEMBER_KEY, email.trim());
       else localStorage.removeItem(REMEMBER_KEY);
+      if (restricted) {
+        setError(
+          "Este painel é restrito à equipe interna do GovSistem. Gestores e usuários de órgãos devem acessar pelo portal do órgão em app.govsistem.com.br."
+        );
+        setLoading(false);
+        return;
+      }
       toast.success("Acesso liberado!");
     } catch (err: any) {
       const raw: string = err?.message || "";

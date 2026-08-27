@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     String,
     Text,
     UniqueConstraint,
@@ -91,6 +92,12 @@ class AcessoMotorista(Base, TimestampMixin):
     falhas_login: Mapped[int] = mapped_column(default=0, nullable=False)
     locked_until: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     ultimo_acesso: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # Versionamento da credencial: incrementado em qualquer evento que deva
+    # invalidar as sessões ativas do motorista (troca de login, redefinição de
+    # PIN, bloqueio administrativo). O token de acesso do motorista embute esta
+    # versão; na autenticação, versão divergente ⇒ sessão revogada (401).
+    credential_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
     motorista: Mapped["Motorista"] = relationship(back_populates="acesso")
 

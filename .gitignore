@@ -66,6 +66,9 @@ apps/api/uploads/
 # Backups de producao (dumps, volumes, .env) — nunca versionar
 backup-prod/
 
+# Backup obrigatorio do projeto multi-tenant (backfar) — nao versionar, nao servir pela web
+backfar/
+
 # Sensitive env backups / junk
 .env.bak*
 .env.audit-bak*

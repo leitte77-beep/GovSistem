@@ -17,6 +17,15 @@ from app.services.auditoria import registrar_auditoria
 router = APIRouter(prefix="/combustiveis", tags=["combustíveis"])
 
 
+def _normalizar_categoria(categoria: str | None) -> str:
+    valor = (categoria or "COMBUSTIVEL").strip().upper()
+    if valor not in {"COMBUSTIVEL", "FLUIDO_AUXILIAR"}:
+        raise HTTPException(
+            status_code=422, detail="Categoria inválida. Use COMBUSTIVEL ou FLUIDO_AUXILIAR."
+        )
+    return valor
+
+
 async def _montar_resposta(
     db: AsyncSession, user: User, combustivel: Combustivel, response: Response | None = None
 ) -> CombustivelResponse:
@@ -52,6 +61,7 @@ async def _montar_resposta(
         id=combustivel.id,
         nome=combustivel.nome,
         unidade=combustivel.unidade,
+        categoria=combustivel.categoria,
         descricao=combustivel.descricao,
         foto_url=combustivel.foto_url,
         ativo=combustivel.ativo,
@@ -63,6 +73,7 @@ async def _montar_resposta(
 @router.get("", response_model=list[CombustivelResponse])
 async def listar(
     ativo: bool | None = None,
+    categoria: str | None = None,
     response: Response = None,  # type: ignore[assignment]
     user: User = Depends(require_permission(Perm.VEHICLE_VIEW)),
     db: AsyncSession = Depends(get_db),
@@ -73,6 +84,8 @@ async def listar(
     )
     if ativo is not None:
         stmt = stmt.where(Combustivel.ativo == ativo)
+    if categoria:
+        stmt = stmt.where(Combustivel.categoria == _normalizar_categoria(categoria))
     stmt = stmt.order_by(Combustivel.nome)
     combustiveis = (await db.execute(stmt)).scalars().all()
 
@@ -125,6 +138,7 @@ async def listar(
             id=c.id,
             nome=c.nome,
             unidade=c.unidade,
+            categoria=c.categoria,
             descricao=c.descricao,
             foto_url=c.foto_url,
             ativo=c.ativo,
@@ -170,7 +184,9 @@ async def criar(
     )
     if existente.scalar_one_or_none():
         raise HTTPException(status_code=422, detail="Já existe um combustível com este nome.")
-    combustivel = Combustivel(**body.model_dump(), organization_id=user.organization_id)
+    dados = body.model_dump()
+    dados["categoria"] = _normalizar_categoria(dados.get("categoria"))
+    combustivel = Combustivel(**dados, organization_id=user.organization_id)
     db.add(combustivel)
     await db.flush()
     await registrar_auditoria(
@@ -204,7 +220,10 @@ async def atualizar(
     combustivel = result.scalar_one_or_none()
     if combustivel is None:
         raise HTTPException(status_code=404, detail="Combustível não encontrado.")
-    for campo, valor in body.model_dump(exclude_unset=True).items():
+    dados = body.model_dump(exclude_unset=True)
+    if "categoria" in dados:
+        dados["categoria"] = _normalizar_categoria(dados["categoria"])
+    for campo, valor in dados.items():
         setattr(combustivel, campo, valor)
     await registrar_auditoria(
         db,

@@ -22,6 +22,7 @@ interface User {
 interface AuthContextType {
   user: User | null;
   loading: boolean;
+  restricted: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
@@ -30,6 +31,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
+  restricted: false,
   login: async () => {},
   logout: () => {},
   refreshUser: async () => {},
@@ -38,14 +40,20 @@ const AuthContext = createContext<AuthContextType>({
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [restricted, setRestricted] = useState(false);
 
   const fetchUser = useCallback(async () => {
     try {
-      const data = await api<User>("/auth/me");
+      // Painel admin exige conta interna de plataforma (403 para gestor/comum).
+      const data = await api<User>("/auth/me/admin");
       setUser(data);
-    } catch {
+      setRestricted(false);
+    } catch (err) {
       clearToken();
       setUser(null);
+      setRestricted(
+        err instanceof Error && /platform admin access required|403/i.test(err.message)
+      );
     } finally {
       setLoading(false);
     }
@@ -69,10 +77,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = () => {
     clearToken();
     setUser(null);
+    setRestricted(false);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser: fetchUser }}>
+    <AuthContext.Provider value={{ user, loading, restricted, login, logout, refreshUser: fetchUser }}>
       {children}
     </AuthContext.Provider>
   );

@@ -15,7 +15,7 @@ from app.models.enums import (
 )
 from app.models.auth_models import Organization, Role, RolePermission, User, UserRole
 from app.models.configuracoes import ConfiguracaoGovFrota
-from app.models.veiculo import AlteracaoQuilometragem, Veiculo, VeiculoDocumento
+from app.models.veiculo import AlteracaoQuilometragem, Veiculo, VeiculoDocumento, VeiculoTanque
 from app.models.motorista import AcessoMotorista, Motorista
 from app.models.combustivel import Combustivel, Fornecedor, Oficina, Tanque
 from app.models.estoque import EntradaAnexo, EntradaCombustivel, InventarioTanque, MovimentacaoEstoque
@@ -49,6 +49,7 @@ __all__ = [
     "ConfiguracaoGovFrota",
     "Veiculo",
     "VeiculoDocumento",
+    "VeiculoTanque",
     "AlteracaoQuilometragem",
     "Motorista",
     "AcessoMotorista",

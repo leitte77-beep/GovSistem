@@ -8,7 +8,17 @@ import Badge from "@/components/ui/Badge";
 import api from "@/lib/api";
 import toast from "react-hot-toast";
 import Spinner from "@/components/ui/Spinner";
-import { Power } from "lucide-react";
+import { Power, UserPlus, Trash2, Shield, ShieldCheck, Pencil } from "lucide-react";
+
+interface Manager {
+  user_id: string;
+  membership_id: string;
+  name: string;
+  email: string;
+  is_active: boolean;
+  global_active: boolean;
+  created_at?: string | null;
+}
 
 interface FormData {
   name: string;
@@ -53,14 +63,23 @@ export default function EditOrganizacaoPage() {
   const [modules, setModules] = useState<ModuleItem[]>([]);
   const [assignedModules, setAssignedModules] = useState<AssignedModule[]>([]);
   const [assigning, setAssigning] = useState(false);
+  const [managers, setManagers] = useState<Manager[]>([]);
+  const [showManagerModal, setShowManagerModal] = useState(false);
+  const [editManager, setEditManager] = useState<Manager | null>(null);
+  const [managing, setManaging] = useState(false);
+
+  const loadManagers = () => {
+    api<Manager[]>(`/organizations/${id}/managers`).then(setManagers).catch(() => setManagers([]));
+  };
 
   useEffect(() => {
     Promise.all([
       api<any>(`/organizations/${id}`),
       api<ModuleItem[]>("/modules?is_active=true"),
       api<AssignedModule[]>(`/modules/organization/${id}`).catch(() => [] as AssignedModule[]),
+      api<Manager[]>(`/organizations/${id}/managers`).catch(() => [] as Manager[]),
     ])
-      .then(([data, mods, assigned]) => {
+      .then(([data, mods, assigned, mgrs]) => {
         setForm({
           name: data.name || "",
           slug: data.slug || "",
@@ -79,6 +98,7 @@ export default function EditOrganizacaoPage() {
         });
         setModules(Array.isArray(mods) ? mods : []);
         setAssignedModules(Array.isArray(assigned) ? assigned : []);
+        setManagers(Array.isArray(mgrs) ? mgrs : []);
       })
       .catch(() => toast.error("Erro ao carregar dados"))
       .finally(() => setLoading(false));
@@ -273,6 +293,77 @@ export default function EditOrganizacaoPage() {
             </div>
           </div>
 
+          <div className="bg-white rounded-3xl border border-slate-200/60 p-8">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold text-slate-900 flex items-center gap-3">
+                <Shield size={20} style={{ color: "#002b54" }} />
+                Gestores
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowManagerModal(true)}
+                className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white rounded-xl transition-all shadow"
+                style={{ backgroundColor: "#002b54" }}
+              >
+                <UserPlus size={16} /> Adicionar gestor
+              </button>
+            </div>
+            <p className="text-sm text-slate-500 mb-4">Define quem administra os usuários e acessos do órgão no portal.</p>
+            {managers.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-4">Nenhum gestor definido.</p>
+            ) : (
+              <div className="space-y-2">
+                {managers.map((m) => (
+                  <div key={m.membership_id} className="flex items-center justify-between p-3 border rounded-xl hover:bg-slate-50 transition-colors">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-white text-sm font-semibold" style={{ backgroundColor: "#002b54" }}>
+                        {m.name?.charAt(0) || "?"}
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-slate-700 truncate">{m.name}</p>
+                        <p className="text-xs text-slate-400 truncate">{m.email}</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Badge variant={m.is_active ? "success" : "warning"}>
+                        <span className="inline-flex items-center gap-1"><ShieldCheck size={11} /> {m.is_active ? "Gestor ativo" : "Inativo"}</span>
+                      </Badge>
+                      <button
+                        type="button"
+                        onClick={() => setEditManager(m)}
+                        className="p-2 rounded-lg text-slate-400 hover:text-[#002b54] hover:bg-slate-100 transition-colors"
+                        title="Editar gestor"
+                      >
+                        <Pencil size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={managing}
+                        onClick={async () => {
+                          if (!confirm(`Remover ${m.name} como gestor deste órgão?`)) return;
+                          setManaging(true);
+                          try {
+                            await api(`/organizations/${id}/managers/${m.user_id}`, { method: "DELETE" });
+                            toast.success("Gestor removido");
+                            loadManagers();
+                          } catch (err: any) {
+                            toast.error(err.message || "Erro ao remover gestor");
+                          } finally {
+                            setManaging(false);
+                          }
+                        }}
+                        className="p-2 rounded-lg text-red-500 hover:bg-red-50 transition-colors"
+                        title="Remover gestor"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="flex items-center gap-4">
             <button
               type="submit"
@@ -312,6 +403,192 @@ export default function EditOrganizacaoPage() {
           <button onClick={handleDelete} disabled={deleting} className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50">{deleting ? "Excluindo..." : "Excluir"}</button>
         </div>
       </Modal>
+
+      {showManagerModal && (
+        <ManagerModal
+          organizationId={id}
+          onClose={() => setShowManagerModal(false)}
+          onSaved={() => { loadManagers(); setShowManagerModal(false); }}
+        />
+      )}
+
+      {editManager && (
+        <EditManagerModal
+          manager={editManager}
+          onClose={() => setEditManager(null)}
+          onSaved={() => { loadManagers(); setEditManager(null); }}
+        />
+      )}
     </AppLayout>
+  );
+}
+
+function EditManagerModal({ manager, onClose, onSaved }: {
+  manager: Manager;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState(manager.name || "");
+  const [email, setEmail] = useState(manager.email || "");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api(`/users/${manager.user_id}`, { method: "PUT", body: { name, email } });
+      toast.success("Gestor atualizado");
+      onSaved();
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao editar gestor");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal open onClose={onClose} title={`Editar gestor — ${manager.name}`} size="sm">
+      <form onSubmit={submit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-semibold text-slate-700 mb-1.5">Nome *</label>
+          <input
+            required
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-[#002b54]/5 focus:border-[#002b54]/30 outline-none text-sm"
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-semibold text-slate-700 mb-1.5">E-mail *</label>
+          <input
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-[#002b54]/5 focus:border-[#002b54]/30 outline-none text-sm"
+          />
+        </div>
+        <p className="text-xs text-slate-400">A alteração atualiza o cadastro do usuário no sistema.</p>
+
+        <div className="flex justify-end gap-3 pt-2">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">Cancelar</button>
+          <button
+            type="submit"
+            disabled={busy}
+            className="px-6 py-2 text-sm font-semibold text-white rounded-xl hover:opacity-90 disabled:opacity-50"
+            style={{ backgroundColor: "#002b54" }}
+          >
+            {busy ? "Salvando..." : "Salvar"}
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function ManagerModal({ organizationId, onClose, onSaved }: {
+  organizationId: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [mode, setMode] = useState<"link" | "create">("link");
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const body: Record<string, string> = { email };
+      if (mode === "create") {
+        body.name = name;
+        body.password = password;
+      }
+      await api(`/organizations/${organizationId}/managers`, { method: "POST", body });
+      toast.success(mode === "link" ? "Usuário vinculado como gestor" : "Gestor criado");
+      onSaved();
+    } catch (err: any) {
+      toast.error(err.message || "Erro ao definir gestor");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal open onClose={onClose} title="Adicionar Gestor" size="sm">
+      <div className="mb-4 flex gap-2">
+        <button
+          type="button"
+          onClick={() => setMode("link")}
+          className={`flex-1 px-4 py-2 text-sm font-semibold rounded-xl border transition-colors ${mode === "link" ? "text-white border-transparent" : "text-slate-600 border-slate-200 hover:bg-slate-50"}`}
+          style={mode === "link" ? { backgroundColor: "#002b54" } : undefined}
+        >
+          Vincular existente
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("create")}
+          className={`flex-1 px-4 py-2 text-sm font-semibold rounded-xl border transition-colors ${mode === "create" ? "text-white border-transparent" : "text-slate-600 border-slate-200 hover:bg-slate-50"}`}
+          style={mode === "create" ? { backgroundColor: "#002b54" } : undefined}
+        >
+          Criar novo
+        </button>
+      </div>
+
+      <form onSubmit={submit} className="space-y-4">
+        <div>
+          <label className="block text-sm font-semibold text-slate-700 mb-1.5">E-mail do usuário *</label>
+          <input
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-[#002b54]/5 focus:border-[#002b54]/30 outline-none text-sm"
+            placeholder="gestor@orgao.gov.br"
+          />
+        </div>
+
+        {mode === "create" && (
+          <>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Nome *</label>
+              <input
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-[#002b54]/5 focus:border-[#002b54]/30 outline-none text-sm"
+                placeholder="Nome do gestor"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-1.5">Senha temporária *</label>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full px-4 py-2.5 border border-slate-200 rounded-xl focus:ring-4 focus:ring-[#002b54]/5 focus:border-[#002b54]/30 outline-none text-sm"
+                placeholder="••••••••"
+              />
+            </div>
+            <p className="text-xs text-slate-400">Se o e-mail já existir, o usuário será apenas vinculado como gestor (a senha não será alterada).</p>
+          </>
+        )}
+
+        <div className="flex justify-end gap-3 pt-2">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-sm border rounded-lg hover:bg-gray-50">Cancelar</button>
+          <button
+            type="submit"
+            disabled={busy}
+            className="px-6 py-2 text-sm font-semibold text-white rounded-xl hover:opacity-90 disabled:opacity-50"
+            style={{ backgroundColor: "#002b54" }}
+          >
+            {busy ? "Salvando..." : "Salvar"}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }

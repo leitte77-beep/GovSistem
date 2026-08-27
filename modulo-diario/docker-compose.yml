@@ -89,10 +89,10 @@ services:
       SIGNER_URL: http://signer:8100
       SECRET_KEY: ${SECRET_KEY:-change-me-in-dev}
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-in-dev}
-      CORS_ORIGINS: '["http://localhost:9202","http://localhost:9200","https://farol.govsistem.com.br"]'
+      CORS_ORIGINS: '["http://localhost:9202","http://localhost:9200","https://farol.govsistem.com.br","https://diario.govsistem.com.br","https://doe-admin.govsistem.com.br","https://app.govsistem.com.br","https://admin.govsistem.com.br"]'
       ENVIRONMENT: ${ENVIRONMENT:-development}
     ports:
-      - "9201:8000"
+      - "9203:8000"
     depends_on:
       redis:
         condition: service_healthy
@@ -157,16 +157,18 @@ services:
       context: ./web-admin
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: https://doe-admin.govsistem.com.br/api/v1
-        NEXT_PUBLIC_ADMIN_URL: https://doe-admin.govsistem.com.br
+        NEXT_PUBLIC_API_URL: https://diario.govsistem.com.br/api/v1
+        NEXT_PUBLIC_ADMIN_URL: https://diario.govsistem.com.br
+        NEXT_PUBLIC_SAAS_URL: https://app.govsistem.com.br
     logging: *default-logging
     environment:
       NODE_ENV: production
       PORT: 3000
       HOSTNAME: 0.0.0.0
       API_URL: http://api:8000/api/v1
-      NEXT_PUBLIC_API_URL: https://doe-admin.govsistem.com.br/api/v1
-      NEXT_PUBLIC_ADMIN_URL: https://doe-admin.govsistem.com.br
+      NEXT_PUBLIC_API_URL: https://diario.govsistem.com.br/api/v1
+      NEXT_PUBLIC_ADMIN_URL: https://diario.govsistem.com.br
+      NEXT_PUBLIC_SAAS_URL: https://app.govsistem.com.br
     ports:
       - "9202:3000"
     depends_on:
@@ -187,15 +189,15 @@ services:
       context: ./web-public
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_ADMIN_URL: ${NEXT_PUBLIC_ADMIN_URL:-http://localhost:9202}
+        NEXT_PUBLIC_ADMIN_URL: ${NEXT_PUBLIC_ADMIN_URL:-https://diario.govsistem.com.br}
     logging: *default-logging
     environment:
       NODE_ENV: production
       PORT: 3000
       HOSTNAME: 0.0.0.0
       API_URL: http://api:8000/api/v1
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:9201/api/v1}
-      NEXT_PUBLIC_ADMIN_URL: ${NEXT_PUBLIC_ADMIN_URL:-http://localhost:9202}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://diario.govsistem.com.br/api/v1}
+      NEXT_PUBLIC_ADMIN_URL: ${NEXT_PUBLIC_ADMIN_URL:-https://diario.govsistem.com.br}
     ports:
       - "9200:3000"
     depends_on:

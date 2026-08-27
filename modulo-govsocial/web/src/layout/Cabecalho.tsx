@@ -7,7 +7,7 @@ import { BuscaGlobal } from "./BuscaGlobal";
 import { PainelNotificacoes } from "./PainelNotificacoes";
 
 const PLATAFORMA_URL =
-  import.meta.env.VITE_PLATFORM_URL || "https://admin.govsistem.com.br/";
+  import.meta.env.VITE_PLATFORM_URL || "https://app.govsistem.com.br/";
 
 export function Cabecalho() {
   const { usuario, papeis } = useSessao();

@@ -72,18 +72,22 @@ export default function AbastecerPage() {
     };
   }, [router]);
 
-  // Combustíveis compatíveis do veículo (principal + secundário).
-  const combustiveisVeiculo = veiculo
-    ? [
-        { id: veiculo.combustivel_principal_id, nome: veiculo.combustivel_principal_nome },
-        { id: veiculo.combustivel_secundario_id, nome: veiculo.combustivel_secundario_nome },
-      ].filter((c) => c.id && c.nome) as { id: string; nome: string }[]
-    : [];
+  // Produtos que o veículo aceita (principal + reservatórios auxiliares),
+  // ex.: Diesel S10 e ARLA 32.
+  const combustiveisVeiculo = (
+    (veiculo?.combustiveis ?? []).length
+      ? veiculo!.combustiveis!.map((p) => ({ id: p.combustivel_id, nome: p.nome, capacidade: p.capacidade }))
+      : [
+          { id: veiculo?.combustivel_principal_id, nome: veiculo?.combustivel_principal_nome, capacidade: null },
+          { id: veiculo?.combustivel_secundario_id, nome: veiculo?.combustivel_secundario_nome, capacidade: null },
+        ].filter((c) => c.id && c.nome)
+  ) as { id: string; nome: string; capacidade: string | null }[];
 
   // Auto-seleciona o combustível quando há apenas um.
   const combustivelAuto =
     veiculo && combustiveisVeiculo.length === 1 ? combustiveisVeiculo[0].id : "";
   const combustivelEfetivo = combustivelAuto || combustivelId;
+  const produtoSelecionado = combustiveisVeiculo.find((c) => c.id === combustivelEfetivo);
 
   // Tanques compatíveis com o combustível selecionado.
   const tanquesCompativeis = combustivelEfetivo
@@ -336,9 +340,9 @@ export default function AbastecerPage() {
               </div>
             </div>
 
-            {/* Combustível */}
+            {/* Combustível / produto */}
             <div>
-              <span className="mb-2 block text-sm font-medium text-[#424750]">Combustível</span>
+              <span className="mb-2 block text-sm font-medium text-[#424750]">O que foi abastecido?</span>
               {combustiveisVeiculo.length <= 1 ? (
                 <div className="rounded-xl border border-[#C3C6D1]/30 bg-white px-4 py-3 text-lg font-semibold text-[#181C22]">
                   {combustiveisVeiculo[0]?.nome ?? "—"}
@@ -359,7 +363,7 @@ export default function AbastecerPage() {
                           : "border border-[#C3C6D1] bg-white text-[#181C22]"
                       }`}
                     >
-                      {c.nome}
+                      {c.nome.toUpperCase()}
                     </button>
                   ))}
                 </div>
@@ -397,7 +401,9 @@ export default function AbastecerPage() {
 
             {/* Litros */}
             <label className="block">
-              <span className="mb-1 block text-sm font-medium text-[#424750]">Litros abastecidos</span>
+              <span className="mb-1 block text-sm font-medium text-[#424750]">
+                {produtoSelecionado ? `Litros de ${produtoSelecionado.nome}` : "Litros abastecidos"}
+              </span>
               <input
                 inputMode="decimal"
                 placeholder="0,00"

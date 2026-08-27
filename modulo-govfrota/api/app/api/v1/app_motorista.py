@@ -133,7 +133,9 @@ async def login_motorista(
     )
     await db.commit()
 
-    token = create_driver_token(motorista.id, acesso.id, acesso.organization_id)
+    token = create_driver_token(
+        motorista.id, acesso.id, acesso.organization_id, acesso.credential_version
+    )
     return TokenMotoristaResponse(
         access_token=token,
         motorista={"id": motorista.id, "nome": motorista.nome, "organization_id": acesso.organization_id},
@@ -169,8 +171,13 @@ async def veiculos_disponiveis(
     motorista: Motorista = Depends(get_current_motorista),
     db: AsyncSession = Depends(get_db),
 ):
-    """Veículos autorizados da organização do motorista (exclui baixados/inativos)."""
+    """Veículos autorizados da organização do motorista (exclui baixados/inativos).
+
+    Inclui `combustiveis`: produtos que o veículo aceita (principal + reservatórios
+    auxiliares, ex.: Diesel e ARLA 32) com a capacidade de cada reservatório.
+    """
     from app.models.combustivel import Combustivel
+    from app.models.veiculo import VeiculoTanque
 
     stmt = select(Veiculo).where(
         Veiculo.organization_id == motorista.organization_id,
@@ -202,23 +209,70 @@ async def veiculos_disponiveis(
         )
         combustiveis = {c.id: c.nome for c in comb_result.scalars().all()}
 
-    return [
-        VeiculoAppResponse(
-            id=v.id,
-            placa=v.placa,
-            modelo=v.modelo,
-            marca=v.marca,
-            foto_url=v.foto_url,
-            usa_horimetro=v.usa_horimetro,
-            combustivel_principal_id=v.combustivel_principal_id,
-            combustivel_principal_nome=combustiveis.get(v.combustivel_principal_id),
-            combustivel_secundario_id=v.combustivel_secundario_id,
-            combustivel_secundario_nome=combustiveis.get(v.combustivel_secundario_id),
-            quilometragem_atual=v.quilometragem_atual,
-            horimetro_atual=v.horimetro_atual,
+    # Reservatórios estruturados do veículo (principal + auxiliares).
+    tanques_veic = {}
+    if veiculos:
+        ids_veic = [v.id for v in veiculos]
+        rows = (
+            await db.execute(
+                select(VeiculoTanque).where(
+                    VeiculoTanque.organization_id == motorista.organization_id,
+                    VeiculoTanque.veiculo_id.in_(ids_veic),
+                    VeiculoTanque.deleted_at.is_(None),
+                )
+            )
+        ).scalars().all()
+        for t in rows:
+            tanques_veic.setdefault(t.veiculo_id, []).append(t)
+        aux_ids = {t.combustivel_id for tanks in tanques_veic.values() for t in tanks}
+        if aux_ids:
+            aux = (
+                await db.execute(select(Combustivel).where(Combustivel.id.in_(aux_ids)))
+            ).scalars().all()
+            combustiveis.update({c.id: c.nome for c in aux})
+
+    resposta = []
+    for v in veiculos:
+        produtos = [
+            {
+                "combustivel_id": v.combustivel_principal_id,
+                "nome": combustiveis.get(v.combustivel_principal_id),
+                "tank_type": "PRIMARY",
+                "capacidade": v.capacidade_tanque_litros,
+            }
+        ] if v.combustivel_principal_id else []
+        produtos += [
+            {
+                "combustivel_id": t.combustivel_id,
+                "nome": combustiveis.get(t.combustivel_id),
+                "tank_type": t.tank_type,
+                "capacidade": t.capacidade,
+            }
+            for t in tanques_veic.get(v.id, [])
+        ]
+        # Deduplica produtos (ex.: principal também aparece como reservatório PRIMARY).
+        unicos: dict = {}
+        for p in produtos:
+            if p["combustivel_id"] is not None and p["nome"]:
+                unicos.setdefault(p["combustivel_id"], p)
+        resposta.append(
+            VeiculoAppResponse(
+                id=v.id,
+                placa=v.placa,
+                modelo=v.modelo,
+                marca=v.marca,
+                foto_url=v.foto_url,
+                usa_horimetro=v.usa_horimetro,
+                combustivel_principal_id=v.combustivel_principal_id,
+                combustivel_principal_nome=combustiveis.get(v.combustivel_principal_id),
+                combustivel_secundario_id=v.combustivel_secundario_id,
+                combustivel_secundario_nome=combustiveis.get(v.combustivel_secundario_id),
+                quilometragem_atual=v.quilometragem_atual,
+                horimetro_atual=v.horimetro_atual,
+                combustiveis=list(unicos.values()),
+            )
         )
-        for v in veiculos
-    ]
+    return resposta
 
 
 from pydantic import BaseModel, Field
@@ -483,5 +537,20 @@ async def informar_problema(
         origem="APP_MOTORISTA",
     )
     db.add(ocorrencia)
+    await db.flush()
+    await registrar_auditoria(
+        db,
+        organization_id=motorista.organization_id,
+        acao="ocorrencia.registrar",
+        entidade="ocorrencia",
+        entidade_id=ocorrencia.id,
+        motorista_id=motorista.id,
+        dados_novos={
+            "veiculo": str(body.veiculo_id),
+            "categoria": body.categoria,
+            "gravidade": body.gravidade,
+            "foto_url": body.foto_url,
+        },
+    )
     await db.commit()
     return {"ok": True, "id": str(ocorrencia.id), "mensagem": "Problema registrado com sucesso."}

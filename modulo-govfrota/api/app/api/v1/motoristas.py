@@ -15,8 +15,10 @@ from app.models.auth_models import User
 from app.models.motorista import AcessoMotorista, Motorista
 from app.models.ocorrencia import Ocorrencia
 from app.schemas.schemas import (
+    AcessoAlteradoResponse,
     AcessoResponse,
     CredencialCreate,
+    CredencialPinReset,
     CredencialUpdate,
     MotoristaCreate,
     MotoristaListaResponse,
@@ -186,6 +188,7 @@ async def criar(
         acao="motorista.criar",
         entidade="motorista",
         entidade_id=motorista.id,
+        motorista_id=motorista.id,
         usuario_id=user.id,
         dados_novos={"nome": motorista.nome, "cpf": cpf},
     )
@@ -219,6 +222,7 @@ async def atualizar(
         acao="motorista.atualizar",
         entidade="motorista",
         entidade_id=motorista.id,
+        motorista_id=motorista.id,
         usuario_id=user.id,
         dados_novos=body.model_dump(exclude_unset=True, mode="json"),
     )
@@ -241,12 +245,46 @@ async def excluir(
         acao="motorista.inativar",
         entidade="motorista",
         entidade_id=motorista.id,
+        motorista_id=motorista.id,
         usuario_id=user.id,
     )
     await db.commit()
 
 
 # ── Credenciais de acesso do motorista ───────────────────────────────────────
+
+
+async def _obter_acesso(db: AsyncSession, motorista_id: uuid.UUID) -> AcessoMotorista | None:
+    return (
+        await db.execute(
+            select(AcessoMotorista).where(AcessoMotorista.motorista_id == motorista_id)
+        )
+    ).scalar_one_or_none()
+
+
+def _invalidar_sessoes(acesso: AcessoMotorista) -> None:
+    """Invalida todas as sessões ativas do motorista.
+
+    O token de acesso embute a versão da credencial; incrementá-la revoga
+    imediatamente qualquer sessão emitida antes da alteração (login/PIN/bloqueio).
+    """
+    acesso.credential_version += 1
+
+
+async def _validar_login_unico(
+    db: AsyncSession, login_normalized: str, motorista_id: uuid.UUID
+) -> None:
+    conflito = await db.execute(
+        select(AcessoMotorista.id).where(
+            AcessoMotorista.login_normalized == login_normalized,
+            AcessoMotorista.motorista_id != motorista_id,
+        )
+    )
+    if conflito.scalar_one_or_none():
+        raise HTTPException(
+            status_code=409,
+            detail="Este usuário já está sendo utilizado. Escolha outro.",
+        )
 
 
 @router.get("/{motorista_id}/acesso", response_model=AcessoResponse)
@@ -256,45 +294,27 @@ async def obter_acesso(
     db: AsyncSession = Depends(get_db),
 ):
     motorista = await _get_motorista_tenant(db, user, motorista_id)
-    acesso = (
-        await db.execute(
-            select(AcessoMotorista).where(AcessoMotorista.motorista_id == motorista.id)
-        )
-    ).scalar_one_or_none()
+    acesso = await _obter_acesso(db, motorista.id)
     return acesso or AcessoResponse(login=None, bloqueado=False, ultimo_acesso=None)
 
 
-@router.put("/{motorista_id}/acesso", response_model=AcessoResponse, status_code=201)
+@router.put("/{motorista_id}/acesso", response_model=AcessoAlteradoResponse, status_code=201)
 async def definir_credencial(
     motorista_id: uuid.UUID,
     body: CredencialCreate,
     user: User = Depends(require_permission(Perm.DRIVER_MANAGE)),
     db: AsyncSession = Depends(get_db),
 ):
-    """Cria ou redefine o acesso do motorista — senha sempre com hash bcrypt.
+    """Cria (ou redefine por completo) o acesso do motorista — PIN com hash bcrypt.
 
-    O login é globalmente único no GovFrota (normalizado), pois a tela de
-    login do motorista não solicita tenant. A unicidade é garantida pelo banco
-    e validada aqui também para uma resposta amigável.
+    O login é globalmente único no GovFrota (normalizado). Retorna o PIN em
+    texto claro UMA única vez, apenas na resposta desta operação.
     """
     motorista = await _get_motorista_tenant(db, user, motorista_id)
     login = body.login.strip().lower()
+    await _validar_login_unico(db, login, motorista.id)
 
-    conflito = await db.execute(
-        select(AcessoMotorista.id).where(
-            AcessoMotorista.login_normalized == login,
-            AcessoMotorista.motorista_id != motorista.id,
-        )
-    )
-    if conflito.scalar_one_or_none():
-        raise HTTPException(status_code=422, detail="Login já utilizado por outro motorista.")
-
-    acesso = (
-        await db.execute(
-            select(AcessoMotorista).where(AcessoMotorista.motorista_id == motorista.id)
-        )
-    ).scalar_one_or_none()
-
+    acesso = await _obter_acesso(db, motorista.id)
     acao = "motorista.acesso_redefinir"
     if acesso is None:
         acao = "motorista.acesso_criar"
@@ -302,15 +322,29 @@ async def definir_credencial(
             organization_id=user.organization_id,
             motorista_id=motorista.id,
             login=login,
-            senha_hash=hash_secret(body.senha),
+            senha_hash=hash_secret(body.pin),
         )
         db.add(acesso)
     else:
+        login_anterior = acesso.login
         acesso.login = login
-        acesso.senha_hash = hash_secret(body.senha)
+        acesso.senha_hash = hash_secret(body.pin)
         acesso.bloqueado = False
         acesso.falhas_login = 0
         acesso.locked_until = None
+        _invalidar_sessoes(acesso)
+        if login_anterior != acesso.login:
+            await registrar_auditoria(
+                db,
+                organization_id=user.organization_id,
+                acao="motorista.acesso_login_alterar",
+                entidade="acesso_motorista",
+                entidade_id=motorista.id,
+                motorista_id=motorista.id,
+                usuario_id=user.id,
+                dados_anteriores={"login": login_anterior},
+                dados_novos={"login": acesso.login},
+            )
 
     await registrar_auditoria(
         db,
@@ -318,15 +352,22 @@ async def definir_credencial(
         acao=acao,
         entidade="acesso_motorista",
         entidade_id=motorista.id,
+        motorista_id=motorista.id,
         usuario_id=user.id,
-        dados_novos={"login": login},
+        dados_novos={"login": acesso.login, "pin_redefinido": True},
     )
     await db.commit()
     await db.refresh(acesso)
-    return acesso
+    return AcessoAlteradoResponse(
+        login=acesso.login,
+        bloqueado=acesso.bloqueado,
+        ultimo_acesso=acesso.ultimo_acesso,
+        pin_alterado=True,
+        pin_provisorio=body.pin,
+    )
 
 
-@router.patch("/{motorista_id}/acesso", response_model=AcessoResponse)
+@router.patch("/{motorista_id}/acesso", response_model=AcessoAlteradoResponse)
 async def atualizar_credencial(
     motorista_id: uuid.UUID,
     body: CredencialUpdate | dict,
@@ -334,57 +375,95 @@ async def atualizar_credencial(
     user: User = Depends(require_permission(Perm.DRIVER_MANAGE)),
     db: AsyncSession = Depends(get_db),
 ):
-    """Altera login/senha ou bloqueia/desbloqueia acesso."""
+    """Altera login e/ou PIN, ou bloqueia/desbloqueia o acesso.
+
+    - Se `pin` vier vazio, altera somente o login (não obriga redefinir PIN).
+    - Se `pin` vier preenchido, redefine login + PIN juntos.
+    - `bloquear=true|false` (query) preserva o fluxo legado.
+    Toda alteração de login/PIN/bloqueio invalida as sessões ativas.
+    """
     motorista = await _get_motorista_tenant(db, user, motorista_id)
-    acesso = (
-        await db.execute(
-            select(AcessoMotorista).where(AcessoMotorista.motorista_id == motorista.id)
-        )
-    ).scalar_one_or_none()
+    acesso = await _obter_acesso(db, motorista.id)
     if acesso is None:
         raise HTTPException(status_code=404, detail="Motorista não possui acesso configurado.")
 
     if isinstance(body, dict):
         body = CredencialUpdate(**body)
 
+    pin_provisorio: str | None = None
+    dados_anteriores: dict = {}
     dados_novos: dict = {}
+
     if body.login is not None:
         login = body.login.strip().lower()
-        conflito = await db.execute(
-            select(AcessoMotorista.id).where(
-                AcessoMotorista.login_normalized == login,
-                AcessoMotorista.motorista_id != motorista.id,
+        await _validar_login_unico(db, login, motorista.id)
+        if login != acesso.login:
+            dados_anteriores["login"] = acesso.login
+            dados_novos["login"] = login
+            acesso.login = login
+            _invalidar_sessoes(acesso)
+            await registrar_auditoria(
+                db,
+                organization_id=user.organization_id,
+                acao="motorista.acesso_login_alterar",
+                entidade="acesso_motorista",
+                entidade_id=motorista.id,
+                motorista_id=motorista.id,
+                usuario_id=user.id,
+                dados_anteriores={"login": dados_anteriores["login"]},
+                dados_novos={"login": login},
             )
-        )
-        if conflito.scalar_one_or_none():
-            raise HTTPException(status_code=422, detail="Login já utilizado por outro motorista.")
-        acesso.login = login
-        dados_novos["login"] = login
-    if body.nova_senha is not None:
-        acesso.senha_hash = hash_secret(body.nova_senha)
+
+    try:
+        novo_pin = body.pin_efetivo
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    if novo_pin is not None:
+        acesso.senha_hash = hash_secret(novo_pin)
         acesso.falhas_login = 0
         acesso.locked_until = None
-        dados_novos["senha_alterada"] = True
+        _invalidar_sessoes(acesso)
+        dados_novos["pin_redefinido"] = True
+        pin_provisorio = novo_pin
+        await registrar_auditoria(
+            db,
+            organization_id=user.organization_id,
+            acao="motorista.acesso_redefinir",
+            entidade="acesso_motorista",
+            entidade_id=motorista.id,
+            motorista_id=motorista.id,
+            usuario_id=user.id,
+            dados_novos={"pin_redefinido": True},
+        )
 
-    if bloquear is not None:
+    if bloquear is not None and acesso.bloqueado != bloquear:
         acesso.bloqueado = bloquear
         dados_novos["bloqueado"] = bloquear
+        if bloquear:
+            _invalidar_sessoes(acesso)
+        await registrar_auditoria(
+            db,
+            organization_id=user.organization_id,
+            acao="motorista.acesso_bloquear" if bloquear else "motorista.acesso_desbloquear",
+            entidade="acesso_motorista",
+            entidade_id=motorista.id,
+            motorista_id=motorista.id,
+            usuario_id=user.id,
+            dados_novos={"bloqueado": bloquear},
+        )
 
-    await registrar_auditoria(
-        db,
-        organization_id=user.organization_id,
-        acao="motorista.acesso_atualizar",
-        entidade="acesso_motorista",
-        entidade_id=motorista.id,
-        usuario_id=user.id,
-        dados_novos=dados_novos,
-    )
     await db.commit()
     await db.refresh(acesso)
-    return acesso
+    return AcessoAlteradoResponse(
+        login=acesso.login,
+        bloqueado=acesso.bloqueado,
+        ultimo_acesso=acesso.ultimo_acesso,
+        pin_alterado=pin_provisorio is not None,
+        pin_provisorio=pin_provisorio,
+    )
 
 
-@router.post("/{motorista_id}/acesso/gerar-pin")
+@router.post("/{motorista_id}/acesso/gerar-pin", response_model=AcessoAlteradoResponse)
 async def gerar_pin_acesso(
     motorista_id: uuid.UUID,
     user: User = Depends(require_permission(Perm.DRIVER_MANAGE)),
@@ -392,22 +471,17 @@ async def gerar_pin_acesso(
 ):
     """Cria o acesso (login global único) ou redefine o PIN do motorista.
 
-    Gera um PIN provisório de 6 dígitos, armazena apenas o hash (bcrypt) e
-    devolve o PIN em texto claro UMA única vez — nunca mais será recuperável.
+    Gera um PIN seguro e aleatório de 6 dígitos, armazena apenas o hash (bcrypt)
+    e devolve o PIN em texto claro UMA única vez — nunca mais é recuperável.
     """
     import re
     import secrets
 
     motorista = await _get_motorista_tenant(db, user, motorista_id)
-    acesso = (
-        await db.execute(
-            select(AcessoMotorista).where(AcessoMotorista.motorista_id == motorista.id)
-        )
-    ).scalar_one_or_none()
+    acesso = await _obter_acesso(db, motorista.id)
 
     criado = acesso is None
     if acesso is None:
-        # Login global único, derivado do nome.
         base = re.sub(r"[^a-z0-9]+", ".", motorista.nome.lower()).strip(".")
         base = base or "motorista"
         login = base
@@ -429,12 +503,15 @@ async def gerar_pin_acesso(
             senha_hash="",
         )
         db.add(acesso)
+        await db.flush()
 
     pin = f"{secrets.randbelow(1_000_000):06d}"
     acesso.senha_hash = hash_secret(pin)
     acesso.bloqueado = False
     acesso.falhas_login = 0
     acesso.locked_until = None
+    if not criado:
+        _invalidar_sessoes(acesso)
 
     acao = "motorista.acesso_criar" if criado else "motorista.acesso_redefinir"
     await registrar_auditoria(
@@ -443,18 +520,130 @@ async def gerar_pin_acesso(
         acao=acao,
         entidade="acesso_motorista",
         entidade_id=motorista.id,
+        motorista_id=motorista.id,
         usuario_id=user.id,
         dados_novos={"login": acesso.login, "pin_gerado": True},
     )
     await db.commit()
     await db.refresh(acesso)
+    return AcessoAlteradoResponse(
+        login=acesso.login,
+        bloqueado=acesso.bloqueado,
+        ultimo_acesso=acesso.ultimo_acesso,
+        pin_alterado=True,
+        pin_provisorio=pin,
+    )
 
-    return {
-        "criado": criado,
-        "login": acesso.login,
-        "pin_provisorio": pin,
-        "url": "/motorista",
-    }
+
+@router.post("/{motorista_id}/acesso/reset-pin", response_model=AcessoAlteradoResponse)
+async def redefinir_pin(
+    motorista_id: uuid.UUID,
+    body: CredencialPinReset,
+    user: User = Depends(require_permission(Perm.DRIVER_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Redefine o PIN do motorista.
+
+    O administrador NÃO precisa saber o PIN atual. Se `pin` for informado,
+    usa o valor manual (com confirmação); caso contrário, gera um PIN aleatório.
+    Retorna o novo PIN em texto claro UMA única vez.
+    """
+    import secrets
+
+    motorista = await _get_motorista_tenant(db, user, motorista_id)
+    acesso = await _obter_acesso(db, motorista.id)
+    if acesso is None:
+        raise HTTPException(status_code=404, detail="Motorista não possui acesso configurado.")
+
+    if body.pin is not None:
+        pin = body.pin
+    else:
+        pin = f"{secrets.randbelow(1_000_000):06d}"
+
+    acesso.senha_hash = hash_secret(pin)
+    acesso.falhas_login = 0
+    acesso.locked_until = None
+    acesso.bloqueado = False
+    _invalidar_sessoes(acesso)
+
+    await registrar_auditoria(
+        db,
+        organization_id=user.organization_id,
+        acao="motorista.acesso_redefinir",
+        entidade="acesso_motorista",
+        entidade_id=motorista.id,
+        motorista_id=motorista.id,
+        usuario_id=user.id,
+        dados_novos={"pin_redefinido": True},
+    )
+    await db.commit()
+    await db.refresh(acesso)
+    return AcessoAlteradoResponse(
+        login=acesso.login,
+        bloqueado=acesso.bloqueado,
+        ultimo_acesso=acesso.ultimo_acesso,
+        pin_alterado=True,
+        pin_provisorio=pin,
+    )
+
+
+@router.post("/{motorista_id}/acesso/block", response_model=AcessoResponse)
+async def bloquear_acesso(
+    motorista_id: uuid.UUID,
+    user: User = Depends(require_permission(Perm.DRIVER_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Bloqueia o acesso: credencial e motorista permanecem cadastrados, mas o
+    login é recusado e as sessões ativas são invalidadas."""
+    motorista = await _get_motorista_tenant(db, user, motorista_id)
+    acesso = await _obter_acesso(db, motorista.id)
+    if acesso is None:
+        raise HTTPException(status_code=404, detail="Motorista não possui acesso configurado.")
+    if not acesso.bloqueado:
+        acesso.bloqueado = True
+        _invalidar_sessoes(acesso)
+        await registrar_auditoria(
+            db,
+            organization_id=user.organization_id,
+            acao="motorista.acesso_bloquear",
+            entidade="acesso_motorista",
+            entidade_id=motorista.id,
+            motorista_id=motorista.id,
+            usuario_id=user.id,
+            dados_novos={"bloqueado": True},
+        )
+        await db.commit()
+        await db.refresh(acesso)
+    return acesso
+
+
+@router.post("/{motorista_id}/acesso/unblock", response_model=AcessoResponse)
+async def desbloquear_acesso(
+    motorista_id: uuid.UUID,
+    user: User = Depends(require_permission(Perm.DRIVER_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Desbloqueia o acesso sem alterar login/PIN (o motorista reutiliza as mesmas
+    credenciais; sessões antigas emitidas antes do bloqueio permanecem inválidas)."""
+    motorista = await _get_motorista_tenant(db, user, motorista_id)
+    acesso = await _obter_acesso(db, motorista.id)
+    if acesso is None:
+        raise HTTPException(status_code=404, detail="Motorista não possui acesso configurado.")
+    if acesso.bloqueado:
+        acesso.bloqueado = False
+        await registrar_auditoria(
+            db,
+            organization_id=user.organization_id,
+            acao="motorista.acesso_desbloquear",
+            entidade="acesso_motorista",
+            entidade_id=motorista.id,
+            motorista_id=motorista.id,
+            usuario_id=user.id,
+            dados_novos={"bloqueado": False},
+        )
+        await db.commit()
+        await db.refresh(acesso)
+    return acesso
 
 
 # ── Histórico administrativo do motorista ────────────────────────────────────

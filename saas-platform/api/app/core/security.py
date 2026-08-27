@@ -20,6 +20,9 @@ def create_access_token(
     roles: list[str],
     organization_id: uuid.UUID | None = None,
     is_platform_admin: bool = False,
+    membership_id: uuid.UUID | None = None,
+    membership_role: str | None = None,
+    permissions_version: int = 1,
 ) -> str:
     now = datetime.now(timezone.utc)
     payload = {
@@ -31,6 +34,12 @@ def create_access_token(
         "organization_id": str(organization_id) if organization_id else None,
         "is_platform_admin": is_platform_admin,
     }
+    # Novo modelo multi-tenant (aditivo): claims de membership/tenant.
+    if membership_id:
+        payload["membership_id"] = str(membership_id)
+        payload["active_organization_id"] = str(organization_id) if organization_id else None
+        payload["organization_role"] = membership_role or "ORG_MEMBER"
+        payload["permissions_version"] = permissions_version
     return jwt.encode(
         payload,
         settings.SECRET_KEY.get_secret_value(),
@@ -61,6 +70,9 @@ def create_module_token(
     module_slug: str,
     name: str | None = None,
     email: str | None = None,
+    membership_id: uuid.UUID | None = None,
+    module_roles: dict | None = None,
+    permissions_version: int = 1,
 ) -> str:
     now = datetime.now(timezone.utc)
     payload = {
@@ -73,6 +85,15 @@ def create_module_token(
         "iat": now,
         "exp": now + timedelta(minutes=settings.MODULE_TOKEN_EXPIRE_MINUTES),
     }
+    # Claims novas (aditivas, compatíveis com o modelo multi-tenant):
+    if membership_id:
+        payload["membership_id"] = str(membership_id)
+        payload["active_organization_id"] = str(organization_id)
+        payload["target_module"] = module_slug
+        payload["permissions_version"] = permissions_version
+        # roles namespaced por módulo (apenas o módulo de destino)
+        if module_roles is not None:
+            payload["module_roles"] = {module_slug: module_roles}
     if name:
         payload["name"] = name
     if email:

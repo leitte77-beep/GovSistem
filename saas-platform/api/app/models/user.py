@@ -11,6 +11,7 @@ from app.models.base import Base, SoftDeleteMixin, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.organization import Organization
+    from app.models.organization_membership import OrganizationMembership
     from app.models.user_module_grant import UserModuleGrant
 
 
@@ -54,6 +55,12 @@ class User(Base, TimestampMixin, SoftDeleteMixin):
     )
     module_grants: Mapped[List["UserModuleGrant"]] = relationship(
         "UserModuleGrant",
+        back_populates="user",
+        lazy="selectin",
+        cascade="all, delete-orphan",
+    )
+    memberships: Mapped[List["OrganizationMembership"]] = relationship(
+        "OrganizationMembership",
         back_populates="user",
         lazy="selectin",
         cascade="all, delete-orphan",

@@ -81,6 +81,10 @@ export async function authMiddleware(req, res, next) {
   const token = header.substring(7);
   try {
     const decoded = verifyToken(token);
+    // Segurança: token de módulo só é aceito se emitido para este módulo.
+    if (decoded.type === 'module_access' && decoded.module && decoded.module !== 'chatgov') {
+      return res.status(401).json({ erro: 'Token de módulo inválido' });
+    }
     req.operador = operadorFromToken(decoded);
 
     if (!req.operador.tenantId) {

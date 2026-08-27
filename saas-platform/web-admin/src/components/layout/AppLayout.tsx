@@ -58,7 +58,7 @@ function AppLayoutInner({ children, title }: { children: React.ReactNode; title:
           </div>
         </main>
         <footer className="h-12 bg-surface border-t border-outline-variant flex items-center justify-between px-gutter text-label-md text-on-surface-variant shrink-0">
-          <div>© 2024 GovSistem. Todos os direitos reservados.</div>
+          <div>© {new Date().getFullYear()} GovSistem. Todos os direitos reservados.</div>
           <div className="flex items-center gap-6">
             <a className="hover:text-[#001631] transition-colors" href="#">Termos de Uso</a>
             <a className="hover:text-[#001631] transition-colors" href="#">Privacidade</a>

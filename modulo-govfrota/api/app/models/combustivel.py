@@ -19,7 +19,12 @@ from app.models.base import Base, SoftDeleteMixin, TimestampMixin
 
 
 class Combustivel(Base, TimestampMixin, SoftDeleteMixin):
-    """Tipo de combustível — cadastro dinâmico, nunca hardcoded."""
+    """Tipo de combustível/fluido — cadastro dinâmico, nunca hardcoded.
+
+    `categoria` classifica o produto em COMBUSTIVEL (Diesel, Gasolina, Etanol)
+    ou FLUIDO_AUXILIAR (ex.: ARLA 32), permitindo tratar fluidos de operação
+    com a mesma infraestrutura de estoque/entrada/abastecimento.
+    """
 
     __tablename__ = "combustiveis"
 
@@ -31,6 +36,9 @@ class Combustivel(Base, TimestampMixin, SoftDeleteMixin):
     )
     nome: Mapped[str] = mapped_column(String(100), nullable=False)
     unidade: Mapped[str] = mapped_column(String(20), default="litro", nullable=False)
+    categoria: Mapped[str] = mapped_column(
+        String(20), default="COMBUSTIVEL", nullable=False, index=True
+    )
     descricao: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
     foto_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     ativo: Mapped[bool] = mapped_column(Boolean(), default=True, nullable=False)

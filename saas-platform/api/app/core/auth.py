@@ -95,13 +95,26 @@ async def get_current_user(
 
 async def get_current_platform_admin(
     user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> User:
-    if not user.is_platform_admin and user.platform_role != "SUPER_ADMIN":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Platform admin access required",
-        )
-    return user
+    """Acesso ao painel central (admin.govsistem.com.br) exige condição
+    interna inequívoca: SUPER_ADMIN, is_platform_admin, ou membership ORG_ADMIN
+    na organização interna da plataforma. A label platform_role=SUPPORT, por si,
+    NÃO concede acesso."""
+    from app.services.membership import is_platform_internal
+
+    if user.is_platform_admin or user.platform_role == "SUPER_ADMIN":
+        return user
+    if user.platform_role and user.platform_role != "SUPPORT":
+        # Roles BILLING_MANAGER / PLATFORM_ADMIN / AUDITOR já são contas internas
+        if user.platform_role in ("PLATFORM_ADMIN", "BILLING_MANAGER", "AUDITOR"):
+            return user
+    if await is_platform_internal(db, user):
+        return user
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Platform admin access required",
+    )
 
 
 def require_platform_role(*roles: str):

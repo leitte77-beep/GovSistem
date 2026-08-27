@@ -61,6 +61,27 @@ MODULE_ROLE_CATALOG: dict[str, list[dict]] = {
         {"name": "leitor", "label": "Leitor — somente leitura"},
         {"name": "auditor", "label": "Auditor — somente leitura de logs"},
     ],
+    "govpro": [
+        {"name": "ADMIN", "label": "Administrador do GovPro"},
+        {"name": "SERVIDOR", "label": "Servidor — atua nos processos da sua unidade"},
+        {"name": "CHEFE_UNIDADE", "label": "Chefe de unidade — atribui e aprova"},
+        {"name": "PROTOCOLO", "label": "Protocolo — autua, recebe e distribui"},
+        {"name": "ARQUIVISTA", "label": "Arquivista / gestor documental"},
+        {"name": "AUDITOR", "label": "Auditor — leitura ampla, sem edição"},
+        {"name": "DPO", "label": "Encarregado de dados (DPO)"},
+        {"name": "GESTOR_SIGILO", "label": "Gestor de sigilo / autoridade classificadora"},
+        {"name": "AUTORIDADE_SIGNATARIA", "label": "Autoridade signatária"},
+    ],
+    "govavalia": [
+        {"name": "GOVAVALIA_ADMIN", "label": "Administrador do GovAvalia"},
+        {"name": "GOVAVALIA_GESTOR", "label": "Gestor — analisa resultados agregados"},
+        {"name": "GOVAVALIA_OUVIDORIA", "label": "Ouvidoria — trata manifestações"},
+    ],
+    "govouve": [
+        {"name": "GOVOUVE_ADMIN", "label": "Administrador do GovOuve"},
+        {"name": "GOVOUVE_GESTOR", "label": "Gestor — analisa resultados agregados"},
+        {"name": "GOVOUVE_OUVIDORIA", "label": "Ouvidoria — trata manifestações"},
+    ],
 }
 
 # Legacy role names mapped to current canonical names.

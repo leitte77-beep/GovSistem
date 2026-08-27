@@ -65,9 +65,9 @@ export default function DetalheVeiculoPage() {
   const carregar = useCallback(async () => {
     try {
       setVeiculo(await api.getVeiculo(id));
-      setAbastecimentos(await api.listAbastecimentos({ veiculo_id: id }));
+      setAbastecimentos((await api.listAbastecimentos({ veiculo_id: id })).itens);
       setManutencoes(await api.listManutencoes({ veiculo_id: id }));
-      setOcorrencias(await api.listOcorrencias({ veiculo_id: id }));
+      setOcorrencias((await api.listOcorrencias({ veiculo_id: id })).itens);
       setDocumentos(await api.listDocumentos(id));
     } catch (e) {
       toast.error((e as Error).message);
@@ -93,6 +93,19 @@ export default function DetalheVeiculoPage() {
     .filter((m) => m.status === "CONCLUIDA" || m.status === "EM_MANUTENCAO")
     .reduce((s, m) => s + Number(m.valor_total), 0);
   const consumoMedio = litrosTotal > 0 ? veiculo.quilometragem_atual / litrosTotal : null;
+
+  // Consumo separado por produto (ex.: Diesel vs ARLA) — não mistura estoques.
+  const porProduto = new Map<string, { litros: number; gasto: number }>();
+  confirmados.forEach((a) => {
+    const atual = porProduto.get(a.combustivel_id) ?? { litros: 0, gasto: 0 };
+    porProduto.set(a.combustivel_id, {
+      litros: atual.litros + Number(a.quantidade_litros),
+      gasto: atual.gasto + Number(a.custo_total ?? 0),
+    });
+  });
+  const nomeCombustivel = (id: string | null) =>
+    combustiveis.find((c) => c.id === id)?.nome ?? "—";
+  const reservatorios = veiculo.tanques ?? [];
 
   const abas: { chave: Aba; label: string }[] = [
     { chave: "resumo", label: "Resumo" },
@@ -231,21 +244,74 @@ export default function DetalheVeiculoPage() {
         </div>
 
         {aba === "resumo" && (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Info titulo={veiculo.usa_horimetro ? "Horímetro atual" : "KM atual"} valor={veiculo.usa_horimetro ? formatarHorimetro(veiculo.horimetro_atual) : formatarKm(veiculo.quilometragem_atual)} />
-            <Info titulo="Consumo médio" valor={formatarConsumo(consumoMedio)} />
-            <Info titulo="Litros no mês" valor={`${litrosTotal.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} L`} />
-            <Info titulo="Gasto com combustível" valor={formatarMoeda(gastoCombustivel)} />
-            <Info titulo="Custo de manutenção" valor={formatarMoeda(custoManutencao)} />
-            <Info titulo="Custo por km" valor={veiculo.quilometragem_atual > 0 ? formatarMoeda((gastoCombustivel + custoManutencao) / Math.max(veiculo.quilometragem_atual, 1)) : "—"} />
-            <Info titulo="Tipo" valor={nomeTipo(veiculo.tipo)} />
-            <Info titulo="Combustível" valor={combustivelPrincipal?.nome ?? "—"} />
-            {veiculo.ano_fabricacao && <Info titulo="Ano fab./modelo" valor={[veiculo.ano_fabricacao, veiculo.ano_modelo].filter(Boolean).join(" / ") || "—"} />}
-            {veiculo.cor && <Info titulo="Cor" valor={veiculo.cor} />}
-            {veiculo.renavam && <Info titulo="RENAVAM" valor={veiculo.renavam} />}
-            {veiculo.patrimonio && <Info titulo="Patrimônio" valor={veiculo.patrimonio} />}
-            {veiculo.observacoes && <Info titulo="Observações" valor={veiculo.observacoes} />}
-          </div>
+          <>
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <Info titulo={veiculo.usa_horimetro ? "Horímetro atual" : "KM atual"} valor={veiculo.usa_horimetro ? formatarHorimetro(veiculo.horimetro_atual) : formatarKm(veiculo.quilometragem_atual)} />
+              <Info titulo="Consumo médio" valor={formatarConsumo(consumoMedio)} />
+              <Info titulo="Litros no mês" valor={`${litrosTotal.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} L`} />
+              <Info titulo="Gasto com combustível" valor={formatarMoeda(gastoCombustivel)} />
+              <Info titulo="Custo de manutenção" valor={formatarMoeda(custoManutencao)} />
+              <Info titulo="Custo por km" valor={veiculo.quilometragem_atual > 0 ? formatarMoeda((gastoCombustivel + custoManutencao) / Math.max(veiculo.quilometragem_atual, 1)) : "—"} />
+              <Info titulo="Tipo" valor={nomeTipo(veiculo.tipo)} />
+              <Info titulo="Combustível" valor={combustivelPrincipal?.nome ?? "—"} />
+              {veiculo.ano_fabricacao && <Info titulo="Ano fab./modelo" valor={[veiculo.ano_fabricacao, veiculo.ano_modelo].filter(Boolean).join(" / ") || "—"} />}
+              {veiculo.cor && <Info titulo="Cor" valor={veiculo.cor} />}
+              {veiculo.renavam && <Info titulo="RENAVAM" valor={veiculo.renavam} />}
+              {veiculo.patrimonio && <Info titulo="Patrimônio" valor={veiculo.patrimonio} />}
+              {veiculo.observacoes && <Info titulo="Observações" valor={veiculo.observacoes} />}
+            </div>
+
+            {/* Reservatórios (principal + auxiliares) */}
+            <div className="rounded-card border border-surface-border bg-white p-5 shadow-card">
+              <h3 className="text-label font-semibold text-text-title">Abastecimento / Reservatórios</h3>
+              <div className="mt-3 space-y-2">
+                {reservatorios.map((t) => (
+                  <div key={t.id} className="flex items-center justify-between rounded-btn border border-surface-border bg-surface-bg px-4 py-3">
+                    <div>
+                      <div className="font-medium text-text-title">
+                        {t.tank_type === "PRIMARY" ? "Tanque principal" : (t.identificacao || "Tanque auxiliar")}
+                      </div>
+                      <div className="text-body-sm text-text-subtle">{t.combustivel_nome ?? nomeCombustivel(t.combustivel_id)}</div>
+                    </div>
+                    <div className="text-right">
+                      <div className="text-lg font-semibold text-text-title">{Number(t.capacidade).toLocaleString("pt-BR")} L</div>
+                      <div className="text-meta text-text-subtle">{t.tank_type === "PRIMARY" ? "Capacidade" : "Capacidade auxiliar"}</div>
+                    </div>
+                  </div>
+                ))}
+                {reservatorios.length === 0 && (
+                  <p className="py-4 text-center text-body-sm text-text-subtle">Nenhum reservatório cadastrado.</p>
+                )}
+              </div>
+            </div>
+
+            {/* Consumo por produto */}
+            {porProduto.size > 0 && (
+              <div className="rounded-card border border-surface-border bg-white p-5 shadow-card">
+                <h3 className="text-label font-semibold text-text-title">Consumo por produto</h3>
+                <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                  {Array.from(porProduto.entries()).map(([cid, d]) => (
+                    <div key={cid} className="rounded-btn border border-surface-border bg-surface-bg p-4">
+                      <div className="font-medium text-text-title">{nomeCombustivel(cid)}</div>
+                      <div className="mt-1 flex items-end justify-between">
+                        <div>
+                          <div className="text-2xl font-bold text-[#1D4ED8]">
+                            {d.litros.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} L
+                          </div>
+                          <div className="text-meta text-text-subtle">
+                            {veiculo.quilometragem_atual > 0
+                              ? `${(d.litros / veiculo.quilometragem_atual).toLocaleString("pt-BR", { maximumFractionDigits: 4 })} L/km`
+                              : "—"}
+                          </div>
+                        </div>
+                        {d.gasto > 0 && <div className="text-body-sm font-medium text-text-title">{formatarMoeda(d.gasto)}</div>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         {aba === "abastecimentos" && (

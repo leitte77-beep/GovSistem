@@ -11,7 +11,7 @@ export default function ProtectedRoute({ children }: { children: React.ReactNode
 
   useEffect(() => {
     if (!loading && !user) {
-      window.location.href = "https://admin.govsistem.com.br/login";
+      window.location.href = "https://app.govsistem.com.br/login";
     }
   }, [loading, user]);
 

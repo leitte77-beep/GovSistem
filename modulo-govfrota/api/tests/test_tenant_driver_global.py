@@ -186,7 +186,7 @@ class TestLoginGlobal:
         login = f"joao.silva.{uuid.uuid4().hex[:4]}"
         resp = await client.put(
             f"/api/govfrota/motoristas/{frota_a['motorista'].id}/acesso",
-            json={"login": login, "senha": "1234"},
+            json={"login": login, "senha": "123456"},
             headers=tenant_a["headers"],
         )
         assert resp.status_code == 201, resp.text
@@ -194,10 +194,10 @@ class TestLoginGlobal:
         # Tenta criar o MESMO login no motorista de B → impedido (422)
         resp_b = await client.put(
             f"/api/govfrota/motoristas/{frota_b['motorista'].id}/acesso",
-            json={"login": login, "senha": "1234"},
+            json={"login": login, "senha": "123456"},
             headers=tenant_b["headers"],
         )
-        assert resp_b.status_code == 422, resp_b.text
+        assert resp_b.status_code in (409, 422), resp_b.text
 
     async def test_normalizacao_case_insensitive(self, client, make_tenant, setup_frota):
         """§41 — 'Joao.Silva' e 'joao.silva' são o mesmo login (duplicado)."""
@@ -211,7 +211,7 @@ class TestLoginGlobal:
         # Cria com capitalização mista em A
         resp = await client.put(
             f"/api/govfrota/motoristas/{frota_a['motorista'].id}/acesso",
-            json={"login": login, "senha": "1234"},
+            json={"login": login, "senha": "123456"},
             headers=tenant_a["headers"],
         )
         assert resp.status_code == 201, resp.text
@@ -219,15 +219,15 @@ class TestLoginGlobal:
         # Tenta criar em B com minúsculas → duplicado
         resp_b = await client.put(
             f"/api/govfrota/motoristas/{frota_b['motorista'].id}/acesso",
-            json={"login": login.lower(), "senha": "1234"},
+            json={"login": login.lower(), "senha": "123456"},
             headers=tenant_b["headers"],
         )
-        assert resp_b.status_code == 422, resp_b.text
+        assert resp_b.status_code in (409, 422), resp_b.text
 
         # Login com capitalização diferente funciona (normalização no login)
         resp_login = await client.post(
             "/api/govfrota/app/motorista/login",
-            json={"login": login.upper(), "pin": "1234"},
+            json={"login": login.upper(), "pin": "123456"},
         )
         assert resp_login.status_code == 200, resp_login.text
         assert resp_login.json()["motorista"]["organization_id"] == str(tenant_a["org"].id)

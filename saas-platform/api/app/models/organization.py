@@ -10,6 +10,7 @@ from app.models.base import Base, SoftDeleteMixin, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.module import Module
+    from app.models.organization_membership import OrganizationMembership
     from app.models.organization_module import OrganizationModule
     from app.models.subscription import Subscription
     from app.models.user import User
@@ -50,4 +51,7 @@ class Organization(Base, TimestampMixin, SoftDeleteMixin):
     )
     modules: Mapped[List["OrganizationModule"]] = relationship(
         "OrganizationModule", back_populates="organization", lazy="selectin"
+    )
+    memberships: Mapped[List["OrganizationMembership"]] = relationship(
+        "OrganizationMembership", back_populates="organization", lazy="selectin"
     )

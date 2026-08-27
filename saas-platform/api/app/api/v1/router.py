@@ -37,6 +37,7 @@ from app.api.v1.reports import router as reports_router
 from app.api.v1.reports_export import router as reports_export_router
 from app.api.v1.reports_finance import router as reports_finance_router
 from app.api.v1.subscriptions import router as subscriptions_router
+from app.api.v1.tenant import router as tenant_router
 from app.api.v1.users import router as users_router
 
 api_router = APIRouter()
@@ -78,4 +79,5 @@ api_router.include_router(reports_router)
 api_router.include_router(reports_export_router)
 api_router.include_router(reports_finance_router)
 api_router.include_router(subscriptions_router)
+api_router.include_router(tenant_router)
 api_router.include_router(users_router)

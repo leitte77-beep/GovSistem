@@ -255,18 +255,34 @@ export const api = {
     return request<AcessoInfo>(`/motoristas/${id}/acesso`);
   },
   gerarPinAcesso(id: string) {
-    return request<{ criado: boolean; login: string; pin_provisorio: string; url: string }>(
+    return request<AcessoAlterado>(
       `/motoristas/${id}/acesso/gerar-pin`,
       { method: "POST" }
     );
   },
-  definirCredencial(id: string, login: string, senha: string) {
-    return request(`/motoristas/${id}/acesso`, { method: "PUT", body: JSON.stringify({ login, senha }) });
+  criarAcesso(id: string, data: { login: string; pin: string; confirm_pin: string }) {
+    return request<AcessoAlterado>(`/motoristas/${id}/acesso`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
   },
-  atualizarCredencial(id: string, data: { login?: string; nova_senha?: string }, bloquear?: boolean) {
-    let url = `/motoristas/${id}/acesso`;
-    if (bloquear !== undefined) url += `?bloquear=${bloquear}`;
-    return request(url, { method: "PATCH", body: JSON.stringify(data) });
+  redefinirPin(id: string, data: { pin?: string; confirm_pin?: string }) {
+    return request<AcessoAlterado>(`/motoristas/${id}/acesso/reset-pin`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  bloquearAcesso(id: string) {
+    return request<AcessoInfo>(`/motoristas/${id}/acesso/block`, { method: "POST" });
+  },
+  desbloquearAcesso(id: string) {
+    return request<AcessoInfo>(`/motoristas/${id}/acesso/unblock`, { method: "POST" });
+  },
+  atualizarCredencial(id: string, data: { login?: string; pin?: string; confirm_pin?: string }) {
+    return request<AcessoAlterado>(`/motoristas/${id}/acesso`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
   },
   resumoMotorista(id: string) {
     return request<ResumoMotorista>(`/motoristas/${id}/resumo`);
@@ -365,8 +381,31 @@ export const api = {
   },
 
   // Abastecimentos
-  listAbastecimentos(params?: Record<string, unknown>) {
-    return request<Abastecimento[]>(`/abastecimentos${qs(params)}`);
+  listAbastecimentos(params?: {
+    search?: string;
+    veiculo_id?: string;
+    motorista_id?: string;
+    tanque_id?: string;
+    combustivel_id?: string;
+    origem?: string;
+    status?: string;
+    data_inicio?: string;
+    data_fim?: string;
+    sort_by?: string;
+    order?: "asc" | "desc";
+    skip?: number;
+    limit?: number;
+  }) {
+    return requestPaginado<Abastecimento>(`/abastecimentos${qs(params)}`);
+  },
+  getAbastecimento(id: string) {
+    return request<Abastecimento>(`/abastecimentos/${id}`);
+  },
+  resumoAbastecimentos() {
+    return request<ResumoAbastecimento>("/abastecimentos/resumo");
+  },
+  correcoesAbastecimento(id: string) {
+    return request<CorrecaoAbastecimento[]>(`/abastecimentos/${id}/correcoes`);
   },
   createAbastecimento(data: Record<string, unknown>) {
     return request("/abastecimentos", { method: "POST", body: JSON.stringify(data) });
@@ -375,12 +414,15 @@ export const api = {
     return request(`/abastecimentos/${id}/cancelar`, { method: "POST", body: JSON.stringify({ justificativa }) });
   },
   corrigirAbastecimento(id: string, data: Record<string, unknown>) {
-    return request(`/abastecimentos/${id}/corrigir`, { method: "POST", body: JSON.stringify(data) });
+    return request<Abastecimento>(`/abastecimentos/${id}/corrigir`, { method: "POST", body: JSON.stringify(data) });
   },
 
   // Manutenções
   listManutencoes(params?: Record<string, unknown>) {
     return request<Manutencao[]>(`/manutencoes${qs(params)}`);
+  },
+  getManutencao(id: string) {
+    return request<Manutencao>(`/manutencoes/${id}`);
   },
   createManutencao(data: Record<string, unknown>) {
     return request("/manutencoes", { method: "POST", body: JSON.stringify(data) });
@@ -399,14 +441,35 @@ export const api = {
   },
 
   // Ocorrências
-  listOcorrencias(params?: Record<string, unknown>) {
-    return request<Ocorrencia[]>(`/ocorrencias${qs(params)}`);
+  listOcorrencias(params?: {
+    search?: string;
+    veiculo_id?: string;
+    motorista_id?: string;
+    gravidade?: string;
+    categoria?: string;
+    status?: string;
+    origem?: string;
+    com_foto?: boolean;
+    data_inicio?: string;
+    data_fim?: string;
+    sort_by?: string;
+    order?: "asc" | "desc";
+    skip?: number;
+    limit?: number;
+  }) {
+    return requestPaginado<Ocorrencia>(`/ocorrencias${qs(params)}`);
+  },
+  getOcorrencia(id: string) {
+    return request<Ocorrencia>(`/ocorrencias/${id}`);
   },
   createOcorrencia(data: Record<string, unknown>) {
     return request("/ocorrencias", { method: "POST", body: JSON.stringify(data) });
   },
   atualizarOcorrencia(id: string, data: Record<string, unknown>) {
     return request(`/ocorrencias/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+  },
+  resolverOcorrencia(id: string, resolucao: string) {
+    return request(`/ocorrencias/${id}/resolver`, { method: "POST", body: JSON.stringify({ resolucao }) });
   },
   converterEmManutencao(id: string) {
     return request<{ id: string }>(`/ocorrencias/${id}/converter-manutencao`, { method: "POST" });
@@ -520,6 +583,7 @@ export interface VeiculoApp {
   combustivel_secundario_nome: string | null;
   quilometragem_atual: number;
   horimetro_atual: string | null;
+  combustiveis?: { combustivel_id: string; nome: string; tank_type: string; capacidade: string | null }[];
 }
 
 export interface AbastecimentoRecenteMotorista {
@@ -575,6 +639,16 @@ export interface Veiculo extends VeiculoListItem {
   vencimento_licenciamento: string | null;
   vencimento_seguro: string | null;
   foto_url: string | null;
+  tanques?: VeiculoTanque[];
+}
+export interface VeiculoTanque {
+  id: string;
+  combustivel_id: string;
+  combustivel_nome: string | null;
+  tank_type: "PRIMARY" | "AUXILIARY";
+  capacidade: string;
+  identificacao: string | null;
+  ativo: boolean;
 }
 export interface DocumentoVeiculo {
   id: string;
@@ -607,6 +681,11 @@ export interface AcessoInfo {
   bloqueado: boolean;
   ultimo_acesso: string | null;
 }
+export interface AcessoAlterado extends AcessoInfo {
+  pin_alterado: boolean;
+  /** PIN em texto claro — retornado apenas na resposta da operação que o definiu. */
+  pin_provisorio: string | null;
+}
 export interface ResumoMotorista {
   total_abastecimentos: number;
   total_litros: number;
@@ -616,6 +695,7 @@ export interface Combustivel {
   id: string;
   nome: string;
   unidade: string;
+  categoria?: string;
   descricao?: string | null;
   foto_url?: string | null;
   ativo: boolean;
@@ -753,18 +833,52 @@ export interface Abastecimento {
   id: string;
   veiculo_id: string;
   motorista_id: string | null;
+  tanque_id: string;
+  combustivel_id: string;
   quantidade_litros: string;
   quilometragem: number;
+  completou_tanque: boolean | null;
   origem: string;
+  lancado_por_usuario_id: string | null;
   data_abastecimento: string;
   custo_total: string | null;
   custo_medio_litro: string | null;
   consumo_km_l?: string | number | null;
   status: string;
+  ip_origem?: string | null;
+  observacoes?: string | null;
+  foto_bomba_url?: string | null;
+  foto_painel_url?: string | null;
+  created_at?: string | null;
+  cancelado_em?: string | null;
+  motivo_cancelamento?: string | null;
   veiculo_placa?: string | null;
+  veiculo_modelo?: string | null;
+  veiculo_marca?: string | null;
+  veiculo_foto_url?: string | null;
+  veiculo_usa_horimetro?: boolean | null;
   combustivel_nome?: string | null;
   tanque_nome?: string | null;
   motorista_nome?: string | null;
+  lancado_por_nome?: string | null;
+  cancelado_por_nome?: string | null;
+}
+export interface ResumoAbastecimento {
+  hoje_quantidade: number;
+  hoje_litros: number;
+  mes_litros: number;
+  mes_gasto: number;
+  consumo_medio_frota: number | null;
+}
+export interface CorrecaoAbastecimento {
+  id: string;
+  abastecimento_id: string;
+  tipo_correcao: string;
+  dados_anteriores_json: string | null;
+  dados_novos_json: string | null;
+  justificativa: string | null;
+  usuario_id: string | null;
+  created_at: string;
 }
 export interface Manutencao {
   id: string;
@@ -780,7 +894,16 @@ export interface Manutencao {
   oficina_id: string | null;
   oficina_nome?: string | null;
   veiculo_placa?: string | null;
+  quilometragem?: number | null;
+  observacoes?: string | null;
   itens?: { id: string; categoria: string; descricao: string; quantidade: number; valor_unitario: string; valor_total: string }[];
+  ocorrencia_origem_id?: string | null;
+  ocorrencia_placa?: string | null;
+  ocorrencia_descricao?: string | null;
+  veiculo_modelo?: string | null;
+  veiculo_marca?: string | null;
+  veiculo_foto_url?: string | null;
+  veiculo_usa_horimetro?: boolean | null;
 }
 export interface PlanoPreventivo {
   id: string;
@@ -797,12 +920,24 @@ export interface PlanoPreventivo {
 export interface Ocorrencia {
   id: string;
   veiculo_id: string;
+  motorista_id: string | null;
   categoria: string;
   descricao: string;
+  quilometragem: number | null;
   gravidade: string;
   status: string;
+  foto_url: string | null;
   data_ocorrencia: string;
   manutencao_id: string | null;
+  origem: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+  veiculo_placa?: string | null;
+  veiculo_modelo?: string | null;
+  veiculo_marca?: string | null;
+  veiculo_foto_url?: string | null;
+  veiculo_usa_horimetro?: boolean | null;
+  motorista_nome?: string | null;
 }
 export interface Dashboard {
   organizacao: { id: string | null; nome: string | null };
@@ -970,10 +1105,14 @@ export interface AuditoriaRegistro {
   id: string;
   acao: string;
   entidade: string;
+  entidade_id?: string | null;
   usuario_id: string | null;
   motorista_id: string | null;
   justificativa: string | null;
   created_at: string;
+  actor_type?: "user" | "driver" | "system" | string | null;
+  actor_id?: string | null;
+  actor_name?: string | null;
 }
 export interface NotificacaoItem {
   id: string;

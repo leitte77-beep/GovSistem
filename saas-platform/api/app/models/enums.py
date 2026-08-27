@@ -212,3 +212,33 @@ class PlatformRole(str, enum.Enum):
     BILLING_MANAGER = "BILLING_MANAGER"
     SUPPORT = "SUPPORT"
     AUDITOR = "AUDITOR"
+
+
+class MembershipRole(str, enum.Enum):
+    ORG_ADMIN = "ORG_ADMIN"
+    ORG_MEMBER = "ORG_MEMBER"
+
+
+class MembershipStatus(str, enum.Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+
+class GrantSource(str, enum.Enum):
+    MIGRATED_GRANT = "MIGRATED_GRANT"
+    MIGRATED_LEGACY = "MIGRATED_LEGACY"
+    TENANT_MANAGER = "TENANT_MANAGER"
+    PLATFORM_ADMIN = "PLATFORM_ADMIN"
+    SYSTEM = "SYSTEM"
+
+
+# Feature flags do novo modelo multi-tenant
+TENANT_PORTAL_FLAGS = [
+    "TENANT_PORTAL_ENABLED",
+    "MEMBERSHIP_AUTH_V2_ENABLED",
+    "MEMBERSHIP_GRANTS_V2_ENABLED",
+    "LEGACY_MODULE_PERMISSIONS_FALLBACK",
+    "LEGACY_SSO_CLAIMS_ENABLED",
+    "NEW_SSO_CLAIMS_ENABLED",
+    "PLATFORM_USERS_SEPARATION_ENABLED",
+]

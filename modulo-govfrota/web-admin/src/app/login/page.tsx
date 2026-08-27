@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useAuth } from "@/lib/auth";
 
 const PLATFORM_LOGIN_URL =
-  process.env.NEXT_PUBLIC_PLATFORM_LOGIN_URL || "https://admin.govsistem.com.br/login";
+  process.env.NEXT_PUBLIC_PLATFORM_LOGIN_URL || "https://app.govsistem.com.br/login";
 
 export default function LoginPage() {
   const { user, loading } = useAuth();

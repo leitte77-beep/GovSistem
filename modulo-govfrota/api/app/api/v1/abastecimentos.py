@@ -3,7 +3,8 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from sqlalchemy import func as sa_func
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +23,8 @@ from app.schemas.schemas import (
     AbastecimentoCancelar,
     AbastecimentoCorrecao,
     AbastecimentoResponse,
+    CorrecaoAbastecimentoResponse,
+    ResumoAbastecimento,
 )
 from app.services.abastecimento import (
     find_abastecimento_by_idempotency,
@@ -32,6 +35,18 @@ from app.services.auditoria import registrar_auditoria
 from app.services.estoque import EstoqueError, aplicar_movimentacao
 
 router = APIRouter(prefix="/abastecimentos", tags=["abastecimentos"])
+
+# Colunas ordenáveis (whitelist — evita SQL injection por sort_by).
+_SORTABLE = {
+    "data": Abastecimento.data_abastecimento,
+    "litros": Abastecimento.quantidade_litros,
+    "custo": Abastecimento.custo_total,
+    "created_at": Abastecimento.created_at,
+    "veiculo": Veiculo.placa,
+    "motorista": Motorista.nome,
+}
+
+_ORIGEM_LABEL = {"ADMIN": "Administrativo", "APP_MOTORISTA": "Motorista"}
 
 
 async def _get_abastecimento(
@@ -61,77 +76,67 @@ def _snapshot(abast: Abastecimento) -> dict:
     }
 
 
-@router.get("", response_model=list[AbastecimentoResponse])
-async def listar(
-    veiculo_id: uuid.UUID | None = None,
-    motorista_id: uuid.UUID | None = None,
-    tanque_id: uuid.UUID | None = None,
-    combustivel_id: uuid.UUID | None = None,
-    status: str | None = None,
-    data_inicio: str | None = None,
-    data_fim: str | None = None,
-    skip: int = 0,
-    limit: int = 50,
-    user: User = Depends(require_permission(Perm.REFUELING_VIEW)),
-    db: AsyncSession = Depends(get_db),
-):
-    stmt = select(Abastecimento).where(Abastecimento.organization_id == user.organization_id)
-    if veiculo_id:
-        stmt = stmt.where(Abastecimento.veiculo_id == veiculo_id)
-    if motorista_id:
-        stmt = stmt.where(Abastecimento.motorista_id == motorista_id)
-    if tanque_id:
-        stmt = stmt.where(Abastecimento.tanque_id == tanque_id)
-    if combustivel_id:
-        stmt = stmt.where(Abastecimento.combustivel_id == combustivel_id)
-    if status:
-        stmt = stmt.where(Abastecimento.status == status.upper())
-    if data_inicio:
-        from datetime import date
+def _base_consulta(user: User):
+    return (
+        select(Abastecimento)
+        .join(Veiculo, Abastecimento.veiculo_id == Veiculo.id)
+        .outerjoin(Motorista, Abastecimento.motorista_id == Motorista.id)
+        .where(Abastecimento.organization_id == user.organization_id)
+    )
 
-        stmt = stmt.where(Abastecimento.data_abastecimento >= datetime.combine(date.fromisoformat(data_inicio), datetime.min.time()))
-    if data_fim:
-        from datetime import date, time as dtime
 
-        stmt = stmt.where(Abastecimento.data_abastecimento <= datetime.combine(date.fromisoformat(data_fim), dtime.max))
-    stmt = stmt.order_by(Abastecimento.data_abastecimento.desc()).offset(skip).limit(min(limit, 200))
-    registros = list((await db.execute(stmt)).scalars().all())
-    if not registros:
-        return registros
+async def _enriquecer(
+    db: AsyncSession, user: User, registros: list[Abastecimento]
+) -> list[dict]:
+    """Junta nomes (veículo, combustível, tanque, motorista, usuários) em lote.
 
-    # Nomes juntados (placa, combustível, tanque, motorista) — evita N+1.
+    Evita N+1: todos os `in_(...)` em pouquíssimas queries.
+    """
     from app.models.combustivel import Combustivel
-    from app.models.combustivel import Tanque as TanqueModel
 
     ids_veic = {r.veiculo_id for r in registros}
     ids_comb = {r.combustivel_id for r in registros}
     ids_tanque = {r.tanque_id for r in registros}
     ids_mot = {r.motorista_id for r in registros if r.motorista_id}
+    ids_user = {
+        u
+        for r in registros
+        for u in (r.lancado_por_usuario_id, r.cancelado_por_id)
+        if u is not None
+    }
 
-    placas = {
-        v.id: v.placa
+    veiculos = {
+        v.id: v
         for v in (
             await db.execute(select(Veiculo).where(Veiculo.id.in_(ids_veic)))
         ).scalars().all()
     }
-    nomes_comb = {
+    combustiveis = {
         c.id: c.nome
         for c in (
             await db.execute(select(Combustivel).where(Combustivel.id.in_(ids_comb)))
         ).scalars().all()
     }
-    nomes_tanque = {
-        t.id: t.nome
+    tanques = {
+        t.id: t
         for t in (
-            await db.execute(select(TanqueModel).where(TanqueModel.id.in_(ids_tanque)))
+            await db.execute(select(Tanque).where(Tanque.id.in_(ids_tanque)))
         ).scalars().all()
     }
-    nomes_mot = {}
+    motores = {}
     if ids_mot:
-        nomes_mot = {
+        motores = {
             m.id: m.nome
             for m in (
                 await db.execute(select(Motorista).where(Motorista.id.in_(ids_mot)))
+            ).scalars().all()
+        }
+    usuarios = {}
+    if ids_user:
+        usuarios = {
+            u.id: u.name
+            for u in (
+                await db.execute(select(User).where(User.id.in_(ids_user)))
             ).scalars().all()
         }
 
@@ -141,12 +146,178 @@ async def listar(
     itens = []
     for r in registros:
         dados = AbastecimentoResponse.model_validate(r, from_attributes=True).model_dump()
-        dados["veiculo_placa"] = placas.get(r.veiculo_id)
-        dados["combustivel_nome"] = nomes_comb.get(r.combustivel_id)
-        dados["tanque_nome"] = nomes_tanque.get(r.tanque_id)
-        dados["motorista_nome"] = nomes_mot.get(r.motorista_id) if r.motorista_id else None
+        v = veiculos.get(r.veiculo_id)
+        dados["veiculo_placa"] = v.placa if v else None
+        dados["veiculo_modelo"] = v.modelo if v else None
+        dados["veiculo_marca"] = v.marca if v else None
+        dados["veiculo_foto_url"] = v.foto_url if v else None
+        dados["veiculo_usa_horimetro"] = v.usa_horimetro if v else None
+        dados["combustivel_nome"] = combustiveis.get(r.combustivel_id)
+        t = tanques.get(r.tanque_id)
+        dados["tanque_nome"] = t.nome if t else None
+        dados["motorista_nome"] = (
+            motores.get(r.motorista_id) if r.motorista_id else None
+        )
+        dados["lancado_por_nome"] = (
+            usuarios.get(r.lancado_por_usuario_id) if r.lancado_por_usuario_id else None
+        )
+        dados["cancelado_por_nome"] = (
+            usuarios.get(r.cancelado_por_id) if r.cancelado_por_id else None
+        )
         itens.append(dados)
     return adapter.validate_python(itens)
+
+
+def _parse_uuid(valor: str) -> uuid.UUID | None:
+    try:
+        return uuid.UUID(valor)
+    except (ValueError, AttributeError, TypeError):
+        return None
+
+
+@router.get("", response_model=list[AbastecimentoResponse])
+async def listar(
+    search: str | None = None,
+    veiculo_id: uuid.UUID | None = None,
+    motorista_id: uuid.UUID | None = None,
+    tanque_id: uuid.UUID | None = None,
+    combustivel_id: uuid.UUID | None = None,
+    origem: str | None = None,
+    status: str | None = None,
+    data_inicio: str | None = None,
+    data_fim: str | None = None,
+    sort_by: str = "data",
+    order: str = "desc",
+    skip: int = 0,
+    limit: int = 50,
+    response: Response = None,  # type: ignore[assignment]
+    user: User = Depends(require_permission(Perm.REFUELING_VIEW)),
+    db: AsyncSession = Depends(get_db),
+):
+    stmt = _base_consulta(user)
+    if veiculo_id:
+        stmt = stmt.where(Abastecimento.veiculo_id == veiculo_id)
+    if motorista_id:
+        stmt = stmt.where(Abastecimento.motorista_id == motorista_id)
+    if tanque_id:
+        stmt = stmt.where(Abastecimento.tanque_id == tanque_id)
+    if combustivel_id:
+        stmt = stmt.where(Abastecimento.combustivel_id == combustivel_id)
+    if origem:
+        stmt = stmt.where(Abastecimento.origem == origem.upper())
+    if status:
+        stmt = stmt.where(Abastecimento.status == status.upper())
+    if data_inicio:
+        from datetime import date
+
+        stmt = stmt.where(
+            Abastecimento.data_abastecimento
+            >= datetime.combine(date.fromisoformat(data_inicio), datetime.min.time())
+        )
+    if data_fim:
+        from datetime import date, time as dtime
+
+        stmt = stmt.where(
+            Abastecimento.data_abastecimento
+            <= datetime.combine(date.fromisoformat(data_fim), dtime.max)
+        )
+    if search:
+        like = f"%{search}%"
+        cond = (
+            Veiculo.placa.ilike(like)
+            | Veiculo.modelo.ilike(like)
+            | Veiculo.marca.ilike(like)
+            | Motorista.nome.ilike(like)
+        )
+        id_uuid = _parse_uuid(search)
+        if id_uuid is not None:
+            cond = cond | (Abastecimento.id == id_uuid)
+        stmt = stmt.where(cond)
+
+    # Total (paginação server-side) via header.
+    total = await db.scalar(
+        select(sa_func.count()).select_from(stmt.order_by(None).subquery())
+    )
+    total = int(total or 0)
+
+    coluna = _SORTABLE.get(sort_by, Abastecimento.data_abastecimento)
+    ordenado = coluna.desc() if order.lower() == "desc" else coluna.asc()
+    stmt = stmt.order_by(ordenado).offset(skip).limit(min(limit, 200))
+    registros = list((await db.execute(stmt)).scalars().unique().all())
+
+    if response is not None:
+        response.headers["X-Total-Count"] = str(total)
+    if not registros:
+        return registros
+    return await _enriquecer(db, user, registros)
+
+
+@router.get("/resumo", response_model=ResumoAbastecimento)
+async def resumo(
+    user: User = Depends(require_permission(Perm.REFUELING_VIEW)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Indicadores resumidos para o cabeçalho da área de abastecimentos."""
+    agora = datetime.now(timezone.utc)
+    inicio_hoje = agora.replace(hour=0, minute=0, second=0, microsecond=0)
+    inicio_mes = agora.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    async def _agregado(inicio: datetime) -> tuple[int, float, float]:
+        row = await db.execute(
+            select(
+                sa_func.count(Abastecimento.id),
+                sa_func.coalesce(sa_func.sum(Abastecimento.quantidade_litros), 0),
+                sa_func.coalesce(sa_func.sum(Abastecimento.custo_total), 0),
+            ).where(
+                Abastecimento.organization_id == user.organization_id,
+                Abastecimento.status == "CONFIRMADO",
+                Abastecimento.data_abastecimento >= inicio,
+            )
+        )
+        qtd, litros, gasto = row.one()
+        return int(qtd or 0), float(litros or 0), float(gasto or 0)
+
+    hoje_qtd, hoje_litros, _ = await _agregado(inicio_hoje)
+    mes_qtd, mes_litros, mes_gasto = await _agregado(inicio_mes)
+
+    consumo = await db.scalar(
+        select(sa_func.avg(Abastecimento.consumo_km_l)).where(
+            Abastecimento.organization_id == user.organization_id,
+            Abastecimento.status == "CONFIRMADO",
+            Abastecimento.consumo_km_l.isnot(None),
+            Abastecimento.data_abastecimento >= agora - timedelta(days=90),
+        )
+    )
+    consumo_frota = (
+        float(Decimal(str(consumo)).quantize(Decimal("0.1"))) if consumo else None
+    )
+
+    return ResumoAbastecimento(
+        hoje_quantidade=hoje_qtd,
+        hoje_litros=hoje_litros,
+        mes_litros=mes_litros,
+        mes_gasto=mes_gasto,
+        consumo_medio_frota=consumo_frota,
+    )
+
+
+@router.get("/{abastecimento_id}/correcoes", response_model=list[CorrecaoAbastecimentoResponse])
+async def correcoes(
+    abastecimento_id: uuid.UUID,
+    user: User = Depends(require_permission(Perm.REFUELING_VIEW)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Linha do tempo de correções/cancelamentos do abastecimento (auditoria)."""
+    await _get_abastecimento(db, user, abastecimento_id)
+    result = await db.execute(
+        select(CorrecaoAbastecimento)
+        .where(
+            CorrecaoAbastecimento.organization_id == user.organization_id,
+            CorrecaoAbastecimento.abastecimento_id == abastecimento_id,
+        )
+        .order_by(CorrecaoAbastecimento.created_at.asc())
+    )
+    return list(result.scalars().all())
 
 
 @router.get("/{abastecimento_id}", response_model=AbastecimentoResponse)
@@ -155,7 +326,8 @@ async def obter(
     user: User = Depends(require_permission(Perm.REFUELING_VIEW)),
     db: AsyncSession = Depends(get_db),
 ):
-    return await _get_abastecimento(db, user, abastecimento_id)
+    abast = await _get_abastecimento(db, user, abastecimento_id)
+    return (await _enriquecer(db, user, [abast]))[0]
 
 
 @router.post("", response_model=AbastecimentoResponse, status_code=201)
@@ -222,7 +394,7 @@ async def criar_admin(
             db, user.organization_id, body.idempotency_key
         )
         if existente:
-            return existente
+            return (await _enriquecer(db, user, [existente]))[0]
 
     try:
         abastecimento, avisos = await registrar_abastecimento(
@@ -261,7 +433,7 @@ async def criar_admin(
                 db, user.organization_id, body.idempotency_key
             )
             if existente:
-                return existente
+                return (await _enriquecer(db, user, [existente]))[0]
             raise HTTPException(
                 status_code=409,
                 detail="Este abastecimento já está sendo processado. Aguarde e verifique.",
@@ -269,7 +441,7 @@ async def criar_admin(
         await db.rollback()
         raise exc
     await db.refresh(abastecimento)
-    return abastecimento
+    return (await _enriquecer(db, user, [abastecimento]))[0]
 
 
 @router.post("/{abastecimento_id}/cancelar")
@@ -388,7 +560,7 @@ async def corrigir(
         )
 
     abast.quantidade_litros = novo_litros
-    if novo_km > abast.quilometragem or novo_km >= abast.quilometragem:
+    if novo_km >= abast.quilometragem:
         abast.quilometragem = novo_km
     veiculo = await db.get(Veiculo, abast.veiculo_id)
     if veiculo and veiculo.organization_id == user.organization_id and novo_km > veiculo.quilometragem_atual:
@@ -419,7 +591,7 @@ async def corrigir(
     )
     await db.commit()
     await db.refresh(abast)
-    return abast
+    return (await _enriquecer(db, user, [abast]))[0]
 
 
 # evita import não usado

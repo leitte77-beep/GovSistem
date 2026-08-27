@@ -12,7 +12,7 @@
 const BASE = (import.meta.env.VITE_GOVDOC_API_URL as string | undefined)?.replace(/\/$/, '') || '';
 export const PREFIXO = '/api/govdoc/v1';
 
-export const URL_GOVSISTEM = 'https://admin.govsistem.com.br/';
+export const URL_GOVSISTEM = 'https://app.govsistem.com.br/';
 
 const CHAVE_ACESSO = 'govdoc.token';
 

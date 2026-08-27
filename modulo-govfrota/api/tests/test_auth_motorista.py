@@ -1,8 +1,6 @@
 """Testes da autenticação do motorista (§43) — login, bloqueio, brute force,
 autorização e separação de perfis."""
 
-import pytest
-
 
 class TestLoginMotorista:
     async def test_login_sucesso(self, client, make_tenant, setup_frota):
@@ -90,7 +88,7 @@ class TestLoginMotorista:
         # Redefine a credencial
         resp = await client.put(
             f"/api/govfrota/motoristas/{motorista_id}/acesso",
-            json={"login": "joao.novo", "senha": "5678"},
+            json={"login": "joao.novo", "senha": "567890"},
             headers=tenant["headers"],
         )
         assert resp.status_code == 201, resp.text
@@ -104,7 +102,7 @@ class TestLoginMotorista:
 
         resp = await client.post(
             "/api/govfrota/app/motorista/login",
-            json={"login": "joao.novo", "senha": "5678"},
+            json={"login": "joao.novo", "senha": "567890"},
         )
         assert resp.status_code == 200
 
@@ -120,7 +118,7 @@ class TestLoginMotorista:
         # Login bloqueado retorna 403
         resp = await client.post(
             "/api/govfrota/app/motorista/login",
-            json={"login": "joao.novo", "senha": "5678"},
+            json={"login": "joao.novo", "senha": "567890"},
         )
         assert resp.status_code == 403
 

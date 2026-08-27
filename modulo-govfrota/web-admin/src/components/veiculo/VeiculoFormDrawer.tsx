@@ -75,6 +75,10 @@ export function VeiculoFormDrawer({
   });
 
   const [form, setForm] = useState(() => novoForm(veiculo));
+  const [possuiAuxiliar, setPossuiAuxiliar] = useState(false);
+  const [auxiliares, setAuxiliares] = useState<
+    { combustivel_id: string; capacidade: string; identificacao: string }[]
+  >([]);
 
   // Reinicializa o formulário sempre que o drawer abre (permite criar em série
   // e editar sem "vazar" dados de outra abertura).
@@ -86,6 +90,15 @@ export function VeiculoFormDrawer({
       setPreviewFoto(null);
       setErroPlaca(null);
       setSalvando(false);
+      const aux = (veiculo?.tanques ?? []).filter((t) => t.tank_type === "AUXILIARY");
+      setPossuiAuxiliar(aux.length > 0);
+      setAuxiliares(
+        aux.map((t) => ({
+          combustivel_id: t.combustivel_id,
+          capacidade: String(t.capacidade),
+          identificacao: t.identificacao ?? "",
+        }))
+      );
     }
   }, [aberto, veiculo]);
 
@@ -144,6 +157,15 @@ export function VeiculoFormDrawer({
         combustivel_principal_id: form.combustivel_principal_id || undefined,
         combustivel_secundario_id: form.combustivel_secundario_id || undefined,
         capacidade_tanque_litros: form.capacidade_tanque_litros || undefined,
+        tanques_auxiliares: possuiAuxiliar
+          ? auxiliares
+              .filter((a) => a.combustivel_id && a.capacidade)
+              .map((a) => ({
+                combustivel_id: a.combustivel_id,
+                capacidade: Number(a.capacidade),
+                identificacao: a.identificacao || undefined,
+              }))
+          : [],
         vencimento_licenciamento: form.vencimento_licenciamento || undefined,
         vencimento_seguro: form.vencimento_seguro || undefined,
         unidade: form.unidade || undefined,
@@ -330,6 +352,85 @@ export function VeiculoFormDrawer({
                   </Label>
                 </div>
               )}
+              {/* Reservatório auxiliar (ex.: ARLA 32) */}
+              <div className="mt-3 rounded-btn border border-surface-border bg-surface-bg p-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-body-sm font-medium text-text-title">Possui tanque auxiliar?</span>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setPossuiAuxiliar(false); setAuxiliares([]); }}
+                      className={`rounded-pill px-3 py-1 text-meta ${!possuiAuxiliar ? "bg-[#1D4ED8] text-white" : "bg-surface-bg text-text-subtle border border-surface-border"}`}
+                    >
+                      Não
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPossuiAuxiliar(true)}
+                      className={`rounded-pill px-3 py-1 text-meta ${possuiAuxiliar ? "bg-[#1D4ED8] text-white" : "bg-surface-bg text-text-subtle border border-surface-border"}`}
+                    >
+                      Sim
+                    </button>
+                  </div>
+                </div>
+                {possuiAuxiliar && (
+                  <div className="mt-3 space-y-3">
+                    {auxiliares.map((aux, i) => (
+                      <div key={i} className="grid gap-2 rounded-btn border border-surface-border bg-white p-3 sm:grid-cols-2">
+                        <Label texto="Produto / Fluido">
+                          <select
+                            value={aux.combustivel_id}
+                            onChange={(e) =>
+                              setAuxiliares((list) => list.map((a, j) => (j === i ? { ...a, combustivel_id: e.target.value } : a)))
+                            }
+                          >
+                            <option value="">—</option>
+                            {combustiveis.map((c) => (
+                              <option key={c.id} value={c.id}>{c.nome}</option>
+                            ))}
+                          </select>
+                        </Label>
+                        <Label texto="Capacidade (L)">
+                          <input
+                            type="number"
+                            step="0.01"
+                            min={0}
+                            value={aux.capacidade}
+                            onChange={(e) =>
+                              setAuxiliares((list) => list.map((a, j) => (j === i ? { ...a, capacidade: e.target.value } : a)))
+                            }
+                          />
+                        </Label>
+                        <Label texto="Identificação (opcional)">
+                          <input
+                            value={aux.identificacao}
+                            placeholder="ex.: Tanque ARLA"
+                            onChange={(e) =>
+                              setAuxiliares((list) => list.map((a, j) => (j === i ? { ...a, identificacao: e.target.value } : a)))
+                            }
+                          />
+                        </Label>
+                        <div className="flex items-end">
+                          <button
+                            type="button"
+                            className="btn btn-ghost btn-sm text-[#BA1A1A]"
+                            onClick={() => setAuxiliares((list) => list.filter((_, j) => j !== i))}
+                          >
+                            <Trash2 size={14} /> Remover
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm w-full"
+                      onClick={() => setAuxiliares((list) => [...list, { combustivel_id: "", capacidade: "", identificacao: "" }])}
+                    >
+                      + Adicionar reservatório auxiliar
+                    </button>
+                  </div>
+                )}
+              </div>
             </Secao>
 
             {/* Lotação */}

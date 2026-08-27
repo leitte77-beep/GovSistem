@@ -43,6 +43,7 @@ from app.models.invoice import Invoice
 from app.models.invoice_item import InvoiceItem
 from app.models.journal_entry import JournalEntry
 from app.models.journal_entry_line import JournalEntryLine
+from app.models.membership_module_grant import MembershipModuleGrant
 from app.models.nfse_document import NfseDocument
 from app.models.payable import Payable
 from app.models.payment_provider_config import PaymentProviderConfig
@@ -52,6 +53,7 @@ from app.models.receivable import Receivable
 from app.models.revenue_recognition import RevenueRecognitionSchedule
 from app.models.module import Module
 from app.models.organization import Organization
+from app.models.organization_membership import OrganizationMembership
 from app.models.organization_module import OrganizationModule
 from app.models.plan import Plan
 from app.models.sso_session import SsoSession
@@ -109,8 +111,10 @@ __all__ = [
     "InvoiceItem",
     "JournalEntry",
     "JournalEntryLine",
+    "MembershipModuleGrant",
     "Module",
     "Organization",
+    "OrganizationMembership",
     "OrganizationModule",
     "Payable",
     "PaymentTransaction",
