@@ -7,7 +7,7 @@ no backend. Rotas de gestor exigem require_tenant_manager.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -23,7 +23,7 @@ from app.core.membership_deps import (
     get_tenant_context,
     require_tenant_manager,
 )
-from app.core.roles import MODULE_ROLE_CATALOG, is_valid_grant, normalize_grant_role
+from app.core.roles import LEGACY_SAFE_ROLE, MODULE_ROLE_CATALOG, is_valid_grant, normalize_grant_role
 from app.models.audit_event import AuditEvent
 from app.models.membership_module_grant import MembershipModuleGrant
 from app.models.module import Module
@@ -266,6 +266,7 @@ async def tenant_dashboard(
     ).scalars().all()
     total = len(mems)
     active = sum(1 for m in mems if m.is_active)
+    suspended = sum(1 for m in mems if not m.is_active)
     managers = sum(1 for m in mems if m.membership_role == "ORG_ADMIN" and m.is_active)
 
     modules = (
@@ -300,15 +301,33 @@ async def tenant_dashboard(
             select(AuditEvent)
             .where(AuditEvent.organization_id == ctx.organization_id)
             .order_by(desc(AuditEvent.created_at))
-            .limit(10)
+            .limit(20)
         )
     ).scalars().all()
+
+    # Novidades: módulos contratados nos últimos 30 dias.
+    news_since = datetime.now(timezone.utc) - timedelta(days=30)
+    news_rows = (
+        await db.execute(
+            select(OrganizationModule, Module)
+            .join(Module, Module.id == OrganizationModule.module_id)
+            .where(
+                OrganizationModule.organization_id == ctx.organization_id,
+                OrganizationModule.is_active.is_(True),
+                Module.is_active.is_(True),
+                OrganizationModule.created_at >= news_since,
+            )
+            .order_by(desc(OrganizationModule.created_at))
+            .limit(6)
+        )
+    ).all()
 
     return {
         "organization": {"name": ctx.organization.name, "slug": ctx.organization.slug},
         "counts": {
             "users_total": total,
             "users_active": active,
+            "users_suspended": suspended,
             "managers_active": managers,
             "modules_contracted": modules,
             "grants_total": grants_total,
@@ -323,6 +342,16 @@ async def tenant_dashboard(
                 "details": e.details,
             }
             for e in recent
+        ],
+        "news": [
+            {
+                "slug": mod.slug,
+                "name": mod.name,
+                "description": mod.description,
+                "version": mod.version,
+                "created_at": om.created_at.isoformat() if om.created_at else None,
+            }
+            for om, mod in news_rows
         ],
     }
 
@@ -651,11 +680,18 @@ async def set_user_grants(
                 raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
                                     detail=f"Role inválida '{role}' para módulo '{slug}'")
 
-    # substituição do conjunto de grants do membership
+    # substituição do conjunto de grants do membership.
+    # Soft-delete nas linhas antigas (deleted_at + is_active=False) em vez de
+    # db.delete(): o índice único é parcial (WHERE deleted_at IS NULL), então
+    # soft-delete libera a chave para o INSERT do novo grant com mesmo
+    # (membership, module_slug, role_name) sem race de autoflush INSERT→DELETE.
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     existing = await get_membership_grants(db, mem.id)
     for g in existing:
         if not g.requires_review and not g.role_name.startswith("__"):
-            db.delete(g)
+            g.is_active = False
+            g.deleted_at = g.deleted_at or now
+            g.updated_by = ctx.user.id
     await db.flush()
 
     for slug, role_names in body.grants.items():
@@ -1180,6 +1216,206 @@ async def tenant_module_users(
             }
         )
     return {"module_slug": module_slug, "users": result}
+
+
+# ---------------------------------------------------------------------------
+# Grants pendentes de revisão (legado migrado) — painel do gestor
+# ---------------------------------------------------------------------------
+@router.get("/pending-grants")
+async def list_pending_grants(
+    ctx: TenantContext = Depends(require_tenant_manager),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lista todos os grants com requires_review=True no tenant, agrupados
+    por módulo. Esses são permissões legadas (MIGRATED_LEGACY) ou genéricas
+    (MIGRATED_GRANT) que o gestor precisa revisar e atribuir roles concretas."""
+    rows = (
+        await db.execute(
+            select(
+                MembershipModuleGrant,
+                OrganizationMembership,
+                User,
+                Module,
+            )
+            .join(OrganizationMembership, OrganizationMembership.id == MembershipModuleGrant.membership_id)
+            .join(User, User.id == OrganizationMembership.user_id)
+            .join(Module, Module.slug == MembershipModuleGrant.module_slug)
+            .where(
+                MembershipModuleGrant.requires_review.is_(True),
+                OrganizationMembership.organization_id == ctx.organization_id,
+                OrganizationMembership.deleted_at.is_(None),
+                User.deleted_at.is_(None),
+                # inclui registros já soft-deletados para mostrar histórico de
+                # grants que ficaram pendentes após uma tentativa de save
+                MembershipModuleGrant.deleted_at.is_(None),
+            )
+            .order_by(Module.name, User.name)
+        )
+    ).all()
+
+    by_module: dict[str, dict] = {}
+    for g, m, u, mod in rows:
+        bucket = by_module.setdefault(
+            mod.slug,
+            {
+                "slug": mod.slug,
+                "name": mod.name,
+                "version": mod.version,
+                "count": 0,
+                "items": [],
+            },
+        )
+        bucket["count"] += 1
+        bucket["items"].append(
+            {
+                "grant_id": str(g.id),
+                "user_id": str(u.id),
+                "user_name": u.name,
+                "user_email": u.email,
+                "membership_id": str(m.id),
+                "role_name": g.role_name,
+                "source": g.source,
+                "created_at": g.created_at.isoformat() if g.created_at else None,
+            }
+        )
+
+    return {
+        "total": sum(b["count"] for b in by_module.values()),
+        "modules": list(by_module.values()),
+    }
+
+
+@router.post("/pending-grants/dismiss-all")
+async def dismiss_all_pending_grants(
+    request: Request,
+    ctx: TenantContext = Depends(require_tenant_manager),
+    db: AsyncSession = Depends(get_db),
+):
+    """Rejeita em massa todos os grants pendentes do tenant.
+    Faz soft-delete (is_active=False, deleted_at=now) em todos os registros
+    com requires_review=True. Útil quando o gestor decide que nenhuma das
+    permissões legadas deve ser propagada."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    rows = (
+        await db.execute(
+            select(MembershipModuleGrant)
+            .join(OrganizationMembership, OrganizationMembership.id == MembershipModuleGrant.membership_id)
+            .where(
+                MembershipModuleGrant.requires_review.is_(True),
+                MembershipModuleGrant.deleted_at.is_(None),
+                OrganizationMembership.organization_id == ctx.organization_id,
+            )
+        )
+    ).scalars().all()
+    for g in rows:
+        g.is_active = False
+        g.deleted_at = g.deleted_at or now
+        g.updated_by = ctx.user.id
+
+    await _log(db, request, ctx, "pending_grants_dismissed", "user_grants",
+               resource_id=str(ctx.organization_id),
+               details={"dismissed": len(rows)})
+    await db.commit()
+    return {"dismissed": len(rows)}
+
+
+@router.post("/pending-grants/{grant_id}/approve")
+async def approve_pending_grant(
+    grant_id: uuid.UUID,
+    request: Request,
+    ctx: TenantContext = Depends(require_tenant_manager),
+    db: AsyncSession = Depends(get_db),
+):
+    """Aprova um grant pendente, marcando-o como revisado (requires_review=False)
+    e atribuindo a role segura padrão (LEGACY_SAFE_ROLE) se o role_name
+    começar com __ (placeholder). Se a role já for concreta, apenas limpa o
+    flag de revisão."""
+    g = (
+        await db.execute(
+            select(MembershipModuleGrant)
+            .where(
+                MembershipModuleGrant.id == grant_id,
+                MembershipModuleGrant.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if not g:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grant pendente não encontrado")
+
+    # valida tenant
+    mem = (
+        await db.execute(
+            select(OrganizationMembership).where(
+                OrganizationMembership.id == g.membership_id,
+                OrganizationMembership.organization_id == ctx.organization_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not mem:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grant não pertence ao órgão")
+
+    # se for placeholder (__PENDING_LEGACY__), aplica a role segura padrão
+    if g.role_name.startswith("__"):
+        safe = LEGACY_SAFE_ROLE.get(g.module_slug)
+        if not safe:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=f"Sem role segura padrão para o módulo '{g.module_slug}'",
+            )
+        g.role_name = safe
+
+    g.requires_review = False
+    g.is_active = True
+    g.updated_by = ctx.user.id
+
+    await _log(db, request, ctx, "pending_grant_approved", "user_grants",
+               resource_id=str(g.id),
+               details={"module": g.module_slug, "role": g.role_name, "user_id": str(mem.user_id)})
+    await db.commit()
+    return {"grant_id": str(g.id), "role": g.role_name}
+
+
+@router.post("/pending-grants/{grant_id}/dismiss")
+async def dismiss_pending_grant(
+    grant_id: uuid.UUID,
+    request: Request,
+    ctx: TenantContext = Depends(require_tenant_manager),
+    db: AsyncSession = Depends(get_db),
+):
+    """Rejeita um grant pendente específico (soft delete)."""
+    g = (
+        await db.execute(
+            select(MembershipModuleGrant)
+            .where(
+                MembershipModuleGrant.id == grant_id,
+                MembershipModuleGrant.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if not g:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grant pendente não encontrado")
+
+    mem = (
+        await db.execute(
+            select(OrganizationMembership).where(
+                OrganizationMembership.id == g.membership_id,
+                OrganizationMembership.organization_id == ctx.organization_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if not mem:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Grant não pertence ao órgão")
+
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    g.is_active = False
+    g.deleted_at = g.deleted_at or now
+    g.updated_by = ctx.user.id
+
+    await _log(db, request, ctx, "pending_grant_dismissed", "user_grants",
+               resource_id=str(g.id),
+               details={"module": g.module_slug, "user_id": str(mem.user_id)})
+    await db.commit()
+    return {"grant_id": str(g.id), "dismissed": True}
 
 
 @router.get("/org")

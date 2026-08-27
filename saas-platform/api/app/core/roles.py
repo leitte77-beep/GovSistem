@@ -110,3 +110,22 @@ def normalize_grant_role(module_slug: str, role_name: str) -> str:
     """Convert legacy role names to current canonical names."""
     legacy = LEGACY_ROLE_MAP.get(module_slug, {})
     return legacy.get(role_name, role_name)
+
+
+# Role "segura" aplicada quando o gestor aprova um grant placeholder
+# (__PENDING_LEGACY__) sem definir uma role concreta. É sempre uma role de
+# somente leitura, evitando privilégios indevidos a partir de permissões
+# legadas. Se o módulo não tiver uma role de leitura, o gestor precisa
+# revisar caso a caso via GrantsModal.
+LEGACY_SAFE_ROLE: dict[str, str] = {
+    "diario": "AUDITOR",
+    "chatgov": "CHATGOV_USER",
+    "govtask": "GESTOR",
+    "govfrota": "CONSULTA",
+    "govsocial": "conselho",
+    "govdoc": "leitor",
+    "govpro": "AUDITOR",
+    "govavalia": "GOVAVALIA_GESTOR",
+    "govouve": "GOVOUVE_GESTOR",
+    "financeiro": "FINANCEIRO_VIEWER",
+}

@@ -1,10 +1,9 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { Blocks, Users, RefreshCcw } from "lucide-react";
+import { Blocks, Users, RefreshCcw, AlertTriangle } from "lucide-react";
 import api from "@/lib/api";
 import GrantsModal from "@/components/grants-modal";
-import { useToast } from "@/components/toast";
-import { formatDateTime } from "@/lib/format";
+import PendingReviewPanel from "@/components/pending-review-panel";
 
 interface ContractedModule {
   slug: string;
@@ -22,6 +21,11 @@ interface ModuleUser {
   requires_review?: boolean;
 }
 
+interface PendingGrantsResponse {
+  total: number;
+  modules: Array<{ slug: string; name: string; count: number }>;
+}
+
 export default function AccessPage() {
   const [modules, setModules] = useState<ContractedModule[]>([]);
   const [selected, setSelected] = useState<string>("");
@@ -30,7 +34,8 @@ export default function AccessPage() {
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [grantsFor, setGrantsFor] = useState<{ user_id: string; name: string } | null>(null);
   const [error, setError] = useState("");
-  const { toast } = useToast();
+  const [pending, setPending] = useState<PendingGrantsResponse | null>(null);
+  const [showPanel, setShowPanel] = useState(false);
 
   useEffect(() => {
     api<ContractedModule[]>("/tenant/roles")
@@ -41,6 +46,19 @@ export default function AccessPage() {
       .catch((e) => setError(e instanceof Error ? e.message : "Falha ao carregar módulos"))
       .finally(() => setLoadingModules(false));
   }, [selected]);
+
+  const loadPending = useCallback(async () => {
+    try {
+      const r = await api<PendingGrantsResponse>("/tenant/pending-grants");
+      setPending(r);
+    } catch {
+      setPending(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPending();
+  }, [loadPending]);
 
   const loadUsers = useCallback(async (slug: string) => {
     setLoadingUsers(true);
@@ -60,14 +78,34 @@ export default function AccessPage() {
   }, [selected, loadUsers]);
 
   const activeModule = modules.find((m) => m.slug === selected);
+  const pendingTotal = pending?.total ?? 0;
+
+  const onPanelChange = () => {
+    if (selected) loadUsers(selected);
+    loadPending();
+  };
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold text-on-surface">Acessos e permissões</h1>
-        <p className="text-sm text-on-surface-variant">
-          Distribua módulos e roles aos usuários, organizado por módulo contratado.
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-on-surface">Acessos e permissões</h1>
+          <p className="text-sm text-on-surface-variant">
+            Distribua módulos e roles aos usuários, organizado por módulo contratado.
+          </p>
+        </div>
+        {pendingTotal > 0 && (
+          <button
+            onClick={() => setShowPanel(true)}
+            className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-gradient-to-br from-amber-50 to-orange-50 px-4 py-2.5 text-sm font-semibold text-amber-900 shadow-sm transition hover:from-amber-100 hover:to-orange-100"
+          >
+            <AlertTriangle size={16} className="text-amber-700" />
+            {pendingTotal} grant{pendingTotal === 1 ? "" : "s"} aguardando revisão
+            <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-900">
+              Rever agora
+            </span>
+          </button>
+        )}
       </div>
 
       {error && <p className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-600">{error}</p>}
@@ -79,21 +117,32 @@ export default function AccessPage() {
             <p className="rounded-xl border bg-surface-container-lowest p-4 text-sm text-on-surface-variant">Carregando módulos...</p>
           ) : (
             <div className="space-y-2">
-              {modules.map((m) => (
-                <button
-                  key={m.slug}
-                  onClick={() => setSelected(m.slug)}
-                  className={`flex w-full items-center gap-3 rounded-xl border bg-surface-container-lowest px-4 py-3 text-left text-sm transition ${
-                    selected === m.slug ? "border-primary-600 bg-primary-50" : "hover:bg-surface-container-low"
-                  }`}
-                >
-                  <Blocks size={18} className="shrink-0 text-primary-700" />
-                  <span className="min-w-0">
-                    <span className="block font-medium text-on-surface">{m.name}</span>
-                    <span className="block text-xs text-on-surface-variant">{m.roles.length} roles disponíveis</span>
-                  </span>
-                </button>
-              ))}
+              {modules.map((m) => {
+                const modPending = pending?.modules.find((p) => p.slug === m.slug)?.count ?? 0;
+                return (
+                  <button
+                    key={m.slug}
+                    onClick={() => setSelected(m.slug)}
+                    className={`flex w-full items-center gap-3 rounded-xl border bg-surface-container-lowest px-4 py-3 text-left text-sm transition ${
+                      selected === m.slug ? "border-primary-600 bg-primary-50" : "hover:bg-surface-container-low"
+                    }`}
+                  >
+                    <Blocks size={18} className="shrink-0 text-primary-700" />
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-medium text-on-surface">{m.name}</span>
+                      <span className="block text-xs text-on-surface-variant">{m.roles.length} roles disponíveis</span>
+                    </span>
+                    {modPending > 0 && (
+                      <span
+                        title={`${modPending} grants pendentes neste módulo`}
+                        className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-800 ring-1 ring-amber-200"
+                      >
+                        <AlertTriangle size={10} /> {modPending}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
               {modules.length === 0 && (
                 <p className="rounded-xl border bg-surface-container-lowest p-4 text-sm text-on-surface-variant">
                   Nenhum módulo contratado com roles configuráveis.
@@ -171,9 +220,22 @@ export default function AccessPage() {
           userId={grantsFor.user_id}
           userName={grantsFor.name}
           onClose={() => setGrantsFor(null)}
-          onSaved={() => selected && loadUsers(selected)}
+          onSaved={() => {
+            setGrantsFor(null);
+            onPanelChange();
+          }}
         />
       )}
+
+      <PendingReviewPanel
+        open={showPanel}
+        onClose={() => setShowPanel(false)}
+        onChange={onPanelChange}
+        onReviewUser={(userId, userName) => {
+          setShowPanel(false);
+          setGrantsFor({ user_id: userId, name: userName });
+        }}
+      />
     </div>
   );
 }

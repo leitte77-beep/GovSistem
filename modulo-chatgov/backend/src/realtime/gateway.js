@@ -14,7 +14,7 @@ import { atualizarPresenca } from '../services/presenca.js';
 import {
   editarMensagem, excluirMensagem, encaminharMensagem,
   fixarMensagem, desafixarMensagem, adicionarReacao, removerReacao,
-  marcarLido, assertMembroCanal
+  marcarLido, assertMembroCanal, ehMembroCanal
 } from '../services/mensagens.js';
 import { criarNotificacao } from '../services/notificacoes.js';
 import { transitionConversation } from '../services/status-transitions.js';
@@ -901,13 +901,27 @@ export function iniciarGateway(httpServer, wa, storage) {
     });
 
     socket.on('interno:abrir', async (canalId) => {
-      socket.join(salas.canal(canalId));
+      try {
+        await setTenantContext(op.tenantId);
+        // Só participantes (ou administrador) podem acompanhar o canal em
+        // tempo real — outros usuários não podem ver a conversa.
+        if (op.papel !== 'admin') {
+          const ehMembro = await ehMembroCanal(op.tenantId, canalId, op.id);
+          if (!ehMembro) return;
+        }
+        socket.join(salas.canal(canalId));
+      } catch (err) {
+        console.error('[Socket] interno:abrir error:', err.message);
+      }
     });
 
     socket.on('interno:enviar', async ({ canalId, conteudo, tipo, mediaUrl, mediaMime, mediaBase64, mediaNome, respondendoA }, ack) => {
       try {
         await setTenantContext(op.tenantId);
-        await assertMembroCanal(op.tenantId, canalId, op.id);
+        // Admin pode enviar em qualquer canal que vê; demais só onde participam.
+        if (op.papel !== 'admin') {
+          await assertMembroCanal(op.tenantId, canalId, op.id);
+        }
         const conteudoNorm = conteudo == null ? null : String(conteudo).trim();
         if (conteudoNorm && conteudoNorm.length > 8000) {
           if (ack) ack({ ok: false, erro: 'Mensagem muito longa' });

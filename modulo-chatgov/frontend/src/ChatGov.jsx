@@ -13,12 +13,13 @@ import { TelaQR } from './components/TelaQR';
 import { AgendaCompleta } from './components/agenda/AgendaCompleta';
 import { ModalResumoLogin } from './components/agenda/ModalResumoLogin';
 import { PopupLembrete } from './components/agenda/PopupLembrete';
+import { ModalAvisoGlobal } from './components/ModalAvisoGlobal';
 import { useLembretesAgenda } from './hooks/useLembretesAgenda';
 import { useAuth } from './context/AuthContext';
 import { useSocket } from './context/SocketContext';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { T } from './theme';
-import { fetchConversa, fetchWhatsAppStatus } from './api';
+import { fetchConversa, fetchWhatsAppStatus, fetchAvisoAtivo } from './api';
 import { fetchNotificacoesStatus } from './api/evolucoes';
 import { useNotificacoesDesktop } from './hooks/useNotificacoesDesktop';
 
@@ -47,6 +48,7 @@ export function ChatGov() {
   const [recarregar, setRecarregar] = useState(0);
   const [notifCount, setNotifCount] = useState(0);
   const [waStatus, setWaStatus] = useState({ status: 'desconectado', numero: null });
+  const [avisoAtivo, setAvisoAtivo] = useState(null);
 
   useNotificacoesDesktop({ conversaAtivaId: conversaAtiva?.id });
 
@@ -210,6 +212,44 @@ export function ChatGov() {
     };
   }, [socket, conversaAtivaId, recarregar, fecharConversa]);
 
+  // Aviso global do admin: popup em tempo real para todos os atendentes online.
+  // Também busca o aviso ativo no login, para quem entrou depois do envio.
+  useEffect(() => {
+    if (!socket || !auth?.operador?.id) return;
+    const onAviso = (aviso) => { if (aviso?.mensagem) setAvisoAtivo(aviso); };
+    const onLimpar = (dados) => {
+      setAvisoAtivo((atual) => {
+        // Sem id específico remove qualquer aviso; com id só remove o citado.
+        if (!dados?.avisoId) return null;
+        return atual?.id === dados.avisoId ? null : atual;
+      });
+    };
+    socket.on('aviso:global', onAviso);
+    socket.on('aviso:global:limpar', onLimpar);
+    // No load (F5): mostra o aviso ativo apenas se ainda não foi dispensado hoje.
+    fetchAvisoAtivo().then((a) => {
+      if (!a?.mensagem) return;
+      try {
+        const visto = JSON.parse(localStorage.getItem('chatgov_aviso_visto') || 'null');
+        if (visto && visto.id === a.id && visto.dia === new Date().toDateString()) return;
+      } catch { /* ignore */ }
+      setAvisoAtivo(a);
+    }).catch(() => {});
+    return () => {
+      socket.off('aviso:global', onAviso);
+      socket.off('aviso:global:limpar', onLimpar);
+    };
+  }, [socket, auth?.operador?.id]);
+
+  const fecharAviso = () => {
+    if (avisoAtivo) {
+      try {
+        localStorage.setItem('chatgov_aviso_visto', JSON.stringify({ id: avisoAtivo.id, dia: new Date().toDateString() }));
+      } catch { /* ignore */ }
+    }
+    setAvisoAtivo(null);
+  };
+
   const mostrarListaMobile = ehMobile && !conversaAtiva && !canalAtivo;
   const mostrarPainelMobile = ehMobile && (conversaAtiva || canalAtivo);
 
@@ -371,6 +411,12 @@ export function ChatGov() {
       onConcluir: lembretes.concluir,
       onAbrirConversa: abrirConversaPorId,
       breakpoint,
+    }),
+
+    // Aviso global do admin (popup em tempo real).
+    avisoAtivo && React.createElement(ModalAvisoGlobal, {
+      aviso: avisoAtivo,
+      onClose: fecharAviso,
     }),
   );
 }

@@ -1,17 +1,17 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Send, Paperclip, Smile, ShieldCheck, Clock, User, UserPlus, CheckCircle2, Building2, MessageSquare, Tag, StickyNote, ChevronDown, ChevronRight, Archive, Trash2, ArrowRightLeft, Undo2, UserCheck, X, MoreVertical, ArrowDown, Loader2, Mic, Square, Play, Pause, RotateCcw, Images, Mail, Search, ArrowLeft, CalendarPlus } from 'lucide-react';
+import { Send, Paperclip, Smile, ShieldCheck, Clock, User, UserPlus, CheckCircle2, Building2, MessageSquare, Tag, StickyNote, ChevronDown, ChevronRight, Archive, Trash2, ArrowRightLeft, Undo2, UserCheck, X, MoreVertical, ArrowDown, Loader2, Mic, Square, Play, Pause, RotateCcw, Images, Mail, Search, ArrowLeft, CalendarPlus, Printer } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { BolhaConversa } from './BolhaConversa';
 import { DeptBadge } from './DeptBadge';
 import { ModalParticipantes } from './ModalParticipantes';
 import { ModalTransferir } from './ModalTransferir';
-import { MediaPreview, MediaLightbox } from './MediaPreview';
+import { MediaPreview, MediaLightbox, urlVisualizavel } from './MediaPreview';
 import { GaleriaMidias } from './GaleriaMidias';
 import { PainelCidadao } from './PainelCidadao';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
 import { fetchMensagens, fetchDepartamentos, fetchTemplates, fetchEtiquetas, fetchEtiquetasConversa, fetchNotasInternas, editarContato, fetchTransferenciaPendente, excluirMensagemConversa, fetchMidiasConversa, marcarConversaNaoLida, criarContato, iniciarConversa } from '../api';
-import { mimeParaTipo, encodeFileBase64, mesmaData, formatarDataSeparador } from '../utils/arquivo';
+import { mimeParaTipo, encodeFileBase64, mesmaData, formatarDataSeparador, formatarHora, formatarTamanho } from '../utils/arquivo';
 import { SeparadorData } from './SeparadorData';
 import { PainelMinhaAgenda } from './agenda/PainelMinhaAgenda';
 import { ModalCompromisso } from './agenda/ModalCompromisso';
@@ -39,9 +39,15 @@ function formatarDuracao(ms) {
   return `${min}:${String(seg).padStart(2, '0')}`;
 }
 
+// Escapa HTML para injetar com segurança na janela de impressão.
+function escapeHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 // Preenche variáveis de template com dados da conversa.
-function aplicarVariaveis(texto, conversa) {
-  if (!texto) return texto;
+function aplicarVariaveis(texto, conversa) {  if (!texto) return texto;
   return texto
     .replace(/\{\{\s*nome\s*\}\}/gi, conversa?.contato_nome || conversa?.contato_telefone || '')
     .replace(/\{\{\s*telefone\s*\}\}/gi, conversa?.contato_telefone || '')
@@ -717,6 +723,162 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
     });
   };
 
+  // Abre uma janela com a transcrição legível da conversa para impressão. PDFs,
+  // fotos e áudios anexados são representados no relatório (imagens embutidas,
+  // demais mídias como cartões com link), preservando o contexto do atendimento.
+  const imprimirConversa = () => {
+    const lista = mensagens;
+    if (!lista.length) {
+      notificar('Não há mensagens para imprimir nesta conversa.', 'aviso');
+      return;
+    }
+
+    const w = window.open('', '_blank', 'width=940,height=720');
+    if (!w) {
+      notificar('Permita pop-ups para imprimir a conversa.', 'erro');
+      return;
+    }
+
+    const nomeContatoPrint = conversa.contato_nome || conversa.contato_telefone || 'Conversa';
+    const telefonePrint = conversa.contato_telefone || '';
+    const protocoloPrint = conversa.protocolo || conversa.protocolo_numero || '';
+    const canalPrint = conversa.canal_nome || conversa.canal || '';
+    const setorPrint = conversa.departamento_nome || '';
+    const atendentePrint = conversa.operador_nome || '';
+
+    const fmtDataHora = (ts) => {
+      try {
+        const d = new Date(ts);
+        return `${d.toLocaleDateString('pt-BR')}, ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+      } catch { return ''; }
+    };
+
+    const primeira = lista[0]?.criado_em;
+    const ultima = lista[lista.length - 1]?.criado_em;
+    const periodoPrint = primeira && ultima ? `${fmtDataHora(primeira)} a ${fmtDataHora(ultima)}` : '';
+    const qtdAnexos = lista.filter((m) => m.media_url || m.mediaUrl).length;
+
+    const campoTxt = (rotulo, valor) => valor
+      ? `<div class="campo"><span class="rotulo">${escapeHtml(rotulo)}</span><span class="valor">${escapeHtml(valor)}</span></div>`
+      : '';
+
+    let htmlMensagens = '';
+    lista.forEach((msg, i) => {
+      const anterior = lista[i - 1];
+      const sep = (!anterior || !mesmaData(anterior.criado_em, msg.criado_em))
+        ? `<div class="data"><span class="pill">${escapeHtml(formatarDataSeparador(msg.criado_em))}</span></div>`
+        : '';
+      const remetente = msg.direcao === 'entrada'
+        ? (msg.remetente_nome || nomeContatoPrint)
+        : (msg.operador_nome || 'Operador');
+      const hora = formatarHora(msg.criado_em);
+      const lado = msg.direcao === 'entrada' ? 'in' : 'out';
+
+      let corpo = '';
+      if (msg.excluida) {
+        corpo = '<em class="muted">Mensagem excluída</em>';
+      } else {
+        if (msg.conteudo && msg.tipo !== 'contato') {
+          corpo += `<p>${escapeHtml(msg.conteudo).replace(/\n/g, '<br/>')}</p>`;
+        }
+        if (msg.tipo === 'contato') {
+          corpo += '<p>📇 Contato compartilhado</p>';
+        }
+        const mediaUrl = urlVisualizavel(msg.media_url || msg.mediaUrl);
+        if (mediaUrl) {
+          const mime = (msg.media_mime || msg.mediaMime || '').toLowerCase();
+          const nomeArq = msg.media_nome || msg.mediaNome || 'arquivo';
+          const tamanho = formatarTamanho(msg.media_tamanho);
+          const metaTamanho = tamanho ? ` · ${tamanho}` : '';
+          if (mime.startsWith('image/')) {
+            const ext = mime.split('/')[1] || '';
+            corpo += `<img src="${escapeHtml(mediaUrl)}" alt="${escapeHtml(nomeArq)}" class="img"/>`;
+            corpo += `<div class="img-leg">🖼️ ${escapeHtml(nomeArq)}${ext ? ` (${ext.toUpperCase()})` : ''}</div>`;
+          } else if (mime.includes('pdf')) {
+            corpo += `<div class="anexo"><div class="bx">📄</div><div class="info"><div class="nome">${escapeHtml(nomeArq)}</div><div class="meta">PDF${metaTamanho}</div><a class="link" href="${escapeHtml(mediaUrl)}" target="_blank" rel="noopener noreferrer">Abrir documento</a></div></div>`;
+          } else if (mime.startsWith('audio/')) {
+            const ext = mime.split('/')[1] || 'OGG';
+            corpo += `<div class="anexo"><div class="bx">🎤</div><div class="info"><div class="nome">${escapeHtml(nomeArq)}</div><div class="meta">${escapeHtml(ext.toUpperCase())}${metaTamanho}</div><a class="link" href="${escapeHtml(mediaUrl)}" target="_blank" rel="noopener noreferrer">Ouvir áudio</a></div></div>`;
+          } else if (mime.startsWith('video/')) {
+            corpo += `<div class="anexo"><div class="bx">🎬</div><div class="info"><div class="nome">${escapeHtml(nomeArq)}</div><div class="meta">Vídeo${metaTamanho}</div><a class="link" href="${escapeHtml(mediaUrl)}" target="_blank" rel="noopener noreferrer">Abrir vídeo</a></div></div>`;
+          } else {
+            corpo += `<div class="anexo"><div class="bx">📎</div><div class="info"><div class="nome">${escapeHtml(nomeArq)}</div><div class="meta">${escapeHtml(mime || 'arquivo')}${metaTamanho}</div><a class="link" href="${escapeHtml(mediaUrl)}" target="_blank" rel="noopener noreferrer">Baixar arquivo</a></div></div>`;
+          }
+        }
+      }
+
+      htmlMensagens += `${sep}<div class="msg ${lado}"><div class="topo"><span class="autor">${escapeHtml(remetente)}</span><span class="hora">${escapeHtml(hora)}</span></div>${corpo}</div>`;
+    });
+
+    const emitidoEm = new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+    w.document.write(`<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8"/>
+<title>${escapeHtml(`Registro de atendimento - ${nomeContatoPrint}`)}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: #111; margin: 0; background: #fff; }
+  .cab { background: linear-gradient(135deg, #1e3a8a, #2563eb); color: #fff; padding: 22px 30px 18px; }
+  .cab .kicker { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; opacity: .75; margin-bottom: 5px; }
+  .cab h1 { margin: 0; font-size: 21px; font-weight: 800; line-height: 1.25; }
+  .cab .sub { font-size: 12.5px; opacity: .9; margin-top: 3px; }
+  .grade { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; padding: 18px 30px 4px; }
+  .campo { border: 1px solid #e5e7eb; border-radius: 10px; padding: 9px 12px; background: #fff; }
+  .campo .rotulo { display: block; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: #94a3b8; margin-bottom: 2px; }
+  .campo .valor { font-size: 13px; font-weight: 600; color: #0f172a; word-break: break-word; }
+  .campo .valor.mono { font-variant-numeric: tabular-nums; }
+  .lista { padding: 6px 30px 24px; }
+  .data { text-align: center; margin: 16px 0 8px; }
+  .data .pill { display: inline-block; padding: 4px 13px; border-radius: 999px; background: #eef2f7; color: #475569; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; }
+  .msg { margin: 0 0 6px; padding: 8px 12px; border-radius: 10px; break-inside: avoid; }
+  .msg.in { background: #f8fafc; border-left: 3px solid #2563eb; }
+  .msg.out { background: #f0fdf4; border-left: 3px solid #22c55e; }
+  .msg .topo { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .msg .autor { font-size: 12px; font-weight: 700; }
+  .msg.in .autor { color: #2563eb; }
+  .msg.out .autor { color: #16a34a; }
+  .msg .hora { font-size: 10.5px; color: #64748b; white-space: nowrap; }
+  .msg p { margin: 4px 0 0; font-size: 13.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+  .muted { color: #94a3b8; font-style: italic; }
+  .img { display: block; max-width: 380px; max-height: 480px; width: 100%; object-fit: contain; border: 1px solid #e2e8f0; border-radius: 8px; margin: 6px 0 2px; break-inside: avoid; }
+  .img-leg { font-size: 10.5px; color: #64748b; margin-top: 2px; }
+  .anexo { display: flex; align-items: flex-start; gap: 10px; border: 1px solid #e2e8f0; background: #fff; border-radius: 10px; padding: 10px 12px; margin-top: 6px; max-width: 380px; break-inside: avoid; }
+  .anexo .bx { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; background: #f1f5f9; flex-shrink: 0; }
+  .anexo .info { min-width: 0; }
+  .anexo .nome { font-size: 12.5px; font-weight: 600; color: #0f172a; word-break: break-word; }
+  .anexo .meta { font-size: 11px; color: #64748b; margin: 1px 0 3px; }
+  .anexo .link { font-size: 11.5px; color: #2563eb; text-decoration: underline; }
+  .rodape { border-top: 1px solid #e2e8f0; margin-top: 8px; padding: 12px 30px 28px; font-size: 10.5px; color: #94a3b8; display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } .cab { break-after: avoid; } .grade { break-after: avoid; } }
+</style></head>
+<body>
+  <div class="cab">
+    <div class="kicker">GovChat · Registro de atendimento</div>
+    <h1>${escapeHtml(nomeContatoPrint)}</h1>
+    ${telefonePrint ? `<div class="sub">${escapeHtml(telefonePrint)}</div>` : ''}
+    ${canalPrint ? `<div class="sub">Canal: ${escapeHtml(canalPrint)}</div>` : ''}
+  </div>
+  <div class="grade">
+    ${campoTxt('Cidadão', nomeContatoPrint)}
+    ${campoTxt('Telefone', telefonePrint)}
+    ${campoTxt('Protocolo', (protocoloPrint ? `#${protocoloPrint.replace(/^#/, '')}` : ''))}
+    ${campoTxt('Atendente', atendentePrint || '—')}
+    ${campoTxt('Setor', setorPrint || '—')}
+    ${campoTxt('Período', periodoPrint)}
+  </div>
+  <div class="lista">${htmlMensagens}</div>
+  <div class="rodape">
+    <span>${lista.length} mensagem${lista.length !== 1 ? 's' : ''} · ${qtdAnexos} anexo${qtdAnexos !== 1 ? 's' : ''}</span>
+    <span>Impresso em ${escapeHtml(emitidoEm)}${protocoloPrint ? ` · ${escapeHtml(protocoloPrint)}` : ''}</span>
+  </div>
+</body></html>`);
+    w.document.close();
+    w.focus();
+    // Pequeno respiro para as imagens decodificarem antes de abrir o diálogo.
+    setTimeout(() => w.print(), 450);
+  };
+
+
   // Exclusão administrativa: o backend restringe a admin e exige motivo, então a
   // confirmação pede o motivo e deixa explícito o alcance da ação.
   const excluirConversa = () => {
@@ -1235,6 +1397,13 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
         style: { ...acaoBtn, color: T.success, borderColor: '#CDEBD6' },
       },
         React.createElement(CheckCircle2, { size: 16 }), 'Resolver'),
+      // Imprimir a conversa (transcrição com PDFs, fotos e áudios anexados).
+      React.createElement('button', {
+        onClick: imprimirConversa, 'aria-label': 'Imprimir conversa',
+        title: 'Imprimir conversa — transcrição com mídias anexadas',
+        style: { ...acaoBtn, color: T.textSecondary, borderColor: T.border },
+      },
+        React.createElement(Printer, { size: 16 }), 'Imprimir'),
       // Buscar dentro da conversa
       React.createElement('button', {
         onClick: () => { setShowBusca((v) => !v); if (showBusca) setTermoBusca(''); },
@@ -1759,6 +1928,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
       acaoSheetItem(Tag, 'Etiquetas', () => { setShowAcoes(false); setShowEtiquetas(true); }),
       acaoSheetItem(Building2, 'Encaminhar para setor', () => { setShowAcoes(false); if (!showEncaminhar) abrirEncaminhar(); }),
       acaoSheetItem(CheckCircle2, 'Resolver conversa', () => { setShowAcoes(false); resolver(); }, T.success),
+      acaoSheetItem(Printer, 'Imprimir conversa', () => { setShowAcoes(false); imprimirConversa(); }),
       acaoSheetItem(CalendarPlus, 'Criar lembrete', () => { setShowAcoes(false); setShowNovoCompromisso(true); }),
       acaoSheetItem(Images, 'Ver mídias', () => { setShowAcoes(false); abrirGaleria(); }),
       acaoSheetItem(Mail, 'Marcar como não lida', () => { setShowAcoes(false); marcarNaoLida(); }),

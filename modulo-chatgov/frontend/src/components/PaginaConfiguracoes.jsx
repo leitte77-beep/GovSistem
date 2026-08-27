@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, FolderTree, Users, Smartphone, Plus, Trash2, Wifi, WifiOff, LogOut, QrCode, KeyRound, Ban, SlidersHorizontal, Save, Loader2, Check, Bot, FileText, Brain, MessageSquare, Bell, BellOff, Volume2, Network, Route, ShieldCheck } from 'lucide-react';
+import { Building2, FolderTree, Users, Smartphone, Plus, Trash2, Wifi, WifiOff, LogOut, QrCode, KeyRound, Ban, SlidersHorizontal, Save, Loader2, Check, Bot, FileText, Brain, MessageSquare, Bell, BellOff, Volume2, Network, Route, ShieldCheck, Megaphone, Send, UserRound, Globe, Users2, Clock, Timer, History, AlertTriangle, CalendarClock, Info, BellRing } from 'lucide-react';
 import { T, CORES_DEPT } from '../theme';
 import {
   fetchSecretarias, criarSecretaria, editarSecretaria, excluirSecretaria,
@@ -11,9 +11,11 @@ import {
   fetchFaqs, criarFaq, editarFaq, excluirFaq,
   fetchTemplates, criarTemplate, editarTemplate, excluirTemplate,
   fetchIrisConfig, salvarIrisConfig,
+  fetchAvisoAtual, enviarAvisoGlobal, limparAvisoGlobal, fetchHistoricoAvisos,
 } from '../api';
 import { fetchConfigNotificacoes, salvarConfigNotificacoes } from '../api/evolucoes';
 import { useSocket } from '../context/SocketContext';
+import { useBreakpoint } from '../hooks/useBreakpoint';
 import {
   AbaCanaisAvancados, AbaRegrasOperacionais, AbaGovernanca, VersoesIris, VersoesChatbot,
 } from './AdministracaoAvancada';
@@ -59,6 +61,7 @@ const GRUPOS_CONFIGURACAO = [
     label: 'Sistema',
     abas: [
       { id: 'notificacoes', label: 'Notificações', icon: Bell },
+      { id: 'avisos', label: 'Avisos', icon: Megaphone },
       { id: 'governanca', label: 'Governança', icon: ShieldCheck },
     ],
   },
@@ -157,6 +160,7 @@ export function PaginaConfiguracoes({ onOpenQR, breakpoint }) {
           aba === 'departamentos' && React.createElement(AbaDepartamentos),
           aba === 'equipe' && React.createElement(AbaEquipe),
           aba === 'notificacoes' && React.createElement(AbaNotificacoes),
+          aba === 'avisos' && React.createElement(AbaAvisos),
           aba === 'governanca' && React.createElement(AbaGovernanca),
         ),
       ),
@@ -998,5 +1002,584 @@ function AbaTemplates() {
             ),
             React.createElement('span', { style: { fontSize: 13, color: T.textSecondary, lineHeight: '18px' } }, t.conteudo),
           )),
+  );
+}
+
+// ---------- Avisos globais (popup do admin para atendentes online) ----------
+const IMPORTANCIA_OPCOES = [
+  { id: 'baixa', rotulo: 'Baixa', desc: 'Popup discreto no canto', cor: '#2563EB', grad: 'linear-gradient(135deg,#2563EB,#3B82F6)' },
+  { id: 'media', rotulo: 'Média', desc: 'Popup no canto, destaque', cor: '#D97706', grad: 'linear-gradient(135deg,#D97706,#F59E0B)' },
+  { id: 'alta', rotulo: 'Alta', desc: 'Modal em tela cheia', cor: '#DC2626', grad: 'linear-gradient(135deg,#DC2626,#EF4444)' },
+];
+const IMPORTANCIA_ICONE = { baixa: Info, media: BellRing, alta: AlertTriangle };
+
+function AbaAvisos() {
+  const [titulo, setTitulo] = useState('');
+  const [mensagem, setMensagem] = useState('');
+  const [importancia, setImportancia] = useState('media');
+  const [destino, setDestino] = useState('todos');
+  const [departamentos, setDepartamentos] = useState([]);
+  const [operadores, setOperadores] = useState([]);
+  const [selDeps, setSelDeps] = useState([]);
+  const [selUsers, setSelUsers] = useState([]);
+  const [agendar, setAgendar] = useState(false);
+  const [agendarEm, setAgendarEm] = useState('');
+  const [duracao, setDuracao] = useState(0);
+  const [diario, setDiario] = useState(false);
+  const [encerraEm, setEncerraEm] = useState('');
+  const [historico, setHistorico] = useState([]);
+  const [enviando, setEnviando] = useState(false);
+  const [limpando, setLimpando] = useState(false);
+  const [feito, setFeito] = useState(false);
+  const [abaAtual, setAbaAtual] = useState('criar');
+  const [confirmar, setConfirmar] = useState(null);
+
+  const SwitchBtn = ({ checked, onChange, label }) => React.createElement('button', {
+    type: 'button', role: 'switch', 'aria-checked': checked, 'aria-label': label,
+    onClick: () => onChange(!checked),
+    style: {
+      position: 'relative', display: 'inline-block', width: 44, height: 24, borderRadius: 24,
+      border: 'none', cursor: 'pointer', flexShrink: 0, padding: 0,
+      background: checked ? T.primary : '#d1d5db', transition: 'background 0.2s',
+    },
+  }, React.createElement('span', {
+    style: {
+      position: 'absolute', left: checked ? 22 : 3, bottom: 3, width: 18, height: 18, borderRadius: '50%',
+      background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.25)', transition: 'left 0.2s', pointerEvents: 'none',
+    },
+  }));
+
+  const carregarHistorico = () => fetchHistoricoAvisos().then(setHistorico).catch(() => {});
+useEffect(() => {
+    Promise.all([fetchAvisoAtual(), fetchDepartamentos(), fetchOperadores(), fetchHistoricoAvisos()])
+      .then(([a, deps, ops, hist]) => {
+        setDepartamentos(deps || []);
+        setOperadores(ops || []);
+        setHistorico(hist || []);
+        // Formulário começa vazio a cada carregamento (sem prefill do último aviso).
+      })
+      .catch(() => {});
+  }, []);
+
+  const toggleDep = (id) => setSelDeps((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+  const toggleUser = (id) => setSelUsers((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+
+  const resumoAlvo = () => {
+    if (destino === 'departamentos') return selDeps.length ? `${selDeps.length} departamento(s)` : 'Nenhum departamento selecionado';
+    if (destino === 'usuarios') return selUsers.length ? `${selUsers.length} usuário(s)` : 'Nenhum usuário selecionado';
+    return 'Todos os atendentes online';
+  };
+
+  const enviar = async () => {
+    const texto = mensagem.trim();
+    if (!texto) { alert('Escreva a mensagem do aviso.'); return; }
+    if (destino === 'departamentos' && selDeps.length === 0) { alert('Selecione ao menos um departamento.'); return; }
+    if (destino === 'usuarios' && selUsers.length === 0) { alert('Selecione ao menos um usuário.'); return; }
+    if (agendar && !agendarEm) { alert('Informe a data/hora do agendamento.'); return; }
+    const quando = agendar ? (new Date(agendarEm).toISOString()) : null;
+    if (agendar && (!quando || Number.isNaN(new Date(quando).getTime()))) { alert('Data/hora de agendamento inválida.'); return; }
+    let encerraISO = null;
+    if (diario) {
+      if (!encerraEm) { alert('Informe a data/hora de encerramento do aviso diário.'); return; }
+      encerraISO = new Date(encerraEm).toISOString();
+      if (Number.isNaN(new Date(encerraISO).getTime())) { alert('Data/hora de encerramento inválida.'); return; }
+      if (new Date(encerraISO).getTime() <= (quando ? new Date(quando).getTime() : Date.now())) {
+        alert('A data de encerramento deve ser posterior ao início do aviso.'); return;
+      }
+    }
+    setConfirmar({
+      tipo: 'enviar',
+      titulo: agendar ? 'Agendar aviso' : 'Enviar aviso agora',
+      payload: { titulo: titulo.trim(), mensagem: texto, destino, departamento_ids: selDeps, operador_ids: selUsers, importancia, agendar_em: quando, duracao_min: diario ? 0 : (Number(duracao) > 0 ? Number(duracao) : 0), recorrencia: diario ? 'diario' : 'unico', encerra_em: encerraISO },
+    });
+  };
+
+  const executarEnvio = async (payload) => {
+    setConfirmar(null);
+    setEnviando(true);
+    try {
+      await enviarAvisoGlobal(payload);
+      setFeito(true);
+      setTimeout(() => setFeito(false), 2500);
+      await carregarHistorico();
+      setMensagem(''); setTitulo(''); setAgendar(false); setAgendarEm(''); setDuracao(0); setDiario(false); setEncerraEm('');
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  const limpar = async () => {
+    setConfirmar({ tipo: 'limpar' });
+  };
+
+  const executarLimpar = async () => {
+    setConfirmar(null);
+    setLimpando(true);
+    try {
+      await limparAvisoGlobal();
+      await carregarHistorico();
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setLimpando(false);
+    }
+  };
+
+  const cancelar = (id) => {
+    setConfirmar({ tipo: 'cancelar', id });
+  };
+
+  const executarCancelar = async (id) => {
+    setConfirmar(null);
+    try { await cancelarAviso(id); await carregarHistorico(); } catch (e) { alert(e.message); }
+  };
+
+  const fmtDataHora = (ts) => { try { return new Date(ts).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' }); } catch { return ''; } };
+  const statusAviso = (a) => {
+    if (!a.ativo) return { rotulo: 'Finalizado', cor: '#9CA3AF' };
+    if (!a.enviado_em) return { rotulo: 'Agendado', cor: '#7C3AED' };
+    return { rotulo: 'Ativo', cor: '#059669' };
+  };
+
+  const iniciais = (nome) => {
+    const partes = (nome || '').trim().split(/\s+/).filter(Boolean);
+    return ((partes[0]?.[0] || '') + (partes.length > 1 ? partes[partes.length - 1][0] : partes[0]?.[1] || '')).toUpperCase() || '?';
+  };
+  const nomeOperador = (id) => (operadores.find((o) => o.id === id) || {}).nome;
+  const nomeDepartamento = (id) => {
+    const d = departamentos.find((x) => x.id === id);
+    return d ? (d.secretaria_nome ? `${d.secretaria_nome} › ${d.nome}` : d.nome) : null;
+  };
+  const resumoNomes = (ids, buscar) => {
+    const nomes = (ids || []).map(buscar).filter(Boolean);
+    const faltando = (ids || []).length - nomes.length;
+    const texto = nomes.join(', ');
+    return texto + (faltando > 0 ? (texto ? ` +${faltando}` : `${faltando} selecionado(s)`) : '');
+  };
+
+  // Cartões do público-alvo
+  const opcoesAlvo = [
+    { id: 'todos', icone: Globe, titulo: 'Todos', desc: 'Atendentes online', cor: T.primary },
+    { id: 'departamentos', icone: FolderTree, titulo: 'Departamentos', desc: 'Setores selecionados', cor: '#7C3AED' },
+    { id: 'usuarios', icone: UserRound, titulo: 'Usuários', desc: 'Pessoas específicas', cor: '#059669' },
+  ];
+
+  const iconeTab = { criar: Megaphone, historico: History };
+  const bp = useBreakpoint();
+  const duasColunas = bp === 'desktop';
+
+  return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 22, width: '100%' } },
+    // Hero
+    React.createElement('div', {
+      style: { borderRadius: 18, overflow: 'hidden', background: 'linear-gradient(135deg, #7C3AED 0%, #DB2777 55%, #F59E0B 130%)', color: '#fff', padding: '24px 26px', boxShadow: '0 12px 32px rgba(124,58,237,0.28)', display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap' },
+    },
+      React.createElement('span', { style: { width: 58, height: 58, borderRadius: 16, background: 'rgba(255,255,255,0.18)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.25)' } },
+        React.createElement(Megaphone, { size: 30 })),
+      React.createElement('div', { style: { flex: 1, minWidth: 240 } },
+        React.createElement('div', { style: { fontSize: 20, fontWeight: 800, letterSpacing: -0.4 } }, 'Avisos em tempo real'),
+        React.createElement('div', { style: { fontSize: 13, opacity: 0.92, lineHeight: '19px', marginTop: 3 } },
+          'Comunicados que aparecem como popup. Defina prioridade, público, agendamento e duração.'),
+      ),
+    ),
+
+    // Abas: Criar / Histórico
+    React.createElement('div', { style: { display: 'flex', gap: 8 } },
+      [['criar', 'Criar aviso', Megaphone], ['historico', 'Histórico', History]].map(([id, rotulo, Icon]) =>
+        React.createElement('button', {
+          key: id, onClick: () => setAbaAtual(id), 'aria-current': abaAtual === id ? 'page' : undefined,
+          style: {
+            display: 'inline-flex', alignItems: 'center', gap: 8, padding: '9px 16px', borderRadius: 999, cursor: 'pointer', fontWeight: 700, fontSize: 13,
+            border: abaAtual === id ? `1.5px solid ${T.primary}` : `1.5px solid ${T.border}`,
+            background: abaAtual === id ? T.primarySoft : T.surface, color: abaAtual === id ? T.primary : T.textSecondary,
+          },
+        }, React.createElement(Icon, { size: 16 }), rotulo),
+      ),
+    ),
+
+    // ═══ ABA: CRIAR ═══
+    abaAtual === 'criar' && React.createElement('div', { style: { display: 'grid', gridTemplateColumns: duasColunas ? 'minmax(0, 1fr) minmax(320px, 400px)' : 'minmax(0, 1fr)', gap: 22, alignItems: 'start' } },
+      React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 22, minWidth: 0 } },
+      // Importância
+      React.createElement('div', { style: painel },
+        React.createElement('div', { style: painelHead },
+          React.createElement('div', { style: tituloPainel }, 'Prioridade'),
+          React.createElement('span', { style: { fontSize: 12, color: T.textMuted } }, 'Define como o popup aparece'),
+        ),
+        React.createElement('div', { style: { padding: 20, display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 } },
+          IMPORTANCIA_OPCOES.map((op) => {
+            const ativo = importancia === op.id;
+            const Icon = IMPORTANCIA_ICONE[op.id];
+            return React.createElement('button', {
+              key: op.id, onClick: () => setImportancia(op.id), 'aria-pressed': ativo,
+              style: {
+                display: 'flex', alignItems: 'center', gap: 11, padding: '12px 14px', borderRadius: 14, cursor: 'pointer', textAlign: 'left',
+                border: ativo ? `2px solid ${op.cor}` : `1.5px solid ${T.border}`,
+                background: ativo ? `${op.cor}12` : T.surfaceAlt, boxShadow: ativo ? `0 6px 18px ${op.cor}26` : 'none', transition: 'all 0.15s',
+              },
+            },
+              React.createElement('span', { style: { width: 40, height: 40, borderRadius: 11, background: ativo ? op.grad : T.surfaceMuted, color: ativo ? '#fff' : T.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 } },
+                React.createElement(Icon, { size: 20 })),
+              React.createElement('div', { style: { minWidth: 0 } },
+                React.createElement('div', { style: { fontSize: 14, fontWeight: 700, color: ativo ? op.cor : T.text } }, op.rotulo),
+                React.createElement('div', { style: { fontSize: 11, color: T.textMuted, lineHeight: '15px' } }, op.desc),
+              ),
+            );
+          }),
+        ),
+      ),
+
+      // Público-alvo
+      React.createElement('div', { style: painel },
+        React.createElement('div', { style: painelHead },
+          React.createElement('div', { style: tituloPainel }, 'Público-alvo'),
+        ),
+        React.createElement('div', { style: { padding: 20, display: 'flex', flexDirection: 'column', gap: 16 } },
+          React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10 } },
+            opcoesAlvo.map((op) => {
+              const ativo = destino === op.id;
+              return React.createElement('button', {
+                key: op.id, onClick: () => setDestino(op.id), 'aria-pressed': ativo,
+                style: {
+                  display: 'flex', alignItems: 'center', gap: 10, padding: '12px 14px', borderRadius: 14, cursor: 'pointer', textAlign: 'left',
+                  border: ativo ? `2px solid ${op.cor}` : `1.5px solid ${T.border}`,
+                  background: ativo ? `${op.cor}12` : T.surfaceAlt, boxShadow: ativo ? `0 6px 18px ${op.cor}26` : 'none', transition: 'all 0.15s',
+                },
+              },
+                React.createElement('span', { style: { width: 38, height: 38, borderRadius: 11, background: ativo ? op.cor : T.surfaceMuted, color: ativo ? '#fff' : T.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 } },
+                  React.createElement(op.icone, { size: 19 })),
+                React.createElement('div', { style: { minWidth: 0 } },
+                  React.createElement('div', { style: { fontSize: 14, fontWeight: 700, color: T.text } }, op.titulo),
+                  React.createElement('div', { style: { fontSize: 11, color: T.textMuted, lineHeight: '15px' } }, op.desc),
+                ),
+              );
+            }),
+          ),
+          destino === 'departamentos' && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 } },
+              React.createElement('div', { style: label }, 'Selecione os departamentos'),
+              React.createElement('span', { style: { fontSize: 12, color: T.textMuted, fontWeight: 600 } }, `${selDeps.length} selecionado(s)`),
+            ),
+            departamentos.length === 0
+              ? React.createElement('div', { style: { fontSize: 13, color: T.textMuted } }, 'Nenhum departamento cadastrado.')
+              : React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 } },
+                  departamentos.map((d) => {
+                    const ativo = selDeps.includes(d.id);
+                    const cor = d.cor || '#7C3AED';
+                    return React.createElement('button', {
+                      key: d.id, onClick: () => toggleDep(d.id), 'aria-pressed': ativo, title: d.secretaria_nome ? `${d.secretaria_nome} › ${d.nome}` : d.nome,
+                      style: {
+                        display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 12, cursor: 'pointer', textAlign: 'left', minWidth: 0,
+                        border: ativo ? `1.5px solid ${cor}` : `1.5px solid ${T.border}`,
+                        background: ativo ? `${cor}12` : T.surfaceAlt, boxShadow: ativo ? `0 6px 16px ${cor}22` : 'none', transition: 'all 0.15s',
+                      },
+                    },
+                      React.createElement('span', {
+                        style: {
+                          width: 34, height: 34, borderRadius: 10, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          color: '#fff', background: ativo ? cor : '#94A3B8',
+                        },
+                      }, React.createElement(FolderTree, { size: 17 })),
+                      React.createElement('div', { style: { minWidth: 0, flex: 1 } },
+                        React.createElement('div', { style: { fontSize: 13, fontWeight: 600, color: ativo ? cor : T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, d.nome),
+                        React.createElement('div', { style: { fontSize: 11, color: T.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, d.secretaria_nome || 'Sem secretaria'),
+                      ),
+                    );
+                  }),
+                ),
+          ),
+          destino === 'usuarios' && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 6 } },
+              React.createElement('div', { style: label }, 'Selecione os usuários'),
+              React.createElement('span', { style: { fontSize: 12, color: T.textMuted, fontWeight: 600 } }, `${selUsers.length} selecionado(s)`),
+            ),
+            operadores.length === 0
+              ? React.createElement('div', { style: { fontSize: 13, color: T.textMuted } }, 'Nenhum usuário cadastrado.')
+              : React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 8 } },
+                  operadores.map((o) => {
+                    const ativo = selUsers.includes(o.id);
+                    return React.createElement('button', {
+                      key: o.id, onClick: () => toggleUser(o.id), 'aria-pressed': ativo, title: o.email || o.nome,
+                      style: {
+                        display: 'flex', alignItems: 'center', gap: 10, padding: '9px 12px', borderRadius: 12, cursor: 'pointer', textAlign: 'left', minWidth: 0,
+                        border: ativo ? '1.5px solid #059669' : `1.5px solid ${T.border}`,
+                        background: ativo ? '#05966912' : T.surfaceAlt, boxShadow: ativo ? '0 6px 16px #05966922' : 'none', transition: 'all 0.15s',
+                      },
+                    },
+                      React.createElement('span', {
+                        style: {
+                          width: 34, height: 34, borderRadius: '50%', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: 12, fontWeight: 700, letterSpacing: 0.5, color: '#fff', background: ativo ? '#059669' : '#94A3B8',
+                        },
+                      }, iniciais(o.nome)),
+                      React.createElement('div', { style: { minWidth: 0, flex: 1 } },
+                        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+                          React.createElement('span', { style: { fontSize: 13, fontWeight: 600, color: ativo ? '#059669' : T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, o.nome),
+                          React.createElement('span', { title: o.online ? 'Online' : 'Offline', style: { width: 7, height: 7, borderRadius: '50%', flexShrink: 0, background: o.online ? '#10B981' : '#9CA3AF', boxShadow: o.online ? '0 0 0 3px #10B98122' : 'none' } }),
+                        ),
+                        React.createElement('div', { style: { fontSize: 11, color: T.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, o.email || o.papel || ''),
+                      ),
+                    );
+                  }),
+                ),
+          ),
+        ),
+      ),
+
+      // Conteúdo
+      React.createElement('div', { style: painel },
+        React.createElement('div', { style: painelHead },
+          React.createElement('div', { style: tituloPainel }, 'Conteúdo'),
+          React.createElement('span', { style: { fontSize: 12, color: T.textMuted, fontWeight: 600 } }, `${mensagem.length}/500`),
+        ),
+        React.createElement('div', { style: { padding: 22, display: 'flex', flexDirection: 'column', gap: 16 } },
+          React.createElement('div', null,
+            React.createElement('label', { style: label }, 'Título (opcional)'),
+            React.createElement('input', { value: titulo, onChange: (e) => setTitulo(e.target.value), placeholder: 'Ex.: TI / Aviso do sistema', style: campo, maxLength: 80 }),
+          ),
+          React.createElement('div', null,
+            React.createElement('label', { style: label }, 'Mensagem'),
+            React.createElement('textarea', { value: mensagem, onChange: (e) => setMensagem(e.target.value), rows: 4, placeholder: 'Ex.: Preciso que todos se desloguem e loguem novamente...', style: { ...campo, resize: 'vertical', fontFamily: T.font, minHeight: 110, marginBottom: 0 }, maxLength: 500 }),
+          ),
+        ),
+      ),
+
+      // Agendamento e duração
+      React.createElement('div', { style: painel },
+        React.createElement('div', { style: painelHead },
+          React.createElement('div', { style: tituloPainel }, 'Quando e por quanto tempo'),
+        ),
+        React.createElement('div', { style: { padding: 20, display: 'flex', flexDirection: 'column', gap: 16 } },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 } },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+              React.createElement('span', { style: { width: 36, height: 36, borderRadius: 10, background: agendar ? `${T.primary}18` : T.surfaceMuted, color: agendar ? T.primary : T.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 } },
+                React.createElement(CalendarClock, { size: 18 })),
+              React.createElement('div', null,
+                React.createElement('div', { style: { fontSize: 14, fontWeight: 600, color: T.text } }, 'Agendar envio'),
+                React.createElement('div', { style: { fontSize: 12, color: T.textMuted } }, 'Programar para uma data/hora futura'),
+              ),
+            ),
+            React.createElement(SwitchBtn, { checked: agendar, onChange: setAgendar, label: 'Agendar envio' }),
+          ),
+          agendar && React.createElement('input', {
+            type: 'datetime-local', value: agendarEm, onChange: (e) => setAgendarEm(e.target.value),
+            style: { ...input, width: '100%', minHeight: 44, fontFamily: T.font },
+          }),
+          React.createElement('div', { style: { borderTop: `1px solid ${T.border}`, paddingTop: 16, display: 'flex', flexDirection: 'column', gap: 8 } },
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 } },
+              React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+                React.createElement('span', { style: { width: 36, height: 36, borderRadius: 10, background: diario ? `${T.primary}18` : T.surfaceMuted, color: diario ? T.primary : T.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 } },
+                  React.createElement(CalendarClock, { size: 18 })),
+                React.createElement('div', null,
+                  React.createElement('div', { style: { fontSize: 14, fontWeight: 600, color: T.text } }, 'Repetir todo dia'),
+                  React.createElement('div', { style: { fontSize: 12, color: T.textMuted } }, 'O popup reaparece diariamente até a data de encerramento'),
+                ),
+              ),
+              React.createElement(SwitchBtn, { checked: diario, onChange: setDiario, label: 'Repetir todo dia' }),
+            ),
+            diario && React.createElement('input', {
+              type: 'datetime-local', value: encerraEm, onChange: (e) => setEncerraEm(e.target.value),
+              style: { ...input, width: '100%', minHeight: 44, fontFamily: T.font },
+            }),
+            !diario && React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+              React.createElement('span', { style: { width: 36, height: 36, borderRadius: 10, background: T.surfaceMuted, color: T.textMuted, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 } },
+                React.createElement(Timer, { size: 18 })),
+              React.createElement('div', null,
+                React.createElement('div', { style: { fontSize: 14, fontWeight: 600, color: T.text } }, 'Duração (opcional)'),
+                React.createElement('div', { style: { fontSize: 12, color: T.textMuted } }, 'Por quanto tempo o aviso fica ativo; após isso o popup some'),
+              ),
+            ),
+            !diario && React.createElement('input', {
+              type: 'number', min: 0, value: duracao || '', onChange: (e) => setDuracao(Math.max(0, Number(e.target.value))),
+              placeholder: 'Duração em minutos (0 = sem limite)', style: { ...input, width: '100%', minHeight: 44, fontFamily: T.font },
+            }),
+          ),
+        ),
+      ),
+
+      // Pré-visualização (coluna direita, fixa ao rolar)
+      ),
+      React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 22, minWidth: 0, ...(duasColunas ? { position: 'sticky', top: 16 } : {}) } },
+        React.createElement('div', { style: painel },
+        React.createElement('div', { style: painelHead },
+          React.createElement('div', { style: tituloPainel }, 'Pré-visualização'),
+          React.createElement('span', { style: { fontSize: 12, color: T.textMuted, fontWeight: 600 } }, `→ ${resumoAlvo()}`),
+        ),
+        React.createElement('div', { style: { padding: 24, display: 'flex', justifyContent: 'center', background: T.surfaceAlt } },
+          React.createElement('div', {
+            style: {
+              width: '100%', borderRadius: 18, overflow: 'hidden',
+              background: T.surface, boxShadow: '0 16px 40px rgba(0,0,0,0.12)',
+              border: importancia === 'alta' ? '1px solid #FECACA' : `1px solid ${T.border}`,
+            },
+          },
+            React.createElement('div', {
+              style: { height: 4, background: (IMPORTANCIA_OPCOES.find((o) => o.id === importancia) || IMPORTANCIA_OPCOES[1]).grad },
+            }),
+            React.createElement('div', {
+              style: { display: 'flex', alignItems: 'center', gap: 12, padding: '16px 18px', background: (IMPORTANCIA_OPCOES.find((o) => o.id === importancia) || IMPORTANCIA_OPCOES[1]).fundo || `${(IMPORTANCIA_OPCOES.find((o) => o.id === importancia) || IMPORTANCIA_OPCOES[1]).cor}12` },
+            },
+              React.createElement('span', { style: { width: 40, height: 40, borderRadius: 11, background: (IMPORTANCIA_OPCOES.find((o) => o.id === importancia) || IMPORTANCIA_OPCOES[1]).grad, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 } },
+                React.createElement(IMPORTANCIA_ICONE[importancia] || BellRing, { size: 22 })),
+              React.createElement('div', { style: { minWidth: 0 } },
+                React.createElement('div', { style: { fontSize: 14, fontWeight: 800, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, titulo.trim() || 'Aviso do administrador'),
+                React.createElement('div', { style: { fontSize: 11, color: T.textMuted } }, (IMPORTANCIA_OPCOES.find((o) => o.id === importancia) || IMPORTANCIA_OPCOES[1]).rotulo + ' · ' + (agendar ? 'Agendado' : 'Tempo real')),
+              ),
+            ),
+            React.createElement('div', { style: { padding: '18px 20px' } },
+              React.createElement('p', { style: { margin: 0, fontSize: 14.5, lineHeight: '21px', color: T.text, whiteSpace: 'pre-wrap', wordBreak: 'break-word' } },
+                mensagem.trim() || 'Sua mensagem aparecerá aqui em tempo real para os destinatários.'),
+              React.createElement('div', { style: { marginTop: 18, textAlign: 'right' } },
+                React.createElement('button', {
+                  style: { padding: '9px 20px', borderRadius: T.radiusSm, background: (IMPORTANCIA_OPCOES.find((o) => o.id === importancia) || IMPORTANCIA_OPCOES[1]).cor, color: '#fff', border: 'none', fontSize: 13, fontWeight: 700, cursor: 'pointer' },
+                }, importancia === 'alta' ? 'Entendi' : 'Fechar'),
+              ),
+            ),
+          ),
+          (destino === 'usuarios' && selUsers.length > 0) || (destino === 'departamentos' && selDeps.length > 0)
+            ? React.createElement('div', { style: { borderTop: `1px solid ${T.border}`, padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 8 } },
+                React.createElement('div', { style: { fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.6, color: T.textMuted } }, 'Destinatários'),
+                React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6 } },
+                  destino === 'usuarios'
+                    ? selUsers.map((id) => {
+                        const o = operadores.find((x) => x.id === id);
+                        return React.createElement('span', { key: id, title: o?.email || '', style: { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 600, padding: '4px 10px', borderRadius: 999, background: '#05966914', color: '#059669' } },
+                          React.createElement('span', { style: { width: 6, height: 6, borderRadius: '50%', background: o?.online ? '#10B981' : '#9CA3AF', flexShrink: 0 } }),
+                          o?.nome || 'Usuário removido',
+                        );
+                      })
+                    : selDeps.map((id) => {
+                        const d = departamentos.find((x) => x.id === id);
+                        const cor = d?.cor || '#7C3AED';
+                        return React.createElement('span', { key: id, style: { display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, fontWeight: 600, padding: '4px 10px', borderRadius: 999, background: `${cor}14`, color: cor } },
+                          React.createElement('span', { style: { width: 6, height: 6, borderRadius: '50%', background: cor, flexShrink: 0 } }),
+                          d ? (d.secretaria_nome ? `${d.secretaria_nome} › ${d.nome}` : d.nome) : 'Departamento removido',
+                        );
+                      }),
+                ),
+              )
+            : null,
+        ),
+        ),
+
+        React.createElement('div', { style: { display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'center' } },
+        React.createElement('button', {
+          onClick: enviar, disabled: enviando,
+          style: {
+            display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: 46, padding: '0 24px', borderRadius: 12, cursor: 'pointer', fontWeight: 700, fontSize: 14, color: '#fff', border: 'none',
+            background: enviando ? T.primary : 'linear-gradient(135deg, #7C3AED, #DB2777)', boxShadow: '0 8px 24px rgba(124,58,237,0.32)', opacity: enviando ? 0.7 : 1,
+          },
+        },
+          enviando ? React.createElement(Loader2, { size: 18, className: 'spin' }) : (feito ? React.createElement(Check, { size: 18 }) : React.createElement(agendar ? CalendarClock : Send, { size: 18 })),
+          enviando ? 'Enviando...' : (feito ? 'Tudo certo!' : (agendar ? 'Agendar aviso' : 'Enviar aviso agora'))),
+        ),
+      ),
+    ),
+
+    // ═══ ABA: HISTÓRICO ═══
+    abaAtual === 'historico' && React.createElement('div', { style: painel },
+      React.createElement('div', { style: painelHead },
+        React.createElement('div', { style: tituloPainel }, 'Histórico de avisos'),
+        React.createElement('span', { style: { fontSize: 12, color: T.textMuted } }, `${historico.length} registro(s)`),
+      ),
+      historico.length === 0
+        ? React.createElement('div', { style: { padding: 26, color: T.textMuted, fontSize: 13, textAlign: 'center' } }, 'Nenhum aviso enviado ainda.')
+        : historico.map((a) => {
+            const st = statusAviso(a);
+            const imp = IMPORTANCIA_OPCOES.find((o) => o.id === (a.importancia || 'media')) || IMPORTANCIA_OPCOES[1];
+            const Icon = IMPORTANCIA_ICONE[a.importancia || 'media'] || BellRing;
+            const resumo = a.destino === 'todos'
+              ? 'Todos'
+              : a.destino === 'departamentos'
+                ? (resumoNomes(a.departamento_ids, nomeDepartamento) || `${(a.departamento_ids || []).length} departamento(s)`)
+                : (resumoNomes(a.operador_ids, nomeOperador) || `${(a.operador_ids || []).length} usuário(s)`);
+            return React.createElement('div', { key: a.id, style: { padding: '16px 20px', borderTop: `1px solid ${T.border}`, display: 'flex', gap: 14, alignItems: 'flex-start' } },
+              React.createElement('span', { style: { width: 40, height: 40, borderRadius: 11, background: imp.fundo || `${imp.cor}12`, color: imp.cor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 } },
+                React.createElement(Icon, { size: 20 })),
+              React.createElement('div', { style: { flex: 1, minWidth: 0 } },
+                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
+                  React.createElement('span', { style: { fontSize: 14, fontWeight: 700, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, a.titulo || 'Aviso'),
+                  React.createElement('span', { style: { fontSize: 11, padding: '2px 9px', borderRadius: 999, fontWeight: 700, background: `${st.cor}18`, color: st.cor } }, st.rotulo),
+                  React.createElement('span', { style: { fontSize: 11, padding: '2px 9px', borderRadius: 999, fontWeight: 700, background: `${imp.cor}18`, color: imp.cor } }, imp.rotulo),
+                ),
+                React.createElement('div', { style: { marginTop: 6, fontSize: 13, color: T.textSecondary, lineHeight: '18px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' } }, a.mensagem),
+                React.createElement('div', { style: { marginTop: 8, fontSize: 11.5, color: T.textMuted, display: 'flex', gap: 14, flexWrap: 'wrap' } },
+                  React.createElement('span', { title: resumo, style: { maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, `Alvo: ${resumo}`),
+                  a.recorrencia === 'diario' && React.createElement('span', { style: { fontWeight: 700, color: T.primary } }, `Diário até ${fmtDataHora(a.encerra_em)}`),
+                  React.createElement('span', null, `Criado: ${fmtDataHora(a.criado_em)}`),
+                  a.agendar_em && React.createElement('span', null, `Agendado: ${fmtDataHora(a.agendar_em)}`),
+                  a.enviado_em && React.createElement('span', null, `Enviado: ${fmtDataHora(a.enviado_em)}`),
+                  a.expiracao_em && React.createElement('span', null, `Expira: ${fmtDataHora(a.expiracao_em)}`),
+                  a.criado_por_nome && React.createElement('span', null, `Por: ${a.criado_por_nome}`),
+                ),
+              ),
+              !a.enviado_em && a.ativo && React.createElement('button', {
+                onClick: () => cancelar(a.id), title: 'Cancelar agendamento',
+                style: { background: 'none', border: 'none', cursor: 'pointer', color: T.danger, padding: 6, display: 'flex', flexShrink: 0 },
+              }, React.createElement(Ban, { size: 17 })),
+            );
+          }),
+    ),
+
+    // Modal de confirmação
+    confirmar && React.createElement('div', {
+      role: 'alertdialog',
+      'aria-modal': 'true',
+      onClick: () => setConfirmar(null),
+      style: { position: 'fixed', inset: 0, zIndex: 3000, background: 'rgba(15, 23, 42, 0.55)', backdropFilter: 'blur(3px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 },
+    },
+      React.createElement('div', {
+        role: 'document',
+        onClick: (e) => e.stopPropagation(),
+        style: { width: '100%', maxWidth: 440, borderRadius: 18, overflow: 'hidden', background: T.surface, boxShadow: '0 24px 60px rgba(0,0,0,0.35)', display: 'flex', flexDirection: 'column' },
+      },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, padding: '18px 20px', borderBottom: `1px solid ${T.border}`, background: confirmar.tipo === 'enviar' ? '#FEF3E2' : '#FDECEC' } },
+          React.createElement('span', { style: { width: 44, height: 44, borderRadius: 12, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, color: '#fff', background: confirmar.tipo === 'enviar' ? 'linear-gradient(135deg, #7C3AED, #DB2777)' : '#DC2626' } },
+            React.createElement(confirmar.tipo === 'enviar' ? Send : confirmar.tipo === 'limpar' ? BellOff : Ban, { size: 22 })),
+          React.createElement('div', { style: { flex: 1, minWidth: 0 } },
+            React.createElement('div', { style: { fontSize: 15, fontWeight: 800, color: T.text } },
+              confirmar.tipo === 'enviar' ? (confirmar.payload.agendar_em ? 'Agendar aviso' : 'Enviar aviso agora')
+                : confirmar.tipo === 'limpar' ? 'Limpar popups'
+                : 'Cancelar aviso agendado'),
+            React.createElement('div', { style: { fontSize: 11.5, color: T.textMuted, marginTop: 2 } },
+              confirmar.tipo === 'enviar' ? 'Confirme os dados antes de prosseguir'
+                : confirmar.tipo === 'limpar' ? 'Esta ação fecha os popups abertos'
+                : 'O agendamento será descartado'),
+          ),
+        ),
+        React.createElement('div', { style: { padding: '20px 22px', display: 'flex', flexDirection: 'column', gap: 12 } },
+          confirmar.tipo === 'enviar' ? React.createElement(React.Fragment, null,
+            React.createElement('div', { style: { borderRadius: 12, border: `1px solid ${T.border}`, background: T.surfaceAlt, padding: '12px 14px' } },
+              React.createElement('div', { style: { fontSize: 14, fontWeight: 700, color: T.text, marginBottom: 4 } }, confirmar.payload.titulo || 'Aviso do administrador'),
+              React.createElement('div', { style: { fontSize: 13, color: T.textSecondary, lineHeight: '18px', whiteSpace: 'pre-wrap', wordBreak: 'break-word' } }, confirmar.payload.mensagem),
+            ),
+            React.createElement('div', { style: { fontSize: 12.5, color: T.textMuted, display: 'flex', flexDirection: 'column', gap: 4 } },
+              React.createElement('span', null, `Público: ${resumoAlvo()}`),
+              confirmar.payload.agendar_em && React.createElement('span', null, `Agendado para: ${fmtDataHora(confirmar.payload.agendar_em)}`),
+              confirmar.payload.recorrencia === 'diario' && React.createElement('span', null, `Repete todo dia até ${fmtDataHora(confirmar.payload.encerra_em)}`),
+              !confirmar.payload.agendar_em && confirmar.payload.duracao_min > 0 && React.createElement('span', null, `Expira após ${confirmar.payload.duracao_min} minuto(s)`),
+            ),
+          ) : React.createElement('p', { style: { margin: 0, fontSize: 14, lineHeight: '20px', color: T.text } },
+            confirmar.tipo === 'limpar'
+              ? 'Remover os popups abertos deste aviso em todos os destinatários?'
+              : 'Cancelar este aviso agendado? O agendamento será descartado.'),
+        ),
+        React.createElement('div', { style: { padding: '0 22px 20px', display: 'flex', justifyContent: 'flex-end', gap: 10 } },
+          React.createElement('button', {
+            onClick: () => setConfirmar(null),
+            style: { padding: '10px 20px', borderRadius: T.radiusSm, background: T.surfaceMuted, color: T.textSecondary, border: `1px solid ${T.border}`, fontSize: 13, fontWeight: 700, cursor: 'pointer' },
+          }, 'Cancelar'),
+          React.createElement('button', {
+            onClick: () => {
+              if (confirmar.tipo === 'enviar') executarEnvio(confirmar.payload);
+              else if (confirmar.tipo === 'limpar') executarLimpar();
+              else if (confirmar.tipo === 'cancelar') executarCancelar(confirmar.id);
+            },
+            style: { padding: '10px 20px', borderRadius: T.radiusSm, background: confirmar.tipo === 'enviar' ? 'linear-gradient(135deg, #7C3AED, #DB2777)' : '#DC2626', color: '#fff', border: 'none', fontSize: 13, fontWeight: 700, cursor: 'pointer', boxShadow: '0 8px 20px rgba(124,58,237,0.25)' },
+          }, confirmar.tipo === 'enviar' ? 'Confirmar envio' : 'Confirmar'),
+        ),
+      ),
+    ),
   );
 }

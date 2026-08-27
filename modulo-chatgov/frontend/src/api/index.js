@@ -259,6 +259,30 @@ export async function fetchBloqueios() {
 export async function criarBloqueio(body) {
   return jsonReq('/api/bloqueios', 'POST', body);
 }
+export async function fetchAvisoAtual() {
+  const res = await fetch('/api/avisos', { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!res.ok) throw new Error('Erro ao buscar aviso');
+  return res.json();
+}
+export async function enviarAvisoGlobal(body) {
+  return jsonReq('/api/avisos/enviar', 'POST', body);
+}
+export async function limparAvisoGlobal() {
+  return jsonReq('/api/avisos/limpar', 'POST');
+}
+export async function fetchHistoricoAvisos() {
+  const res = await fetch('/api/avisos/historico', { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!res.ok) throw new Error('Erro ao buscar histórico de avisos');
+  return res.json();
+}
+export async function cancelarAviso(id) {
+  return jsonReq(`/api/avisos/${id}/cancelar`, 'POST');
+}
+export async function fetchAvisoAtivo() {
+  const res = await fetch('/api/avisos/ativo', { headers: { Authorization: `Bearer ${getToken()}` } });
+  if (!res.ok) throw new Error('Erro ao buscar aviso');
+  return res.json();
+}
 export async function removerBloqueio(id) {
   return jsonReq(`/api/bloqueios/${id}`, 'DELETE');
 }

@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Send, Smile, Reply, MoreHorizontal, Pin, Trash2, Edit3, Forward, Paperclip, X, CheckCheck, ArrowDown, Undo2, Image as ImageIcon, Mic, Square, Play, Pause, RotateCcw, Search, UserPlus, UserMinus, LogOut, BarChart2, ArrowLeft } from 'lucide-react';
+import { Send, Smile, Reply, MoreHorizontal, Pin, Trash2, Edit3, Forward, Paperclip, X, CheckCheck, ArrowDown, Undo2, Image as ImageIcon, Mic, Square, Play, Pause, RotateCcw, Search, UserPlus, UserMinus, LogOut, BarChart2, ArrowLeft, Printer } from 'lucide-react';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
 import { fetchMensagensInternas, fetchCanaisInternos, fetchOperadores, buscarMensagensCanal, adicionarMembrosCanal, removerMembroCanal, sairCanal, criarEnquete } from '../api';
 import { fetchMensagensFixadas, uploadArquivoApi } from '../api/evolucoes';
 import { T } from '../theme';
 import { BolhaMensagem } from './BolhaMensagem';
+import { urlVisualizavel } from './MediaPreview';
 import { normalizarMsg, normalizarMensagens, normalizarCanal } from '../utils/normalizar';
-import { encodeFileBase64, mimeParaTipo, agruparMensagens, formatarHora, mesmaData, formatarDataSeparador } from '../utils/arquivo';
+import { encodeFileBase64, mimeParaTipo, agruparMensagens, formatarHora, mesmaData, formatarDataSeparador, formatarTamanho } from '../utils/arquivo';
 import { SeparadorData } from './SeparadorData';
 
 const EMOJIS_RAPIDOS = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '👏', '🎉', '🤔', '✅', '👀'];
@@ -30,6 +31,13 @@ function blobParaBase64(blob) {
     reader.onerror = reject;
     reader.readAsDataURL(blob);
   });
+}
+
+// Escapa HTML para injetar com segurança na janela de impressão.
+function escapeHtml(s) {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 export function PainelChatInternoAvancado({ canal, breakpoint, onVoltar }) {
@@ -751,6 +759,151 @@ export function PainelChatInternoAvancado({ canal, breakpoint, onVoltar }) {
 
   const canaisDestino = canaisTodos.filter((c) => c.id !== canal.id);
 
+  // Abre uma janela com a transcrição legível do chat para impressão. Fotos,
+  // PDFs e áudios anexados são representados (imagens embutidas, demais mídias
+  // como cartões com link), preservando o contexto da conversa.
+  const imprimirConversa = () => {
+    const lista = mensagens;
+    if (!lista.length) {
+      alert('Não há mensagens para imprimir neste chat.');
+      return;
+    }
+
+    const w = window.open('', '_blank', 'width=940,height=720');
+    if (!w) {
+      alert('Permita pop-ups para imprimir o chat.');
+      return;
+    }
+
+    const fmtDataHora = (ts) => {
+      try {
+        const d = new Date(ts);
+        return `${d.toLocaleDateString('pt-BR')}, ${d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`;
+      } catch { return ''; }
+    };
+
+    const primeira = lista[0]?.criado_em || lista[0]?.criadoEm;
+    const ultima = lista[lista.length - 1]?.criado_em || lista[lista.length - 1]?.criadoEm;
+    const periodoPrint = primeira && ultima ? `${fmtDataHora(primeira)} a ${fmtDataHora(ultima)}` : '';
+    const qtdAnexos = lista.filter((m) => m.media_url || m.mediaUrl).length;
+    const tipoCanal = canal.tipo === 'dm' ? 'Mensagem direta' : 'Canal / Grupo';
+    const participantesPrint = (canal.membros || []).map((m) => m.nome).filter(Boolean).join(', ') || String((canal.membros || []).length);
+
+    const campoTxt = (rotulo, valor) => valor
+      ? `<div class="campo"><span class="rotulo">${escapeHtml(rotulo)}</span><span class="valor">${escapeHtml(valor)}</span></div>`
+      : '';
+
+    let htmlMensagens = '';
+    lista.forEach((msg, i) => {
+      const anterior = lista[i - 1];
+      const ts = msg.criado_em || msg.criadoEm;
+      const tsAnt = anterior?.criado_em || anterior?.criadoEm;
+      const sep = (!anterior || !mesmaData(tsAnt, ts))
+        ? `<div class="data"><span class="pill">${escapeHtml(formatarDataSeparador(ts))}</span></div>`
+        : '';
+      const remetente = msg.remetente_nome || msg.remetenteNome || (msg._isMe ? 'Eu' : 'Operador');
+      const hora = formatarHora(ts);
+      const lado = msg._isMe ? 'out' : 'in';
+
+      let corpo = '';
+      if (msg.excluida) {
+        corpo = '<em class="muted">Mensagem excluída</em>';
+      } else {
+        if (msg.conteudo && msg.tipo !== 'contato') {
+          corpo += `<p>${escapeHtml(msg.conteudo).replace(/\n/g, '<br/>')}</p>`;
+        }
+        if (msg.tipo === 'contato') {
+          corpo += '<p>📇 Contato compartilhado</p>';
+        }
+        const mediaUrl = urlVisualizavel(msg.media_url || msg.mediaUrl);
+        if (mediaUrl) {
+          const mime = (msg.media_mime || msg.mediaMime || '').toLowerCase();
+          const nomeArq = msg.media_nome || msg.mediaNome || 'arquivo';
+          const tamanho = formatarTamanho(msg.media_tamanho);
+          const metaTamanho = tamanho ? ` · ${tamanho}` : '';
+          if (mime.startsWith('image/')) {
+            const ext = mime.split('/')[1] || '';
+            corpo += `<img src="${escapeHtml(mediaUrl)}" alt="${escapeHtml(nomeArq)}" class="img"/>`;
+            corpo += `<div class="img-leg">🖼️ ${escapeHtml(nomeArq)}${ext ? ` (${ext.toUpperCase()})` : ''}</div>`;
+          } else if (mime.includes('pdf')) {
+            corpo += `<div class="anexo"><div class="bx">📄</div><div class="info"><div class="nome">${escapeHtml(nomeArq)}</div><div class="meta">PDF${metaTamanho}</div><a class="link" href="${escapeHtml(mediaUrl)}" target="_blank" rel="noopener noreferrer">Abrir documento</a></div></div>`;
+          } else if (mime.startsWith('audio/')) {
+            const ext = mime.split('/')[1] || 'OGG';
+            corpo += `<div class="anexo"><div class="bx">🎤</div><div class="info"><div class="nome">${escapeHtml(nomeArq)}</div><div class="meta">${escapeHtml(ext.toUpperCase())}${metaTamanho}</div><a class="link" href="${escapeHtml(mediaUrl)}" target="_blank" rel="noopener noreferrer">Ouvir áudio</a></div></div>`;
+          } else if (mime.startsWith('video/')) {
+            corpo += `<div class="anexo"><div class="bx">🎬</div><div class="info"><div class="nome">${escapeHtml(nomeArq)}</div><div class="meta">Vídeo${metaTamanho}</div><a class="link" href="${escapeHtml(mediaUrl)}" target="_blank" rel="noopener noreferrer">Abrir vídeo</a></div></div>`;
+          } else {
+            corpo += `<div class="anexo"><div class="bx">📎</div><div class="info"><div class="nome">${escapeHtml(nomeArq)}</div><div class="meta">${escapeHtml(mime || 'arquivo')}${metaTamanho}</div><a class="link" href="${escapeHtml(mediaUrl)}" target="_blank" rel="noopener noreferrer">Baixar arquivo</a></div></div>`;
+          }
+        }
+      }
+
+      htmlMensagens += `${sep}<div class="msg ${lado}"><div class="topo"><span class="autor">${escapeHtml(remetente)}</span><span class="hora">${escapeHtml(hora)}</span></div>${corpo}</div>`;
+    });
+
+    const emitidoEm = new Date().toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+    w.document.write(`<!DOCTYPE html>
+<html lang="pt-BR"><head><meta charset="utf-8"/>
+<title>${escapeHtml(`Chat interno - ${nome}`)}</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; color: #111; margin: 0; background: #fff; }
+  .cab { background: linear-gradient(135deg, #0f172a, #334155); color: #fff; padding: 22px 30px 18px; }
+  .cab .kicker { font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; opacity: .75; margin-bottom: 5px; }
+  .cab h1 { margin: 0; font-size: 21px; font-weight: 800; line-height: 1.25; }
+  .cab .sub { font-size: 12.5px; opacity: .9; margin-top: 3px; }
+  .grade { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 10px; padding: 18px 30px 4px; }
+  .campo { border: 1px solid #e5e7eb; border-radius: 10px; padding: 9px 12px; background: #fff; }
+  .campo .rotulo { display: block; font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .6px; color: #94a3b8; margin-bottom: 2px; }
+  .campo .valor { font-size: 13px; font-weight: 600; color: #0f172a; word-break: break-word; }
+  .lista { padding: 6px 30px 24px; }
+  .data { text-align: center; margin: 16px 0 8px; }
+  .data .pill { display: inline-block; padding: 4px 13px; border-radius: 999px; background: #eef2f7; color: #475569; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; }
+  .msg { margin: 0 0 6px; padding: 8px 12px; border-radius: 10px; break-inside: avoid; }
+  .msg.in { background: #f8fafc; border-left: 3px solid #2563eb; }
+  .msg.out { background: #f0fdf4; border-left: 3px solid #22c55e; }
+  .msg .topo { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .msg .autor { font-size: 12px; font-weight: 700; }
+  .msg.in .autor { color: #2563eb; }
+  .msg.out .autor { color: #16a34a; }
+  .msg .hora { font-size: 10.5px; color: #64748b; white-space: nowrap; }
+  .msg p { margin: 4px 0 0; font-size: 13.5px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+  .muted { color: #94a3b8; font-style: italic; }
+  .img { display: block; max-width: 380px; max-height: 480px; width: 100%; object-fit: contain; border: 1px solid #e2e8f0; border-radius: 8px; margin: 6px 0 2px; break-inside: avoid; }
+  .img-leg { font-size: 10.5px; color: #64748b; margin-top: 2px; }
+  .anexo { display: flex; align-items: flex-start; gap: 10px; border: 1px solid #e2e8f0; background: #fff; border-radius: 10px; padding: 10px 12px; margin-top: 6px; max-width: 380px; break-inside: avoid; }
+  .anexo .bx { width: 36px; height: 36px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 18px; background: #f1f5f9; flex-shrink: 0; }
+  .anexo .info { min-width: 0; }
+  .anexo .nome { font-size: 12.5px; font-weight: 600; color: #0f172a; word-break: break-word; }
+  .anexo .meta { font-size: 11px; color: #64748b; margin: 1px 0 3px; }
+  .anexo .link { font-size: 11.5px; color: #2563eb; text-decoration: underline; }
+  .rodape { border-top: 1px solid #e2e8f0; margin-top: 8px; padding: 12px 30px 28px; font-size: 10.5px; color: #94a3b8; display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+  @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } .cab { break-after: avoid; } .grade { break-after: avoid; } }
+</style></head>
+<body>
+  <div class="cab">
+    <div class="kicker">GovChat · Chat interno</div>
+    <h1>${escapeHtml(nome)}</h1>
+    ${canal?.descricao ? `<div class="sub">${escapeHtml(canal.descricao)}</div>` : ''}
+  </div>
+  <div class="grade">
+    ${campoTxt('Conversa', nome)}
+    ${campoTxt('Tipo', tipoCanal)}
+    ${campoTxt('Participantes', participantesPrint)}
+    ${campoTxt('Período', periodoPrint)}
+  </div>
+  <div class="lista">${htmlMensagens}</div>
+  <div class="rodape">
+    <span>${lista.length} mensagem${lista.length !== 1 ? 's' : ''} · ${qtdAnexos} anexo${qtdAnexos !== 1 ? 's' : ''}</span>
+    <span>Impresso em ${escapeHtml(emitidoEm)}</span>
+  </div>
+</body></html>`);
+    w.document.close();
+    w.focus();
+    setTimeout(() => w.print(), 450);
+  };
+
   return React.createElement('div', {
     style: { flex: 1, display: 'flex', flexDirection: 'column', height: '100%', background: T.bg, position: 'relative' },
     onDragOver: handleDragOver, onDragLeave: handleDragLeave, onDrop: handleDrop, onPaste: handlePaste,
@@ -787,6 +940,12 @@ export function PainelChatInternoAvancado({ canal, breakpoint, onVoltar }) {
         'aria-label': 'Buscar mensagens',
         style: { background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 6, display: 'flex', color: modoBusca ? T.primary : T.textMuted },
       }, React.createElement(Search, { size: 18 })),
+      React.createElement('button', {
+        onClick: imprimirConversa,
+        'aria-label': 'Imprimir conversa',
+        title: 'Imprimir conversa — transcrição com mídias anexadas',
+        style: { background: 'none', border: 'none', cursor: 'pointer', padding: 6, borderRadius: 6, display: 'flex', color: T.textMuted },
+      }, React.createElement(Printer, { size: 18 })),
       React.createElement('button', {
         onClick: () => setShowGrupoInfo((v) => !v),
         'aria-label': 'Informacoes do canal',

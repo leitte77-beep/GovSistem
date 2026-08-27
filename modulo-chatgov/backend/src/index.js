@@ -1011,9 +1011,17 @@ app.use('/api', rateLimiter);
          JOIN canal_membros cm ON cm.canal_id = ci.id
          JOIN operadores o ON o.id = cm.operador_id
          WHERE ci.tenant_id = $1
+           AND (
+            $3 = true
+            OR ci.criado_por = $2
+            OR EXISTS (
+              SELECT 1 FROM canal_membros cmm
+              WHERE cmm.canal_id = ci.id AND cmm.operador_id = $2
+            )
+           )
          GROUP BY ci.id
          ORDER BY ci.criado_em DESC`,
-        [op.tenantId, op.id]
+        [op.tenantId, op.id, op.papel === 'admin']
       );
       res.json(canais);
     } catch (err) {
@@ -1055,10 +1063,13 @@ app.use('/api', rateLimiter);
       const { listarMensagensCanal, assertMembroCanal, getReacoes } = await import('./services/mensagens.js');
       const antesDe = req.query.antesDe || null;
       const limite = req.query.limite || 50;
-      try {
-        await assertMembroCanal(op.tenantId, id, op.id);
-      } catch (e) {
-        return res.status(403).json({ erro: e.message });
+      // Admin pode ver qualquer canal; demais usuários só os que participam.
+      if (op.papel !== 'admin') {
+        try {
+          await assertMembroCanal(op.tenantId, id, op.id);
+        } catch (e) {
+          return res.status(403).json({ erro: e.message });
+        }
       }
       const mensagens = await listarMensagensCanal(op.tenantId, id, op.id, { antesDe, limite });
       // Inclui reações nas mensagens do histórico
@@ -1899,6 +1910,185 @@ app.use('/api', rateLimiter);
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ erro: 'Erro ao remover bloqueio' });
+    }
+  });
+
+  // ─── Avisos globais (popup do admin para atendentes online) ───
+  // Emite o aviso para o público-alvo (todo socket ingressa na sala
+  // `operador:{id}`; só os que têm sala de operador recebem).
+  const emitirAviso = async (tenantId, aviso) => {
+    const payload = {
+      id: aviso.id, titulo: aviso.titulo, mensagem: aviso.mensagem,
+      criado_em: aviso.criado_em, importancia: aviso.importancia || 'media',
+      expiracao_em: aviso.expiracao_em || null,
+      recorrencia: aviso.recorrencia || 'unico',
+      encerra_em: aviso.encerra_em || null,
+    };
+    const destino = aviso.destino || 'todos';
+    if (destino === 'usuarios') {
+      for (const oid of (aviso.operador_ids || [])) io.to(`operador:${oid}`).emit('aviso:global', payload);
+      return;
+    }
+    if (destino === 'departamentos') {
+      const membros = await db.manyOrNone(
+        'SELECT DISTINCT operador_id FROM operador_departamentos WHERE departamento_id = ANY($1) AND tenant_id = $2',
+        [(aviso.departamento_ids || []), tenantId]
+      );
+      for (const m of membros) io.to(`operador:${m.operador_id}`).emit('aviso:global', payload);
+      return;
+    }
+    io.to(`tenant:${tenantId}`).emit('aviso:global', payload);
+  };
+
+  // Busca o último aviso do tenant (para preencher o formulário do admin).
+  app.get('/api/avisos', requirePapel('admin'), async (req, res) => {
+    try {
+      const op = req.operador;
+      const aviso = await db.oneOrNone(
+        'SELECT * FROM avisos_globais WHERE tenant_id = $1 ORDER BY criado_em DESC LIMIT 1',
+        [op.tenantId]
+      );
+      res.json(aviso || null);
+    } catch (err) {
+      res.status(500).json({ erro: 'Erro ao buscar aviso' });
+    }
+  });
+
+  // Histórico de avisos do órgão (admin).
+  app.get('/api/avisos/historico', requirePapel('admin'), async (req, res) => {
+    try {
+      const op = req.operador;
+      const itens = await db.manyOrNone(
+        `SELECT a.*, o.nome AS criado_por_nome
+         FROM avisos_globais a
+         LEFT JOIN operadores o ON o.id = a.criado_por
+         WHERE a.tenant_id = $1
+         ORDER BY a.criado_em DESC
+         LIMIT 100`,
+        [op.tenantId]
+      );
+      res.json(itens);
+    } catch (err) {
+      res.status(500).json({ erro: 'Erro ao buscar histórico de avisos' });
+    }
+  });
+
+  // Qualquer atendente autenticado busca o aviso ativo — usado no login para
+  // exibir quem entrou depois do envio. Só retorna se já foi enviado, não
+  // expirou e o usuário é um dos destinatários.
+  app.get('/api/avisos/ativo', async (req, res) => {
+    try {
+      const op = req.operador;
+      const aviso = await db.oneOrNone(
+        `SELECT id, titulo, mensagem, criado_em, importancia, expiracao_em, destino, departamento_ids, operador_ids
+         FROM avisos_globais
+         WHERE tenant_id = $1 AND ativo = true AND enviado_em IS NOT NULL
+           AND (expiracao_em IS NULL OR expiracao_em > now())
+           AND (encerra_em IS NULL OR encerra_em > now())
+         ORDER BY enviado_em DESC NULLS LAST LIMIT 1`,
+        [op.tenantId]
+      );
+      if (!aviso) return res.json(null);
+      const destino = aviso.destino || 'todos';
+      if (destino === 'todos') return res.json(aviso);
+      if (destino === 'usuarios') {
+        return res.json((aviso.operador_ids || []).includes(op.id) ? aviso : null);
+      }
+      // destino === 'departamentos'
+      const deps = await db.manyOrNone(
+        'SELECT departamento_id FROM operador_departamentos WHERE operador_id = $1 AND tenant_id = $2',
+        [op.id, op.tenantId]
+      );
+      const meusDeps = deps.map((d) => d.departamento_id);
+      const alvo = (aviso.departamento_ids || []).some((did) => meusDeps.includes(did));
+      return res.json(alvo ? aviso : null);
+    } catch (err) {
+      res.status(500).json({ erro: 'Erro ao buscar aviso' });
+    }
+  });
+
+  // Envia (ou agenda) um aviso para o público-alvo do órgão.
+  app.post('/api/avisos/enviar', requirePapel('admin'), async (req, res) => {
+    try {
+      const op = req.operador;
+      const { titulo, mensagem, destino, departamento_ids, operador_ids, importancia, agendar_em, duracao_min, recorrencia, encerra_em } = req.body || {};
+      const texto = String(mensagem || '').trim();
+      if (!texto) return res.status(400).json({ erro: 'Informe a mensagem do aviso.' });
+      if (texto.length > 500) return res.status(400).json({ erro: 'Aviso muito longo (máx. 500 caracteres).' });
+      const tituloNorm = titulo ? String(titulo).trim().slice(0, 80) : null;
+      const alvo = ['todos', 'departamentos', 'usuarios'].includes(destino) ? destino : 'todos';
+      const depIds = (Array.isArray(departamento_ids) ? departamento_ids : []).filter(Boolean);
+      const opIds = (Array.isArray(operador_ids) ? operador_ids : []).filter(Boolean);
+      const imp = ['baixa', 'media', 'alta'].includes(importancia) ? importancia : 'media';
+      if (alvo === 'departamentos' && depIds.length === 0) {
+        return res.status(400).json({ erro: 'Selecione ao menos um departamento.' });
+      }
+      if (alvo === 'usuarios' && opIds.length === 0) {
+        return res.status(400).json({ erro: 'Selecione ao menos um usuário.' });
+      }
+
+      const agora = new Date();
+      const agendar = agendar_em && !Number.isNaN(new Date(agendar_em).getTime()) ? new Date(agendar_em) : null;
+      const agendado = agendar && agendar.getTime() > agora.getTime();
+      const duracaoMin = Number(duracao_min);
+      const duracaoValida = Number.isFinite(duracaoMin) && duracaoMin > 0;
+      const base = agendado ? agendar : agora;
+      const expiracao = duracaoValida ? new Date(base.getTime() + duracaoMin * 60000) : null;
+      const enviadoEm = agendado ? null : agora;
+
+      // Recorrência diária: o aviso reaparece todo dia até encerra_em.
+      const encerraDate = encerra_em && !Number.isNaN(new Date(encerra_em).getTime()) ? new Date(encerra_em) : null;
+      const diario = recorrencia === 'diario';
+      if (diario && !encerraDate) {
+        return res.status(400).json({ erro: 'Informe a data/hora de encerramento do aviso diário.' });
+      }
+      if (diario && encerraDate && encerraDate.getTime() <= (agendado ? agendar : agora).getTime()) {
+        return res.status(400).json({ erro: 'A data de encerramento deve ser posterior ao início do aviso.' });
+      }
+      const recorrenciaFinal = diario ? 'diario' : 'unico';
+      const expiracaoFinal = diario ? null : expiracao;
+
+      const aviso = await db.one(
+        `INSERT INTO avisos_globais (tenant_id, titulo, mensagem, ativo, criado_por, destino, departamento_ids, operador_ids, importancia, agendar_em, expiracao_em, enviado_em, recorrencia, encerra_em, ultimo_emitido_em)
+         VALUES ($1, $2, $3, true, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
+         RETURNING *`,
+        [op.tenantId, tituloNorm, texto, op.id, alvo, JSON.stringify(depIds), JSON.stringify(opIds), imp, agendado ? agendar : null, expiracaoFinal, enviadoEm, recorrenciaFinal, diario ? encerraDate : null, agendado ? null : agora]
+      );
+
+      if (!agendado) {
+        await emitirAviso(op.tenantId, aviso);
+      }
+      res.json({ ok: true, aviso, agendado });
+    } catch (err) {
+      console.error('[Aviso] enviar error:', err.message);
+      res.status(500).json({ erro: 'Erro ao enviar aviso' });
+    }
+  });
+
+  // Cancela um aviso agendado (ou remove um ativo) e fecha os popups abertos.
+  app.post('/api/avisos/:id/cancelar', requirePapel('admin'), async (req, res) => {
+    try {
+      const op = req.operador;
+      const { id } = req.params;
+      const aviso = await db.oneOrNone('SELECT tenant_id FROM avisos_globais WHERE id = $1', [id]);
+      if (!aviso || aviso.tenant_id !== op.tenantId) return res.status(404).json({ erro: 'Aviso não encontrado' });
+      await db.none('UPDATE avisos_globais SET ativo = false, atualizado_em = now() WHERE id = $1', [id]);
+      io.to(`tenant:${op.tenantId}`).emit('aviso:global:limpar', { avisoId: id });
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ erro: 'Erro ao cancelar aviso' });
+    }
+  });
+
+  // Desativa o aviso atual e remove os popups abertos nos clientes.
+  app.post('/api/avisos/limpar', requirePapel('admin'), async (req, res) => {
+    try {
+      const op = req.operador;
+      await db.none('UPDATE avisos_globais SET ativo = false, atualizado_em = now() WHERE tenant_id = $1 AND ativo = true', [op.tenantId]);
+      io.to(`tenant:${op.tenantId}`).emit('aviso:global:limpar', {});
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ erro: 'Erro ao limpar aviso' });
     }
   });
 
@@ -3039,6 +3229,80 @@ app.use('/api', rateLimiter);
 
   const io = iniciarGateway(server, wa, storage);
 
+  // Loop de avisos: dispara agendados que venceram e expira avisos cuja
+  // duração acabou (removendo os popups nos clientes).
+  const iniciarAvisosLoop = () => {
+    const emitirAgora = async (aviso) => {
+      const payload = {
+        id: aviso.id, titulo: aviso.titulo, mensagem: aviso.mensagem,
+        criado_em: aviso.criado_em, importancia: aviso.importancia || 'media',
+        expiracao_em: aviso.expiracao_em || null,
+        recorrencia: aviso.recorrencia || 'unico',
+        encerra_em: aviso.encerra_em || null,
+      };
+      const destino = aviso.destino || 'todos';
+      if (destino === 'usuarios') {
+        for (const oid of (aviso.operador_ids || [])) io.to(`operador:${oid}`).emit('aviso:global', payload);
+        return;
+      }
+      if (destino === 'departamentos') {
+        const membros = await db.manyOrNone(
+          'SELECT DISTINCT operador_id FROM operador_departamentos WHERE departamento_id = ANY($1) AND tenant_id = $2',
+          [(aviso.departamento_ids || []), aviso.tenant_id]
+        );
+        for (const m of membros) io.to(`operador:${m.operador_id}`).emit('aviso:global', payload);
+        return;
+      }
+      io.to(`tenant:${aviso.tenant_id}`).emit('aviso:global', payload);
+    };
+
+    const executar = async () => {
+      try {
+        // Avisos agendados que venceram -> emite e marca como enviado.
+        const prontos = await db.manyOrNone(
+          `SELECT * FROM avisos_globais
+           WHERE ativo = true AND enviado_em IS NULL AND agendar_em IS NOT NULL AND agendar_em <= now()
+           LIMIT 50`
+        );
+        for (const a of prontos) {
+          await emitirAgora(a);
+          await db.none('UPDATE avisos_globais SET enviado_em = now(), ultimo_emitido_em = now() WHERE id = $1', [a.id]);
+        }
+        // Avisos ativos que expiraram -> desativa e remove popups.
+        const expirados = await db.manyOrNone(
+          `SELECT id, tenant_id FROM avisos_globais
+           WHERE ativo = true AND (
+             (expiracao_em IS NOT NULL AND expiracao_em <= now())
+             OR (recorrencia = 'diario' AND encerra_em IS NOT NULL AND encerra_em <= now())
+           )
+           LIMIT 50`
+        );
+        for (const a of expirados) {
+          await db.none('UPDATE avisos_globais SET ativo = false, atualizado_em = now() WHERE id = $1', [a.id]);
+          io.to(`tenant:${a.tenant_id}`).emit('aviso:global:limpar', { avisoId: a.id });
+        }
+        // Avisos diários: reemitir 1x por dia (para quem ficou com o app aberto).
+        const diarios = await db.manyOrNone(
+          `SELECT * FROM avisos_globais
+           WHERE ativo = true AND recorrencia = 'diario' AND enviado_em IS NOT NULL
+             AND (encerra_em IS NULL OR encerra_em > now())
+             AND (ultimo_emitido_em IS NULL OR ultimo_emitido_em < date_trunc('day', now()))
+           LIMIT 50`
+        );
+        for (const a of diarios) {
+          await emitirAgora(a);
+          await db.none('UPDATE avisos_globais SET ultimo_emitido_em = now() WHERE id = $1', [a.id]);
+        }
+      } catch (err) {
+        console.error('[Avisos] loop error:', err.message);
+      }
+    };
+
+    const interval = setInterval(executar, 15000);
+    interval.unref?.();
+    executar();
+  };
+
   server.listen(config.port, async () => {
     console.log(`[ChatGov] Server running on port ${config.port}`);
 
@@ -3050,6 +3314,7 @@ app.use('/api', rateLimiter);
     }
 
     iniciarLimpezaConversas(storage);
+    iniciarAvisosLoop();
   });
 
   process.on('SIGTERM', async () => {

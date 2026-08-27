@@ -50,6 +50,7 @@ export default function UsersPage() {
   const [loading, setLoading] = useState(true);
   const [confirm, setConfirm] = useState<{ user: TenantUserRow; action: Action } | null>(null);
   const [openMenu, setOpenMenu] = useState<string | null>(null);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [busyAction, setBusyAction] = useState(false);
   const { toast } = useToast();
 
@@ -72,6 +73,17 @@ export default function UsersPage() {
     const t = setTimeout(load, search ? 300 : 0);
     return () => clearTimeout(t);
   }, [load]);
+
+  useEffect(() => {
+    if (!openMenu) return;
+    const close = () => setOpenMenu(null);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [openMenu]);
 
   const stats = useMemo(() => {
     const active = users.filter((u) => u.membership_active).length;
@@ -323,15 +335,25 @@ export default function UsersPage() {
                       <div className="fixed inset-0 z-10" onClick={() => setOpenMenu(null)} />
                     )}
                     <button
-                      onClick={() => setOpenMenu(openMenu === u.user_id ? null : u.user_id)}
+                      onClick={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        setMenuPos({
+                          top: rect.bottom + 4,
+                          left: Math.max(rect.right - 240, 8),
+                        });
+                        setOpenMenu(openMenu === u.user_id ? null : u.user_id);
+                      }}
                       className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-outline-variant text-on-surface-variant transition hover:bg-surface-container-low hover:text-on-surface"
                       aria-label="Ações do usuário"
                       title="Ações"
                     >
                       <MoreVertical size={16} />
                     </button>
-                    {openMenu === u.user_id && (
-                      <div className="absolute right-0 top-9 z-20 w-60 overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest shadow-lg">
+                    {openMenu === u.user_id && menuPos && (
+                      <div
+                        className="fixed z-50 w-60 overflow-hidden rounded-xl border border-outline-variant bg-surface-container-lowest shadow-lg"
+                        style={{ top: menuPos.top, left: menuPos.left }}
+                      >
                         <div className="border-b px-3 py-2 text-xs font-semibold text-on-surface-variant">
                           {u.name}
                         </div>
