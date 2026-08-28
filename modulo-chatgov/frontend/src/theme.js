@@ -8,8 +8,8 @@ var _LIGHT = {
   borderStrong: '#D1D5DB',
 
   text: '#111827',
-  textSecondary: '#667085',
-  textMuted: '#8696a0',
+  textSecondary: '#3F4A5A',
+  textMuted: '#5B6573',
 
   primary: '#2563eb',
   primaryHover: '#1d4ed8',

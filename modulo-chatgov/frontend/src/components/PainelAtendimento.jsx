@@ -1409,7 +1409,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
         onClick: () => { setShowBusca((v) => !v); if (showBusca) setTermoBusca(''); },
         'aria-label': 'Buscar nesta conversa', 'aria-pressed': showBusca,
         title: 'Buscar nesta conversa',
-        style: { ...acaoBtn, padding: '7px 9px', color: showBusca ? T.primary : T.textSecondary, borderColor: showBusca ? T.primary : undefined },
+        style: { ...acaoBtn, padding: '7px 9px', color: showBusca ? T.primary : T.textSecondary, borderColor: T.border, background: showBusca ? T.primarySoft : T.surface },
       }, React.createElement(Search, { size: 16 })),
       // Ficha do cidadão: alterna o painel lateral direito.
       React.createElement('button', {
@@ -1419,7 +1419,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
         }),
         'aria-label': 'Dados do cidadão', 'aria-pressed': showCidadao,
         title: 'Dados do cidadão — cadastro, protocolos e atendimentos anteriores',
-        style: { ...acaoBtn, padding: '7px 9px', color: showCidadao ? T.primary : T.textSecondary, borderColor: showCidadao ? T.primary : undefined },
+        style: { ...acaoBtn, padding: '7px 9px', color: showCidadao ? T.primary : T.textSecondary, borderColor: T.border, background: showCidadao ? T.primarySoft : T.surface },
       }, React.createElement(User, { size: 16 })),
       // Ações secundárias e destrutivas agrupadas no "⋯": o header fica com o
       // fluxo principal (encaminhar → transferir → resolver) e o resto sai da frente.

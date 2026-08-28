@@ -20,53 +20,19 @@
     d.style.colorScheme = t;
   })();
 </script>
-<script>
-        tailwind = { config: {
-            darkMode: ['class', '[data-theme="dark"]'],
-            theme: {
-                extend: {
-                    "colors": {
-                        "primary": "#2563eb",
-                        "on-primary": "#ffffff",
-                        "primary-container": "#dbeafe",
-                        "on-primary-container": "#1e40af",
-                        "background": "#f0f2f5",
-                        "surface": "#ffffff",
-                        "on-background": "#191c1e",
-                        "on-surface": "#191c1e",
-                        "surface-variant": "#f0f2f5",
-                        "on-surface-variant": "#54656f",
-                        "outline-variant": "#d1d7db",
-                        "tertiary-fixed": "#25d366",
-                        "on-tertiary-fixed-variant": "#004a1c",
-                        "error": "#ba1a1a",
-                        "surface-container-low": "#f2f4f6",
-                        "surface-container": "#ffffff",
-                        "surface-container-high": "#e9edef"
-                    },
-                    "borderRadius": {
-                        "DEFAULT": "0.25rem",
-                        "lg": "0.5rem",
-                        "xl": "0.75rem",
-                        "full": "9999px"
-                    },
-                    "fontFamily": {
-                        "body-md": ["Inter"],
-                        "headline-sm": ["Inter"],
-                        "display-lg": ["Inter"]
-                    }
-                },
-            },
-        } }
-    </script>
-<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;display=swap" rel="stylesheet"/>
 <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
 <style>
         .material-symbols-outlined {
             font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
         }
-        body { font-family: 'Inter', sans-serif; }
+        body {
+            font-family: 'Inter', sans-serif;
+            /* Substitui os utilitários do Tailwind CDN (flex, overflow-hidden, h-screen, antialiased) */
+            display: flex; overflow: hidden; height: 100vh; height: 100dvh;
+            -webkit-font-smoothing: antialiased;
+            background: #f0f2f5; color: #191c1e;
+        }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
         .chat-pattern {
@@ -179,16 +145,12 @@
             transition-duration: 0.01ms !important;
           }
         }
-        @media (prefers-contrast: more) {
-          button, input, select, textarea { border-color: currentColor !important; }
-          a { text-decoration: underline !important; }
-        }
     </style>
-  <script type="module" crossorigin src="/assets/index-26Iz7hzn.js"></script>
+  <script type="module" crossorigin src="/assets/index-B4tgtz6e.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/rolldown-runtime-QTnfLwEv.js">
   <link rel="modulepreload" crossorigin href="/assets/vendor-DWPcuKf9.js">
 </head>
-<body class="bg-background text-on-background antialiased flex overflow-hidden h-screen">
+<body>
 <div id="root"></div>
 <script>
         document.querySelectorAll('button').forEach(function(btn) {

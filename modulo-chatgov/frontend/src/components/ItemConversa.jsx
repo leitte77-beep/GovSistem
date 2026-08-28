@@ -124,7 +124,7 @@ export function ItemConversa({ conversa, ativa, opId, onClick, fixada, onFixar }
           style: {
             fontSize: 13,
             color: naoLidas > 0 ? T.text : T.textSecondary,
-            fontWeight: naoLidas > 0 ? 600 : 400,
+            fontWeight: naoLidas > 0 ? 600 : 500,
             overflow: 'hidden',
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
@@ -133,7 +133,7 @@ export function ItemConversa({ conversa, ativa, opId, onClick, fixada, onFixar }
           },
         }, preview),
         React.createElement('span', {
-          style: { fontSize: 11.5, color: T.textMuted, whiteSpace: 'nowrap', flexShrink: 0 },
+          style: { fontSize: 11.5, color: T.textSecondary, fontWeight: 500, whiteSpace: 'nowrap', flexShrink: 0 },
         }, formatarHoraRelativa(conversa.ultima_mensagem_em)),
       ),
       naoLidas > 0 && React.createElement('div', {
