@@ -645,10 +645,10 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
 
   const encaminhar = (depId) => {
     const dep = departamentos.find((d) => d.id === depId);
-    socket?.emit('conversa:atribuir', { convId: conversa.id, departamentoId: depId, operadorId: opId });
+    socket?.emit('conversa:atribuir', { convId: conversa.id, departamentoId: depId });
     setShowEncaminhar(false);
     onConversaUpdated?.();
-    notificar(`Conversa encaminhada para ${dep?.nome || 'o setor'}.`, 'sucesso');
+    notificar(`Conversa encaminhada para a fila de ${dep?.nome || 'o setor'}.`, 'sucesso');
   };
 
   const assumir = () => {

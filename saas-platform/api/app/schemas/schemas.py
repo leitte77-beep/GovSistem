@@ -21,6 +21,7 @@ class ResetPasswordRequest(BaseModel):
 
 class MessageResponse(BaseModel):
     message: str
+    exists: Optional[bool] = None
 
 
 class ProfileUpdate(BaseModel):

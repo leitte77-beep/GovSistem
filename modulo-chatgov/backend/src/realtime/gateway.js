@@ -451,18 +451,21 @@ export function iniciarGateway(httpServer, wa, storage) {
     socket.on('conversa:atribuir', async ({ convId, departamentoId, operadorId }) => {
       try {
         await setTenantContext(op.tenantId);
-        const dono = operadorId || op.id;
+        // Encaminhar para outro departamento: a conversa sai do setor atual e
+        // entra na FILA do setor de destino (sem dono). O operadorId enviado é
+        // ignorado — quem escolheu encaminhar não continua como responsável.
+        const dono = null;
         await db.none(
-          `UPDATE conversas SET departamento_id = $1, operador_id = $2,
-             status = 'aberta', status_operacional = 'EM_ATENDIMENTO'
-           WHERE id = $3 AND tenant_id = $4`,
-          [departamentoId, dono, convId, op.tenantId]
+          `UPDATE conversas SET departamento_id = $1, operador_id = NULL,
+             status = 'fila', status_operacional = 'NA_FILA'
+           WHERE id = $2 AND tenant_id = $3`,
+          [departamentoId, convId, op.tenantId]
         );
-        // Quem assume vira participante 'dono'.
+        // Remove todos os participantes dono: a conversa volta a ser de ninguém
+        // e fica visível na fila do setor de destino.
         await db.none(
-          `INSERT INTO conversa_participantes (conversa_id, operador_id, papel, adicionado_por, tenant_id)
-           VALUES ($1, $2, 'dono', $3, $4) ON CONFLICT (conversa_id, operador_id) DO UPDATE SET papel = 'dono'`,
-          [convId, dono, op.id, op.tenantId]
+          `DELETE FROM conversa_participantes WHERE conversa_id = $1 AND tenant_id = $2`,
+          [convId, op.tenantId]
         );
         await _auditar(op.tenantId, op.id, 'conversa.atribuida', {
           conversaId: convId,

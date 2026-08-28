@@ -951,8 +951,10 @@ async def forgot_password(
     user = result.scalar_one_or_none()
 
     if not user or not user.is_active:
-        # Return success even if user not found (security best practice)
-        return MessageResponse(message="Se o e-mail existir, um link de recuperacao foi enviado.")
+        return MessageResponse(
+            message="Este e-mail nao esta cadastrado em nossa plataforma.",
+            exists=False,
+        )
 
     token = secrets.token_urlsafe(32)
     user.reset_token = hash_password(token)  # store hashed
@@ -963,7 +965,10 @@ async def forgot_password(
 
     _send_password_reset_email(user.email, reset_link)
 
-    return MessageResponse(message="Se o e-mail existir, um link de recuperacao foi enviado.")
+    return MessageResponse(
+        message="Se o e-mail existir, um link de recuperacao foi enviado.",
+        exists=True,
+    )
 
 
 @router.post("/reset-password", response_model=MessageResponse)
