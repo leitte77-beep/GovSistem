@@ -19,6 +19,7 @@ import {
 import { criarNotificacao } from '../services/notificacoes.js';
 import { transitionConversation } from '../services/status-transitions.js';
 import { normalizePhone } from '../domain/phone.js';
+import { montarMensagemChamada, resolverNomeOrgao, resolverTelefoneOrgao } from '../services/chamadas.js';
 import { extrairContatosCompartilhados } from '../domain/contato-compartilhado.js';
 import { createStorage } from '../storage/index.js';
 
@@ -1482,6 +1483,16 @@ export function iniciarGateway(httpServer, wa, storage) {
     }
   });
 
+  // Ligação recebida: encerra e responde com o telefone do órgão.
+  wa.on('call', async ({ tenantId, call }) => {
+    try {
+      await setTenantContext(tenantId);
+      await tratarChamadaRecebida(tenantId, call, io, wa);
+    } catch (err) {
+      console.error('[Socket] call handler error:', err.message);
+    }
+  });
+
   wa.on('message-status', async ({ tenantId, updates }) => {
     try {
       await setTenantContext(tenantId);
@@ -2232,6 +2243,145 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
   if (direcao === 'entrada') {
     await emitirNotificacaoMensagem(tenantId, conversaRow.id, novaMensagem, io);
   }
+}
+
+// Cooldown do aviso de chamada, por órgão e por número. Quem liga e cai
+// costuma insistir várias vezes seguidas; sem isso o cidadão receberia o mesmo
+// texto a cada toque e o painel encheria de mensagens repetidas.
+const AVISO_CHAMADA_COOLDOWN_MS = 30 * 60 * 1000;
+const avisosChamadaEnviados = new Map();
+
+function podeAvisarChamada(chave) {
+  const agora = Date.now();
+  // O backend fica semanas no ar: limpa o que já venceu antes de crescer.
+  if (avisosChamadaEnviados.size > 500) {
+    for (const [k, ts] of avisosChamadaEnviados) {
+      if (agora - ts > AVISO_CHAMADA_COOLDOWN_MS) avisosChamadaEnviados.delete(k);
+    }
+  }
+  const ultimo = avisosChamadaEnviados.get(chave);
+  if (ultimo && agora - ultimo < AVISO_CHAMADA_COOLDOWN_MS) return false;
+  avisosChamadaEnviados.set(chave, agora);
+  return true;
+}
+
+// Recusa a ligação e responde ao cidadão com o telefone do órgão.
+async function tratarChamadaRecebida(tenantId, call, io, wa) {
+  const jid = call.from;
+  if (!jid) return;
+
+  const cfg = await db.oneOrNone(
+    `SELECT c.chamadas_recusar_ativo, c.chamadas_nome_exibicao, c.chamadas_telefone,
+            c.chamadas_mensagem, t.nome AS tenant_nome, s.numero AS numero_sessao
+       FROM tenants t
+       LEFT JOIN tenant_config c ON c.tenant_id = t.id
+       LEFT JOIN whatsapp_sessoes s ON s.tenant_id = t.id
+      WHERE t.id = $1`,
+    [tenantId]
+  );
+  // Sem linha em tenant_config o órgão ainda não abriu as configurações — e é
+  // exatamente ali que o telefone toca à toa. Só não recusa quem desligou.
+  if (cfg?.chamadas_recusar_ativo === false) return;
+
+  try {
+    await wa.rejectCall(tenantId, call.id, jid);
+    console.log(`[Chamada] recusada tenant=${tenantId} de=${jid} video=${!!call.isVideo}`);
+  } catch (err) {
+    console.error(`[Chamada] falha ao recusar (tenant=${tenantId}):`, err.message);
+    // Segue para o aviso mesmo assim: a ligação pode ter caído sozinha e o
+    // cidadão continua sem saber por que ninguém atendeu.
+  }
+
+  const telefone = jidEhLid(jid) ? null : jid.split('@')[0];
+
+  // Número bloqueado pelo órgão: a chamada cai, mas ninguém recebe resposta.
+  if (telefone) {
+    let phoneE164;
+    try { phoneE164 = normalizePhone(telefone).phoneE164; } catch { phoneE164 = `+${telefone.replace(/\D/g, '')}`; }
+    const bloqueado = await db.oneOrNone(
+      `SELECT id FROM contatos_bloqueados
+        WHERE tenant_id = $1 AND ativo = true
+          AND (phone_e164 = $2 OR telefone = $3)
+          AND (expira_em IS NULL OR expira_em > now())`,
+      [tenantId, phoneE164, telefone.replace(/\D/g, '')]
+    );
+    if (bloqueado) return;
+  }
+
+  if (!podeAvisarChamada(`${tenantId}:${jid}`)) return;
+
+  const orgao = resolverNomeOrgao({
+    nomeExibicao: cfg?.chamadas_nome_exibicao,
+    nomeTenant: cfg?.tenant_nome,
+  });
+  const telefoneOrgao = resolverTelefoneOrgao({
+    telefoneConfigurado: cfg?.chamadas_telefone,
+    numeroSessao: cfg?.numero_sessao,
+  });
+  // Sem telefone o aviso mandaria o cidadão ligar para lugar nenhum ("📞" solto).
+  // A chamada já foi recusada; melhor calar do que orientar errado.
+  if (!telefoneOrgao) {
+    console.warn(`[Chamada] aviso não enviado (tenant=${tenantId}): sem telefone configurado nem número de sessão`);
+    return;
+  }
+
+  const texto = montarMensagemChamada({
+    template: cfg?.chamadas_mensagem,
+    orgao,
+    telefone: telefoneOrgao,
+  });
+
+  const contatoRow = await db.one(
+    `INSERT INTO contatos (tenant_id, wa_jid, telefone)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (tenant_id, wa_jid) DO UPDATE
+       SET telefone = COALESCE(EXCLUDED.telefone, contatos.telefone)
+     RETURNING id`,
+    [tenantId, jid, telefone]
+  );
+
+  // Abre (ou reaproveita) a conversa para que a tentativa de ligação fique
+  // visível no painel — senão o atendente nunca fica sabendo que o cidadão
+  // tentou falar. Entra como 'fila'/'NOVA', igual a uma mensagem recebida.
+  const resumo = '[Chamada recusada]';
+  const conversaRow = await db.one(
+    `INSERT INTO conversas (tenant_id, contato_id, status, status_operacional, nao_lidas, ultima_mensagem, ultima_mensagem_em)
+     VALUES ($1, $2, 'fila', 'NOVA', 0, $3, now())
+      ON CONFLICT (tenant_id, contato_id) WHERE deleted_at IS NULL DO UPDATE
+        SET ultima_mensagem = $3, ultima_mensagem_em = now()
+     RETURNING id`,
+    [tenantId, contatoRow.id, resumo]
+  );
+
+  const msgId = uuidv4();
+  const registro = await db.one(
+    `INSERT INTO mensagens (id, tenant_id, conversa_id, direcao, tipo, conteudo, status, origem, criado_em)
+     VALUES ($1, $2, $3, 'saida', 'texto', $4, 'enviado', 'bot', now())
+     RETURNING *`,
+    [msgId, tenantId, conversaRow.id, `📞 ${call.isVideo ? 'Chamada de vídeo' : 'Chamada'} recusada — aviso enviado:\n\n${texto}`]
+  );
+
+  try {
+    const envio = await wa.sendText(tenantId, jid, texto);
+    if (envio?.key?.id) {
+      await db.none(
+        'UPDATE mensagens SET wa_message_id = $1 WHERE id = $2 AND tenant_id = $3',
+        [envio.key.id, msgId, tenantId]
+      );
+    }
+  } catch (err) {
+    console.error(`[Chamada] falha ao enviar aviso (tenant=${tenantId}):`, err.message);
+    await db.none(
+      "UPDATE mensagens SET status = 'erro' WHERE id = $1 AND tenant_id = $2",
+      [msgId, tenantId]
+    );
+    // Libera o cooldown: o cidadão não recebeu nada, então a próxima
+    // tentativa dele merece uma nova chance de aviso.
+    avisosChamadaEnviados.delete(`${tenantId}:${jid}`);
+  }
+
+  io.to(salas.conversa(conversaRow.id)).emit('mensagem:nova', registro);
+  io.to(salas.tenant(tenantId)).emit('conversa:atualizada', { convId: conversaRow.id });
 }
 
 function extrairConteudoMensagem(message) {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Building2, FolderTree, Users, Smartphone, Plus, Trash2, Wifi, WifiOff, LogOut, QrCode, KeyRound, Ban, SlidersHorizontal, Save, Loader2, Check, Bot, FileText, Brain, MessageSquare, Bell, BellOff, Volume2, Network, Route, ShieldCheck, Megaphone, Send, UserRound, Globe, Users2, Clock, Timer, History, AlertTriangle, CalendarClock, Info, BellRing } from 'lucide-react';
+import { Building2, FolderTree, Users, Smartphone, Plus, Trash2, Wifi, WifiOff, LogOut, QrCode, KeyRound, Ban, SlidersHorizontal, Save, Loader2, Check, Bot, FileText, Brain, MessageSquare, Bell, BellOff, Volume2, Network, Route, ShieldCheck, Megaphone, Send, UserRound, Globe, Users2, Clock, Timer, History, AlertTriangle, CalendarClock, Info, BellRing, PhoneOff } from 'lucide-react';
 import { T, CORES_DEPT } from '../theme';
 import {
   fetchSecretarias, criarSecretaria, editarSecretaria, excluirSecretaria,
@@ -428,6 +428,77 @@ function AbaConexao({ onOpenQR }) {
             conectado && React.createElement('button', { onClick: handleLogout, disabled: logoutLoading, style: { ...btnAdd, background: T.danger } },
               React.createElement(LogOut, { size: 16 }), logoutLoading ? 'Desconectando...' : 'Desconectar'),
           ),
+        ),
+      ),
+    ),
+
+    // Recusa de chamadas — só no QR Code: a API oficial da Meta não recebe ligações.
+    provider === 'baileys' && React.createElement('div', { style: { ...painel, maxWidth: 620 } },
+      React.createElement('div', { style: painelHead },
+        React.createElement('div', { style: { ...tituloPainel, display: 'flex', alignItems: 'center', gap: 8 } },
+          React.createElement(PhoneOff, { size: 16 }), 'Chamadas telefônicas'),
+      ),
+      React.createElement('div', { style: { padding: 22 } },
+        React.createElement('label', { style: { display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', marginBottom: 6 } },
+          React.createElement('input', {
+            type: 'checkbox', checked: cfg.chamadas_recusar_ativo !== false,
+            onChange: (e) => setField('chamadas_recusar_ativo', e.target.checked),
+            style: { marginTop: 2 },
+          }),
+          React.createElement('span', { style: { fontSize: 13, color: T.text } },
+            'Recusar chamadas automaticamente',
+            React.createElement('div', { style: { fontSize: 12, color: T.textMuted, marginTop: 2 } },
+              'Encerra ligações de voz e vídeo assim que chegam e responde ao cidadão com o aviso abaixo.'),
+          ),
+        ),
+
+        cfg.chamadas_recusar_ativo !== false && React.createElement('div', { style: { marginTop: 18 } },
+          React.createElement('label', { style: label }, 'Nome do órgão na mensagem'),
+          React.createElement('input', {
+            value: cfg.chamadas_nome_exibicao || '',
+            onChange: (e) => setField('chamadas_nome_exibicao', e.target.value),
+            placeholder: cfg.chamadas_nome_sugerido || 'Ex.: Prefeitura Municipal de Farol',
+            style: { ...campo, marginBottom: 4 },
+          }),
+          React.createElement('div', { style: { fontSize: 12, color: T.textMuted, marginBottom: 14 } },
+            cfg.chamadas_nome_sugerido
+              ? `Se ficar vazio, usa o nome cadastrado: ${cfg.chamadas_nome_sugerido}`
+              : 'Se ficar vazio, usa o nome cadastrado do órgão.'),
+
+          React.createElement('label', { style: label }, 'Telefone para ligações'),
+          React.createElement('input', {
+            value: cfg.chamadas_telefone || '',
+            onChange: (e) => setField('chamadas_telefone', e.target.value),
+            placeholder: cfg.chamadas_telefone_sugerido || 'Ex.: (44) 3563-1101',
+            style: { ...campo, marginBottom: 4 },
+          }),
+          React.createElement('div', { style: { fontSize: 12, color: T.textMuted, marginBottom: 14 } },
+            cfg.chamadas_telefone_sugerido
+              ? `Se ficar vazio, usa o número conectado: ${cfg.chamadas_telefone_sugerido}`
+              : 'Conecte o WhatsApp para o número ser sugerido automaticamente.'),
+
+          React.createElement('label', { style: label }, 'Mensagem enviada'),
+          React.createElement('textarea', {
+            value: cfg.chamadas_mensagem || '',
+            onChange: (e) => setField('chamadas_mensagem', e.target.value),
+            rows: 12,
+            style: { ...campo, marginBottom: 4, resize: 'vertical', fontFamily: 'inherit', lineHeight: '20px' },
+          }),
+          React.createElement('div', { style: { fontSize: 12, color: T.textMuted } },
+            React.createElement('code', { style: { background: T.surfaceMuted, padding: '1px 4px', borderRadius: 3 } }, '{orgao}'),
+            ' e ',
+            React.createElement('code', { style: { background: T.surfaceMuted, padding: '1px 4px', borderRadius: 3 } }, '{telefone}'),
+            ' são preenchidos automaticamente no envio.'),
+
+          React.createElement('div', {
+            style: {
+              marginTop: 16, padding: '10px 12px', borderRadius: T.radiusSm,
+              background: T.surfaceMuted, border: `1px solid ${T.border}`,
+              fontSize: 12, color: T.textSecondary, lineHeight: '18px',
+            },
+          },
+            React.createElement(Info, { size: 13, style: { verticalAlign: '-2px', marginRight: 6 } }),
+            'O aparelho ainda toca por 1 a 2 segundos antes da recusa. Para não tocar nada, ative no celular: WhatsApp → Configurações → Privacidade → Chamadas → "Silenciar chamadas de desconhecidos".'),
         ),
       ),
     ),

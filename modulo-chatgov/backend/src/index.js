@@ -32,6 +32,7 @@ import { hasPermission, PERMISSIONS, requirePermission } from './auth/permission
 import { protectSensitiveFields } from './domain/privacy.js';
 import { transitionProtocol } from './services/status-transitions.js';
 import administracaoV2Router from './routes/administracao-v2.js';
+import { MENSAGEM_CHAMADA_PADRAO, formatarTelefoneBR } from './services/chamadas.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -1792,6 +1793,16 @@ app.use('/api', rateLimiter);
       const op = req.operador;
       const cfg = await db.oneOrNone('SELECT * FROM tenant_config WHERE tenant_id = $1', [op.tenantId]);
       const base = cfg || { provider: 'baileys', dias_atendimento: '1,2,3,4,5', fora_horario_ativo: false };
+      // Nome e telefone do aviso de chamada são opcionais no banco: quando
+      // vazios, o envio deriva do cadastro do órgão e do número conectado. A
+      // tela mostra esses mesmos valores como sugestão, para o admin ver o que
+      // sairá na mensagem sem precisar salvar nada.
+      const orgao = await db.oneOrNone(
+        `SELECT t.nome, s.numero
+           FROM tenants t LEFT JOIN whatsapp_sessoes s ON s.tenant_id = t.id
+          WHERE t.id = $1`,
+        [op.tenantId]
+      );
       res.json({
         provider: base.provider || 'baileys',
         wa_api_phone_id: base.wa_api_phone_id || '',
@@ -1806,6 +1817,12 @@ app.use('/api', rateLimiter);
         fora_horario_ativo: !!base.fora_horario_ativo,
         assinatura_ativa: base.assinatura_ativa !== false,
         assinatura_modo: base.assinatura_modo || 'completo',
+        chamadas_recusar_ativo: base.chamadas_recusar_ativo !== false,
+        chamadas_nome_exibicao: base.chamadas_nome_exibicao || '',
+        chamadas_telefone: base.chamadas_telefone || '',
+        chamadas_mensagem: base.chamadas_mensagem || MENSAGEM_CHAMADA_PADRAO,
+        chamadas_nome_sugerido: orgao?.nome || '',
+        chamadas_telefone_sugerido: formatarTelefoneBR(orgao?.numero) || '',
       });
     } catch (err) {
       console.error('[API] get config error:', err.message);
@@ -1823,8 +1840,10 @@ app.use('/api', rateLimiter);
         `INSERT INTO tenant_config
            (tenant_id, provider, wa_api_phone_id, wa_api_business_id, wa_api_verify_token,
             wa_api_token, saudacao, mensagem_ausencia, horario_inicio, horario_fim,
-            dias_atendimento, fora_horario_ativo, assinatura_ativa, assinatura_modo, atualizado_em)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, now())
+            dias_atendimento, fora_horario_ativo, assinatura_ativa, assinatura_modo,
+            chamadas_recusar_ativo, chamadas_nome_exibicao, chamadas_telefone, chamadas_mensagem,
+            atualizado_em)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,COALESCE($15, true),$16,$17,$18, now())
          ON CONFLICT (tenant_id) DO UPDATE SET
            provider = EXCLUDED.provider,
            wa_api_phone_id = EXCLUDED.wa_api_phone_id,
@@ -1839,6 +1858,13 @@ app.use('/api', rateLimiter);
            fora_horario_ativo = EXCLUDED.fora_horario_ativo,
            assinatura_ativa = EXCLUDED.assinatura_ativa,
            assinatura_modo = EXCLUDED.assinatura_modo,
+           -- COALESCE (e não EXCLUDED) porque outras abas de configuração
+           -- mandam payload parcial: sem isso, salvar "Geral" desligaria a
+           -- recusa de chamadas configurada na aba Conexão.
+           chamadas_recusar_ativo = COALESCE($15, tenant_config.chamadas_recusar_ativo),
+           chamadas_nome_exibicao = COALESCE($16, tenant_config.chamadas_nome_exibicao),
+           chamadas_telefone = COALESCE($17, tenant_config.chamadas_telefone),
+           chamadas_mensagem = COALESCE($18, tenant_config.chamadas_mensagem),
            atualizado_em = now()`,
         [
           op.tenantId, b.provider || 'baileys', b.wa_api_phone_id || null, b.wa_api_business_id || null,
@@ -1847,6 +1873,17 @@ app.use('/api', rateLimiter);
           b.fora_horario_ativo === true,
           b.assinatura_ativa !== false,
           b.assinatura_modo === 'primeiro' ? 'primeiro' : 'completo',
+          // undefined = a aba que salvou não conhece o campo, preserva o que está
+          // gravado; string vazia = o admin limpou o campo de propósito e o envio
+          // volta a derivar do cadastro do órgão.
+          typeof b.chamadas_recusar_ativo === 'boolean' ? b.chamadas_recusar_ativo : null,
+          b.chamadas_nome_exibicao === undefined ? null : String(b.chamadas_nome_exibicao).trim(),
+          b.chamadas_telefone === undefined ? null : String(b.chamadas_telefone).trim(),
+          // Guarda vazio quando o texto é igual ao padrão, para que ajustes
+          // futuros no padrão cheguem a quem nunca personalizou a mensagem.
+          b.chamadas_mensagem === undefined
+            ? null
+            : (String(b.chamadas_mensagem).trim() === MENSAGEM_CHAMADA_PADRAO.trim() ? '' : String(b.chamadas_mensagem).trim()),
         ]
       );
       res.json({ ok: true });

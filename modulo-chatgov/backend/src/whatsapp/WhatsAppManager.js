@@ -165,6 +165,21 @@ export class WhatsAppManager extends EventEmitter {
         this.emit('presence', { tenantId, id, presences });
       });
 
+      // Chamadas de voz/vídeo: o número atende só por mensagem. Quem recusa e
+      // avisa o cidadão é o gateway (depende da configuração do órgão).
+      sock.ev.on('call', (calls) => {
+        for (const call of calls || []) {
+          // O evento dispara várias vezes na mesma ligação (offer, ringing,
+          // terminate...). Só 'offer' é a chamada chegando; reagir aos demais
+          // mandaria o aviso repetido para o mesmo toque.
+          if (call?.status !== 'offer') continue;
+          // Chamada de grupo não é atendimento ao cidadão e responder nela
+          // exporia o aviso a todos os participantes.
+          if (call.isGroup) continue;
+          this.emit('call', { tenantId, call });
+        }
+      });
+
       this.sessions.set(tenantId, { sock, status: 'conectando' });
     } catch (err) {
       console.error(`[WA] Error starting session for tenant ${tenantId}:`, err.message);
@@ -373,6 +388,16 @@ export class WhatsAppManager extends EventEmitter {
       console.error(`[WA] getMessage fallback falhou (tenant=${tenantId}):`, err.message);
     }
     return undefined;
+  }
+
+  /**
+   * Encerra uma chamada recebida. Vai direto ao socket, sem passar pela fila
+   * de envio: a fila existe para não atropelar o ritmo de mensagens, e aqui
+   * cada segundo de espera é um segundo a mais tocando no aparelho do órgão.
+   */
+  async rejectCall(tenantId, callId, callFrom) {
+    const { sock } = this._getSession(tenantId);
+    return sock.rejectCall(callId, callFrom);
   }
 
   async sendText(tenantId, jid, texto, opts = {}) {
