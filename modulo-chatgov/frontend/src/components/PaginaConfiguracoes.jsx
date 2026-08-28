@@ -239,9 +239,20 @@ function AbaDepartamentos() {
   };
   const remover = async (id) => { if (confirm('Excluir este departamento?')) { await excluirDepartamento(id); carregar(); } };
   const trocarSecretaria = async (dep, novaSecId) => { await editarDepartamento(dep.id, { secretaria_id: novaSecId || null }); carregar(); };
+  // O número só é gravado ao sair do campo: salvar a cada tecla dispararia
+  // "número já em uso" enquanto o admin ainda está digitando.
+  const trocarNumero = async (dep, valor) => {
+    const numero = Number.parseInt(valor, 10);
+    if (!Number.isInteger(numero) || numero < 1 || numero === dep.menu_numero) return;
+    try { await editarDepartamento(dep.id, { menu_numero: numero }); }
+    catch (e) { alert(e.message); }
+    carregar();
+  };
 
   return React.createElement('div', { style: painel },
     React.createElement('div', { style: painelHead }, React.createElement('div', { style: tituloPainel }, 'Departamentos')),
+    React.createElement('div', { style: { padding: '10px 18px', fontSize: 12, color: T.textMuted, borderBottom: `1px solid ${T.border}` } },
+      'O número é o que o cidadão digita no menu enviado quando manda foto, áudio ou documento sem setor definido. Mantenha-o fixo: alterá-lo muda a opção de quem já conhece o menu.'),
     React.createElement('div', { style: { ...linha, background: T.surfaceAlt, flexWrap: 'wrap' } },
       React.createElement('input', { value: nome, onChange: (e) => setNome(e.target.value), placeholder: 'Nome do departamento', style: { ...input, flex: 1, minWidth: 160 } }),
       React.createElement('select', { value: secId, onChange: (e) => setSecId(e.target.value), style: input },
@@ -255,6 +266,12 @@ function AbaDepartamentos() {
       ? React.createElement('div', { style: { padding: 22, color: T.textMuted, fontSize: 13 } }, 'Nenhum departamento cadastrado.')
       : lista.map((d) =>
           React.createElement('div', { key: d.id, style: linha },
+            React.createElement('input', {
+              type: 'number', min: 1, defaultValue: d.menu_numero ?? '',
+              onBlur: (e) => trocarNumero(d, e.target.value),
+              title: 'Número deste setor no menu enviado ao cidadão',
+              style: { ...input, width: 58, padding: '6px 8px', fontSize: 13, textAlign: 'center' },
+            }),
             React.createElement(PontoCor, { cor: d.cor }),
             React.createElement('span', { style: { flex: 1, fontSize: 14, fontWeight: 600, color: T.text } }, d.nome),
             React.createElement('select', {
@@ -576,6 +593,32 @@ function AbaGeral() {
 
       React.createElement('label', { style: label }, 'Mensagem de ausência (fora do horário)'),
       React.createElement('textarea', { value: cfg.mensagem_ausencia || '', onChange: (e) => setField('mensagem_ausencia', e.target.value), rows: 2, placeholder: 'Nosso atendimento funciona de seg. a sex...', style: { ...campo, resize: 'vertical', fontFamily: T.font } }),
+
+      React.createElement('div', { style: { borderTop: `1px solid ${T.border}`, paddingTop: 16, marginBottom: 4 } },
+        React.createElement('label', { style: { display: 'flex', alignItems: 'flex-start', gap: 8, cursor: 'pointer', marginBottom: 10 } },
+          React.createElement('input', {
+            type: 'checkbox', checked: cfg.menu_midia_ativo !== false,
+            onChange: (e) => setField('menu_midia_ativo', e.target.checked),
+            style: { marginTop: 2 },
+          }),
+          React.createElement('span', { style: { fontSize: 13, color: T.text } },
+            'Perguntar o setor quando chegar foto, áudio ou documento sem destino',
+            React.createElement('div', { style: { fontSize: 12, color: T.textMuted, marginTop: 2 } },
+              'Envia a lista numerada de departamentos e encaminha a conversa conforme o número que o cidadão digitar. Só age quando não há atendente nem setor definido.'),
+          ),
+        ),
+        cfg.menu_midia_ativo !== false && React.createElement('div', { style: { marginLeft: 24 } },
+          React.createElement('label', { style: label }, 'Texto de abertura do menu'),
+          React.createElement('textarea', {
+            value: cfg.menu_midia_cabecalho || '',
+            onChange: (e) => setField('menu_midia_cabecalho', e.target.value),
+            rows: 3,
+            style: { ...campo, marginBottom: 4, resize: 'vertical', fontFamily: T.font },
+          }),
+          React.createElement('div', { style: { fontSize: 12, color: T.textMuted, marginBottom: 14 } },
+            'A lista de setores e a instrução final são acrescentadas automaticamente. Os números de cada setor ficam na aba Departamentos.'),
+        ),
+      ),
 
       React.createElement('label', { style: label }, 'Dias de atendimento'),
       React.createElement('div', { style: { display: 'flex', gap: 6, marginBottom: 16, flexWrap: 'wrap' } },

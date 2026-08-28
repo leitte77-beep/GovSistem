@@ -19,6 +19,7 @@ export async function runMigrations() {
     join(__dirname, '026_avisos_globais_importancia.sql'),
     join(__dirname, '027_avisos_globais_recorrencia.sql'),
     join(__dirname, '028_chamadas_recusa.sql'),
+    join(__dirname, '029_menu_departamentos.sql'),
   ];
 
   for (const path of migrations) {

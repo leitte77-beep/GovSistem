@@ -33,6 +33,7 @@ import { protectSensitiveFields } from './domain/privacy.js';
 import { transitionProtocol } from './services/status-transitions.js';
 import administracaoV2Router from './routes/administracao-v2.js';
 import { MENSAGEM_CHAMADA_PADRAO, formatarTelefoneBR } from './services/chamadas.js';
+import { CABECALHO_MENU_PADRAO } from './services/menu-departamentos.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -1712,14 +1713,23 @@ app.use('/api', rateLimiter);
   app.post('/api/departamentos', requirePapel('admin'), async (req, res) => {
     try {
       const op = req.operador;
-      const { nome, cor, secretaria_id } = req.body;
+      const { nome, cor, secretaria_id, menu_numero } = req.body;
       if (!nome) return res.status(400).json({ erro: 'Nome obrigatório' });
+      // Sem número informado, entra no fim do menu: nenhum número já divulgado
+      // ao cidadão muda de dono por causa de um setor novo.
       const dep = await db.one(
-        'INSERT INTO departamentos (tenant_id, nome, cor, secretaria_id) VALUES ($1, $2, $3, $4) RETURNING *',
-        [op.tenantId, nome, cor || '#2563EB', secretaria_id || null]
+        `INSERT INTO departamentos (tenant_id, nome, cor, secretaria_id, menu_numero)
+         VALUES ($1, $2, $3, $4, COALESCE($5,
+           (SELECT COALESCE(MAX(menu_numero), 0) + 1 FROM departamentos WHERE tenant_id = $1)))
+         RETURNING *`,
+        [op.tenantId, nome, cor || '#2563EB', secretaria_id || null,
+         Number.isInteger(menu_numero) && menu_numero > 0 ? menu_numero : null]
       );
       res.json(dep);
     } catch (err) {
+      if (err.code === '23505') {
+        return res.status(400).json({ erro: 'Esse número do menu já está em uso por outro setor.' });
+      }
       res.status(500).json({ erro: 'Erro ao criar departamento' });
     }
   });
@@ -1727,16 +1737,20 @@ app.use('/api', rateLimiter);
   app.put('/api/departamentos/:id', requirePapel('admin'), async (req, res) => {
     try {
       const op = req.operador;
-      const { nome, cor, secretaria_id } = req.body;
+      const { nome, cor, secretaria_id, menu_numero } = req.body;
       const dep = await db.oneOrNone(
         `UPDATE departamentos SET nome = COALESCE($1, nome), cor = COALESCE($2, cor),
-                secretaria_id = $3
+                secretaria_id = $3, menu_numero = COALESCE($6, menu_numero)
          WHERE id = $4 AND tenant_id = $5 RETURNING *`,
-        [nome || null, cor || null, secretaria_id || null, req.params.id, op.tenantId]
+        [nome || null, cor || null, secretaria_id || null, req.params.id, op.tenantId,
+         Number.isInteger(menu_numero) && menu_numero > 0 ? menu_numero : null]
       );
       if (!dep) return res.status(404).json({ erro: 'Departamento não encontrado' });
       res.json(dep);
     } catch (err) {
+      if (err.code === '23505') {
+        return res.status(400).json({ erro: 'Esse número do menu já está em uso por outro setor.' });
+      }
       res.status(500).json({ erro: 'Erro ao atualizar departamento' });
     }
   });
@@ -1821,6 +1835,8 @@ app.use('/api', rateLimiter);
         chamadas_nome_exibicao: base.chamadas_nome_exibicao || '',
         chamadas_telefone: base.chamadas_telefone || '',
         chamadas_mensagem: base.chamadas_mensagem || MENSAGEM_CHAMADA_PADRAO,
+        menu_midia_ativo: base.menu_midia_ativo !== false,
+        menu_midia_cabecalho: base.menu_midia_cabecalho || CABECALHO_MENU_PADRAO,
         chamadas_nome_sugerido: orgao?.nome || '',
         chamadas_telefone_sugerido: formatarTelefoneBR(orgao?.numero) || '',
       });
@@ -1842,8 +1858,10 @@ app.use('/api', rateLimiter);
             wa_api_token, saudacao, mensagem_ausencia, horario_inicio, horario_fim,
             dias_atendimento, fora_horario_ativo, assinatura_ativa, assinatura_modo,
             chamadas_recusar_ativo, chamadas_nome_exibicao, chamadas_telefone, chamadas_mensagem,
+            menu_midia_ativo, menu_midia_cabecalho,
             atualizado_em)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,COALESCE($15, true),$16,$17,$18, now())
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,COALESCE($15, true),$16,$17,$18,
+                 COALESCE($19, true),$20, now())
          ON CONFLICT (tenant_id) DO UPDATE SET
            provider = EXCLUDED.provider,
            wa_api_phone_id = EXCLUDED.wa_api_phone_id,
@@ -1865,6 +1883,8 @@ app.use('/api', rateLimiter);
            chamadas_nome_exibicao = COALESCE($16, tenant_config.chamadas_nome_exibicao),
            chamadas_telefone = COALESCE($17, tenant_config.chamadas_telefone),
            chamadas_mensagem = COALESCE($18, tenant_config.chamadas_mensagem),
+           menu_midia_ativo = COALESCE($19, tenant_config.menu_midia_ativo),
+           menu_midia_cabecalho = COALESCE($20, tenant_config.menu_midia_cabecalho),
            atualizado_em = now()`,
         [
           op.tenantId, b.provider || 'baileys', b.wa_api_phone_id || null, b.wa_api_business_id || null,
@@ -1884,6 +1904,10 @@ app.use('/api', rateLimiter);
           b.chamadas_mensagem === undefined
             ? null
             : (String(b.chamadas_mensagem).trim() === MENSAGEM_CHAMADA_PADRAO.trim() ? '' : String(b.chamadas_mensagem).trim()),
+          typeof b.menu_midia_ativo === 'boolean' ? b.menu_midia_ativo : null,
+          b.menu_midia_cabecalho === undefined
+            ? null
+            : (String(b.menu_midia_cabecalho).trim() === CABECALHO_MENU_PADRAO.trim() ? '' : String(b.menu_midia_cabecalho).trim()),
         ]
       );
       res.json({ ok: true });

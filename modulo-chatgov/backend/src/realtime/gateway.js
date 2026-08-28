@@ -20,6 +20,7 @@ import { criarNotificacao } from '../services/notificacoes.js';
 import { transitionConversation } from '../services/status-transitions.js';
 import { normalizePhone } from '../domain/phone.js';
 import { montarMensagemChamada, resolverNomeOrgao, resolverTelefoneOrgao } from '../services/chamadas.js';
+import { montarMenuDepartamentos, interpretarEscolhaMenu, MENSAGEM_OPCAO_INVALIDA } from '../services/menu-departamentos.js';
 import { extrairContatosCompartilhados } from '../domain/contato-compartilhado.js';
 import { createStorage } from '../storage/index.js';
 
@@ -1964,7 +1965,7 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
             END,
             ultima_mensagem = $3,
             ultima_mensagem_em = $4
-     RETURNING id, status, protocolo_id, departamento_id, operador_id`,
+     RETURNING id, status, protocolo_id, departamento_id, operador_id, menu_enviado_em`,
     [
       tenantId,
       contatoRow.id,
@@ -2013,7 +2014,29 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
   io.to(salas.conversa(conversaRow.id)).emit('mensagem:nova', novaMensagem);
   io.to(salas.tenant(tenantId)).emit('conversa:atualizada', { convId: conversaRow.id });
 
+  // Foto, áudio, vídeo ou documento numa conversa sem destino: devolve o menu
+  // de setores. Contato e localização ficam de fora — chegam no meio de um
+  // assunto em andamento, não abrem um pedido novo.
+  if (direcao === 'entrada' && ['imagem', 'video', 'audio', 'documento'].includes(tipo)) {
+    try {
+      await tratarMidiaSemDestino(tenantId, { conversaRow, jid }, io, wa);
+    } catch (err) {
+      console.error('[Menu] erro ao enviar menu de setores:', err.message);
+    }
+  }
+
+  // A resposta ao menu vem antes do bot: se o cidadão digitou o número do
+  // setor, a Iris não pode responder por cima e engolir o encaminhamento.
+  let respostaDeMenu = false;
   if (direcao === 'entrada' && tipo === 'texto' && conteudo) {
+    try {
+      respostaDeMenu = await tratarEscolhaMenu(tenantId, { conversaRow, jid, texto: conteudo }, io, wa);
+    } catch (err) {
+      console.error('[Menu] erro ao tratar escolha do cidadão:', err.message);
+    }
+  }
+
+  if (!respostaDeMenu && direcao === 'entrada' && tipo === 'texto' && conteudo) {
     try {
       const jidEnvio = jid;
 
@@ -2245,6 +2268,134 @@ async function persistirEntrada(tenantId, msg, io, wa, storage) {
   }
 }
 
+// Envia uma mensagem automática e a registra na conversa, para o atendente ver
+// no painel exatamente o que o cidadão recebeu. `registro` permite gravar no
+// histórico um texto diferente do enviado (usado no aviso de chamada).
+async function enviarMensagemSistema(tenantId, { conversaId, jid, texto, registro }, io, wa) {
+  const msgId = uuidv4();
+  const linha = await db.one(
+    `INSERT INTO mensagens (id, tenant_id, conversa_id, direcao, tipo, conteudo, status, origem, criado_em)
+     VALUES ($1, $2, $3, 'saida', 'texto', $4, 'enviado', 'bot', now())
+     RETURNING *`,
+    [msgId, tenantId, conversaId, registro ?? texto]
+  );
+
+  let entregue = true;
+  try {
+    const envio = await wa.sendText(tenantId, jid, texto);
+    if (envio?.key?.id) {
+      await db.none(
+        'UPDATE mensagens SET wa_message_id = $1 WHERE id = $2 AND tenant_id = $3',
+        [envio.key.id, msgId, tenantId]
+      );
+    }
+  } catch (err) {
+    entregue = false;
+    console.error(`[Sistema] falha ao enviar (tenant=${tenantId}):`, err.message);
+    await db.none(
+      "UPDATE mensagens SET status = 'erro' WHERE id = $1 AND tenant_id = $2",
+      [msgId, tenantId]
+    );
+  }
+
+  io.to(salas.conversa(conversaId)).emit('mensagem:nova', linha);
+  io.to(salas.tenant(tenantId)).emit('conversa:atualizada', { convId: conversaId });
+  return entregue;
+}
+
+// Rajada de mídia (o cidadão manda oito fotos seguidas) gera um menu só.
+const MENU_REENVIO_MS = 10 * 60 * 1000;
+// Depois disso um número solto volta a ser conversa comum, não escolha de menu.
+const MENU_VALIDADE_MS = 24 * 60 * 60 * 1000;
+
+async function carregarMenuDepartamentos(tenantId) {
+  const cfg = await db.oneOrNone(
+    'SELECT menu_midia_ativo, menu_midia_cabecalho FROM tenant_config WHERE tenant_id = $1',
+    [tenantId]
+  );
+  if (cfg?.menu_midia_ativo === false) return null;
+
+  const departamentos = await db.manyOrNone(
+    `SELECT id, nome, menu_numero FROM departamentos
+      WHERE tenant_id = $1 AND ativo = true AND menu_numero IS NOT NULL
+      ORDER BY menu_numero`,
+    [tenantId]
+  );
+  if (!departamentos.length) return null;
+
+  return { cabecalho: cfg?.menu_midia_cabecalho, departamentos };
+}
+
+// Mídia numa conversa sem atendente e sem setor: devolve a lista numerada para
+// o próprio cidadão dizer para onde vai. Sem isto a foto fica no painel sem
+// destino, que é o que acontecia depois que o atendente resolvia a conversa.
+async function tratarMidiaSemDestino(tenantId, { conversaRow, jid }, io, wa) {
+  if (conversaRow.operador_id || conversaRow.departamento_id) return;
+
+  const enviadoEm = conversaRow.menu_enviado_em ? new Date(conversaRow.menu_enviado_em).getTime() : 0;
+  if (enviadoEm && Date.now() - enviadoEm < MENU_REENVIO_MS) return;
+
+  const menu = await carregarMenuDepartamentos(tenantId);
+  if (!menu) return;
+
+  const texto = montarMenuDepartamentos(menu);
+  await enviarMensagemSistema(tenantId, { conversaId: conversaRow.id, jid, texto }, io, wa);
+  await db.none(
+    'UPDATE conversas SET menu_enviado_em = now() WHERE id = $1 AND tenant_id = $2',
+    [conversaRow.id, tenantId]
+  );
+  conversaRow.menu_enviado_em = new Date();
+  console.log(`[Menu] enviado tenant=${tenantId} conversa=${conversaRow.id}`);
+}
+
+/**
+ * Interpreta a resposta do cidadão ao menu. Devolve true quando consumiu a
+ * mensagem — o chamador então não aciona Iris/chatbot, senão o "4" viraria
+ * assunto para a IA e o encaminhamento se perderia.
+ */
+async function tratarEscolhaMenu(tenantId, { conversaRow, jid, texto }, io, wa) {
+  if (!conversaRow.menu_enviado_em) return false;
+  if (conversaRow.operador_id) return false;
+  if (Date.now() - new Date(conversaRow.menu_enviado_em).getTime() > MENU_VALIDADE_MS) return false;
+
+  const escolha = interpretarEscolhaMenu(texto);
+  if (escolha === null) return false;
+
+  const menu = await carregarMenuDepartamentos(tenantId);
+  if (!menu) return false;
+
+  const destino = menu.departamentos.find((d) => d.menu_numero === escolha);
+  if (!destino) {
+    await enviarMensagemSistema(tenantId, {
+      conversaId: conversaRow.id,
+      jid,
+      texto: montarMenuDepartamentos({ ...menu, cabecalho: MENSAGEM_OPCAO_INVALIDA }),
+    }, io, wa);
+    return true;
+  }
+
+  // Mesmo destino do encaminhamento manual: fila do setor, sem dono.
+  await db.none(
+    `UPDATE conversas
+        SET departamento_id = $1, operador_id = NULL,
+            status = 'fila', status_operacional = 'NA_FILA',
+            menu_enviado_em = NULL
+      WHERE id = $2 AND tenant_id = $3`,
+    [destino.id, conversaRow.id, tenantId]
+  );
+  conversaRow.departamento_id = destino.id;
+  conversaRow.menu_enviado_em = null;
+
+  await enviarMensagemSistema(tenantId, {
+    conversaId: conversaRow.id,
+    jid,
+    texto: `Pronto! Sua mensagem foi encaminhada para ${destino.nome}. Em breve você será atendido.`,
+  }, io, wa);
+
+  console.log(`[Menu] conversa=${conversaRow.id} encaminhada para ${destino.nome} (opção ${escolha})`);
+  return true;
+}
+
 // Cooldown do aviso de chamada, por órgão e por número. Quem liga e cai
 // costuma insistir várias vezes seguidas; sem isso o cidadão receberia o mesmo
 // texto a cada toque e o painel encheria de mensagens repetidas.
@@ -2388,35 +2539,15 @@ async function tratarChamadaRecebida(tenantId, call, io, wa) {
     [tenantId, contatoRow.id, resumo]
   );
 
-  const msgId = uuidv4();
-  const registro = await db.one(
-    `INSERT INTO mensagens (id, tenant_id, conversa_id, direcao, tipo, conteudo, status, origem, criado_em)
-     VALUES ($1, $2, $3, 'saida', 'texto', $4, 'enviado', 'bot', now())
-     RETURNING *`,
-    [msgId, tenantId, conversaRow.id, `📞 ${call.isVideo ? 'Chamada de vídeo' : 'Chamada'} recusada — aviso enviado:\n\n${texto}`]
-  );
+  const entregue = await enviarMensagemSistema(tenantId, {
+    conversaId: conversaRow.id,
+    jid,
+    texto,
+    registro: `📞 ${call.isVideo ? 'Chamada de vídeo' : 'Chamada'} recusada — aviso enviado:\n\n${texto}`,
+  }, io, wa);
 
-  try {
-    const envio = await wa.sendText(tenantId, jid, texto);
-    if (envio?.key?.id) {
-      await db.none(
-        'UPDATE mensagens SET wa_message_id = $1 WHERE id = $2 AND tenant_id = $3',
-        [envio.key.id, msgId, tenantId]
-      );
-    }
-  } catch (err) {
-    console.error(`[Chamada] falha ao enviar aviso (tenant=${tenantId}):`, err.message);
-    await db.none(
-      "UPDATE mensagens SET status = 'erro' WHERE id = $1 AND tenant_id = $2",
-      [msgId, tenantId]
-    );
-    // Libera o cooldown: o cidadão não recebeu nada, então a próxima
-    // tentativa dele merece uma nova chance de aviso.
-    avisosChamadaEnviados.delete(`${tenantId}:${jid}`);
-  }
-
-  io.to(salas.conversa(conversaRow.id)).emit('mensagem:nova', registro);
-  io.to(salas.tenant(tenantId)).emit('conversa:atualizada', { convId: conversaRow.id });
+  // Cidadão que não recebeu nada merece nova chance no próximo toque.
+  if (!entregue) avisosChamadaEnviados.delete(`${tenantId}:${jid}`);
 }
 
 function extrairConteudoMensagem(message) {
