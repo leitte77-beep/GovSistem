@@ -2331,14 +2331,49 @@ async function tratarChamadaRecebida(tenantId, call, io, wa) {
     telefone: telefoneOrgao,
   });
 
-  const contatoRow = await db.one(
-    `INSERT INTO contatos (tenant_id, wa_jid, telefone)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (tenant_id, wa_jid) DO UPDATE
-       SET telefone = COALESCE(EXCLUDED.telefone, contatos.telefone)
-     RETURNING id`,
-    [tenantId, jid, telefone]
+  // O WhatsApp entrega a chamada com JID @lid, que não é telefone. O alias
+  // gravado por conversas anteriores leva ao contato real: sem consultá-lo, a
+  // ligação abre um contato duplicado — sem nome nem número — e o aviso não
+  // aparece na conversa que o atendente já conhece.
+  let contatoRow = await db.oneOrNone(
+    `SELECT c.id
+       FROM contato_aliases a
+       JOIN contatos c ON c.id = a.contato_id
+      WHERE a.tenant_id = $1 AND a.alias_jid = $2`,
+    [tenantId, jid]
   );
+
+  // Sem alias, tenta pelo próprio número (chamada que já veio como telefone),
+  // cobrindo a variação do nono dígito.
+  if (!contatoRow && telefone) {
+    const digits = normalizarTelefoneWhatsApp(telefone);
+    if (digits) {
+      const variantes = variantesTelefoneBrasil(digits);
+      contatoRow = await db.oneOrNone(
+        `SELECT co.id
+           FROM contatos co
+           LEFT JOIN conversas c ON c.contato_id = co.id
+          WHERE co.tenant_id = $1
+            AND (co.telefone = ANY($2) OR co.wa_jid = ANY($3))
+          ORDER BY CASE WHEN c.status IN ('aberta', 'fila') THEN 0 ELSE 1 END,
+                   c.ultima_mensagem_em DESC NULLS LAST
+          LIMIT 1`,
+        [tenantId, variantes, variantes.map((n) => `${n}@s.whatsapp.net`)]
+      );
+    }
+  }
+
+  // Cidadão que nunca escreveu: aí sim nasce um contato, com o que se tem.
+  if (!contatoRow) {
+    contatoRow = await db.one(
+      `INSERT INTO contatos (tenant_id, wa_jid, telefone)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (tenant_id, wa_jid) DO UPDATE
+         SET telefone = COALESCE(EXCLUDED.telefone, contatos.telefone)
+       RETURNING id`,
+      [tenantId, jid, telefone]
+    );
+  }
 
   // Abre (ou reaproveita) a conversa para que a tentativa de ligação fique
   // visível no painel — senão o atendente nunca fica sabendo que o cidadão
