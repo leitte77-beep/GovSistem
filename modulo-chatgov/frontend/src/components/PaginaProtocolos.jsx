@@ -288,7 +288,7 @@ export function PaginaProtocolos({ breakpoint }) {
 
   // Atualização em tempo real: qualquer mudança de protocolo na org recarrega a lista
   // (e o detalhe aberto, via refreshTick).
-  const socket = useSocket();
+  const { socket } = useSocket();
   const carregarRef = useRef(carregar);
   carregarRef.current = carregar;
   useEffect(() => {
