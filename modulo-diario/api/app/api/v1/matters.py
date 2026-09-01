@@ -9,9 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.auth import get_current_user, require_roles
+from app.core.content_mode import MODE_SEMANTIC, normalize_mode
 from app.core.database import get_db
 from app.core.file_validator import validate_upload
 from app.core.html_sanitizer import extract_plain_text
+from app.core.versioning import require_no_conflict
 from app.middleware.audit import capture_request_info, log_audit_event
 from app.models.act_type import ActType
 from app.models.enums import AuditAction, MatterStatus
@@ -146,6 +148,7 @@ async def create_matter(
         summary=body.summary.strip() if body.summary else None,
         content_html=body.content_html,
         content_json=body.content_json,
+        content_mode=body.content_mode or "rich_text",
         plain_text=plain_text,
         status=MatterStatus.DRAFT,
         author_id=user.id,
@@ -254,6 +257,9 @@ async def update_matter(
     matter = await _get_matter_or_404(matter_id, db)
     _own_matter_or_admin(matter, user)
 
+    # Fase 2 — conflito de versão: nunca "última gravação vence" silenciosamente.
+    require_no_conflict(request, matter)
+
     if not matter.can_edit():
         # status vem do banco como str (coluna String, sem type decorator).
         current = getattr(matter.status, "value", matter.status)
@@ -261,6 +267,23 @@ async def update_matter(
             status_code=422,
             detail=f"Cannot edit matter in status '{current}'",
         )
+
+    # Fase 2 — uma única fonte canônica. Se a matéria é SEMÂNTICA, o editor HTML
+    # legado não pode gravar um conteúdo HTML divergente sem trocar explicitamente
+    # de modo. A troca exige um campo dedicado (e gera nova versão de modo).
+    current_mode = normalize_mode(getattr(matter, "content_mode", None))
+    body_writes_html = body.content_html is not None or body.content_json is not None
+    if current_mode == MODE_SEMANTIC and body_writes_html:
+        requested_mode = normalize_mode(body.content_mode)
+        if requested_mode == MODE_SEMANTIC:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Matéria em modo semântico: o conteúdo canônico é o "
+                    "documento semântico. Use o editor semântico; não é possível "
+                    "gravar HTML divergente aqui."
+                ),
+            )
 
     if body.title is not None:
         matter.title = body.title.strip()
@@ -281,6 +304,8 @@ async def update_matter(
         matter.plain_text = extract_plain_text(body.content_html)
     if body.content_json is not None:
         matter.content_json = body.content_json
+    if body.content_mode is not None:
+        matter.content_mode = normalize_mode(body.content_mode)
 
     matter.version += 1
     await db.commit()
@@ -499,6 +524,7 @@ async def upload_content_pdf(
     )
     matter.content_html = html
     matter.content_json = None
+    matter.content_mode = "pdf"
     matter.plain_text = f"[Conteúdo gerado a partir de PDF: {file.filename}]"
 
     from app.core.html_sanitizer import extract_plain_text
@@ -690,6 +716,7 @@ async def _matter_to_response(matter: Matter) -> MatterResponse:
         org_unit_id=matter.org_unit_id,
         content_html=matter.content_html,
         content_json=matter.content_json,
+        content_mode=matter.content_mode,
         plain_text=matter.plain_text,
         status=matter.status,
         version=matter.version,

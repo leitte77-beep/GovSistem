@@ -9,8 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.auth import get_current_user, require_roles
+from app.core.content_mode import MODE_SEMANTIC, normalize_mode
 from app.core.database import get_db
 from app.core.feature_flags import is_feature_enabled
+from app.core.versioning import current_etag, require_no_conflict
 from app.middleware.audit import capture_request_info, log_audit_event
 from app.models.enums import AuditAction
 from app.models.matter import Matter
@@ -119,6 +121,9 @@ async def save_matter_semantics(
     if not matter.can_edit():
         raise HTTPException(422, "Matéria não editável neste status")
 
+    # Fase 2 — conflito de versão otimista: nunca sobrescrever silenciosamente.
+    require_no_conflict(request, matter)
+
     doc = body.document
     if body.confirm_all:
         confirm_document(doc)
@@ -137,6 +142,8 @@ async def save_matter_semantics(
     matter.classification_status = doc.classification_status or CLASSIFICATION_CONFIRMED
     matter.template_id = body.template_id
     matter.template_version = body.template_version
+    # Fase 2 — o modo canônico passa a ser SEMÂNTICO (fonte única).
+    matter.content_mode = MODE_SEMANTIC
     await db.commit()
 
     info = await capture_request_info(request)
@@ -152,6 +159,9 @@ async def save_matter_semantics(
         "text_integrity_hash": doc.text_integrity_hash,
         "classification_status": doc.classification_status,
         "validation": validation,
+        "content_mode": MODE_SEMANTIC,
+        "version": matter.version,
+        "etag": current_etag(matter),
     }
 
 
@@ -173,6 +183,9 @@ async def get_matter_semantics(
         "classification_status": matter.classification_status,
         "template_id": str(matter.template_id) if matter.template_id else None,
         "template_version": matter.template_version,
+        "content_mode": normalize_mode(matter.content_mode),
+        "version": matter.version,
+        "etag": current_etag(matter),
     }
 
 

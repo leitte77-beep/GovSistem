@@ -22,8 +22,30 @@ _CONTAINER = "doe-document"
 _SAFE_RE = re.compile(r"[^a-zA-Z0-9_-]")
 
 
-def _esc(value: str) -> str:
-    return _html_mod.escape(value or "", quote=True)
+def _esc(value: str | int | None) -> str:
+    return _html_mod.escape(str(value or ""), quote=True)
+
+
+_SAFE_SCHEME_RE = re.compile(r"^([a-zA-Z][a-zA-Z0-9+.-]*):")
+
+
+def _safe_url(value: str) -> str:
+    """Return a URL only when it uses an allowed scheme.
+
+    Blocks javascript:, vbscript:, data: (except data:image/*) and other
+    executable schemes. Escapes everything for safe use in attributes.
+    """
+    raw = (value or "").strip()
+    if not raw:
+        return ""
+    match = _SAFE_SCHEME_RE.match(raw)
+    if match:
+        scheme = match.group(1).lower()
+        if scheme in ("javascript", "vbscript", "file"):
+            return ""
+        if scheme == "data" and not raw.lower().startswith("data:image/"):
+            return ""
+    return _esc(raw)
 
 
 def _safe_id(value: str) -> str:
@@ -197,7 +219,7 @@ def _render_block(block) -> str:
     if btype == "image":
         caption = f"<figcaption>{_esc(block.caption)}</figcaption>" if block.caption else ""
         return (
-            f'<div class="{cls}"><figure><img src="{_esc(block.src)}" '
+            f'<div class="{cls}"><figure><img src="{_safe_url(block.src)}" '
             f'alt="{_esc(block.alt)}" loading="lazy"/>{caption}</figure></div>'
         )
 
@@ -214,13 +236,15 @@ def _render_block(block) -> str:
         )
 
     if btype == "legacy_html":
-        return f'<div class="{cls}">{block.content}</div>'
+        from app.core.html_sanitizer import sanitize_html
+
+        return f'<div class="{cls}">{sanitize_html(block.content)}</div>'
 
     if btype == "pdf_reference":
         return (
             f'<div class="{cls}"><p>Documento em PDF original — '
-            f"{block.page_count} página(s). Conteúdo não editável por blocos.</p>"
-            f'<p><a href="{_esc(block.src)}" rel="noopener noreferrer">'
+            f"{_esc(block.page_count)} página(s). Conteúdo não editável por blocos.</p>"
+            f'<p><a href="{_safe_url(block.src)}" rel="noopener noreferrer">'
             "Abrir PDF original</a></p></div>"
         )
 
