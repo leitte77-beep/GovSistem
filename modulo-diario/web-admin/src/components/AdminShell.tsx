@@ -19,6 +19,7 @@ const NAV_ITEMS: {
   { label: "Matérias", href: "/matters", icon: "description" },
   { label: "Edições", href: "/editions", icon: "auto_stories" },
   { label: "Importar", href: "/importar", icon: "upload_file" },
+  { label: "Modelos", href: "/templates", icon: "dashboard_customize" },
   { label: "Operações", href: "/operacoes", icon: "settings_suggest" },
   { label: "Usuários", href: "/users", icon: "group" },
   { label: "Configurações", href: "/settings", icon: "tune", adminOnly: true },

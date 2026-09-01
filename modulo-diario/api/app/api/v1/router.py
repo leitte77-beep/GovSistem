@@ -17,6 +17,7 @@ from app.api.v1.plans import router as plans_router
 from app.api.v1.public import router as public_router
 from app.api.v1.roles import router as roles_router
 from app.api.v1.security import router as security_router
+from app.api.v1.semantic import router as semantic_router
 from app.api.v1.settings import router as settings_router
 from app.api.v1.signing_credentials import router as signing_credentials_router
 from app.api.v1.users import router as users_router
@@ -35,6 +36,7 @@ api_router.include_router(imports_router)
 api_router.include_router(legacy_router)
 api_router.include_router(matters_router)
 api_router.include_router(roles_router)
+api_router.include_router(semantic_router)
 api_router.include_router(mfa_router)
 api_router.include_router(security_router)
 api_router.include_router(settings_router)

@@ -6,9 +6,11 @@ import toast from "react-hot-toast";
 import clsx from "clsx";
 
 import Editor from "@/components/Editor";
+import SemanticEditor from "@/components/Semantic/SemanticEditor";
 import AttachmentUpload from "./AttachmentUpload";
 import StatusHistory from "./StatusHistory";
 import StatusBadge from "./StatusBadge";
+import MatterContentPreview from "./MatterContentPreview";
 import Breadcrumbs from "@/components/Breadcrumbs";
 import { sanitizeHtml } from "@/lib/sanitize";
 import { api } from "@/lib/api";
@@ -53,6 +55,8 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
   const [actTypeId, setActTypeId] = useState(matter?.act_type_id ?? "");
   const [orgUnitId, setOrgUnitId] = useState(matter?.org_unit_id ?? "");
   const [contentHtml, setContentHtml] = useState(matter?.content_html ? fixImageUrls(matter.content_html) : "");
+  const [contentJson, setContentJson] = useState<Record<string, unknown> | null>(matter?.content_json ?? null);
+  const [contentMode, setContentMode] = useState<"rich_text" | "pdf">(matter?.content_mode ?? "rich_text");
   const [status, setStatus] = useState<MatterStatus>(matter?.status ?? "draft");
   const [attachments, setAttachments] = useState<Attachment[]>(matter?.attachments ?? []);
   const [actTypes, setActTypes] = useState<ActType[]>([]);
@@ -63,6 +67,7 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
   const [generatingTitle, setGeneratingTitle] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [cleanWarnings, setCleanWarnings] = useState<string[]>([]);
+  const [semanticMode, setSemanticMode] = useState(false);
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const draftLoaded = useRef(false);
   const titleAutoFilled = useRef(false);
@@ -81,7 +86,7 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
     if (!matter && !draftLoaded.current) {
       draftLoaded.current = true;
       try {
-        const saved = localStorage.getItem(AUTOSAVE_KEY);
+          const saved = localStorage.getItem(AUTOSAVE_KEY);
         if (saved) {
           const data = JSON.parse(saved);
           if (data.title || data.summary || data.content_html) {
@@ -90,6 +95,8 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
             setActTypeId(data.act_type_id ?? "");
             setOrgUnitId(data.org_unit_id ?? "");
             setContentHtml(data.content_html ?? "");
+            setContentJson(data.content_json ?? null);
+            setContentMode(data.content_mode ?? "rich_text");
             toast.success("Rascunho local restaurado");
           }
         }
@@ -102,12 +109,12 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
       const timer = setTimeout(() => {
         localStorage.setItem(
           AUTOSAVE_KEY,
-          JSON.stringify({ title, summary, act_type_id: actTypeId, org_unit_id: orgUnitId, content_html: contentHtml })
+          JSON.stringify({ title, summary, act_type_id: actTypeId, org_unit_id: orgUnitId, content_html: contentHtml, content_json: contentJson, content_mode: contentMode })
         );
       }, 2000);
       return () => clearTimeout(timer);
     }
-  }, [isNew, isEditable, title, summary, actTypeId, orgUnitId, contentHtml]);
+  }, [isNew, isEditable, title, summary, actTypeId, orgUnitId, contentHtml, contentJson, contentMode]);
 
   const errors: Record<string, string> = {};
   if (touched.title && !title.trim()) errors.title = "O título é obrigatório";
@@ -160,6 +167,8 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
           act_type_id: actTypeId,
           org_unit_id: orgUnitId || undefined,
           content_html: clean,
+          content_json: contentMode === "rich_text" ? (contentJson ?? undefined) : undefined,
+          content_mode: contentMode,
         };
 
         let result: Matter;
@@ -191,7 +200,7 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
         setSaving(false);
       }
     },
-    [title, summary, actTypeId, orgUnitId, contentHtml, isNew, matter, router, hasContent]
+    [title, summary, actTypeId, orgUnitId, contentHtml, contentJson, contentMode, isNew, matter, router, hasContent]
   );
 
 
@@ -430,7 +439,37 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
         {step === 2 && (
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-gutter items-start">
             <div className="lg:col-span-2 space-y-gutter">
+              {/* Content mode selection (editable document vs ready PDF) */}
+              <div className="bg-surface-bright rounded-2xl border border-outline-variant overflow-hidden shadow-sm">
+                <div className="p-4 bg-surface-container-high border-b border-outline-variant">
+                  <span className="text-label-md font-label-md text-on-surface-variant">COMO DESEJA INFORMAR O CONTEÚDO?</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4">
+                  <button
+                    type="button"
+                    disabled={!isEditable}
+                    onClick={() => { setContentMode("rich_text"); }}
+                    className={`flex flex-col items-start gap-1 rounded-xl border p-4 text-left transition-all disabled:opacity-50 ${contentMode === "rich_text" ? "border-primary bg-primary-fixed/20" : "border-outline-variant hover:border-primary"}`}
+                  >
+                    <span className="material-symbols-outlined text-[22px] text-primary">edit_note</span>
+                    <span className="text-body-sm font-semibold text-on-surface">Criar documento editável</span>
+                    <span className="text-xs text-on-surface-variant leading-snug">Escreva ou cole no TipTap. Texto editável, com revisão e geração pelo WeasyPrint.</span>
+                  </button>
+                  <button
+                    type="button"
+                    disabled={!isEditable}
+                    onClick={() => { setContentMode("pdf"); }}
+                    className={`flex flex-col items-start gap-1 rounded-xl border p-4 text-left transition-all disabled:opacity-50 ${contentMode === "pdf" ? "border-primary bg-primary-fixed/20" : "border-outline-variant hover:border-primary"}`}
+                  >
+                    <span className="material-symbols-outlined text-[22px] text-tertiary">picture_as_pdf</span>
+                    <span className="text-body-sm font-semibold text-on-surface">Usar PDF pronto</span>
+                    <span className="text-xs text-on-surface-variant leading-snug">Preserva a aparência original das páginas. Não permite editar o texto como no TipTap.</span>
+                  </button>
+                </div>
+              </div>
+
               {/* PDF Upload Area */}
+              {contentMode === "pdf" && (
               <div className="bg-surface-bright rounded-2xl border border-outline-variant overflow-hidden shadow-sm">
                 <div className="p-4 bg-surface-container-high border-b border-outline-variant flex items-center gap-2">
                   <span className="material-symbols-outlined text-tertiary">upload_file</span>
@@ -506,17 +545,70 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
                   )}
                 </div>
               </div>
+              )}
+              {contentMode === "pdf" && contentHtml && (
+                <div className="bg-surface-bright rounded-2xl border border-outline-variant overflow-hidden shadow-sm">
+                  <div className="p-4 bg-surface-container-high border-b border-outline-variant flex items-center gap-2">
+                    <span className="material-symbols-outlined text-tertiary">description</span>
+                    <span className="text-label-md font-label-md text-on-surface-variant">PRÉ-VISUALIZAÇÃO DO PDF</span>
+                  </div>
+                  <MatterContentPreview
+                    pdfMode
+                    contentHtml={contentHtml}
+                    className="bg-white rounded-b-xl overflow-x-auto"
+                  />
+                  <p className="px-4 py-3 text-xs text-on-surface-variant border-t border-outline-variant">
+                    Modo <strong>PDF pronto</strong>: as páginas originais são preservadas. O texto não pode ser editado como no TipTap.
+                  </p>
+                </div>
+              )}
+              {contentMode === "rich_text" && (
               <div className="bg-surface-bright rounded-2xl border border-outline-variant overflow-hidden shadow-sm">
                 <div className="p-4 bg-surface-container-high border-b border-outline-variant flex items-center gap-2">
-                  <span className="material-symbols-outlined text-primary">edit_note</span>
-                  <span className="text-label-md font-label-md text-on-surface-variant">EDITOR DE CONTEÚDO <span className="text-error">*</span></span>
+                  <button
+                    type="button"
+                    onClick={() => setSemanticMode((m) => !m)}
+                    aria-pressed={semanticMode}
+                    className="flex items-center gap-2 text-label-md font-label-md text-on-surface-variant hover:text-primary transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-primary">edit_note</span>
+                    {semanticMode ? "EDITOR SEMÂNTICO POR BLOCOS" : "EDITOR DE CONTEÚDO"}
+                    <span className={`material-symbols-outlined text-[18px] ${semanticMode ? "text-secondary" : ""}`}>
+                      {semanticMode ? "toggle_on" : "toggle_off"}
+                    </span>
+                  </button>
+                  <span className="text-[10px] text-on-surface-variant ml-auto">motor semântico</span>
                 </div>
+                {semanticMode ? (
+                  matterId ? (
+                    <div className="p-5">
+                      <SemanticEditor
+                        matterId={matterId}
+                        title={title}
+                        summary={summary}
+                        documentType={selectedActType?.name || undefined}
+                      />
+                    </div>
+                  ) : (
+                    <div className="p-6 text-sm text-on-surface-variant flex items-start gap-2">
+                      <span className="material-symbols-outlined text-primary">info</span>
+                      <p>Para usar o editor semântico, salve a matéria primeiro (o documento precisa de um ID). Clique em <strong>Salvar Rascunho</strong> na barra inferior e o editor será liberado aqui.</p>
+                    </div>
+                  )
+                ) : (
+                  <></>
+                )}
+                <div className={semanticMode ? "hidden" : ""}>
                 <Editor content={contentHtml}
+                  contentJson={contentJson}
                   onChange={(html) => { setContentHtml(html); setTouched((p) => ({ ...p, content: true })); }}
+                  onChangeJson={(json) => setContentJson(json)}
                   onCleanWarnings={setCleanWarnings}
                   aiContext={{ actType: selectedActType?.name, title, summary }} />
                 {errors.content && <p className="text-xs text-error px-5 pb-3 flex items-center gap-1"><span className="material-symbols-outlined text-xs">warning</span> {errors.content}</p>}
               </div>
+              </div>
+              )}
               <div className="bg-surface-bright rounded-2xl p-6 border border-outline-variant shadow-sm">
                 <div className="flex items-center gap-2 mb-4">
                   <span className="material-symbols-outlined text-secondary">description</span>
@@ -580,7 +672,7 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
                 <div>
                   <span className="text-label-md font-label-md text-on-surface-variant">STATUS</span>
                   <div className="mt-1 p-3 bg-surface-container-low rounded-xl">
-                    <span className="px-3 py-1 bg-surface-container-highest text-on-surface-variant text-[11px] font-bold rounded-full uppercase tracking-wider">Rascunho</span>
+                    <StatusBadge status={status} size="md" />
                   </div>
                 </div>
               </div>
@@ -588,6 +680,37 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
                 <div className="mt-4">
                   <span className="text-label-md font-label-md text-on-surface-variant">SÚMULA</span>
                   <p className="text-body-md text-on-surface-variant mt-1 p-3 bg-surface-container-low rounded-xl">{summary}</p>
+                </div>
+              )}
+              <div className="mt-4">
+                <span className="text-label-md font-label-md text-on-surface-variant">CONTEÚDO</span>
+                <div className="mt-1">
+                  {contentMode === "pdf" ? (
+                    <MatterContentPreview
+                      pdfMode
+                      contentHtml={contentHtml}
+                      className="bg-white rounded-xl border border-outline-variant overflow-x-auto"
+                    />
+                  ) : (
+                    <MatterContentPreview
+                      contentJson={contentJson}
+                      contentHtml={contentHtml}
+                      className="bg-white rounded-xl border border-outline-variant overflow-x-auto"
+                    />
+                  )}
+                </div>
+              </div>
+              {attachments.length > 0 && (
+                <div className="mt-4">
+                  <span className="text-label-md font-label-md text-on-surface-variant">ANEXOS</span>
+                  <ul className="mt-1 p-3 bg-surface-container-low rounded-xl space-y-1">
+                    {attachments.map((a) => (
+                      <li key={a.id} className="text-body-sm text-on-surface flex items-center gap-2">
+                        <span className="material-symbols-outlined text-sm text-secondary">attach_file</span>
+                        {a.title || a.type}
+                      </li>
+                    ))}
+                  </ul>
                 </div>
               )}
             </div>
@@ -632,7 +755,8 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
                       {saving ? <span className="material-symbols-outlined animate-spin">progress_activity</span> : <span className="material-symbols-outlined">thumb_down</span>}
                       Rejeitar
                     </button>
-                    <button type="button" onClick={handleApprove} disabled={saving}
+                    <button type="button" onClick={handleApprove} disabled={saving || !hasContent}
+                      title={!hasContent ? "Não é possível aprovar sem conteúdo" : undefined}
                       className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-lg bg-secondary text-on-secondary hover:opacity-90 disabled:opacity-50">
                       {saving ? <span className="material-symbols-outlined animate-spin">progress_activity</span> : <span className="material-symbols-outlined">thumb_up</span>}
                       Aprovar

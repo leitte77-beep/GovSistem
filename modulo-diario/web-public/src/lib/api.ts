@@ -117,6 +117,14 @@ export const api = {
     return get<any>(`/api/public/v1/editions/by-year/${year}/${number}`);
   },
 
+  getEditionSnapshot(year: number, number: number) {
+    return get<any>(`/api/public/v1/editions/${year}/${number}/snapshot`);
+  },
+
+  editionDownloadUrl(year: number, number: number, inline = false) {
+    return `${BASE}/api/public/v1/editions/${year}/${number}/download${inline ? "?inline=1" : ""}`;
+  },
+
   getMatter(id: string) {
     return get<any>(`/api/public/v1/matters/${id}`);
   },

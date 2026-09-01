@@ -185,12 +185,16 @@ export const api = {
     search?: string;
     skip?: number;
     limit?: number;
+    act_type_id?: string;
+    org_unit_id?: string;
   }) {
     const q = new URLSearchParams();
     if (params?.status) q.set("status", params.status);
     if (params?.search) q.set("search", params.search);
     if (params?.skip) q.set("skip", String(params.skip));
     if (params?.limit) q.set("limit", String(params.limit));
+    if (params?.act_type_id) q.set("act_type_id", params.act_type_id);
+    if (params?.org_unit_id) q.set("org_unit_id", params.org_unit_id);
     const qs = q.toString();
     return request<MatterListItem[]>(`/matters${qs ? `?${qs}` : ""}`);
   },
@@ -221,6 +225,7 @@ export const api = {
     org_unit_id?: string;
     content_html: string;
     content_json?: Record<string, unknown>;
+    content_mode?: string;
   }) {
     return request<Matter>("/matters", {
       method: "POST",
@@ -235,6 +240,7 @@ export const api = {
     org_unit_id: string;
     content_html: string;
     content_json: Record<string, unknown>;
+    content_mode: string;
   }>) {
     return request<Matter>(`/matters/${id}`, {
       method: "PATCH",
@@ -505,6 +511,20 @@ export const api = {
   // Generic request (for operations dashboard)
   getRaw<T = any>(path: string) {
     return request<T>(path);
+  },
+
+  post<T = any>(path: string, body?: any) {
+    return request<T>(path, {
+      method: "POST",
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  },
+
+  put<T = any>(path: string, body?: any) {
+    return request<T>(path, {
+      method: "PUT",
+      body: body ? JSON.stringify(body) : undefined,
+    });
   },
 
   patch<T = any>(path: string, body?: any) {

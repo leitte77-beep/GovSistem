@@ -18,6 +18,18 @@ function certificateIdentity(data: any) {
   return { name, document };
 }
 
+function StateChip({ label, ok }: { label: string; ok?: boolean }) {
+  return (
+    <div className="flex items-center justify-between gap-2 rounded-lg bg-surface-container-low px-3 py-2">
+      <span className="text-on-surface-variant">{label}</span>
+      <span className={`flex items-center gap-1 text-xs font-semibold ${ok ? "text-secondary" : "text-error"}`}>
+        <span className="material-symbols-outlined text-[16px]">{ok ? "check_circle" : "cancel"}</span>
+        {ok ? "Sim" : "Não"}
+      </span>
+    </div>
+  );
+}
+
 function formatDocument(document: string) {
   if (/^\d{14}$/.test(document)) {
     return document.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
@@ -32,13 +44,24 @@ export default function VerifyCodePage() {
   const params = useParams();
   const code = params.codigo as string;
   const [data, setData] = useState<any>(null);
+  const [snapshot, setSnapshot] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const certificate = certificateIdentity(data);
 
   useEffect(() => {
     api.verify(code)
-      .then(setData)
+      .then(async (result) => {
+        setData(result);
+        if (result.valid && result.edition_year && result.edition_number) {
+          try {
+            const snap = await api.getEditionSnapshot(result.edition_year, result.edition_number);
+            setSnapshot(snap);
+          } catch {
+            /* snapshot não disponível — mantém verificação básica */
+          }
+        }
+      })
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   }, [code]);
@@ -159,6 +182,43 @@ export default function VerifyCodePage() {
                   )}
                 </div>
               </div>
+
+              {snapshot?.authenticity && (
+                <div className="rounded-xl border border-outline-variant p-5 mb-6">
+                  <h4 className="text-label-md font-label-md text-primary mb-3">Estados de validação</h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-body-sm">
+                    <StateChip label="Arquivo assinado" ok={snapshot.authenticity.states.signed} />
+                    <StateChip label="Integridade criptográfica" ok={snapshot.authenticity.states.intact} />
+                    <StateChip label="Cadeia verificada" ok={snapshot.authenticity.states.trusted} />
+                    <StateChip label="Snapshot imutável íntegro" ok={snapshot.authenticity.snapshot_intact} />
+                  </div>
+                  <div className="mt-4 space-y-2">
+                    {snapshot.authenticity.signed_pdf_hash && (
+                      <div>
+                        <span className="text-on-surface-variant text-xs uppercase">SHA-256 do PDF assinado</span>
+                        <code className="block bg-surface-container mt-1 px-3 py-1.5 rounded text-xs font-mono break-all text-primary">
+                          {snapshot.authenticity.signed_pdf_hash}
+                        </code>
+                      </div>
+                    )}
+                    {snapshot.authenticity.content_manifest_hash && (
+                      <div>
+                        <span className="text-on-surface-variant text-xs uppercase">Manifesto de conteúdo</span>
+                        <code className="block bg-surface-container mt-1 px-3 py-1.5 rounded text-xs font-mono break-all text-primary">
+                          {snapshot.authenticity.content_manifest_hash}
+                        </code>
+                      </div>
+                    )}
+                  </div>
+                  <p className="mt-3 text-xs text-on-surface-variant">
+                    {snapshot.authenticity.states.trusted
+                      ? "Assinatura válida e confiável (cadeia ICP-Brasil verificada)."
+                      : snapshot.authenticity.states.intact
+                        ? "Integridade válida; cadeia de certificados não verificada (certificado de teste/raízes ausentes)."
+                        : "Validação indisponível."}
+                  </p>
+                </div>
+              )}
 
               {/* QR Code */}
               <div className="text-center">

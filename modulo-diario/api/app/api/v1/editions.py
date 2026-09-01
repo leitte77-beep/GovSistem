@@ -450,15 +450,49 @@ async def close_edition(
     user: User = Depends(require_roles("DIAGRAMADOR", "ADMIN")),
 ):
     edition = await _get_edition_or_404(edition_id, db)
+    edition_meta = {
+        "id": edition.id,
+        "organization_id": edition.organization_id,
+        "year": edition.year,
+        "number": edition.number,
+        "type": _status_value(edition.type),
+        "title": edition.title,
+        "subtitle": edition.subtitle,
+        "publication_date": edition.publication_date,
+        "verification_code": edition.verification_code,
+    }
     edition.change_status(EditionStatus.CLOSED)
     await db.commit()
     await db.refresh(edition, attribute_names=["updated_at"])
+
+    # Fase 11: freeze an immutable snapshot when the semantic engine is enabled
+    from app.core.feature_flags import is_feature_enabled
+    if await is_feature_enabled(
+        db, "semantic_document_engine_enabled", edition_meta["organization_id"]
+    ):
+        from app.models.edition_publication_snapshot import EditionPublicationSnapshot
+        existing = await db.execute(
+            select(EditionPublicationSnapshot)
+            .where(
+                EditionPublicationSnapshot.edition_id == edition_id,
+                EditionPublicationSnapshot.is_valid.is_(True),
+            )
+            .limit(1)
+        )
+        if existing.scalar_one_or_none() is None:
+            from app.services.edition_snapshot import create_edition_snapshot
+            try:
+                await create_edition_snapshot(db, edition_meta, user_id=user.id)
+                await db.commit()
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Snapshot creation failed for edition %s: %s", edition_id, e)
+                await db.rollback()
 
     # Auto-generate PDF after closing (uses its own sync session)
     from app.services.edition_pdf import generate_edition_pdf_sync
     from app.models.organization import Organization
     org_result = await db.execute(
-        select(Organization).where(Organization.id == edition.organization_id)
+        select(Organization).where(Organization.id == edition_meta["organization_id"])
     )
     organization = org_result.scalar_one_or_none()
     organ_name = organization.name if organization else None
@@ -657,20 +691,16 @@ async def sign_edition(
     pdf_full_path = os.path.join(api_settings.UPLOAD_DIR, edition.pdf_path)
 
     if not os.path.exists(pdf_full_path):
-        from app.services.edition_pdf import generate_edition_pdf_sync
-        generated = generate_edition_pdf_sync(
-            edition_id=str(edition_id),
-            organ_name=organ_name,
-            layout=pdf_layout,
-        )
-        edition.pdf_path = generated["filename"]
-        edition.pdf_hash = generated["sha256"]
-
-    if not os.path.exists(pdf_full_path):
-        raise HTTPException(404, "PDF file not found in storage")
+        # Fase 3: a assinatura NÃO re-gera o PDF. O PDF da pré-visualização
+        # (imutável, não assinado) deve existir no storage; caso contrário a
+        # operação falha claramente e a edição permanece sem status SIGNED.
+        raise HTTPException(422, "PDF não assinado não encontrado no storage. Gere o PDF novamente antes de assinar.")
 
     with open(pdf_full_path, "rb") as f:
         pdf_bytes = f.read()
+
+    import hashlib
+    source_pdf_hash = hashlib.sha256(pdf_bytes).hexdigest()
 
     import base64
     result = None
@@ -699,7 +729,46 @@ async def sign_edition(
     except Exception as e:
         raise HTTPException(502, f"Signing service failed: {e}")
 
+    # Cross-check: o signer deve ter assinado exatamente os bytes enviados.
+    if result.get("sha256_original") and result["sha256_original"] != source_pdf_hash:
+        raise HTTPException(502, "Hash do PDF recebido pelo signer difere do source_pdf_hash")
+
     signed_bytes = base64.b64decode(result["signed_pdf_base64"])
+    signed_pdf_hash = hashlib.sha256(signed_bytes).hexdigest()
+    if result.get("sha256_signed") and result["sha256_signed"] != signed_pdf_hash:
+        raise HTTPException(502, "Hash do PDF assinado difere do informado pelo signer")
+
+    # Só prossegue para SIGNED se o signer confirmou a validação criptográfica.
+    if result.get("validation_status") not in ("ok", "verification_failed", None):
+        raise HTTPException(502, "Falha na validação criptográfica pós-assinatura no signer")
+
+    # content_manifest_hash: representação canônica do conteúdo + layout + source.
+    import json as _json
+    _manifest = {
+        "organization_id": str(edition.organization_id),
+        "edition_id": str(edition.id),
+        "year": edition.year,
+        "number": edition.number,
+        "type": edition.type.value if hasattr(edition.type, "value") else str(edition.type),
+        "layout": pdf_layout,
+        "renderer_version": "weasyprint",
+        "items": [
+            {
+                "id": str(it.matter_id),
+                "position": it.position,
+                "version": it.matter.version if it.matter else None,
+                "content_hash": hashlib.sha256((it.matter.content_html or "").encode()).hexdigest() if it.matter else None,
+            }
+            for it in (edition.items or [])
+        ],
+        "source_pdf_hash": source_pdf_hash,
+    }
+    edition.content_manifest_hash = hashlib.sha256(
+        _json.dumps(_manifest, sort_keys=True).encode()
+    ).hexdigest()
+    edition.renderer_version = "weasyprint"
+    edition.layout_version = pdf_layout
+
     sig_filename = f"signed_{edition.year}_{edition.number}_{uuid.uuid4().hex[:8]}.pdf"
     from app.core.storage import storage as store_backend
     if organization:
@@ -708,12 +777,13 @@ async def sign_edition(
     await store_backend.store(sig_filename, signed_bytes)
 
     signed_at = datetime.now(timezone.utc)
+    # Metadados completos (não truncados); o PDF assinado íntegro fica no storage.
     sig_record = Signature(
         edition_id=edition.id,
         user_id=user.id,
         signing_credential_id=credential.id if credential else None,
         signed_at=signed_at,
-        signature_data=result["signed_pdf_base64"][:1000],  # store truncated
+        signature_data=f"storage://{sig_filename}",
         certificate_info={
             "subject": result["certificate_subject"],
             "serial": result["certificate_serial"],
@@ -723,16 +793,19 @@ async def sign_edition(
             "valid_to": result.get("valid_to", ""),
             "policy_oid": result.get("policy_oid", "2.16.76.1.7.1.11.1.3"),
             "signature_format": result.get("signature_format", "PAdES"),
-            "sha256_original": result.get("sha256_original", ""),
-            "sha256_signed": result["sha256_signed"],
+            "sha256_original": source_pdf_hash,
+            "sha256_signed": signed_pdf_hash,
             "verification_code": result.get("verification_code") or edition.verification_code or "",
+            "validation_status": result.get("validation_status", ""),
         },
         is_valid=True,
     )
     db.add(sig_record)
 
     edition.signed_pdf_path = sig_filename
-    edition.pdf_hash = result["sha256_signed"]
+    edition.source_pdf_hash = source_pdf_hash
+    edition.signed_pdf_hash = signed_pdf_hash
+    edition.pdf_hash = signed_pdf_hash  # legado
     edition.immutability_hash = edition.compute_immutability_hash()
     edition.change_status(EditionStatus.SIGNED)
     await db.commit()

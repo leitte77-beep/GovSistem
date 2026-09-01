@@ -3,6 +3,7 @@ from app.models.audit_event import AuditEvent
 from app.models.base import Base, SoftDeleteMixin, TimestampMixin
 from app.models.edition import Edition
 from app.models.edition_item import EditionItem
+from app.models.edition_publication_snapshot import EditionPublicationSnapshot
 from app.models.enums import (
     AttachmentType,
     AuditAction,
@@ -16,6 +17,9 @@ from app.models.matter_attachment import MatterAttachment
 from app.models.org_unit import OrgUnit
 from app.models.organization import Organization
 from app.models.plan import Plan
+from app.models.publication_artifact import PublicationArtifact
+from app.models.publication_template import PublicationTemplate
+from app.models.publication_template_version import PublicationTemplateVersion
 from app.models.refresh_token import RefreshToken
 from app.models.role import Role
 from app.models.search_index import SearchIndex
@@ -42,12 +46,16 @@ __all__ = [
     "RefreshToken",
     "Edition",
     "EditionItem",
+    "EditionPublicationSnapshot",
     "File",
     "Matter",
     "MatterAttachment",
     "Organization",
     "OrgUnit",
     "Plan",
+    "PublicationArtifact",
+    "PublicationTemplate",
+    "PublicationTemplateVersion",
     "Role",
     "SearchIndex",
     "SystemSetting",

@@ -37,6 +37,7 @@ export interface Matter {
   org_unit_id: string | null;
   content_html: string;
   content_json: Record<string, unknown> | null;
+  content_mode: "rich_text" | "pdf";
   plain_text: string;
   status: MatterStatus;
   version: number;

@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
+from app.models.base import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
 
@@ -43,7 +44,11 @@ class Matter(Base, TimestampMixin):
     content_html: Mapped[str] = mapped_column(Text, nullable=False)
     content_json: Mapped[Optional[dict]] = mapped_column(
         JSON, nullable=True,
-        comment="Structured editor JSON (e.g. TipTap/ProseMirror)",
+        comment="Structured editor JSON (e.g. TipTap/ProseMirror) - canonical source for editable content",
+    )
+    content_mode: Mapped[str] = mapped_column(
+        String(20), nullable=False, default="rich_text",
+        comment="Content source mode: 'rich_text' (TipTap editable) or 'pdf' (ready-made PDF pages)",
     )
     plain_text: Mapped[str] = mapped_column(
         Text, nullable=False,
@@ -81,6 +86,37 @@ class Matter(Base, TimestampMixin):
         UUID(as_uuid=True),
         ForeignKey("matters.id", ondelete="SET NULL"),
         nullable=True,
+    )
+
+    # ── Semantic document engine (additive, feature-flagged) ────────────────
+    semantic_content: Mapped[Optional[dict]] = mapped_column(
+        JSONB, nullable=True,
+        comment="Canonical SemanticDocument (blocks) — JSONB",
+    )
+    semantic_schema_version: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True,
+        comment="Semantic schema version of semantic_content",
+    )
+    source_hash: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True,
+        comment="SHA-256 of the raw user input",
+    )
+    text_integrity_hash: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True,
+        comment="SHA-256 of normalized source+blocks text fidelity check",
+    )
+    classification_status: Mapped[Optional[str]] = mapped_column(
+        String(20), nullable=True,
+        comment="pending | confirmed",
+    )
+    template_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("publication_templates.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    template_version: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True,
+        comment="Immutable template version used",
     )
 
     organization: Mapped["Organization"] = relationship(
