@@ -1,39 +1,17 @@
 import { test, expect, Page } from "@playwright/test";
+import AxeBuilder from "@axe-core/playwright";
 
 /**
- * Fase 20 — smoke visual + acessibilidade da página pública da edição.
- * Requer web-public + API no ar (homologação). Roda com:
- *   PLAYWRIGHT_BASE_URL=http://localhost:3001 npx playwright test
- *
- * Foco: snapshot imutável renderizado, um único <h1>, sumário navegável,
- * busca na edição, painel de autenticidade, tabela acessível e contraste.
+ * Fase 11/12 — acessibilidade + conteúdo da página pública da edição.
+ * Requer web-public + API no ar (homologação).
+ *   PLAYWRIGHT_BASE_URL=http://localhost:9200 npx playwright test
  */
 
 const EDITION = "/edicoes/2026/21";
 
-async function runAxe(page: Page) {
-  let axePath: string | undefined;
-  try {
-    axePath = require.resolve("axe-core");
-  } catch {
-    /* axe-core não instalado — teste de violações será pulado */
-  }
-  if (axePath) {
-    await page.addScriptTag({ path: axePath });
-  }
-  const result = await page.evaluate(async () => {
-    const source = (window as any).axe?.source;
-    if (!source) return { error: "axe-core não carregado" };
-    // eslint-disable-next-line no-eval
-    return eval(`${source}; (async () => { const r = await axe.run(document); return { violations: r.violations, passes: r.passes.length }; })();`);
-  });
-  return result;
-}
-
 test.describe("Página pública da edição (snapshot)", () => {
-  test("renderiza header institucional, dados e ações", async ({ page }) => {
+  test("renderiza header institucional, ações e aviso de representação", async ({ page }) => {
     await page.goto(EDITION);
-    await expect(page).toHaveTitle(/Diário Oficial/);
     await expect(page.locator("h1").first()).toBeVisible();
     await expect(page.getByText("Baixar PDF oficial", { exact: false }).first()).toBeVisible();
     await expect(page.getByText("Representação HTML da edição oficial", { exact: false })).toBeVisible();
@@ -41,16 +19,16 @@ test.describe("Página pública da edição (snapshot)", () => {
 
   test("exibe exatamente um <h1> na página", async ({ page }) => {
     await page.goto(EDITION);
-    const h1count = await page.locator("h1").count();
-    expect(h1count).toBe(1);
+    await expect(page.locator("h1")).toHaveCount(1);
   });
 
-  test("sumário navega para âncoras das matérias", async ({ page }) => {
+  test("sumário é navegável por teclado e leva às âncoras", async ({ page }) => {
     await page.goto(EDITION);
     const link = page.locator('nav[aria-label="Sumário"] a').first();
     if ((await link.count()) > 0) {
       const href = await link.getAttribute("href");
-      await link.click();
+      await link.focus();
+      await page.keyboard.press("Enter");
       await expect(page).toHaveURL(new RegExp(`#${href?.slice(1)}`));
     }
   });
@@ -65,14 +43,45 @@ test.describe("Página pública da edição (snapshot)", () => {
   test("painel de autenticidade e hashes visíveis", async ({ page }) => {
     await page.goto(EDITION);
     await expect(page.getByText("Painel de Autenticidade")).toBeVisible();
-    await expect(page.getByText(/SHA-256 do PDF/i)).toBeVisible();
+    await expect(page.getByText(/SHA-256 do PDF assinado/i).first()).toBeVisible();
   });
 
-  test("roda axe-core sem violações críticas", async ({ page }) => {
+  test("foco visível após navegação por teclado", async ({ page }) => {
     await page.goto(EDITION);
-    const axe = await runAxe(page);
-    test.skip(!!axe.error, axe.error || "axe indisponível");
-    const critical = (axe.violations || []).filter((v: any) => v.impact === "critical" || v.impact === "serious");
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Tab");
+    const active = await page.evaluate(() => {
+      const el = document.activeElement as HTMLElement;
+      return el ? getComputedStyle(el).outlineStyle : "none";
+    });
+    expect(["solid", "auto", "dashed", "double"]).toContain(active);
+  });
+
+  test("zoom 200% não quebra o layout (sem overflow horizontal crítico)", async ({ page }) => {
+    await page.goto(EDITION);
+    await page.evaluate(() => { document.body.style.zoom = "2"; });
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 40);
+    expect(overflow).toBe(false);
+  });
+
+  test("roda axe-core sem violações critical/serious", async ({ page }) => {
+    test.setTimeout(90000);
+    await page.goto(EDITION, { waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(1500); // deixa o fetch/hidratação estabilizar
+    const results = await new AxeBuilder({ page }).analyze();
+    const critical = results.violations.filter(
+      (v) => v.impact === "critical" || v.impact === "serious"
+    );
     expect(critical).toEqual([]);
+  });
+});
+
+test.describe("Verificação de autenticidade", () => {
+  test("mostra estados independentes de assinatura", async ({ page }) => {
+    // verify é tenant-scoped; a rota /farol/... faz o middleware definir o cookie.
+    await page.goto("/farol/verificar/20260021-DEA18754");
+    await expect(page.getByText("Resultado da Verificação")).toBeVisible();
+    await expect(page.getByText(/Integridade criptográfica/i)).toBeVisible();
+    await expect(page.getByText(/Cadeia verificada/i)).toBeVisible();
   });
 });

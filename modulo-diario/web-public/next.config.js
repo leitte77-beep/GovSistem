@@ -44,6 +44,16 @@ const nextConfig = {
       { protocol: "https", hostname: "api.qrserver.com" },
     ],
   },
+  async rewrites() {
+    // Server-side proxy so the browser stays same-origin (avoids CORS) and the
+    // semantic snapshot/download routes reach the API. In production, nginx
+    // already routes /api to the backend, so these rewrites are inert there.
+    const apiHost = (process.env.API_URL || "http://api:8000/api/v1").replace(/\/api\/v1\/?$/, "");
+    return [
+      { source: "/api/public/:path*", destination: `${apiHost}/api/public/:path*` },
+      { source: "/api/health", destination: `${apiHost}/api/health` },
+    ];
+  },
 };
 
 module.exports = nextConfig;
