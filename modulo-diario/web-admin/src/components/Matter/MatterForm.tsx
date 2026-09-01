@@ -7,6 +7,7 @@ import clsx from "clsx";
 
 import Editor from "@/components/Editor";
 import SemanticEditor from "@/components/Semantic/SemanticEditor";
+import SemanticReview from "@/components/Semantic/SemanticReview";
 import AttachmentUpload from "./AttachmentUpload";
 import StatusHistory from "./StatusHistory";
 import StatusBadge from "./StatusBadge";
@@ -56,7 +57,7 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
   const [orgUnitId, setOrgUnitId] = useState(matter?.org_unit_id ?? "");
   const [contentHtml, setContentHtml] = useState(matter?.content_html ? fixImageUrls(matter.content_html) : "");
   const [contentJson, setContentJson] = useState<Record<string, unknown> | null>(matter?.content_json ?? null);
-  const [contentMode, setContentMode] = useState<"rich_text" | "pdf">(matter?.content_mode ?? "rich_text");
+  const [contentMode, setContentMode] = useState<"rich_text" | "pdf" | "semantic" | "legacy_html" | "original_pdf">(matter?.content_mode ?? "rich_text");
   const [status, setStatus] = useState<MatterStatus>(matter?.status ?? "draft");
   const [attachments, setAttachments] = useState<Attachment[]>(matter?.attachments ?? []);
   const [actTypes, setActTypes] = useState<ActType[]>([]);
@@ -67,7 +68,11 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
   const [generatingTitle, setGeneratingTitle] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [cleanWarnings, setCleanWarnings] = useState<string[]>([]);
-  const [semanticMode, setSemanticMode] = useState(false);
+  const [semanticMode, setSemanticMode] = useState(matter?.content_mode === "semantic");
+  const [hasSemantic, setHasSemantic] = useState(matter?.content_mode === "semantic");
+  const [reviewState, setReviewState] = useState<{ loaded: boolean; confirmed: boolean; valid: boolean }>({
+    loaded: false, confirmed: false, valid: true,
+  });
   const [touched, setTouched] = useState<Record<string, boolean>>({});
   const draftLoaded = useRef(false);
   const titleAutoFilled = useRef(false);
@@ -587,6 +592,7 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
                         title={title}
                         summary={summary}
                         documentType={selectedActType?.name || undefined}
+                        onSaved={() => setHasSemantic(true)}
                       />
                     </div>
                   ) : (
@@ -685,7 +691,12 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
               <div className="mt-4">
                 <span className="text-label-md font-label-md text-on-surface-variant">CONTEÚDO</span>
                 <div className="mt-1">
-                  {contentMode === "pdf" ? (
+                  {hasSemantic ? (
+                    <SemanticReview
+                      matterId={matterId}
+                      onLoadState={setReviewState}
+                    />
+                  ) : contentMode === "pdf" ? (
                     <MatterContentPreview
                       pdfMode
                       contentHtml={contentHtml}
@@ -755,8 +766,9 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
                       {saving ? <span className="material-symbols-outlined animate-spin">progress_activity</span> : <span className="material-symbols-outlined">thumb_down</span>}
                       Rejeitar
                     </button>
-                    <button type="button" onClick={handleApprove} disabled={saving || !hasContent}
-                      title={!hasContent ? "Não é possível aprovar sem conteúdo" : undefined}
+                    <button type="button" onClick={handleApprove}
+                      disabled={saving || !hasContent || (hasSemantic && (!reviewState.loaded || !reviewState.confirmed || !reviewState.valid))}
+                      title={!hasContent ? "Não é possível aprovar sem conteúdo" : hasSemantic && !reviewState.loaded ? "Aguardando carregamento da revisão" : hasSemantic && !reviewState.confirmed ? "Confirme todos os blocos antes de aprovar" : undefined}
                       className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-lg bg-secondary text-on-secondary hover:opacity-90 disabled:opacity-50">
                       {saving ? <span className="material-symbols-outlined animate-spin">progress_activity</span> : <span className="material-symbols-outlined">thumb_up</span>}
                       Aprovar

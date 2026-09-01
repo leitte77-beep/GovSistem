@@ -44,7 +44,17 @@ type Authenticity = {
   content_manifest_hash: string | null;
   snapshot_intact: boolean;
   snapshot_status?: string;
-  states: { signed: boolean; intact: boolean; trusted: boolean };
+  validation_checked_at?: string | null;
+  states: {
+    signed: boolean;
+    intact: boolean;
+    trusted: boolean;
+    chain_trusted?: boolean | null;
+    certificate_valid?: boolean | null;
+    revocation_checked?: boolean | null;
+    timestamped?: boolean | null;
+    snapshot_intact?: boolean | null;
+  };
   signatures: any[];
 };
 
@@ -55,6 +65,8 @@ export default function EditionDetailPage() {
   const number = Number(params.numero);
   const [snapshot, setSnapshot] = useState<any>(null);
   const [legacy, setLegacy] = useState<any>(null);
+  const [unavailable, setUnavailable] = useState(false);
+  const [isLegacy, setIsLegacy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -67,11 +79,24 @@ export default function EditionDetailPage() {
     (async () => {
       try {
         const res = await api.getEditionSnapshot(year, number);
-        if (active) setSnapshot(res);
+        if (!active) return;
+        if (res && res.snapshot && res.snapshot.has_snapshot === true) {
+          setSnapshot(res);
+        } else if (res && res.edition) {
+          // Fase 8 — edição SEM snapshot: para edições do motor semântico não
+          // fazemos fallback silencioso para conteúdo mutável.
+          setUnavailable(true);
+        } else {
+          throw new Error("no edition");
+        }
       } catch {
         try {
+          // Somente edições LEGADAS caem na rota by-year (fallback explícito).
           const fallback = await api.getEdition(year, number);
-          if (active) setLegacy(fallback);
+          if (active) {
+            setLegacy(fallback);
+            setIsLegacy(true);
+          }
         } catch (e: any) {
           if (active) setError(e?.message || "Não foi possível carregar a edição");
         }
@@ -130,13 +155,31 @@ export default function EditionDetailPage() {
 
   const sig = authenticity?.signatures?.[0] || legacy?.signatures?.[0];
   const verificationCode = authenticity?.verification_code || legacy?.verification_code;
-  const stateLabel = authenticity
-    ? authenticity.states.trusted
-      ? "Assinatura válida e confiável"
-      : authenticity.states.intact
-        ? "Integridade válida, cadeia não verificada"
-        : "Validação indisponível"
-    : null;
+
+  // Fase 8 — edição sem snapshot: indisponível, sem selo de integridade.
+  if (unavailable) {
+    return (
+      <main className="mx-auto max-w-container-max px-gutter py-stack-lg min-h-screen">
+        <div className="rounded-xl border border-outline-variant bg-surface-container-low p-6 text-center max-w-xl mx-auto">
+          <span className="material-symbols-outlined text-4xl block text-on-surface-variant mb-3">hourglass_disabled</span>
+          <h1 className="text-headline-md text-primary mb-2">Edição temporariamente indisponível</h1>
+          <p className="text-body-sm text-on-surface-variant">
+            Esta edição não possui snapshot imutável disponível. Tente novamente mais tarde ou baixe o PDF oficial.
+          </p>
+        </div>
+      </main>
+    );
+  }
+
+  const stateLabel = isLegacy
+    ? "Edição legada — sem snapshot semântico"
+    : authenticity
+      ? authenticity.states.trusted
+        ? "Assinatura válida e confiável"
+        : authenticity.states.intact
+          ? "Integridade válida; cadeia não confiável"
+          : "Validação indisponível"
+      : null;
 
   return (
     <main className="w-full mx-auto px-gutter py-stack-lg min-h-screen">
@@ -200,14 +243,31 @@ export default function EditionDetailPage() {
               Painel de Autenticidade
             </h2>
 
-            {authenticity && (
+            {isLegacy && (
+              <div className="rounded-lg border border-outline-variant bg-surface-container-low p-3 text-xs text-on-surface-variant">
+                <p className="flex items-start gap-2">
+                  <span className="material-symbols-outlined text-[16px]">history_edu</span>
+                  <span>Edição legada — sem snapshot semântico. O PDF original permanece disponível.</span>
+                </p>
+              </div>
+            )}
+
+            {authenticity && !isLegacy && (
               <div className="space-y-2 text-body-sm">
-                <StatusRow label="Arquivo assinado" ok={authenticity.states.signed} />
-                <StatusRow label="Integridade criptográfica" ok={authenticity.states.intact} />
-                <StatusRow label="Cadeia verificada" ok={authenticity.states.trusted} />
-                <StatusRow label="Snapshot imutável íntegro" ok={authenticity.snapshot_intact} />
+                <StatusRow label="Arquivo assinado" state={authenticity.states.signed} />
+                <StatusRow label="Integridade criptográfica" state={authenticity.states.intact} />
+                <StatusRow label="Cadeia confiável (ICP-Brasil)" state={authenticity.states.chain_trusted} />
+                <StatusRow label="Certificado na validade" state={authenticity.states.certificate_valid} />
+                <StatusRow label="Revogação verificada" state={authenticity.states.revocation_checked} />
+                <StatusRow label="Carimbo de tempo" state={authenticity.states.timestamped} />
+                <StatusRow label="Snapshot imutável íntegro" state={authenticity.snapshot_intact} />
                 {stateLabel && (
                   <p className="pt-2 text-xs font-semibold text-on-surface-variant">{stateLabel}</p>
+                )}
+                {authenticity.validation_checked_at && (
+                  <p className="text-[10px] text-on-surface-variant">
+                    Última validação: {formatBrasiliaDateTime(authenticity.validation_checked_at)}
+                  </p>
                 )}
               </div>
             )}
@@ -388,18 +448,26 @@ export default function EditionDetailPage() {
   );
 }
 
-function StatusRow({ label, ok }: { label: string; ok?: boolean }) {
+function StatusRow({ label, state }: { label: string; state?: boolean | null }) {
+  // state === null/undefined => não verificado / indisponível (neutro).
+  const kind = state === true ? "ok" : state === false ? "fail" : "unknown";
   return (
     <div className="flex items-center justify-between gap-2">
       <span className="text-on-surface-variant">{label}</span>
       <span className="flex items-center gap-1 text-xs font-semibold">
-        {ok ? (
+        {kind === "ok" && (
           <span className="flex items-center gap-1 text-secondary">
             <span className="material-symbols-outlined text-[16px]">check_circle</span> Sim
           </span>
-        ) : (
+        )}
+        {kind === "fail" && (
           <span className="flex items-center gap-1 text-error">
             <span className="material-symbols-outlined text-[16px]">cancel</span> Não
+          </span>
+        )}
+        {kind === "unknown" && (
+          <span className="flex items-center gap-1 text-on-surface-variant">
+            <span className="material-symbols-outlined text-[16px]">help</span> Não verificado
           </span>
         )}
       </span>

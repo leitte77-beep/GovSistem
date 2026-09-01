@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "document_id": "golden-decreto-04-2026",
+  "document_type": "ato_oficial",
+  "title": "DECRETO Nº 04/2026",
+  "summary": "Dispõe sobre a abertura de crédito adicional especial e dá outras providências.",
+  "locale": "pt-BR",
+  "timezone": "America/Sao_Paulo",
+  "source_type": "paste_html",
+  "classification_status": "confirmed",
+  "blocks": [
+    { "type": "heading", "id": "b1", "order": 0, "level": 1, "text": "DECRETO Nº 04/2026", "confirmed": true, "confidence": 1.0 },
+    { "type": "preamble", "id": "b2", "order": 1, "content": "O PREFEITO DO MUNICÍPIO, no uso das atribuições que lhe confere a Lei Orgânica do Município,", "confirmed": true, "confidence": 0.9 },
+    { "type": "command", "id": "b3", "order": 2, "text": "DECRETA:", "confirmed": true, "confidence": 0.9 },
+    { "type": "article", "id": "b4", "order": 3, "number": "1", "suffix": null, "caput": "Fica aberto crédito adicional especial no valor de R$ 1.250.000,00, para atender às despesas de obras e equipamentos.", "paragraphs": [ { "type": "paragraph_item", "id": "b4p", "number": null, "content": "Os recursos provêm de superávit financeiro apurado em balanço patrimonial." } ], "incisos": [], "alineas": [], "items": [], "confirmed": true, "confidence": 0.9 },
+    { "type": "article", "id": "b5", "order": 4, "number": "2", "suffix": null, "caput": "As despesas decorrentes desta Lei correrão à conta das seguintes dotações:", "paragraphs": [], "incisos": [ { "type": "inciso", "id": "b5i1", "number": "I", "content": "Obras de infraestrutura, no valor de R$ 800.000,00;" }, { "type": "inciso", "id": "b5i2", "number": "II", "content": "Aquisição de equipamentos, no valor de R$ 450.000,00;" }, { "type": "inciso", "id": "b5i3", "number": "III", "content": "Serviços de engenharia, no valor de R$ 0,00." } ], "alineas": [], "items": [], "confirmed": true, "confidence": 0.9 },
+    { "type": "article", "id": "b6", "order": 5, "number": "3", "suffix": null, "caput": "Este Decreto entra em vigor na data de sua publicação, revogadas as disposições em contrário.", "paragraphs": [], "incisos": [], "alineas": [], "items": [], "confirmed": true, "confidence": 0.9 },
+    { "type": "table", "id": "b7", "order": 6, "caption": "Crédito adicional especial", "headers": ["Rubrica", "Corrente", "Capital"], "rows": [ [ { "content": "Obras de infraestrutura", "rowspan": 1, "colspan": 1, "header": false, "is_total": false }, { "content": "0,00", "rowspan": 1, "colspan": 1, "header": false, "is_total": false }, { "content": "800.000,00", "rowspan": 1, "colspan": 1, "header": false, "is_total": false } ], [ { "content": "Equipamentos", "rowspan": 1, "colspan": 1, "header": false, "is_total": false }, { "content": "0,00", "rowspan": 1, "colspan": 1, "header": false, "is_total": false }, { "content": "450.000,00", "rowspan": 1, "colspan": 1, "header": false, "is_total": false } ], [ { "content": "TOTAL", "rowspan": 1, "colspan": 1, "header": false, "is_total": true }, { "content": "1.250.000,00", "rowspan": 1, "colspan": 2, "header": false, "is_total": true } ] ], "column_widths": [], "repeat_header": true, "original_data": [ ["Rubrica", "Corrente", "Capital"], ["Obras de infraestrutura", "0,00", "800.000,00"], ["Equipamentos", "0,00", "450.000,00"], ["TOTAL", "1.250.000,00"] ], "confirmed": true, "confidence": 1.0 },
+    { "type": "paragraph", "id": "b8", "order": 7, "content": "Prefeitura Municipal, 3 de fevereiro de 2026.", "confirmed": true, "confidence": 0.9 },
+    { "type": "signature_block", "id": "b9", "order": 8, "entries": [ { "name": "Maria Oliveira", "role": "Prefeita", "organ": "Secretaria de Administração", "location": "Prefeitura Municipal", "date": "3 de fevereiro de 2026" } ], "alignment": "center", "confirmed": true, "confidence": 0.9 }
+  ]
+}

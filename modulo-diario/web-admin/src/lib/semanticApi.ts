@@ -35,11 +35,16 @@ export const semanticApi = {
       template_id?: string | null;
       template_version?: number | null;
       confirm_all?: boolean;
-    }
-  ): Promise<SemanticSaveResponse> {
-    return api.put<SemanticSaveResponse>(
+    },
+    expectedVersion?: number
+  ): Promise<SemanticSaveResponse & { version?: number; etag?: string; content_mode?: string }> {
+    // Fase 2 — conflito otimista: envia If-Match com a versão lida; o servidor
+    // responde 409 se a matéria mudou desde a última leitura.
+    const headers = expectedVersion ? { "If-Match": String(expectedVersion) } : undefined;
+    return api.put<SemanticSaveResponse & { version?: number; etag?: string; content_mode?: string }>(
       `/matters/${matterId}/semantic`,
-      body
+      body,
+      headers
     );
   },
 
@@ -48,6 +53,9 @@ export const semanticApi = {
     classification_status: string;
     template_id?: string | null;
     template_version?: number | null;
+    content_mode?: string;
+    version?: number;
+    etag?: string;
   }> {
     return api.getRaw(`/matters/${matterId}/semantic`);
   },

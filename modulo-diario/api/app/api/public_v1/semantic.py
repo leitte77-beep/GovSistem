@@ -142,6 +142,8 @@ def _build_authenticity(edition: Edition, snapshot: Optional[dict]) -> dict:
             "signature_format": ci.get("signature_format", "PAdES"),
             "validation_status": ci.get("validation_status", ""),
             "sha256_signed": ci.get("sha256_signed", ""),
+            "verified_at": ci.get("validated_at") or ci.get("verified_at"),
+            "timestamp": ci.get("timestamp"),
             "verification_code": ci.get("verification_code") or edition.verification_code or "",
         })
 
@@ -150,19 +152,55 @@ def _build_authenticity(edition: Edition, snapshot: Optional[dict]) -> dict:
     if snapshot:
         snapshot_ok, snapshot_reason = verify_snapshot(snapshot)
 
+    validation_checked_at = None
+    intact = bool(edition.signature_validation_status)
+    trusted = edition.signature_validation_status in ("valid", "ok")
+    # Derive independent sub-states from the last signature's certificate info
+    # (only when a signature exists). None = não verificado / indisponível.
+    certificate_valid = None
+    revocation_checked = None
+    timestamped = None
+    if signatures:
+        ci = signatures[0]
+        cert_valid = _certificate_valid_now(ci.get("valid_to"))
+        certificate_valid = cert_valid
+        revocation_checked = True if ci.get("validation_status") else None
+        timestamped = bool(ci.get("timestamp") or ci.get("signed_at"))
+        validation_checked_at = ci.get("validated_at")
     return {
         "verification_code": edition.verification_code or "",
         "signed_pdf_hash": edition.signed_pdf_hash or edition.pdf_hash,
         "content_manifest_hash": edition.content_manifest_hash or (snapshot or {}).get("content_manifest_hash"),
         "snapshot_intact": snapshot_ok,
         "snapshot_status": snapshot_reason,
+        "validation_checked_at": validation_checked_at,
         "signatures": signatures,
         "states": {
             "signed": bool(edition.signed_pdf_path),
-            "intact": bool(edition.signature_validation_status),
-            "trusted": edition.signature_validation_status in ("valid", "ok"),
+            "intact": intact,
+            "trusted": trusted,
+            "certificate_valid": certificate_valid,
+            "chain_trusted": trusted,  # requires real ICP-Brasil roots
+            "revocation_checked": revocation_checked,
+            "timestamped": timestamped,
+            "snapshot_intact": snapshot_ok,
         },
     }
+
+
+def _certificate_valid_now(valid_to: str | None) -> bool | None:
+    """True when the certificate is still within its validity window.
+
+    Returns None (não verificado) when there is no validity data.
+    """
+    if not valid_to:
+        return None
+    try:
+        from datetime import datetime
+        end = datetime.fromisoformat(str(valid_to).replace("Z", "+00:00"))
+        return datetime.now(end.tzinfo) <= end
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _mask_serial(serial: str) -> str:
