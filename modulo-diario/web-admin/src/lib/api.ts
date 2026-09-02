@@ -129,7 +129,8 @@ async function request<T>(
   }
   if (res.status === 401) throw new AuthError();
   if (!res.ok) {
-    const err: ApiError = await res.json().catch(() => ({ detail: "Unknown error" }));
+    const err: ApiError & { status?: number } = await res.json().catch(() => ({ detail: "Unknown error" }));
+    err.status = res.status;
     throw new Error(err.detail || `HTTP ${res.status}`);
   }
   if (res.status === 204) return null as T;
@@ -513,17 +514,19 @@ export const api = {
     return request<T>(path);
   },
 
-  post<T = any>(path: string, body?: any) {
+  post<T = any>(path: string, body?: any, headers?: Record<string, string>) {
     return request<T>(path, {
       method: "POST",
       body: body ? JSON.stringify(body) : undefined,
+      headers,
     });
   },
 
-  put<T = any>(path: string, body?: any) {
+  put<T = any>(path: string, body?: any, headers?: Record<string, string>) {
     return request<T>(path, {
       method: "PUT",
       body: body ? JSON.stringify(body) : undefined,
+      headers,
     });
   },
 

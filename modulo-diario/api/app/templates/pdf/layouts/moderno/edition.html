@@ -82,13 +82,7 @@
         <span>CÓDIGO DE VERIFICAÇÃO</span>
         <code>{{ effective_verification_code }}</code>
       </div>
-      {% if edition.pdf_hash %}
-      <div>
-        <span>SHA-256</span>
-        <code>{{ edition.pdf_hash }}</code>
-      </div>
-      {% endif %}
-    </div>
+</div>
     <p>Confira a autenticidade em: {{ verification_url }}/{{ effective_verification_code }}</p>
   </footer>
 </article>

@@ -1,348 +1,278 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import type { MatterListItem, MatterStatus } from "@/types/matter";
+import { Plus, Search, ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
+import type { MatterListItem, MatterStatus, ActType, OrgUnit } from "@/types/matter";
 import { api } from "@/lib/api";
-import { getStatusLabel } from "@/components/Matter/StatusBadge";
-import toast from "react-hot-toast";
 import { notifyError } from "@/lib/error-handler";
+import { formatDateTime, pluralAnexos } from "@/lib/format";
+import { MATTER_STATUSES, MATTER_ACTIONS } from "@/lib/statusConfig";
+import PageHeader from "@/components/PageHeader";
+import StatusBadge from "@/components/StatusBadge";
+import EmptyState from "@/components/EmptyState";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import toast from "react-hot-toast";
 
 const PAGE_SIZE = 15;
 
-interface DashboardData {
-  matters?: { total: number; draft: number; review: number; approved: number; published: number };
-}
-
-const STATUS_STYLES: Record<string, string> = {
-  published: "bg-secondary-container text-on-secondary-container",
-  draft: "bg-surface-container-highest text-on-surface-variant",
-  review: "bg-tertiary-fixed text-on-tertiary-fixed-variant",
-  approved: "bg-secondary-container text-on-secondary-container",
-  rejected: "bg-error-container text-error",
-  archived: "bg-surface-container-highest text-on-surface-variant",
-};
-
-function SkeletonRow() {
-  return (
-    <tr className="animate-pulse">
-      <td className="px-6 py-5"><div className="h-4 bg-outline-variant rounded w-48" /></td>
-      <td className="px-6 py-5"><div className="h-5 bg-outline-variant rounded-full w-20" /></td>
-      <td className="px-6 py-5 text-center"><div className="h-4 bg-outline-variant rounded w-8 mx-auto" /></td>
-      <td className="px-6 py-5"><div className="h-4 bg-outline-variant rounded w-24" /></td>
-      <td className="px-6 py-5"><div className="h-4 bg-outline-variant rounded w-8" /></td>
-      <td className="px-6 py-5" />
-    </tr>
-  );
+interface Action {
+  key: string;
+  label: string;
 }
 
 export default function MattersPage() {
-  const router = useRouter();
   const [matters, setMatters] = useState<MatterListItem[]>([]);
-  const [dashboard, setDashboard] = useState<DashboardData>({});
+  const [actTypes, setActTypes] = useState<ActType[]>([]);
+  const [orgUnits, setOrgUnits] = useState<OrgUnit[]>([]);
   const [loading, setLoading] = useState(true);
-  const [deleting, setDeleting] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
+  const [status, setStatus] = useState("");
+  const [actType, setActType] = useState("");
+  const [orgUnit, setOrgUnit] = useState("");
   const [page, setPage] = useState(0);
-  const [hasMore, setHasMore] = useState(true);
+  const [hasMore, setHasMore] = useState(false);
+
+  const [confirm, setConfirm] = useState<{ type: "archive" | "delete"; matter: MatterListItem } | null>(null);
 
   useEffect(() => {
-    api.getRaw<DashboardData>("/operations/dashboard")
-      .then((d) => setDashboard(d))
-      .catch((err) => notifyError("Matters.dashboard", err));
+    api.listActTypes().then(setActTypes).catch(() => undefined);
+    api.listOrgUnits().then(setOrgUnits).catch(() => undefined);
   }, []);
+
+  const activeFilters = useMemo(() =>
+    [status && "status", actType && "tipo", orgUnit && "unidade", search && "busca"].filter(Boolean).length,
+  [status, actType, orgUnit, search]);
+
+  const actName = useCallback((id: string | null) => actTypes.find((a) => a.id === id)?.name ?? "", [actTypes]);
+  const unitName = useCallback((id: string | null) => orgUnits.find((u) => u.id === id)?.name ?? "", [orgUnits]);
 
   const fetch = useCallback(() => {
     setLoading(true);
-    api
-      .listMatters({
-        search: search || undefined,
-        status: statusFilter || undefined,
-        skip: page * PAGE_SIZE,
-        limit: PAGE_SIZE + 1,
-      })
+    setError(null);
+    api.listMatters({
+      search: search || undefined,
+      status: status || undefined,
+      act_type_id: actType || undefined,
+      org_unit_id: orgUnit || undefined,
+      skip: page * PAGE_SIZE,
+      limit: PAGE_SIZE + 1,
+    })
       .then((data) => {
-        if (data.length > PAGE_SIZE) {
-          setHasMore(true);
-          setMatters(data.slice(0, PAGE_SIZE));
-        } else {
-          setHasMore(false);
-          setMatters(data);
-        }
+        if (data.length > PAGE_SIZE) { setHasMore(true); setMatters(data.slice(0, PAGE_SIZE)); }
+        else { setHasMore(false); setMatters(data); }
       })
-      .catch((err) => notifyError("Matters.listMatters", err))
+      .catch((err) => { setError(err instanceof Error ? err.message : "Erro ao carregar matérias"); notifyError("Matters", err); })
       .finally(() => setLoading(false));
-  }, [search, statusFilter, page]);
+  }, [search, status, actType, orgUnit, page]);
 
   useEffect(() => {
-    const timer = setTimeout(fetch, search ? 400 : 0);
-    return () => clearTimeout(timer);
+    const t = setTimeout(fetch, search ? 350 : 0);
+    return () => clearTimeout(t);
   }, [fetch]);
 
-  useEffect(() => { setPage(0); }, [search, statusFilter]);
+  useEffect(() => { setPage(0); }, [search, status, actType, orgUnit]);
 
-  const handleArchive = async (id: string) => {
-    if (!confirm("Tem certeza que deseja arquivar esta matéria? Ela será movida para o arquivo e não aparecerá mais na lista.")) return;
-    setDeleting(id);
-    try {
-      await api.archiveMatter(id);
-      toast.success("Matéria arquivada com sucesso");
-      setMatters((prev) => prev.filter((m) => m.id !== id));
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erro ao arquivar");
-    } finally {
-      setDeleting(null);
-    }
-  };
+  const clearFilters = () => { setSearch(""); setStatus(""); setActType(""); setOrgUnit(""); setPage(0); };
 
-  const handleDelete = async (matter: MatterListItem) => {
-    if (!confirm(`Tem certeza que deseja excluir a matéria "${matter.title}"? Esta ação não pode ser desfeita.`)) return;
-    setDeleting(matter.id);
+  const runConfirm = async () => {
+    if (!confirm) return;
+    const { type, matter } = confirm;
+    setConfirm(null);
     try {
-      await api.deleteMatter(matter.id);
-      toast.success("Matéria excluída com sucesso");
+      if (type === "archive") {
+        await api.archiveMatter(matter.id);
+        toast.success("Matéria arquivada com sucesso");
+      } else {
+        await api.deleteMatter(matter.id);
+        toast.success("Matéria excluída com sucesso");
+      }
       setMatters((prev) => prev.filter((m) => m.id !== matter.id));
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : "Erro ao excluir");
-    } finally {
-      setDeleting(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Erro na operação");
     }
   };
 
-  const dashboardMatters = dashboard.matters;
+  const actionsFor = (status: MatterStatus): Action[] => MATTER_ACTIONS[status] ?? [];
+
+  const rowLink = (id: string) => `/matters/${id}/edit`;
 
   return (
-    <div className="p-8 overflow-y-auto">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-        <div>
-          <h2 className="text-headline-lg font-headline-lg text-primary tracking-tight">
-            Matérias
-          </h2>
-          <p className="text-body-md text-on-surface-variant">
-            Gerenciamento e publicação de atos oficiais
-          </p>
-        </div>
-        <Link
-          href="/matters/new"
-          className="bg-primary hover:bg-primary-container text-white px-6 py-3 rounded-xl flex items-center gap-2 transition-all active:scale-95 shadow-lg shadow-primary/10"
-        >
-          <span className="material-symbols-outlined text-[20px]">add</span>
-          <span className="text-label-md font-label-md">Nova Matéria</span>
-        </Link>
-      </div>
+    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <PageHeader
+        title="Matérias"
+        description="Gerenciamento e publicação de atos oficiais"
+        actions={
+          <Link href="/matters/new" className="inline-flex h-11 items-center gap-2 rounded-lg bg-blue-700 px-4 text-sm font-semibold text-white hover:bg-blue-800">
+            <Plus size={18} aria-hidden="true" />
+            Nova matéria
+          </Link>
+        }
+      />
 
-      {/* Filter Bar */}
-      <div className="bg-surface-container-lowest/80 backdrop-blur-sm p-4 rounded-xl mb-6 flex flex-col md:flex-row gap-4 items-center border border-outline-variant/80 shadow-sm">
-        <div className="relative flex-1 w-full">
-          <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline">
-            search
+      {/* Filtros */}
+      <section className="mb-5 rounded-xl border border-gray-200 bg-white p-4 shadow-sm" aria-label="Filtros de matérias">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-4">
+          <label className="relative md:col-span-1">
+            <span className="sr-only">Buscar por título ou conteúdo</span>
+            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" aria-hidden="true" />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Buscar por título ou conteúdo"
+              className="h-11 w-full rounded-lg border border-gray-300 bg-white pl-9 pr-3 text-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/30"
+            />
+          </label>
+          <label className="block">
+            <span className="sr-only">Status</span>
+            <select value={status} onChange={(e) => setStatus(e.target.value)} className="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/30">
+              <option value="">Todos os status</option>
+              {Object.entries(MATTER_STATUSES).map(([code, def]) => (
+                <option key={code} value={code}>{def.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="block">
+            <span className="sr-only">Tipo de ato</span>
+            <select value={actType} onChange={(e) => setActType(e.target.value)} className="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/30">
+              <option value="">Todos os tipos</option>
+              {actTypes.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+            </select>
+          </label>
+          <label className="block">
+            <span className="sr-only">Unidade</span>
+            <select value={orgUnit} onChange={(e) => setOrgUnit(e.target.value)} className="h-11 w-full rounded-lg border border-gray-300 bg-white px-3 text-sm focus:border-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-600/30">
+              <option value="">Todas as unidades</option>
+              {orgUnits.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+            </select>
+          </label>
+        </div>
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <span className="text-xs text-gray-500">
+            {activeFilters > 0 ? `${activeFilters} filtro(s) ativo(s)` : "Sem filtros ativos"}
           </span>
-          <input
-            className="w-full h-14 pl-12 pr-4 bg-surface border border-outline-variant rounded-lg text-body-md focus:border-primary focus:ring-1 focus:ring-primary/20 transition-all"
-            placeholder="Buscar por título, conteúdo..."
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+          {activeFilters > 0 && (
+            <button onClick={clearFilters} className="text-xs font-semibold text-blue-700 hover:underline">Limpar filtros</button>
+          )}
         </div>
-        <div className="w-full md:w-64">
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="w-full h-14 bg-surface border border-outline-variant rounded-lg text-body-md text-on-surface-variant focus:border-primary focus:ring-1 focus:ring-primary/20 px-4"
-          >
-            <option value="">Todos os status</option>
-            {(["draft", "review", "approved", "published", "rejected", "archived"] as MatterStatus[]).map((s) => (
-              <option key={s} value={s}>{getStatusLabel(s)}</option>
-            ))}
-          </select>
-        </div>
-        <button className="h-14 px-6 border border-outline-variant rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-colors flex items-center gap-2 flex-shrink-0">
-          <span className="material-symbols-outlined">filter_list</span>
-          <span className="text-label-md font-label-md">Mais Filtros</span>
-        </button>
-      </div>
+      </section>
 
-      {/* Table */}
-      <div className="bg-surface-container-lowest rounded-2xl overflow-hidden shadow-sm border border-outline-variant">
-        <table className="w-full text-left border-collapse">
-          <thead className="bg-surface-container-low">
-            <tr>
-              <th className="px-6 py-4 text-label-md font-label-md text-on-surface-variant">Título</th>
-              <th className="px-6 py-4 text-label-md font-label-md text-on-surface-variant">Status</th>
-              <th className="px-6 py-4 text-label-md font-label-md text-on-surface-variant text-center">Versão</th>
-              <th className="px-6 py-4 text-label-md font-label-md text-on-surface-variant">Atualizado</th>
-              <th className="px-6 py-4 text-label-md font-label-md text-on-surface-variant">Anexos</th>
-              <th className="px-6 py-4 text-label-md font-label-md text-on-surface-variant text-right">Ações</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-outline-variant/30">
-            {loading ? (
-              Array.from({ length: 5 }).map((_, i) => <SkeletonRow key={i} />)
-            ) : matters.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="text-center py-12 text-on-surface-variant">
-                  <span className="material-symbols-outlined text-4xl mb-2 block text-outline">search_off</span>
-                  Nenhuma matéria encontrada
-                </td>
-              </tr>
-            ) : (
-              matters.map((m) => {
-                const statusStyle = STATUS_STYLES[m.status] || "bg-surface-container-highest text-on-surface-variant";
-                return (
-                  <tr key={m.id} className="hover:bg-surface-container-low/50 transition-colors group">
-                    <td className="px-6 py-5">
-                      <Link href={`/matters/${m.id}/edit`} className="block">
-                        <span className="text-body-md font-semibold text-primary group-hover:underline cursor-pointer">
-                          {m.title}
-                        </span>
-                      </Link>
+      {/* Tabela */}
+      <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+        {error ? (
+          <div className="p-6 text-center text-sm text-red-700" role="alert">Erro ao carregar matérias: {error}</div>
+        ) : (
+          <>
+            <table className="hidden w-full border-collapse text-left md:table">
+              <caption className="sr-only">Lista de matérias do Diário Oficial</caption>
+              <thead className="border-b border-gray-200 bg-gray-50">
+                <tr>
+                  <th scope="col" className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Título</th>
+                  <th scope="col" className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Tipo</th>
+                  <th scope="col" className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Unidade</th>
+                  <th scope="col" className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Status</th>
+                  <th scope="col" className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500">Ver.</th>
+                  <th scope="col" className="px-4 py-3 text-xs font-semibold uppercase tracking-wide text-gray-500">Atualizada</th>
+                  <th scope="col" className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500">Anexos</th>
+                  <th scope="col" className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Ações</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {loading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <tr key={i} className="animate-pulse">
+                      <td colSpan={8}><div className="h-12 bg-gray-100" /></td>
+                    </tr>
+                  ))
+                ) : matters.length === 0 ? (
+                  <tr><td colSpan={8}><EmptyState title="Nenhuma matéria encontrada" description="Ajuste os filtros ou crie uma nova matéria." /></td></tr>
+                ) : matters.map((m) => (
+                  <tr key={m.id} className="hover:bg-gray-50">
+                    <td className="px-4 py-3">
+                      <Link href={rowLink(m.id)} className="font-semibold text-blue-700 hover:underline">{m.title}</Link>
                     </td>
-                    <td className="px-6 py-5">
-                      <span className={`px-3 py-1 text-[11px] font-bold rounded-full uppercase tracking-wider ${statusStyle}`}>
-                        {getStatusLabel(m.status)}
-                      </span>
+                    <td className="px-4 py-3 text-sm text-gray-700">{actName(m.act_type_id)}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{unitName(m.org_unit_id)}</td>
+                    <td className="px-4 py-3"><StatusBadge kind="matter" status={m.status} size="sm" /></td>
+                    <td className="px-4 py-3 text-center text-sm text-gray-700">{m.version}</td>
+                    <td className="px-4 py-3 text-sm text-gray-600">{formatDateTime(m.updated_at)}</td>
+                    <td className="px-4 py-3 text-center text-sm text-gray-600" title={pluralAnexos(m.attachment_count)}>
+                      {m.attachment_count > 0 ? m.attachment_count : "—"}
                     </td>
-                    <td className="px-6 py-5 text-center text-body-sm font-medium">
-                      {m.version}
-                    </td>
-                    <td className="px-6 py-5 text-body-sm text-on-surface-variant">
-                      {new Date(m.updated_at).toLocaleDateString("pt-BR")}
-                    </td>
-                    <td className="px-6 py-5">
-                      <div className="flex gap-1">
-                        {m.attachment_count > 0 ? (
-                          <span className="material-symbols-outlined text-[18px] text-primary" title={`${m.attachment_count} anexo(s)`}>
-                            attachment
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        {actionsFor(m.status).map((a) => (
+                          <span key={a.key}>
+                            {a.key === "edit" || a.key === "fix" || a.key === "review" ? (
+                              <Link href={rowLink(m.id)} className="inline-flex h-9 items-center rounded-lg px-3 text-sm font-medium text-blue-700 hover:bg-blue-50">{a.label}</Link>
+                            ) : a.key === "archive" ? (
+                              <button onClick={() => setConfirm({ type: "archive", matter: m })} className="inline-flex h-9 items-center rounded-lg px-3 text-sm font-medium text-gray-700 hover:bg-gray-100">{a.label}</button>
+                            ) : a.key === "delete" ? (
+                              <button onClick={() => setConfirm({ type: "delete", matter: m })} className="inline-flex h-9 items-center rounded-lg px-3 text-sm font-medium text-red-700 hover:bg-red-50">{a.label}</button>
+                            ) : (
+                              <Link href={rowLink(m.id)} className="inline-flex h-9 items-center rounded-lg px-2 text-gray-500 hover:bg-gray-100" title={a.label}>
+                                <MoreHorizontal size={18} aria-hidden="true" /><span className="sr-only">{a.label}</span>
+                              </Link>
+                            )}
                           </span>
-                        ) : (
-                          <span className="text-on-surface-variant opacity-40">—</span>
-                        )}
-                      </div>
-                    </td>
-                    <td className="px-6 py-5 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Link
-                          href={`/matters/${m.id}/edit`}
-                          className="text-primary hover:bg-primary/10 px-4 py-2 rounded-lg text-label-md font-label-md transition-all inline-block"
-                        >
-                          Editar
-                        </Link>
-                        {(m.status === "draft" || m.status === "archived") && (
-                          <button
-                            onClick={() => handleDelete(m)}
-                            disabled={deleting === m.id}
-                            className="text-error hover:bg-error-container/20 px-3 py-2 rounded-lg text-label-md font-label-md transition-all inline-flex items-center gap-1 disabled:opacity-50"
-                            title="Excluir matéria"
-                          >
-                            <span className="material-symbols-outlined text-[18px]">
-                              {deleting === m.id ? "progress_activity" : "delete"}
-                            </span>
-                          </button>
-                        )}
-                        {(m.status === "draft" || m.status === "rejected" || m.status === "review") && (
-                          <button
-                            onClick={() => handleArchive(m.id)}
-                            disabled={deleting === m.id}
-                            className="text-error hover:bg-error-container/20 px-3 py-2 rounded-lg text-label-md font-label-md transition-all inline-flex items-center gap-1 disabled:opacity-50"
-                            title="Arquivar matéria"
-                          >
-                            <span className="material-symbols-outlined text-[18px]">
-                              {deleting === m.id ? "progress_activity" : "archive"}
-                            </span>
-                          </button>
-                        )}
+                        ))}
                       </div>
                     </td>
                   </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
+                ))}
+              </tbody>
+            </table>
 
-        {/* Pagination */}
-        {!loading && matters.length > 0 && (
-          <div className="px-6 py-4 bg-surface flex items-center justify-between border-t border-outline-variant/30">
-            <span className="text-body-sm text-on-surface-variant">
-              Página {page + 1}
-            </span>
+            {/* Mobile cards */}
+            <ul className="divide-y divide-gray-100 md:hidden">
+              {loading ? (
+                <li className="p-4 text-center text-sm text-gray-500">Carregando…</li>
+              ) : matters.length === 0 ? (
+                <li><EmptyState title="Nenhuma matéria encontrada" /></li>
+              ) : matters.map((m) => (
+                <li key={m.id} className="p-4">
+                  <Link href={rowLink(m.id)} className="block font-semibold text-blue-700">{m.title}</Link>
+                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-gray-600">
+                    <span>{actName(m.act_type_id) || "—"}</span>
+                    <span>{unitName(m.org_unit_id) || "—"}</span>
+                    <StatusBadge kind="matter" status={m.status} size="sm" />
+                  </div>
+                  <div className="mt-1 text-xs text-gray-500">{formatDateTime(m.updated_at)} · {pluralAnexos(m.attachment_count)}</div>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+
+        {/* Paginação */}
+        {!loading && !error && matters.length > 0 && (
+          <div className="flex items-center justify-between border-t border-gray-200 bg-gray-50 px-4 py-3">
+            <span className="text-sm text-gray-600">Página {page + 1}</span>
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => setPage((p) => Math.max(0, p - 1))}
-                disabled={page === 0}
-                className="flex items-center gap-1 px-4 py-2 border border-outline-variant rounded-lg text-body-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-surface-container-high transition-all"
-              >
-                <span className="material-symbols-outlined text-[20px]">chevron_left</span>
-                Anterior
+              <button onClick={() => setPage((p) => Math.max(0, p - 1))} disabled={page === 0} className="inline-flex h-9 items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 text-sm disabled:opacity-50">
+                <ChevronLeft size={16} aria-hidden="true" />Anterior
               </button>
-              <div className="flex items-center gap-1">
-                <span className="w-10 h-10 bg-primary text-white rounded-lg font-bold text-body-sm flex items-center justify-center">
-                  {page + 1}
-                </span>
-                {hasMore && (
-                  <button
-                    onClick={() => setPage((p) => p + 1)}
-                    className="w-10 h-10 hover:bg-surface-container-high rounded-lg font-medium text-body-sm transition-colors flex items-center justify-center"
-                  >
-                    {page + 2}
-                  </button>
-                )}
-              </div>
-              <button
-                onClick={() => setPage((p) => p + 1)}
-                disabled={!hasMore}
-                className="flex items-center gap-1 px-4 py-2 border border-outline-variant rounded-lg text-body-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-surface-container-high transition-all"
-              >
-                Próximo
-                <span className="material-symbols-outlined text-[20px]">chevron_right</span>
+              <button onClick={() => setPage((p) => p + 1)} disabled={!hasMore} className="inline-flex h-9 items-center gap-1 rounded-lg border border-gray-300 bg-white px-3 text-sm disabled:opacity-50">
+                Próximo<ChevronRight size={16} aria-hidden="true" />
               </button>
             </div>
           </div>
         )}
       </div>
 
-      {/* Bottom Insights Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mt-8">
-        <div className="bg-surface-container-lowest p-6 rounded-2xl border-l-4 border-secondary shadow-sm hover:shadow-md transition-shadow border border-outline-variant/50">
-          <div className="flex justify-between items-start mb-4">
-            <span className="material-symbols-outlined text-secondary bg-secondary-container/30 p-2 rounded-lg">
-              verified
-            </span>
-            <span className="text-[10px] font-bold text-secondary uppercase">Esta Semana</span>
-          </div>
-          <h3 className="text-headline-md font-headline-md text-primary">
-            {dashboardMatters?.published ?? "-"}
-          </h3>
-          <p className="text-body-sm text-on-surface-variant">Matérias Publicadas</p>
-        </div>
-        <div className="bg-surface-container-lowest p-6 rounded-2xl border-l-4 border-tertiary shadow-sm hover:shadow-md transition-shadow border border-outline-variant/50">
-          <div className="flex justify-between items-start mb-4">
-            <span className="material-symbols-outlined text-tertiary-container bg-tertiary-fixed/30 p-2 rounded-lg">
-              pending_actions
-            </span>
-            <span className="text-[10px] font-bold text-tertiary uppercase">Aguardando</span>
-          </div>
-          <h3 className="text-headline-md font-headline-md text-primary">
-            {dashboardMatters?.review ?? "-"}
-          </h3>
-          <p className="text-body-sm text-on-surface-variant">Em Revisão Técnica</p>
-        </div>
-        <div className="bg-surface-container-lowest p-6 rounded-2xl border-l-4 border-primary shadow-sm hover:shadow-md transition-shadow border border-outline-variant/50">
-          <div className="flex justify-between items-start mb-4">
-            <span className="material-symbols-outlined text-primary bg-primary-fixed/30 p-2 rounded-lg">
-              drafts
-            </span>
-            <span className="text-[10px] font-bold text-primary-container uppercase">Pessoais</span>
-          </div>
-          <h3 className="text-headline-md font-headline-md text-primary">
-            {dashboardMatters?.draft ?? "-"}
-          </h3>
-          <p className="text-body-sm text-on-surface-variant">Meus Rascunhos</p>
-        </div>
-      </div>
+      <ConfirmDialog
+        open={confirm !== null}
+        title={confirm?.type === "delete" ? "Excluir matéria" : "Arquivar matéria"}
+        message={confirm ? (confirm.type === "delete"
+          ? `Tem certeza que deseja excluir definitivamente a matéria "${confirm.matter.title}"? Esta ação não pode ser desfeita.`
+          : `Deseja arquivar a matéria "${confirm.matter.title}"? Ela sairá da lista ativa.`) : ""}
+        confirmLabel={confirm?.type === "delete" ? "Excluir" : "Arquivar"}
+        destructive={confirm?.type === "delete"}
+        onConfirm={runConfirm}
+        onCancel={() => setConfirm(null)}
+      />
     </div>
   );
 }

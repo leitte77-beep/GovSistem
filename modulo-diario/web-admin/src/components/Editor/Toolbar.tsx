@@ -10,6 +10,7 @@ import {
   Bold,
   Code,
   Eye,
+  FileText,
   Heading1,
   Heading2,
   Heading3,
@@ -23,6 +24,7 @@ import {
   Quote,
   Redo,
   RemoveFormatting,
+  ScrollText,
   Strikethrough,
   Table as TableIcon,
   Trash2,
@@ -35,7 +37,10 @@ interface ToolbarProps {
   editor: Editor | null;
   onPreview: () => void;
   onAutoFormat: () => void;
+  onOfficialFormat: () => void;
   onAiFormat: () => void;
+  onToggleA4: () => void;
+  viewMode: "edit" | "a4";
   aiBusy?: boolean;
 }
 
@@ -56,7 +61,7 @@ const fontFamilies = [
 
 const fontSizes = ["10pt", "12pt", "14pt", "16pt", "18pt", "24pt", "32pt"];
 
-export default function Toolbar({ editor, onPreview, onAutoFormat, onAiFormat, aiBusy }: ToolbarProps) {
+export default function Toolbar({ editor, onPreview, onAutoFormat, onOfficialFormat, onAiFormat, onToggleA4, viewMode, aiBusy }: ToolbarProps) {
   const [clearConfirm, setClearConfirm] = useState(false);
   if (!editor) return null;
 
@@ -316,11 +321,17 @@ export default function Toolbar({ editor, onPreview, onAutoFormat, onAiFormat, a
 
         <div className="flex-1" />
 
+        <Button onClick={onToggleA4} active={viewMode === "a4"} title={viewMode === "a4" ? "Voltar para edição" : "Pré-visualização A4"}>
+          {viewMode === "a4" ? <FileText size={17} /> : <ScrollText size={17} />}
+        </Button>
         <Button onClick={onPreview} title="Preview HTML">
           <Eye size={17} />
         </Button>
         <Button onClick={onAutoFormat} title="Autoformatar conteúdo">
           <span className="material-symbols-outlined text-[17px]">auto_fix_high</span>
+        </Button>
+        <Button onClick={onOfficialFormat} title="Formatar como ato oficial">
+          <span className="material-symbols-outlined text-[17px]">gavel</span>
         </Button>
         <Button onClick={onAiFormat} title="Autoformatar com IA" disabled={aiBusy}>
           <span className="material-symbols-outlined text-[17px]">{aiBusy ? "progress_activity" : "smart_toy"}</span>

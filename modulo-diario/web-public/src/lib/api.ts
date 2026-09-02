@@ -19,7 +19,7 @@ function getTenantSlug(): string | null {
 async function get<T>(path: string): Promise<T> {
   const tenantSlug = getTenantSlug();
   const headers: HeadersInit = tenantSlug ? { "X-Tenant-Slug": tenantSlug } : {};
-  const res = await fetch(`${BASE}${path}`, { headers, next: { revalidate: 60 } });
+  const res = await fetch(`${BASE}${path}`, { headers });
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
   return res.json();
 }

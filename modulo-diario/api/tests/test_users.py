@@ -15,7 +15,7 @@ def override_auth_and_db():
     mock_session = AsyncMock()
 
     # Make refresh() populate id and timestamps for newly created objects
-    async def _refresh(obj):
+    async def _refresh(obj, attribute_names=None):
         if not obj.id:
             obj.id = uuid.uuid4()
         if not obj.created_at:
@@ -28,6 +28,7 @@ def override_auth_and_db():
     mock_user.email = "admin@example.com"
     mock_user.name = "Admin User"
     mock_user.is_active = True
+    mock_user.managed_by_saas = False
     mock_role = MagicMock()
     mock_role.name = "ADMIN"
     mock_ur = MagicMock()
@@ -49,6 +50,7 @@ def _make_user():
     u.organization_id = uuid.uuid4()
     u.created_at = datetime(2026, 1, 1)
     u.deleted_at = None
+    u.managed_by_saas = False
     return u
 
 

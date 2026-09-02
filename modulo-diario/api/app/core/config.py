@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
 
+    ALEMBIC_EXPECTED_HEAD: str = "9z9z9z9z9z9z"
+
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
     POSTGRES_DB: str = "doe"

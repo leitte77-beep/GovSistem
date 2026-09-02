@@ -7,6 +7,7 @@ Implements ICP-Brasil PAdES AD-RB signing flow:
 4. Register audit trail
 """
 
+import asyncio
 import base64
 import hashlib
 import logging
@@ -26,10 +27,14 @@ _audit_log: list[dict] = []
 
 
 def _verify_internal_api_key(x_internal_key: str = Header(...)) -> None:
-    """Verify that the request comes from an authorized internal service."""
+    """Verify that the request comes from an authorized internal service.
+
+    Fail-closed: if no key is configured the service refuses to operate
+    rather than silently accepting requests.
+    """
     expected = settings.INTERNAL_API_KEY.get_secret_value()
     if not expected:
-        return  # No key configured — allow in dev mode
+        raise HTTPException(status_code=503, detail="Internal API key not configured")
     if x_internal_key != expected:
         raise HTTPException(status_code=403, detail="Forbidden: invalid internal API key")
 
@@ -180,7 +185,10 @@ async def sign_pdf(
         raise HTTPException(status_code=422, detail=f"Certificado vencido há {abs(insp.days_remaining)} dias")
 
     try:
-        result = provider.sign(
+        # pyHanko usa asyncio.run() internamente; executar em thread separada
+        # para não colidir com o loop do FastAPI.
+        result = await asyncio.to_thread(
+            provider.sign,
             pdf_bytes,
             visible=request.visible,
             reason=request.reason or "Assinatura Digital - Doe ICP-Brasil AD-RB",
@@ -196,9 +204,9 @@ async def sign_pdf(
     now = datetime.now(timezone.utc).isoformat()
     ci = result.certificate_info
 
-    # Local verification
+    # Local verification (pyHanko usa asyncio.run -> rodar em thread)
     try:
-        ver = provider.verify(result.content)
+        ver = await asyncio.to_thread(provider.verify, result.content)
         val_status = "ok" if ver else "verification_failed"
     except Exception:
         val_status = "verification_error"

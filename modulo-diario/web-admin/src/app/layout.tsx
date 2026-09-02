@@ -17,6 +17,12 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <body className="bg-background text-on-surface antialiased">
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:z-[100] focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:font-semibold focus:text-blue-700 focus:ring-2 focus:ring-blue-600"
+        >
+          Pular para o conteúdo
+        </a>
         <AuthProvider>
           <Toaster
             position="top-right"
@@ -25,7 +31,7 @@ export default function RootLayout({
               style: { fontSize: "0.875rem" },
             }}
           />
-          {children}
+          <div id="main-content" tabIndex={-1} className="outline-none">{children}</div>
         </AuthProvider>
       </body>
     </html>

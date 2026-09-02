@@ -55,6 +55,8 @@ export default function SemanticEditor({
   const [saving, setSaving] = useState(false);
   const [loadingSaved, setLoadingSaved] = useState(false);
   const [viewMode, setViewMode] = useState<"blocks" | "html">("blocks");
+  const [currentVersion, setCurrentVersion] = useState<number | undefined>(undefined);
+  const [conflict, setConflict] = useState(false);
 
   const loadExisting = useCallback(async () => {
     if (!matterId) return;
@@ -62,6 +64,7 @@ export default function SemanticEditor({
     try {
       const res = await semanticApi.get(matterId);
       setDoc(res.document);
+      if (res.version) setCurrentVersion(res.version);
       toast.success("Documento semântico carregado");
     } catch {
       /* no semantic content yet — that's fine */
@@ -125,24 +128,33 @@ export default function SemanticEditor({
   const handleSave = async (confirmAll: boolean) => {
     if (!matterId || !doc) return;
     setSaving(true);
+    setConflict(false);
     try {
-      if (confirmAll) {
-        setDoc((d) => (d ? { ...d, blocks: d.blocks.map((b) => ({ ...b, confirmed: true })) } : d));
-      }
-      const res = await semanticApi.save(matterId, {
-        document: confirmAll ? { ...doc, blocks: doc.blocks.map((b) => ({ ...b, confirmed: true })) } : doc,
-        confirm_all: confirmAll,
-      });
+      const document = confirmAll
+        ? { ...doc, blocks: doc.blocks.map((b) => ({ ...b, confirmed: true })) }
+        : doc;
+      const res = await semanticApi.save(matterId, { document, confirm_all: confirmAll }, currentVersion);
       setDoc(res.document);
       setValidation(res.validation);
-      setIntegrity((prev) => prev); // preserve last report
+      if (res.version) setCurrentVersion(res.version);
       toast.success("Documento semântico salvo");
       onSaved?.(res.document);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao salvar");
+      const status = (err as { status?: number }).status;
+      if (status === 409) {
+        setConflict(true);
+        toast.error("Conflito de edição: recarregue o documento para continuar.");
+      } else {
+        toast.error(err instanceof Error ? err.message : "Erro ao salvar");
+      }
     } finally {
       setSaving(false);
     }
+  };
+
+  const reloadDocument = async () => {
+    setConflict(false);
+    await loadExisting();
   };
 
   const pendingCount = doc?.blocks.filter((b) => !b.confirmed).length ?? 0;
@@ -247,6 +259,20 @@ export default function SemanticEditor({
                 onClick={() => setDoc((d) => (d ? insertBlockAfter(d, null, "paragraph") : d))}
                 className="w-full border border-dashed border-outline-variant rounded-xl py-3 text-sm text-on-surface-variant hover:border-primary hover:text-primary">
                 + Inserir bloco no final
+              </button>
+            </div>
+          )}
+
+          {conflict && (
+            <div role="alert" className="rounded-xl border border-error/40 bg-error-container/30 p-4 text-sm text-on-error-container flex items-start gap-3">
+              <span className="material-symbols-outlined text-[18px] shrink-0">sync_problem</span>
+              <div className="flex-1">
+                <strong>Conflito de edição</strong>
+                <p className="text-xs mt-0.5">A matéria foi alterada em outra aba ou sessão. Recarregue para continuar sem sobrescrever mudanças alheias.</p>
+              </div>
+              <button type="button" onClick={reloadDocument}
+                className="rounded-lg bg-on-error-container text-error-container px-3 py-1.5 text-xs font-semibold hover:opacity-90">
+                Recarregar
               </button>
             </div>
           )}

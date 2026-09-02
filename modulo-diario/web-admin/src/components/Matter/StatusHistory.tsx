@@ -12,12 +12,23 @@ interface StatusHistoryProps {
   matterId: string;
 }
 
-function extractStatusFromAction(action: string): MatterStatus | null {
-  const map: Record<string, MatterStatus | null> = {
-    "matter.created": "draft",
-    "matter.status_changed": null,
-  };
-  return map[action] ?? null;
+const ACTION_LABELS_PT: Record<string, string> = {
+  "matter.created": "Matéria criada",
+  "matter.updated": "Matéria atualizada",
+  "matter.status_changed": "Status alterado",
+  "matter.deleted": "Matéria excluída",
+};
+
+function describeEvent(event: AuditEvent): string {
+  const meta = (event.extra_metadata ?? {}) as { from?: string; to?: string };
+  const base = ACTION_LABELS_PT[event.action] || event.action;
+  if (event.action === "matter.status_changed") {
+    const from = meta.from ? getStatusLabel(meta.from as MatterStatus) : null;
+    const to = meta.to ? getStatusLabel(meta.to as MatterStatus) : null;
+    if (from && to) return `${from} → ${to}`;
+    if (to) return `Alterado para ${to}`;
+  }
+  return base;
 }
 
 export default function StatusHistory({ matterId }: StatusHistoryProps) {
@@ -50,7 +61,7 @@ export default function StatusHistory({ matterId }: StatusHistoryProps) {
             <div key={evt.id} className="text-xs">
               <div className="absolute -left-[5px] top-1 w-2 h-2 rounded-full bg-gray-300" />
               <p className="text-gray-500">{new Date(evt.created_at).toLocaleString("pt-BR")}</p>
-              <p className="text-gray-700">{evt.description}</p>
+              <p className="text-gray-700">{describeEvent(evt)}</p>
               {fromLabel && toLabel && (
                 <div className="flex items-center gap-1 mt-0.5">
                   <StatusBadge status={meta!.from as MatterStatus} size="sm" />

@@ -31,20 +31,26 @@ ALLOWED_ATTRIBUTES = {
 }
 
 ALLOWED_STYLES = [
-    "text-align", "vertical-align",
-    "width", "height", "max-width",
-    "border", "border-collapse", "border-spacing",
-    "padding", "padding-top", "padding-right",
-    "padding-bottom", "padding-left",
-    "margin", "margin-top", "margin-right",
-    "margin-bottom", "margin-left",
-    "font-weight", "font-style", "text-decoration",
+    # TipTap / editor presentation properties (safe, no JS/URLs)
+    "text-align", "vertical-align", "text-indent", "text-transform",
+    "letter-spacing", "white-space", "line-height",
+    "width", "height", "max-width", "max-height", "min-height", "object-fit",
+    "border", "border-top", "border-right", "border-bottom", "border-left",
+    "border-width", "border-style", "border-color", "border-radius",
+    "border-collapse", "border-spacing",
+    "padding", "padding-top", "padding-right", "padding-bottom", "padding-left",
+    "margin", "margin-top", "margin-right", "margin-bottom", "margin-left",
+    "font-weight", "font-style", "font-size", "font-family", "text-decoration",
     "background-color", "color",
-    "display",
-    "float",
+    "display", "float", "overflow-wrap", "word-break",
+    "page-break-before", "page-break-after", "page-break-inside",
 ]
 
-ALLOWED_PROTOCOLS = ["http", "https", "ftp", "mailto", "file", "data"]
+# NOTE: "data" is intentionally NOT allowed. Allowing the `data:` scheme on a
+# generic URL attribute enables `data:text/html,...` payloads (XSS) and `data:`
+# files. Images encoded as data URLs should use the semantic renderer's
+# `_safe_url`, which permits only `data:image/*`. See app/semantic/renderer.py.
+ALLOWED_PROTOCOLS = ["http", "https", "ftp", "mailto", "file"]
 
 
 def sanitize_html(html: str) -> str:

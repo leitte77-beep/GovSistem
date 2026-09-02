@@ -6,7 +6,7 @@ COPY package.json ./
 RUN npm install
 
 FROM base AS builder
-ARG NEXT_PUBLIC_API_URL=https://api.govsistem.com.br/api/v1
+ARG NEXT_PUBLIC_API_URL=https://diario.govsistem.com.br/api/v1
 ARG NEXT_PUBLIC_ADMIN_URL
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .

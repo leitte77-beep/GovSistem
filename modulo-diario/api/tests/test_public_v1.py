@@ -108,8 +108,18 @@ class _FakeScalarResult:
 
 
 def _mock_result(items):
+    """Result usable for every query an endpoint issues.
+
+    With multitenancy, an endpoint may call execute() several times (tenant
+    resolution via scalar_one_or_none(), plus list/total via scalars()). A
+    single reusable result is safer than a fixed side_effect list.
+    """
     r = MagicMock()
     r.scalars.return_value = _FakeScalarResult(items)
+    # Tenant resolution must yield a truthy Organization so the endpoint proceeds.
+    org = MagicMock()
+    r.scalar_one_or_none.return_value = org
+    r.close.return_value = None
     return r
 
 
@@ -120,10 +130,7 @@ def _mock_result(items):
 async def test_v1_list_editions(client, override_db):
     mock_db = override_db
     edition = _make_edition()
-    mock_db.execute.side_effect = [
-        _mock_result([edition]),
-        _mock_result([edition]),
-    ]
+    mock_db.execute.return_value = _mock_result([edition])
 
     response = await client.get("/api/public/v1/editions")
     assert response.status_code == 200
@@ -137,10 +144,7 @@ async def test_v1_list_editions(client, override_db):
 @pytest.mark.anyio
 async def test_v1_list_editions_empty(client, override_db):
     mock_db = override_db
-    mock_db.execute.side_effect = [
-        _mock_result([]),
-        _mock_result([]),
-    ]
+    mock_db.execute.return_value = _mock_result([])
 
     response = await client.get("/api/public/v1/editions")
     assert response.status_code == 200
@@ -151,10 +155,7 @@ async def test_v1_list_editions_empty(client, override_db):
 @pytest.mark.anyio
 async def test_v1_list_editions_with_filters(client, override_db):
     mock_db = override_db
-    mock_db.execute.side_effect = [
-        _mock_result([]),
-        _mock_result([]),
-    ]
+    mock_db.execute.return_value = _mock_result([])
 
     response = await client.get(
         "/api/public/v1/editions?year=2026&type=normal&search=teste&page=0&page_size=10"
@@ -227,10 +228,7 @@ async def test_v1_get_edition_not_found(client, override_db):
 async def test_v1_list_matters(client, override_db):
     mock_db = override_db
     matter = _make_matter()
-    mock_db.execute.side_effect = [
-        _mock_result([matter]),
-        _mock_result([matter]),
-    ]
+    mock_db.execute.return_value = _mock_result([matter])
 
     response = await client.get("/api/public/v1/matters")
     assert response.status_code == 200
@@ -243,10 +241,7 @@ async def test_v1_list_matters(client, override_db):
 @pytest.mark.anyio
 async def test_v1_list_matters_with_filters(client, override_db):
     mock_db = override_db
-    mock_db.execute.side_effect = [
-        _mock_result([]),
-        _mock_result([]),
-    ]
+    mock_db.execute.return_value = _mock_result([])
 
     response = await client.get(
         "/api/public/v1/matters?q=test&act_type=Decreto&org_unit=SEFAZ&year=2026"

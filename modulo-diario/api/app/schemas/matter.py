@@ -14,6 +14,7 @@ class MatterCreate(BaseModel):
     org_unit_id: uuid.UUID | None = None
     content_html: str
     content_json: dict | None = None
+    content_mode: str = "rich_text"
 
     @field_validator("title")
     @classmethod
@@ -36,6 +37,7 @@ class MatterUpdate(BaseModel):
     org_unit_id: uuid.UUID | None = None
     content_html: str | None = None
     content_json: dict | None = None
+    content_mode: str | None = None
 
     @field_validator("title")
     @classmethod
@@ -72,6 +74,7 @@ class MatterResponse(BaseModel):
     org_unit_id: uuid.UUID | None
     content_html: str
     content_json: dict | None
+    content_mode: str
     plain_text: str
     status: MatterStatus
     version: int

@@ -22,121 +22,50 @@ logger = logging.getLogger(__name__)
 limiter = Limiter(key_func=get_remote_address, default_limits=["200/minute"])
 
 
-async def _ensure_schema() -> None:
-    """Idempotent runtime schema bootstrap.
+async def _verify_schema() -> None:
+    """Validate the schema against the Alembic head revision.
 
-    Adds columns introduced after the original deployment without relying on
-    a single alembic head (this deployment does not use alembic_version).
-    Each statement is guarded so it is safe to run on every startup.
+    The schema is owned exclusively by Alembic (``alembic/versions``); this
+    function never runs DDL. It enforces a fail-closed contract: any pending
+    migration causes the process to exit non-zero with a clear message, so a
+    partially-migrated database cannot come up serving traffic.
+
+    A new database (no tables yet) must be brought up by running
+    ``alembic upgrade head`` from the deployment script before starting the
+    API; this function does not create schemas implicitly.
     """
     from sqlalchemy import text
+
+    from app.core.config import settings
     from app.core.database import async_session
 
-    statements = [
-        (
-            "ALTER TABLE matters ADD COLUMN IF NOT EXISTS "
-            "content_mode VARCHAR(20) DEFAULT 'rich_text' NOT NULL"
-        ),
-        # ── Semantic document engine (additive, feature-flagged) ─────────────
-        "ALTER TABLE matters ADD COLUMN IF NOT EXISTS semantic_content JSONB",
-        "ALTER TABLE matters ADD COLUMN IF NOT EXISTS semantic_schema_version INTEGER",
-        "ALTER TABLE matters ADD COLUMN IF NOT EXISTS source_hash VARCHAR(64)",
-        "ALTER TABLE matters ADD COLUMN IF NOT EXISTS text_integrity_hash VARCHAR(64)",
-        "ALTER TABLE matters ADD COLUMN IF NOT EXISTS classification_status VARCHAR(20)",
-        "ALTER TABLE matters ADD COLUMN IF NOT EXISTS template_id UUID",
-        "ALTER TABLE matters ADD COLUMN IF NOT EXISTS template_version INTEGER",
-        (
-            "CREATE TABLE IF NOT EXISTS publication_templates ("
-            "id UUID PRIMARY KEY, organization_id UUID NOT NULL REFERENCES "
-            "organizations(id) ON DELETE CASCADE, name VARCHAR(200) NOT NULL, "
-            "slug VARCHAR(100) NOT NULL, document_type VARCHAR(50) NOT NULL, "
-            "is_default BOOLEAN NOT NULL DEFAULT FALSE, "
-            "status VARCHAR(20) NOT NULL, active_version INTEGER, "
-            "created_by UUID REFERENCES users(id) ON DELETE SET NULL, "
-            "created_at TIMESTAMPTZ NOT NULL DEFAULT now(), "
-            "updated_at TIMESTAMPTZ NOT NULL DEFAULT now())"
-        ),
-        (
-            "CREATE TABLE IF NOT EXISTS publication_template_versions ("
-            "id UUID PRIMARY KEY, template_id UUID NOT NULL REFERENCES "
-            "publication_templates(id) ON DELETE CASCADE, "
-            "version_number INTEGER NOT NULL, status VARCHAR(20) NOT NULL, "
-            "config_json JSONB NOT NULL, config_hash VARCHAR(64) NOT NULL, "
-            "asset_snapshot JSONB, change_reason TEXT, "
-            "created_by UUID REFERENCES users(id) ON DELETE SET NULL, "
-            "created_at TIMESTAMPTZ NOT NULL DEFAULT now(), "
-            "updated_at TIMESTAMPTZ NOT NULL DEFAULT now(), "
-            "UNIQUE (template_id, version_number))"
-        ),
-        (
-            "CREATE TABLE IF NOT EXISTS edition_publication_snapshots ("
-            "id UUID PRIMARY KEY, edition_id UUID NOT NULL REFERENCES "
-            "editions(id) ON DELETE CASCADE, organization_id UUID NOT NULL "
-            "REFERENCES organizations(id) ON DELETE CASCADE, "
-            "content JSONB NOT NULL, content_manifest_hash VARCHAR(64) NOT NULL, "
-            "frozen_at TIMESTAMPTZ NOT NULL, "
-            "frozen_by UUID REFERENCES users(id) ON DELETE SET NULL, "
-            "is_valid BOOLEAN NOT NULL DEFAULT TRUE, "
-            "created_at TIMESTAMPTZ NOT NULL DEFAULT now(), "
-            "updated_at TIMESTAMPTZ NOT NULL DEFAULT now())"
-        ),
-        (
-            "CREATE TABLE IF NOT EXISTS publication_artifacts ("
-            "id UUID PRIMARY KEY, snapshot_id UUID NOT NULL REFERENCES "
-            "edition_publication_snapshots(id) ON DELETE CASCADE, "
-            "artifact_type VARCHAR(30) NOT NULL, "
-            "storage_path VARCHAR(1000) NOT NULL, "
-            "sha256 VARCHAR(64) NOT NULL, size_bytes INTEGER NOT NULL, "
-            "mime_type VARCHAR(200) NOT NULL, "
-            "generated_at TIMESTAMPTZ NOT NULL, "
-            "renderer VARCHAR(100), renderer_version VARCHAR(50), "
-            "validation_status VARCHAR(50), is_preview BOOLEAN NOT NULL DEFAULT FALSE, "
-            "created_at TIMESTAMPTZ NOT NULL DEFAULT now(), "
-            "updated_at TIMESTAMPTZ NOT NULL DEFAULT now())"
-        ),
-        (
-            "CREATE INDEX IF NOT EXISTS ix_publication_templates_organization_id "
-            "ON publication_templates(organization_id)"
-        ),
-        (
-            "CREATE INDEX IF NOT EXISTS ix_publication_templates_status "
-            "ON publication_templates(status)"
-        ),
-        (
-            "CREATE INDEX IF NOT EXISTS ix_publication_template_versions_template_id "
-            "ON publication_template_versions(template_id)"
-        ),
-        (
-            "CREATE INDEX IF NOT EXISTS ix_edition_publication_snapshots_edition_id "
-            "ON edition_publication_snapshots(edition_id)"
-        ),
-        (
-            "CREATE INDEX IF NOT EXISTS ix_publication_artifacts_snapshot_id "
-            "ON publication_artifacts(snapshot_id)"
-        ),
-        (
-            # FK for matters.template_id (PostgreSQL lacks ADD CONSTRAINT IF NOT EXISTS)
-            "DO $$ BEGIN "
-            "IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname="
-            "'fk_matters_template_id_publication_templates') THEN "
-            "ALTER TABLE matters ADD CONSTRAINT fk_matters_template_id_publication_templates "
-            "FOREIGN KEY (template_id) REFERENCES publication_templates(id) "
-            "ON DELETE SET NULL; END IF; END $$"
-        ),
-    ]
-    try:
-        async with async_session() as session:
-            for stmt in statements:
-                try:
-                    await session.execute(text(stmt))
-                    await session.commit()
-                except Exception:  # noqa: BLE001 - one failed stmt must not abort the rest
-                    await session.rollback()
-                    logger.warning(
-                        "Schema bootstrap statement skipped: %s", stmt[:120], exc_info=True
-                    )
-    except Exception:  # noqa: BLE001 - schema bootstrap must never crash startup
-        logger.warning("Schema bootstrap skipped (DB may not be ready)", exc_info=True)
+    expected_head = settings.ALEMBIC_EXPECTED_HEAD  # set in env (default: head)
+
+    async with async_session() as session:
+        try:
+            await session.execute(text("SELECT 1 FROM alembic_version LIMIT 1"))
+            row = (await session.execute(text("SELECT version_num FROM alembic_version"))).first()
+        except Exception as exc:  # noqa: BLE001
+            raise RuntimeError(
+                "alembic_version table not found — run `alembic upgrade head` "
+                "before starting the API. Underlying error: %s" % exc
+            ) from exc
+
+    if row is None:
+        raise RuntimeError(
+            "alembic_version is empty — Alembic has not stamped this database. "
+            "Run `alembic upgrade head` from the deployment script."
+        )
+
+    current_revisions = {r[0] for r in [row]}
+    if expected_head and current_revisions != {expected_head}:
+        raise RuntimeError(
+            "Database is at Alembic revision %r but the deployment expects %r. "
+            "Run `alembic upgrade head` (or `alembic stamp %s` for the "
+            "documented baseline) before serving traffic."
+            % (current_revisions, expected_head, expected_head)
+        )
+    logger.info("Schema verified at Alembic revision: %s", current_revisions)
 
 
 def create_app() -> FastAPI:
@@ -188,7 +117,7 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def startup():
-        await _ensure_schema()
+        await _verify_schema()
 
     @app.on_event("shutdown")
     async def shutdown():

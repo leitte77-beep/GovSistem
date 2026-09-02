@@ -51,6 +51,7 @@ const nextConfig = {
     const apiHost = (process.env.API_URL || "http://api:8000/api/v1").replace(/\/api\/v1\/?$/, "");
     return [
       { source: "/api/public/:path*", destination: `${apiHost}/api/public/:path*` },
+      { source: "/api/v1/:path*", destination: `${apiHost}/api/v1/:path*` },
       { source: "/api/health", destination: `${apiHost}/api/health` },
     ];
   },

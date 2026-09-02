@@ -60,11 +60,6 @@ def _drop_matter_columns() -> None:
 
 def upgrade() -> None:
     _add_matter_columns()
-    op.create_foreign_key(
-        "fk_matters_template_id_publication_templates",
-        "matters", "publication_templates",
-        ["template_id"], ["id"], ondelete="SET NULL",
-    )
 
     op.create_table(
         "publication_templates",
@@ -84,6 +79,13 @@ def upgrade() -> None:
     )
     op.create_index("ix_publication_templates_organization_id", "publication_templates", ["organization_id"])
     op.create_index("ix_publication_templates_status", "publication_templates", ["status"])
+
+    # FK must be added AFTER the referenced table exists.
+    op.create_foreign_key(
+        "fk_matters_template_id_publication_templates",
+        "matters", "publication_templates",
+        ["template_id"], ["id"], ondelete="SET NULL",
+    )
 
     op.create_table(
         "publication_template_versions",
@@ -145,9 +147,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    op.drop_constraint("fk_matters_template_id_publication_templates", "matters", type_="foreignkey")
     op.drop_table("publication_artifacts")
     op.drop_table("edition_publication_snapshots")
     op.drop_table("publication_template_versions")
     op.drop_table("publication_templates")
-    op.drop_constraint("fk_matters_template_id_publication_templates", "matters", type_="foreignkey")
     _drop_matter_columns()

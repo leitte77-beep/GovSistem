@@ -4,6 +4,7 @@ from datetime import date, datetime
 from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import (
+    JSON,
     Date,
     DateTime,
     ForeignKey,
@@ -61,14 +62,42 @@ class Edition(Base, TimestampMixin):
     )
     pdf_hash: Mapped[Optional[str]] = mapped_column(
         String(64), nullable=True,
-        comment="SHA-256 hex digest of the signed PDF",
+        comment="Legacy SHA-256 hex digest (kept for compatibility)",
+    )
+    source_pdf_hash: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True,
+        comment="SHA-256 of the immutable unsigned PDF sent to the signer",
+    )
+    signed_pdf_hash: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True,
+        comment="SHA-256 of the final signed PDF stored in storage",
+    )
+    content_manifest_hash: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True,
+        comment="SHA-256 over canonical content manifest (edition + matters + layout)",
+    )
+    signature_validation_status: Mapped[Optional[str]] = mapped_column(
+        String(50), nullable=True,
+        comment="PAdES validation result: valid | invalid | not_validated",
+    )
+    signature_validation_details: Mapped[Optional[dict]] = mapped_column(
+        JSON, nullable=True,
+        comment="Detailed PAdES validation report",
+    )
+    renderer_version: Mapped[Optional[str]] = mapped_column(
+        String(50), nullable=True,
+        comment="Version of the PDF renderer used to generate the source PDF",
+    )
+    layout_version: Mapped[Optional[str]] = mapped_column(
+        String(50), nullable=True,
+        comment="Version of the template layout used to generate the source PDF",
     )
     verification_code: Mapped[Optional[str]] = mapped_column(
         String(20), nullable=True, unique=True
     )
     immutability_hash: Mapped[Optional[str]] = mapped_column(
         String(64), nullable=True,
-        comment="SHA-256 of (edition content + ordered items + pdf_hash)",
+        comment="Legacy SHA-256 (kept for compatibility)",
     )
     published_at: Mapped[Optional[datetime]] = mapped_column(
         DateTime(timezone=True), nullable=True

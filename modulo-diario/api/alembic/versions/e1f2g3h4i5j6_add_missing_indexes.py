@@ -11,9 +11,14 @@ import sqlalchemy as sa
 
 
 revision: str = "e1f2g3h4i5j6"
-down_revision: Union[str, None] = "d1e2f3g4h5i6"
+down_revision: Union[str, Sequence[str], None] = "d1e2f3g4h5i6"
 branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+# This migration creates indexes on signing_jobs / signing_documents, which are
+# created on a parallel branch (a7b8c9d0e1f2_add_signing_documents_and_jobs,
+# a sibling of this branch under f3a2e1b4c5d6). Without depends_on, Alembic
+# applies independent branches in arbitrary order and the index can be created
+# before its table exists, breaking a clean `alembic upgrade head`.
+depends_on: Union[str, Sequence[str], None] = "a7b8c9d0e1f2"
 
 
 def upgrade() -> None:

@@ -23,6 +23,13 @@ function formatHeaderDate(value: string) {
   return `${WEEKDAYS[date.getDay()]}, ${String(date.getDate()).padStart(2, "0")} DE ${MONTHS[date.getMonth()]} DE ${date.getFullYear()}`;
 }
 
+/** Demote h1->h2 (and keep the rest) so the page keeps exactly one <h1>. */
+function demoteHeadings(html: string): string {
+  return html
+    .replace(/<h1([^>]*)>/gi, "<h2$1>")
+    .replace(/<\/h1>/gi, "</h2>");
+}
+
 function slugify(text: string): string {
   return (text || "")
     .toLowerCase()
@@ -183,18 +190,6 @@ export default function EditionDetailPage() {
 
   return (
     <main className="w-full mx-auto px-gutter py-stack-lg min-h-screen">
-      {/* Notice: HTML representation vs official PDF */}
-      <div className="mb-6 rounded-xl border border-primary/20 bg-primary-fixed/10 p-4 text-sm text-on-surface-variant no-print">
-        <p className="flex items-start gap-2">
-          <span className="material-symbols-outlined text-primary shrink-0">info</span>
-          <span>
-            <strong>Representação HTML da edição oficial.</strong> Para obter o documento
-            assinado digitalmente, baixe o <strong>PDF oficial</strong>. Esta página é
-            renderizada a partir de um <strong>snapshot imutável</strong> da edição.
-          </span>
-        </p>
-      </div>
-
       {/* Actions */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-stack-md gap-4 no-print max-w-[1680px] mx-auto">
         <div className="flex flex-col">
@@ -395,7 +390,7 @@ export default function EditionDetailPage() {
                 )}
                 <div
                   className="prose max-w-none text-on-surface prose-p:my-3 prose-p:text-justify prose-p:text-body-md prose-p:leading-relaxed prose-strong:font-bold prose-headings:text-center prose-headings:uppercase prose-table:w-full prose-th:bg-surface-container-low prose-td:border prose-th:border prose-td:border-outline-variant"
-                  dangerouslySetInnerHTML={{ __html: m.content_html || "" }}
+                  dangerouslySetInnerHTML={{ __html: demoteHeadings(m.content_html || "") }}
                 />
                 {m.attachments && m.attachments.length > 0 && (
                   <div className="mt-6">
@@ -424,13 +419,13 @@ export default function EditionDetailPage() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {verificationCode && (
                   <div>
-                    <span className="text-label-md uppercase opacity-60">Código de verificação</span>
+                    <span className="text-label-md uppercase text-on-surface-variant">Código de verificação</span>
                     <span className="font-mono bg-surface p-1 rounded border border-outline-variant block mt-0.5">{verificationCode}</span>
                   </div>
                 )}
                 {(authenticity?.signed_pdf_hash || legacy?.pdf_hash) && (
                   <div>
-                    <span className="text-label-md uppercase opacity-60">SHA-256 do PDF</span>
+                    <span className="text-label-md uppercase text-on-surface-variant">SHA-256 do PDF</span>
                     <span className="font-mono bg-surface p-1 rounded border border-outline-variant text-[11px] break-all block mt-0.5">
                       {authenticity?.signed_pdf_hash || legacy?.pdf_hash}
                     </span>

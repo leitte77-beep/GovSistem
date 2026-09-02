@@ -91,7 +91,7 @@ class TestTemplateRendering:
                 }
             ],
         )
-        assert "landscape-content" in html
+        assert "matter-landscape" in html
         assert "Relatório" in html
         assert "XY99ZZ00" in html
         assert "Extra" in html

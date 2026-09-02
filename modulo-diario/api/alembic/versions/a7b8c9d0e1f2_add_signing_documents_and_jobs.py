@@ -56,9 +56,13 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.drop_index(op.f('ix_signing_jobs_status'), table_name='signing_jobs')
+    # ix_signing_jobs_status / ix_signing_documents_status may have been (re)created
+    # by the sibling branch e1f2g3h4i5j6_add_missing_indexes, which downgrades
+    # after this revision. Guard with if_exists so a full downgrade doesn't fail
+    # when those indexes are already gone.
+    op.drop_index(op.f('ix_signing_jobs_status'), table_name='signing_jobs', if_exists=True)
     op.drop_index(op.f('ix_signing_jobs_document_id'), table_name='signing_jobs')
     op.drop_table('signing_jobs')
-    op.drop_index(op.f('ix_signing_documents_status'), table_name='signing_documents')
+    op.drop_index(op.f('ix_signing_documents_status'), table_name='signing_documents', if_exists=True)
     op.drop_index(op.f('ix_signing_documents_edition_id'), table_name='signing_documents')
     op.drop_table('signing_documents')

@@ -42,10 +42,20 @@ class LegacyImportItem:
 
 
 class LegacyImportResult:
-    total: int = 0
-    success: int = 0
-    errors: list[dict] = []
-    editions_created: list[str] = []
+    """Result of a legacy import/validation run.
+
+    This is a plain class (not a dataclass), so mutable default attributes like
+    ``errors``/``editions_created`` must be initialized per-instance in
+    ``__init__``. Declaring them as class attributes would share the same list
+    across every instance, corrupting ``success`` (``success = total - len(errors)``)
+    across sequential calls.
+    """
+
+    def __init__(self) -> None:
+        self.total: int = 0
+        self.success: int = 0
+        self.errors: list[dict] = []
+        self.editions_created: list[str] = []
 
 
 def parse_filename(filename: str) -> Optional[tuple[int, int, int]]:

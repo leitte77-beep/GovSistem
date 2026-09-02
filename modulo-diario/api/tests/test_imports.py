@@ -25,7 +25,17 @@ TEST_ORG_ID = uuid.uuid4()
 
 @pytest.fixture
 def mock_db():
-    return AsyncMock()
+    from unittest.mock import MagicMock
+
+    session = AsyncMock()
+    # Simulate the org-slug lookup inside _save_file: execute() returns a result
+    # whose scalar_one_or_none() is None, so no org slug is set and storage stays
+    # on the local backend. Without this, scalar_one_or_none() yields a coroutine
+    # that later trips app.core.storage's slug validation.
+    result = MagicMock()
+    result.scalar_one_or_none.return_value = None
+    session.execute.return_value = result
+    return session
 
 
 # ── Fixtures: create small test files ────────────────────────────────────────
