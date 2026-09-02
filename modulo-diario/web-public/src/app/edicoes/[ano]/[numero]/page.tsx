@@ -287,11 +287,11 @@ export default async function EditionDetailPage({ params }: PageProps) {
             </div>
 
             {/* ===== Three-zone card grid: sumário | documento | dados técnicos ===== */}
-            <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-4">
+            <div className="mt-8 grid grid-cols-1 items-start gap-8 lg:grid-cols-[250px_minmax(0,1fr)_290px]">
               {/* LEFT — Sumário */}
               <aside
                 aria-label="Sumário da edição"
-                className="hidden no-print lg:col-span-1 lg:block"
+                className="hidden no-print lg:sticky lg:top-24 lg:block"
               >
                 <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                   <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
@@ -321,13 +321,13 @@ export default async function EditionDetailPage({ params }: PageProps) {
               </aside>
 
               {/* CENTER — Official document sheet */}
-              <section className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg lg:col-span-2">
+              <section className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg">
                 <div
                   aria-hidden="true"
                   className="absolute inset-x-0 top-0 h-2 bg-gradient-to-r from-[#0b192c] via-blue-600 to-amber-500"
                 />
 
-                <div className="px-6 py-8 sm:px-12 sm:py-12">
+                <div className="px-6 py-8 sm:px-10 sm:py-12">
                   {/* Masthead — center */}
                   <header className="border-b border-slate-200 pb-8 text-center">
                     <h1 className="sr-only">
@@ -337,10 +337,10 @@ export default async function EditionDetailPage({ params }: PageProps) {
                       <Image
                         alt={org?.name ? `Brasão de ${org.name}` : "Brasão do município"}
                         src={logo}
-                        width={88}
-                        height={88}
+                        width={80}
+                        height={80}
                         priority
-                        className="mx-auto h-22 w-auto"
+                        className="mx-auto h-20 w-auto"
                       />
                     )}
                     <div className="mt-3 space-y-1">
@@ -459,7 +459,7 @@ export default async function EditionDetailPage({ params }: PageProps) {
               {/* RIGHT — Dados técnicos */}
               <aside
                 aria-label="Dados técnicos da edição"
-                className="hidden no-print lg:col-span-1 lg:block"
+                className="hidden no-print lg:sticky lg:top-24 lg:block"
               >
                 <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                   <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
