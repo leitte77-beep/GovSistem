@@ -14,21 +14,25 @@ export default function EditionBreadcrumb({ year, number }: EditionBreadcrumbPro
   ];
 
   return (
-    <nav aria-label="Trilha de navegação" className="mb-7 text-[13px] text-edition-muted no-print">
-      <ol className="flex flex-wrap items-center gap-1.5">
+    <nav aria-label="Trilha de navegação" className="text-[13px] text-slate-500 no-print">
+      <ol className="flex flex-wrap items-center gap-1">
         {items.map((item, i) => {
           const isLast = i === items.length - 1;
           return (
-            <li key={item.href} className="flex items-center gap-1.5">
-              {i > 0 && <span aria-hidden="true">›</span>}
+            <li key={item.href} className="flex items-center gap-1">
+              {i > 0 && (
+                <span aria-hidden="true" className="material-symbols-outlined text-[14px] text-slate-300">
+                  chevron_right
+                </span>
+              )}
               {isLast ? (
-                <span aria-current="page" className="font-semibold text-edition-ink">
+                <span aria-current="page" className="font-semibold text-[#0b192c]">
                   {item.label}
                 </span>
               ) : (
                 <Link
                   href={item.href}
-                  className="transition-colors hover:text-[var(--edition-accent)] hover:underline"
+                  className="rounded-md px-1.5 py-0.5 font-medium transition-colors hover:text-brand-accent hover:bg-brand-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent"
                 >
                   {item.label}
                 </Link>
