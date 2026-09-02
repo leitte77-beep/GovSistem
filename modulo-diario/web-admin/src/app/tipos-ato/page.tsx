@@ -50,6 +50,7 @@ export default function ActTypesAdminPage() {
   const [loading, setLoading] = useState(true);
   const [showInactive, setShowInactive] = useState(false);
   const [editing, setEditing] = useState<ActTypeAdmin>(EMPTY_AT());
+  const [editorOpen, setEditorOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<ActTypeAdmin | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -166,6 +167,7 @@ export default function ActTypesAdminPage() {
         toast.success("Configuração salva.");
       }
       setEditing(EMPTY_AT());
+      setEditorOpen(false);
       await load();
     } catch (e: unknown) {
       const err = e as { data?: { detail?: unknown }; message?: string };
@@ -210,12 +212,11 @@ export default function ActTypesAdminPage() {
           Mostrar inativos
         </label>
         <button
-          onClick={() => { setSaveError(null); setEditing(EMPTY_AT()); }}
+          onClick={() => { setSaveError(null); setEditing(EMPTY_AT()); setEditorOpen(true); }}
           className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-on-primary hover:opacity-90"
         >
           + Novo tipo
-        </button>
-      </div>
+        </button>      </div>
 
       {/* List */}
       <div className="rounded-xl border border-outline-variant bg-surface-container-lowest">
@@ -243,7 +244,7 @@ export default function ActTypesAdminPage() {
                     </p>
                   </div>
                   <div className="flex gap-2 flex-shrink-0">
-                    <button onClick={() => setEditing({ ...t, config: { ...(t.config ?? {}) } })} className="rounded-lg border border-outline-variant px-3 py-1.5 text-xs hover:bg-surface-container-high">
+                    <button onClick={() => { setSaveError(null); setEditing({ ...t, config: { ...(t.config ?? {}) } }); setEditorOpen(true); }} className="rounded-lg border border-outline-variant px-3 py-1.5 text-xs hover:bg-surface-container-high">
                       Editar
                     </button>
                     {!t.is_active ? null : (
@@ -260,7 +261,7 @@ export default function ActTypesAdminPage() {
       </div>
 
       {/* Editor */}
-      {(editing.name !== "" || !isNew) && (
+      {editorOpen && (
         <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-6 space-y-5">
           <h3 className="text-lg font-semibold">{isNew ? "Novo tipo" : `Editar: ${editing.name}`}</h3>
 
@@ -380,7 +381,7 @@ export default function ActTypesAdminPage() {
           </div>
 
           <div className="flex justify-end gap-2">
-            <button onClick={() => setEditing(EMPTY_AT())} className="rounded-lg border border-outline-variant px-4 py-2 text-sm hover:bg-surface-container-high">
+            <button onClick={() => setEditorOpen(false)} className="rounded-lg border border-outline-variant px-4 py-2 text-sm hover:bg-surface-container-high">
               Cancelar
             </button>
             <button onClick={save} disabled={saving} className="rounded-lg bg-primary px-5 py-2 text-sm font-semibold text-on-primary hover:opacity-90 disabled:opacity-50">
