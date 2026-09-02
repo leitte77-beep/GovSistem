@@ -273,249 +273,293 @@ export default async function EditionDetailPage({ params }: PageProps) {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
       <div className="edition-canvas bg-edition-canvas">
-        <div className={`${shell} pb-20 pt-6 sm:pt-9`}>
-          {/* ===== Top toolbar: breadcrumb + download/view buttons ===== */}
-          <div className="mx-auto flex max-w-[1360px] flex-wrap items-center justify-between gap-3 no-print">
-            <EditionBreadcrumb year={year} number={number} />
-            <EditionActions
-              downloadUrl={downloadUrl}
-              viewUrl={viewUrl}
-              verificationUrl={verificationUrl}
-              shareTitle={`Edição nº ${number}/${year} — Diário Oficial Eletrônico`}
-            />
-          </div>
+        <div className={`${shell} py-8`}>
+          {/* ===== Breadcrumb + actions card (mockup style) ===== */}
+          <div className="mx-auto w-full max-w-[1280px]">
+            <div className="flex flex-col gap-4 rounded-none border-b border-slate-200 bg-white pb-4 md:flex-row md:items-center md:justify-between no-print">
+              <EditionBreadcrumb year={year} number={number} />
+              <EditionActions
+                downloadUrl={downloadUrl}
+                viewUrl={viewUrl}
+                verificationUrl={verificationUrl}
+                shareTitle={`Edição nº ${number}/${year} — Diário Oficial Eletrônico`}
+              />
+            </div>
 
-          {/* ===== Three-zone layout: sumário | documento | dados técnicos ===== */}
-          <div className="mx-auto mt-5 grid max-w-[1360px] items-start gap-x-8 lg:grid-cols-[250px_minmax(0,1fr)_290px]">
-            {/* LEFT — Sumário */}
-            <aside
-              aria-label="Sumário da edição"
-              className="hidden no-print lg:sticky lg:top-24 lg:block lg:max-h-[calc(100vh-8rem)]"
-            >
-              <div className="doe-side-panel">
-                <h2 className="doe-band">Sumário</h2>
-                <ol className="doe-side-scroll !py-0">
-                  {meta.map((m, index) => (
-                    <li key={m.anchorId} className="doe-summary-item border-b border-[#e6e9ef] last:border-0">
-                      <a
-                        href={`#${m.anchorId}`}
-                        className="font-semibold text-[#123058] transition hover:text-[var(--edition-accent-strong)]"
-                      >
-                        {m.title}
-                      </a>
-                      <span className="doe-summary-index">{String(index + 1).padStart(2, "0")}</span>
-                    </li>
-                  ))}
-                </ol>
-              </div>
-            </aside>
-
-            {/* CENTER — Official document sheet (modelo.pdf) */}
-            <div className="doe-page min-w-0 px-4 py-7 sm:px-10 sm:py-12">
-              {/* Masthead — centered */}
-              <header className="text-center">
-                <h1 className="sr-only">
-                  {`Edição nº ${editionMeta.number} de ${headerDate} — Diário Oficial Eletrônico de ${municipality}`}
-                </h1>
-                {logo && (
-                  <Image
-                    alt={org?.name ? `Brasão de ${org.name}` : "Brasão do município"}
-                    src={logo}
-                    width={104}
-                    height={104}
-                    priority
-                    className="mx-auto h-24 w-auto sm:h-28"
-                  />
-                )}
-                <p className="doe-nameplate mt-2">Diário Oficial Eletrônico</p>
-                <p className="doe-municipality mt-1">{municipality}</p>
-              </header>
-              <hr className="doe-masthead-rule mt-5" />
-
-              {/* Metadata row — 3 columns */}
-              <div className="doe-meta-row" role="presentation">
-                <div className="doe-meta-cell">
-                  <span>Edição nº:</span>
-                  <span className="font-bold">{editionMeta.number}</span>
-                </div>
-                <div className="doe-meta-cell center">{headerDate}</div>
-                <div className="doe-meta-cell right">
-                  <span>Publicações:</span>
-                  <span className="font-bold">{totalPages}</span>
-                </div>
-              </div>
-
-              {/* Digital signature banner (green) */}
-              <div className="doe-signed mt-4">
-                Assinado digitalmente por {municipality}
-                {code ? <span> | {code}</span> : null}
-              </div>
-
-              <hr className="doe-navy-rule mt-4" />
-
-              {hasMatters ? (
-                <>
-                  {/* Mobile-only centered SUMÁRIO band (sidebars hidden < lg) */}
-                  <section aria-label="Sumário da edição" className="mt-7 lg:hidden">
-                    <h2 className="doe-band">Sumário</h2>
-                    <ol className="mt-2">
+            {/* ===== Three-zone card grid: sumário | documento | dados técnicos ===== */}
+            <div className="mt-8 grid grid-cols-1 gap-8 lg:grid-cols-4">
+              {/* LEFT — Sumário */}
+              <aside
+                aria-label="Sumário da edição"
+                className="hidden no-print lg:col-span-1 lg:block"
+              >
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
+                    <h2 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-600">
+                      <span aria-hidden="true" className="material-symbols-outlined text-[16px] text-[#102a43]">toc</span>
+                      Sumário
+                    </h2>
+                  </div>
+                  <div className="doe-side-scroll p-3">
+                    <ol>
                       {meta.map((m, index) => (
-                        <li key={m.anchorId} className="doe-summary-item border-b border-[#e6e9ef] last:border-0">
+                        <li key={m.anchorId} className="py-0.5">
                           <a
                             href={`#${m.anchorId}`}
-                            className="font-semibold text-[#123058] transition hover:text-[var(--edition-accent-strong)]"
+                            className="flex items-center justify-between gap-2 rounded-xl border border-blue-100 bg-blue-50/60 p-3 text-[14px] font-medium text-[#102a43] transition hover:bg-blue-100"
                           >
-                            {m.title}
+                            <span className="min-w-0 truncate">{m.title}</span>
+                            <span className="shrink-0 rounded-md bg-[#0b192c] px-2 py-0.5 text-xs font-bold text-white">
+                              {String(index + 1).padStart(2, "0")}
+                            </span>
                           </a>
-                          <span className="doe-summary-index">{String(index + 1).padStart(2, "0")}</span>
                         </li>
                       ))}
                     </ol>
-                  </section>
-
-                  {/* Matters — official documents */}
-                  <div className="mt-9 space-y-11">
-                    {matters.map((m, index) => {
-                      const anchorId = meta[index].anchorId;
-                      return (
-                        <MatterDocument
-                          key={anchorId}
-                          matter={m}
-                          anchorId={anchorId}
-                          position={index}
-                          prevLink={
-                            index > 0
-                              ? { anchorId: meta[index - 1].anchorId, title: meta[index - 1].title }
-                              : undefined
-                          }
-                          nextLink={
-                            index < matters.length - 1
-                              ? { anchorId: meta[index + 1].anchorId, title: meta[index + 1].title }
-                              : undefined
-                          }
-                        />
-                      );
-                    })}
                   </div>
-                </>
-              ) : (
-                <EmptyEdition downloadUrl={downloadUrl} />
-              )}
+                </div>
+              </aside>
 
-              {/* Mobile-only Validação do Documento box (tech data moves to right panel on lg) */}
-              {code && (
-                <section className="doe-validation mt-10 lg:hidden" aria-label="Validação do Documento">
-                  <h3>Validação do Documento</h3>
-                  <div>
-                    <p className="doe-validation-label">Código de verificação</p>
-                    <span className="doe-validation-code">{code}</span>
+              {/* CENTER — Official document sheet */}
+              <section className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-lg lg:col-span-2">
+                <div
+                  aria-hidden="true"
+                  className="absolute inset-x-0 top-0 h-2 bg-gradient-to-r from-[#0b192c] via-blue-600 to-amber-500"
+                />
+
+                <div className="px-6 py-8 sm:px-12 sm:py-12">
+                  {/* Masthead — center */}
+                  <header className="border-b border-slate-200 pb-8 text-center">
+                    <h1 className="sr-only">
+                      {`Edição nº ${editionMeta.number} de ${headerDate} — Diário Oficial Eletrônico de ${municipality}`}
+                    </h1>
+                    {logo && (
+                      <Image
+                        alt={org?.name ? `Brasão de ${org.name}` : "Brasão do município"}
+                        src={logo}
+                        width={88}
+                        height={88}
+                        priority
+                        className="mx-auto h-22 w-auto"
+                      />
+                    )}
+                    <div className="mt-3 space-y-1">
+                      <p className="text-2xl font-extrabold uppercase tracking-tight text-[#0b192c] sm:text-3xl">
+                        Diário Oficial Eletrônico
+                      </p>
+                      <p className="text-[13px] font-semibold uppercase tracking-wider text-slate-600">
+                        {municipality}
+                      </p>
+                    </div>
+                    <div className="mt-5 flex flex-wrap items-center justify-center gap-4 border-t border-slate-100 pt-4 text-xs font-semibold text-slate-500">
+                      <span className="rounded-full bg-slate-100 px-3 py-1">Edição nº: {editionMeta.number}</span>
+                      <span className="rounded-full bg-slate-100 px-3 py-1">{headerDate}</span>
+                      <span className="rounded-full bg-slate-100 px-3 py-1">Publicações: {totalPages}</span>
+                    </div>
+                  </header>
+
+                  {/* Digital signature banner (green) */}
+                  <div className="my-5 flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+                    <div className="flex min-w-0 items-center gap-3">
+                      <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-sm text-white">
+                        <span className="material-symbols-outlined text-[18px]">check</span>
+                      </span>
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-emerald-800">
+                          Assinado digitalmente por {municipality}
+                        </p>
+                        {code && (
+                          <p className="font-mono text-xs font-bold text-emerald-900">{code}</p>
+                        )}
+                      </div>
+                    </div>
                   </div>
-                  {verificationUrl && (
-                    <a className="doe-validation-link" href={verificationUrl}>
-                      Verifique em {verificationUrl}
-                    </a>
+
+                  {hasMatters ? (
+                    <>
+                      {/* Mobile-only SUMÁRIO band */}
+                      <section aria-label="Sumário da edição" className="mt-7 lg:hidden">
+                        <h2 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-600">
+                          <span aria-hidden="true" className="material-symbols-outlined text-[16px] text-[#102a43]">toc</span>
+                          Sumário
+                        </h2>
+                        <ol className="mt-3 space-y-2">
+                          {meta.map((m, index) => (
+                            <li key={m.anchorId}>
+                              <a
+                                href={`#${m.anchorId}`}
+                                className="flex items-center justify-between gap-2 rounded-xl border border-blue-100 bg-blue-50/60 p-3 text-[14px] font-medium text-[#102a43] transition hover:bg-blue-100"
+                              >
+                                <span className="min-w-0 truncate">{m.title}</span>
+                                <span className="shrink-0 rounded-md bg-[#0b192c] px-2 py-0.5 text-xs font-bold text-white">
+                                  {String(index + 1).padStart(2, "0")}
+                                </span>
+                              </a>
+                            </li>
+                          ))}
+                        </ol>
+                      </section>
+
+                      {/* Matters — official documents */}
+                      <div className="mt-8 space-y-10">
+                        {matters.map((m, index) => {
+                          const anchorId = meta[index].anchorId;
+                          return (
+                            <MatterDocument
+                              key={anchorId}
+                              matter={m}
+                              anchorId={anchorId}
+                              position={index}
+                              prevLink={
+                                index > 0
+                                  ? { anchorId: meta[index - 1].anchorId, title: meta[index - 1].title }
+                                  : undefined
+                              }
+                              nextLink={
+                                index < matters.length - 1
+                                  ? { anchorId: meta[index + 1].anchorId, title: meta[index + 1].title }
+                                  : undefined
+                              }
+                            />
+                          );
+                        })}
+                      </div>
+                    </>
+                  ) : (
+                    <EmptyEdition downloadUrl={downloadUrl} />
                   )}
-                </section>
-              )}
 
-              {/* Page footer */}
-              <div className="doe-page-footer">
-                Diário Oficial Eletrônico — Edição nº {editionMeta.number} · {formatLongDatePT(publicationDate) || `Ano de ${editionMeta.year}`}
-              </div>
+                  {/* Mobile-only Validação do Documento */}
+                  {code && (
+                    <section className="mt-10 lg:hidden" aria-label="Validação do Documento">
+                      <h3 className="text-xs font-bold uppercase tracking-wider text-[#102a43]">
+                        Validação do Documento
+                      </h3>
+                      <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                          Código de verificação
+                        </p>
+                        <span className="mt-1 block font-mono text-[13px] text-slate-700">{code}</span>
+                        {verificationUrl && (
+                          <a className="mt-2 block text-[12px] font-medium text-[#0066cc] underline" href={verificationUrl}>
+                            Verifique em {verificationUrl}
+                          </a>
+                        )}
+                      </div>
+                    </section>
+                  )}
+
+                  {/* Page footer */}
+                  <div className="mt-10 border-t border-slate-100 pt-4 text-center text-xs text-slate-400">
+                    Diário Oficial Eletrônico — Edição nº {editionMeta.number} · {formatLongDatePT(publicationDate) || `Ano de ${editionMeta.year}`}
+                  </div>
+                </div>
+              </section>
+
+              {/* RIGHT — Dados técnicos */}
+              <aside
+                aria-label="Dados técnicos da edição"
+                className="hidden no-print lg:col-span-1 lg:block"
+              >
+                <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                  <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
+                    <h2 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-600">
+                      <span aria-hidden="true" className="material-symbols-outlined text-[16px] text-[#102a43]">verified_user</span>
+                      Dados técnicos
+                    </h2>
+                  </div>
+                  <div className="doe-side-scroll space-y-5 p-5 text-xs">
+                    {authenticity && (
+                      <div className="space-y-1 rounded-xl border border-emerald-100 bg-emerald-50/50 p-3">
+                        <p className="flex items-center gap-2 text-[13px] font-bold text-emerald-700">
+                          <span aria-hidden="true" className="material-symbols-outlined text-[16px]">verified_user</span>
+                          Publicação oficial
+                        </p>
+                        {authenticity.signatures?.[0]?.signed_at && (
+                          <p className="text-slate-600">
+                            Assinada digitalmente em {formatBrasiliaDateTime(authenticity.signatures[0].signed_at)}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {code && (
+                      <div className="space-y-1.5">
+                        <p className="font-bold uppercase tracking-wider text-slate-500 text-[10px]">
+                          Código de verificação
+                        </p>
+                        <div className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 font-mono text-[13px] text-slate-700">
+                          {code}
+                        </div>
+                        {verificationUrl && (
+                          <p className="pt-0.5 text-[11px] text-slate-500">
+                            Verifique em <span className="font-medium text-[#0066cc] underline">{verificationUrl}</span>
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {authenticity && (
+                      <div className="space-y-2">
+                        <p className="font-bold uppercase tracking-wider text-slate-500 text-[10px]">
+                          Autenticidade técnica
+                        </p>
+                        <ul className="space-y-2">
+                          {buildAuthenticityRows(authenticity.states).map((r) => (
+                            <li
+                              key={r.key}
+                              className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2"
+                            >
+                              <span className="text-slate-600">{r.label}</span>
+                              <span
+                                className={`flex shrink-0 items-center gap-1 font-bold ${
+                                  r.tone === "ok" ? "text-emerald-600" : r.tone === "warn" ? "text-amber-600" : "text-slate-500"
+                                }`}
+                              >
+                                {r.tone === "ok" && (
+                                  <span aria-hidden="true" className="material-symbols-outlined text-[15px]">check_circle</span>
+                                )}
+                                {r.text}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {authenticity?.signatures?.[0]?.subject && (
+                      <div className="space-y-1.5">
+                        <p className="font-bold uppercase tracking-wider text-slate-500 text-[10px]">
+                          Signatário
+                        </p>
+                        <div className="space-y-1 rounded-lg bg-slate-50 p-3">
+                          <p className="font-bold text-slate-800">
+                            {authenticity.signatures[0].subject.split(":").slice(0, 1).join("").replace(/^CN=/, "") || authenticity.signatures[0].subject}
+                          </p>
+                          {authenticity.signatures[0].issuer && (
+                            <p className="break-words text-slate-500">{authenticity.signatures[0].issuer}</p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {authenticity?.signed_pdf_hash && (
+                      <div className="space-y-1.5">
+                        <p className="font-bold uppercase tracking-wider text-slate-500 text-[10px]">
+                          SHA-256 do PDF assinado
+                        </p>
+                        <div className="select-all break-all rounded-lg bg-slate-50 p-2.5 font-mono text-[10px] text-slate-500">
+                          {authenticity.signed_pdf_hash}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </aside>
             </div>
 
-            {/* RIGHT — Dados técnicos */}
-            <aside
-              aria-label="Dados técnicos da edição"
-              className="hidden no-print lg:sticky lg:top-24 lg:block lg:max-h-[calc(100vh-8rem)]"
-            >
-              <div className="doe-side-panel">
-                <h2 className="doe-band">Dados técnicos</h2>
-                <div className="doe-side-scroll">
-                  {authenticity && (
-                    <div className="doe-side-block">
-                      <p className="flex items-start gap-2 text-[13.5px] font-bold text-[#14532d]">
-                        <span aria-hidden="true" className="material-symbols-outlined text-[18px]">verified_user</span>
-                        Publicação oficial
-                      </p>
-                      {authenticity.signatures?.[0]?.signed_at && (
-                        <p className="mt-1 text-[12.5px] text-[#3f5247]">
-                          Assinada digitalmente em {formatBrasiliaDateTime(authenticity.signatures[0].signed_at)}
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {code && (
-                    <div className="doe-side-block mt-4">
-                      <p className="doe-side-label">Código de verificação</p>
-                      <span className="doe-validation-code">{code}</span>
-                      {verificationUrl && (
-                        <a className="doe-validation-link" href={verificationUrl}>
-                          Verifique em {verificationUrl}
-                        </a>
-                      )}
-                    </div>
-                  )}
-
-                  {authenticity && (
-                    <div className="doe-side-block mt-4">
-                      <p className="doe-side-label">Autenticidade técnica</p>
-                      <ul className="mt-1">
-                        {buildAuthenticityRows(authenticity.states).map((r) => (
-                          <li
-                            key={r.key}
-                            className="flex items-center justify-between gap-3 border-b border-[#e6e9ef] py-2 last:border-0"
-                          >
-                            <span className="text-[12.5px] leading-snug text-[#454c55]">{r.label}</span>
-                            <span
-                              className={`flex shrink-0 items-center gap-1 text-right text-[12.5px] font-semibold ${
-                                r.tone === "ok"
-                                  ? "text-[#14532d]"
-                                  : r.tone === "warn"
-                                    ? "text-[#8a5a00]"
-                                    : "text-[#6b7480]"
-                              }`}
-                            >
-                              {r.tone === "ok" ? (
-                                <span aria-hidden="true" className="material-symbols-outlined text-[15px]">check_circle</span>
-                              ) : r.tone === "warn" ? (
-                                <span aria-hidden="true" className="material-symbols-outlined text-[15px]">error_outline</span>
-                              ) : null}
-                              {r.text}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {authenticity?.signatures?.[0]?.subject && (
-                    <div className="doe-side-block mt-4">
-                      <p className="doe-side-label">Signatário</p>
-                      <p className="text-[13px] font-semibold leading-snug text-[#1a1f24]">
-                        {authenticity.signatures[0].subject.split(":").slice(0, 1).join("").replace(/^CN=/, "") || authenticity.signatures[0].subject}
-                      </p>
-                      {authenticity.signatures[0].issuer && (
-                        <p className="mt-0.5 break-words text-[12px] text-[#565d66]">Emissor: {authenticity.signatures[0].issuer}</p>
-                      )}
-                    </div>
-                  )}
-
-                  {authenticity?.signed_pdf_hash && (
-                    <div className="doe-side-block mt-4">
-                      <p className="doe-side-label">SHA-256 do PDF assinado</p>
-                      <p className="break-all font-mono text-[11px] leading-relaxed text-[#565d66]">
-                        {authenticity.signed_pdf_hash}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </aside>
+            <EditionPager prevEdition={siblings.prevEdition} nextEdition={siblings.nextEdition} />
           </div>
-
-          <EditionPager prevEdition={siblings.prevEdition} nextEdition={siblings.nextEdition} />
         </div>
       </div>
     </>

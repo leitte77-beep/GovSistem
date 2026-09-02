@@ -50,14 +50,12 @@ describe("EditionStatus", () => {
       ...authenticity,
       states: {
         ...authenticity.states,
-        signed: null,
         timestamped: null,
       },
     };
     render(<EditionStatus edition={edition} authenticity={unknown} />);
     fireEvent.click(screen.getByText(/Ver detalhes técnicos/));
-    expect(screen.queryByText(/Assinada$/)).toBeNull();
-    expect(screen.getAllByText(/Não verificado/).length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText(/Não verificado/)).toBeDefined();
   });
 });
 

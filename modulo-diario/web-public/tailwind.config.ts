@@ -9,6 +9,13 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        brand: {
+          50: "#f0f4f8",
+          100: "#d9e2ec",
+          800: "#102a43",
+          900: "#0b192c",
+          accent: "#0066cc",
+        },
         primary: "#001631",
         "on-primary": "#ffffff",
         "primary-container": "#002b54",
