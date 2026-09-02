@@ -7,43 +7,45 @@ export type EditionPagerProps = {
   nextEdition: EditionRef | null;
 };
 
-/** Editorial navigation between consecutive published editions. */
+/** Editorial navigation between published editions (never an empty side). */
 export default function EditionPager({ prevEdition, nextEdition }: EditionPagerProps) {
-  if (!prevEdition && !nextEdition) return null;
+  const sides = [
+    prevEdition ? { dir: "prev" as const, label: "Edição anterior", e: prevEdition } : null,
+    nextEdition ? { dir: "next" as const, label: "Próxima edição", e: nextEdition } : null,
+  ].filter(Boolean);
 
-  const card = (dir: "prev" | "next", e: EditionRef) => {
-    const prev = dir === "prev";
-    return (
-      <Link
-        href={`/edicoes/${e.year}/${e.number}`}
-        className={`group flex flex-1 flex-col gap-1 rounded-2xl bg-edition-sheet px-5 py-4 ring-1 ring-edition-line transition hover:ring-[var(--edition-accent)] hover:shadow-[var(--edition-shadow-soft)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--edition-accent)] ${
-          prev ? "items-start text-left" : "items-end text-right"
-        }`}
-      >
-        <span
-          className={`flex items-center gap-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-edition-muted ${
-            prev ? "" : "flex-row-reverse"
-          }`}
-        >
-          <span aria-hidden="true" className="material-symbols-outlined text-[16px]">
-            {prev ? "chevron_left" : "chevron_right"}
-          </span>
-          {prev ? "Edição anterior" : "Próxima edição"}
-        </span>
-        <span className="text-[15px] font-semibold text-edition-ink group-hover:text-[var(--edition-accent-strong)]">
-          Edição nº {e.number} <span className="text-edition-muted">· {e.year}</span>
-        </span>
-      </Link>
-    );
-  };
+  if (sides.length === 0) return null;
 
   return (
     <nav
       aria-label="Navegação entre edições"
-      className="no-print flex flex-col gap-3 border-t border-edition-line pt-8 sm:flex-row"
+      className="mt-12 flex flex-col gap-3 border-t border-edition-line pt-8 no-print sm:flex-row"
     >
-      {prevEdition ? card("prev", prevEdition) : <span aria-hidden="true" className="flex-1" />}
-      {nextEdition ? card("next", nextEdition) : <span aria-hidden="true" className="flex-1" />}
+      {sides.map((s) => {
+        const { dir, label, e } = s!;
+        const prev = dir === "prev";
+        return (
+          <Link
+            key={`${dir}-${e.number}`}
+            href={`/edicoes/${e.year}/${e.number}`}
+            className={`group flex flex-1 items-center gap-3 rounded-xl border border-edition-line bg-edition-sheet px-4 py-3.5 transition hover:border-[var(--edition-accent)] hover:shadow-[var(--edition-shadow-soft)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--edition-accent)] ${
+              prev ? "justify-start text-left" : "justify-end text-right"
+            }`}
+          >
+            <span aria-hidden="true" className={`material-symbols-outlined text-[20px] text-edition-muted ${prev ? "" : "order-2"}`}>
+              {prev ? "chevron_left" : "chevron_right"}
+            </span>
+            <span className="min-w-0">
+              <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-edition-muted">
+                {label}
+              </span>
+              <span className="block truncate text-[14px] font-semibold text-edition-ink group-hover:text-[var(--edition-accent-strong)]">
+                Edição nº {e.number} · {e.year}
+              </span>
+            </span>
+          </Link>
+        );
+      })}
     </nav>
   );
 }

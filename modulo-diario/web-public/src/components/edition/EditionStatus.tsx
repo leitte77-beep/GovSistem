@@ -5,9 +5,12 @@ export type EditionStatusProps = {
   edition: SnapshotEdition;
   authenticity?: Authenticity | null;
   publishedLabel?: string | null;
-  /** "card" shows the full status summary; "tech" only the technical disclosure. */
+  /** "card" shows the full status summary; "tech" only the technical rows. */
   variant?: "card" | "tech";
 };
+
+/** 3-state tone model: ok / warn / neutral — false is never auto-"critical". */
+type Tone = "ok" | "warn" | "neutral";
 
 const VERIFIED_LABELS: Record<string, string> = {
   valid: "Assinatura válida e confiável",
@@ -51,7 +54,7 @@ export default function EditionStatus({
         <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-edition-muted">
           Autenticidade técnica
         </p>
-        <EditionStatusRows authenticity={authenticity} labelOverride={stateLine} />
+        <AuthenticityRows authenticity={authenticity} labelOverride={stateLine} />
       </div>
     );
   }
@@ -68,146 +71,148 @@ export default function EditionStatus({
         <p className="text-sm font-bold text-edition-ink">{title}</p>
         <p className="text-sm text-edition-ink-2">{subtitle}</p>
         {stateLine && <p className="text-sm text-edition-ink-2">{stateLine}</p>}
-
         {authenticity.validation_checked_at && (
           <p className="mt-0.5 text-xs text-edition-muted">
             Última validação: {formatBrasiliaDateTime(authenticity.validation_checked_at)}
           </p>
         )}
-
-        <EditionStatusRows authenticity={authenticity} labelOverride={stateLine} />
+        <AuthenticityRows authenticity={authenticity} labelOverride={stateLine} />
       </div>
     </div>
   );
 }
 
-function EditionStatusRows({
+/** A tri-state value: true / false / null (not tested). */
+type Tri = boolean | null | undefined;
+
+function vTrue(a: Tri): boolean {
+  return a === true;
+}
+
+/**
+ * Human-facing technical rows. Every field keeps its true meaning; `false`
+ * is rendered with a neutral/warn tone and wording that never reads as a
+ * hard "error" for values that are simply absent or self-issued.
+ */
+export function AuthenticityRows({
   authenticity,
-  labelOverride,
+  opened = false,
 }: {
   authenticity: Authenticity;
   labelOverride?: string | null;
+  opened?: boolean;
 }) {
   const { states } = authenticity;
   const first = authenticity.signatures?.[0];
 
-  const statusWord =
-    states.trusted === true
-      ? "válida"
-      : states.intact === true
-        ? "íntegra (cadeia não verificada)"
-        : "verificada";
+  const rows = [
+    row("signed", "Assinatura digital", "Assinada", "Não assinada", "Não verificado", "ok", "neutral"),
+    row("certificate_valid", "Validade do certificado", "Válido", "Fora da validade", "Não verificado", "ok", "warn"),
+    row("chain_trusted", "Cadeia de certificação (ICP-Brasil)", "Ancorada (ICP-Brasil)", "Certificado próprio, não ancorado", "Não verificado", "ok", "neutral"),
+    row("revocation_checked", "Consulta de revogação", "Consultada", "Não consultada", "Não verificado", "ok", "neutral"),
+    row("timestamped", "Carimbo de tempo", "Presente", "Ausente", "Não verificado", "ok", "neutral"),
+    row("snapshot_intact", "Integridade do conteúdo (snapshot)", "Íntegro", "Divergência detectada", "Não verificado", "ok", "warn"),
+    row("intact", "Integridade do documento assinado", "Íntegro", "Não atestada", "Não verificado", "ok", "neutral"),
+  ].map((def) => stateRow(def, states));
 
-  const displayLabel = labelOverride || `Validação ${statusWord}`;
+  function row(
+    key: keyof typeof states,
+    label: string,
+    t: string,
+    f: string,
+    n: string,
+    toneT: Tone,
+    toneF: Tone,
+  ) {
+    return { key, label, t, f, n, toneT, toneF };
+  }
+  function stateRow(
+    def: ReturnType<typeof row>,
+    s: typeof states,
+  ) {
+    const val = s[def.key];
+    const tone: Tone = val === true ? def.toneT : val === false ? def.toneF : "neutral";
+    const text = val === true ? def.t : val === false ? def.f : def.n;
+    return { label: def.label, text, tone };
+  }
 
   return (
-    <details className="group mt-4">
+    <details className="group mt-4" open={opened}>
       <summary className="inline-flex cursor-pointer items-center gap-1.5 text-[13px] font-semibold text-[var(--edition-accent)] transition hover:text-[var(--edition-accent-strong)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--edition-accent)]">
         <span className="material-symbols-outlined text-[18px] transition-transform group-open:rotate-90">
           chevron_right
         </span>
         Ver detalhes técnicos
       </summary>
-      <dl className="mt-4 grid grid-cols-1 gap-x-6 gap-y-3 border-t border-edition-line pt-4 text-sm sm:grid-cols-2">
-        <StatusItem label="Assinatura" value={statusWord} state={states.trusted} />
-        <StatusItem label="Arquivo assinado" value={states.signed ? "Sim" : "Não"} state={states.signed} />
-        <StatusItem label="Integridade criptográfica" value={states.intact ? "Sim" : "Não"} state={states.intact} />
-        <StatusItem label="Certificado na validade" value={threeState(states.certificate_valid)} state={states.certificate_valid} />
-        <StatusItem label="Cadeia confiável (ICP-Brasil)" value={threeState(states.chain_trusted)} state={states.chain_trusted} />
-        <StatusItem label="Revogação verificada" value={threeState(states.revocation_checked)} state={states.revocation_checked} />
-        <StatusItem label="Carimbo de tempo" value={threeState(states.timestamped)} state={states.timestamped} />
-        <StatusItem label="Snapshot imutável íntegro" value={threeState(states.snapshot_intact)} state={states.snapshot_intact} />
-        <StatusItem label="Situação do snapshot" value={authenticity.snapshot_status || "—"} />
+      <div className="mt-4 border-t border-edition-line pt-4">
+        <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+          {rows.map((r) => (
+            <RowLine key={r.label} label={r.label} text={r.text} tone={r.tone} />
+          ))}
+          <RowLine label="Situação do snapshot" text={authenticity.snapshot_status || "—"} tone="neutral" />
+        </dl>
 
         {first?.subject && (
-          <>
-            <dt className="col-span-2 border-t border-edition-line pt-2 font-semibold text-edition-ink">
-              Signatário (certificado)
-            </dt>
-            <dd className="col-span-2 text-edition-ink-2">
+          <div className="mt-5 border-t border-edition-line pt-4">
+            <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.16em] text-edition-muted">
+              Signatário
+            </p>
+            <p className="text-sm font-semibold text-edition-ink">
               {first.subject.split(":").slice(0, 1).join("").replace(/^CN=/, "") || first.subject}
-            </dd>
-            {first.issuer && (
-              <>
-                <dt className="font-semibold text-edition-ink">Emissor</dt>
-                <dd className="break-words text-edition-ink-2">{first.issuer}</dd>
-              </>
-            )}
+            </p>
+            {first.issuer && <p className="mt-0.5 break-words text-[13px] text-edition-muted">Emissor: {first.issuer}</p>}
             {first.signature_format && (
-              <>
-                <dt className="font-semibold text-edition-ink">Formato</dt>
-                <dd className="text-edition-ink-2">{first.signature_format}</dd>
-              </>
+              <p className="mt-0.5 text-[13px] text-edition-muted">Formato: {first.signature_format}</p>
             )}
             {first.signed_at && (
-              <>
-                <dt className="font-semibold text-edition-ink">Assinado em</dt>
-                <dd className="text-edition-ink-2">{formatBrasiliaDateTime(first.signed_at)}</dd>
-              </>
+              <p className="mt-0.5 text-[13px] text-edition-muted">Assinado em: {formatBrasiliaDateTime(first.signed_at)}</p>
             )}
             {first.timestamp && (
-              <>
-                <dt className="font-semibold text-edition-ink">Carimbo de tempo</dt>
-                <dd className="break-words text-edition-ink-2">{first.timestamp}</dd>
-              </>
+              <p className="mt-0.5 text-[13px] text-edition-muted">Carimbo de tempo: {first.timestamp}</p>
             )}
-          </>
+          </div>
         )}
 
         {authenticity.signed_pdf_hash && (
-          <>
-            <dt className="col-span-2 border-t border-edition-line pt-2 font-semibold text-edition-ink">
-              SHA-256 do PDF assinado
-            </dt>
-            <dd className="col-span-2 break-all font-mono text-[11px] text-edition-ink-2">
+          <div className="mt-5 border-t border-edition-line pt-4">
+            <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.16em] text-edition-muted">SHA-256 do PDF assinado</p>
+            <p className="break-all font-mono text-[11px] leading-relaxed text-edition-ink-2">
               {authenticity.signed_pdf_hash}
-            </dd>
-          </>
+            </p>
+          </div>
         )}
         {authenticity.content_manifest_hash && (
-          <>
-            <dt className="font-semibold text-edition-ink">Manifesto de conteúdo</dt>
-            <dd className="break-all font-mono text-[11px] text-edition-ink-2">
+          <div className="mt-4">
+            <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.16em] text-edition-muted">Manifesto de conteúdo</p>
+            <p className="break-all font-mono text-[11px] leading-relaxed text-edition-ink-2">
               {authenticity.content_manifest_hash}
-            </dd>
-          </>
+            </p>
+          </div>
         )}
-      </dl>
+      </div>
     </details>
   );
 }
 
-function threeState(state?: boolean | null): string {
-  if (state === true) return "Sim";
-  if (state === false) return "Não";
-  return "Não verificado";
-}
-
-function StatusItem({
-  label,
-  value,
-  state,
-}: {
-  label: string;
-  value: string;
-  state?: boolean | null;
-}) {
-  const icon =
-    state === true
-      ? { name: "check_circle", cls: "text-[var(--edition-success)]" }
-      : state === false
-        ? { name: "cancel", cls: "text-[var(--edition-danger)]" }
-        : { name: "help", cls: "text-edition-muted" };
+function RowLine({ label, text, tone }: { label: string; text: string; tone: Tone }) {
+  const cls =
+    tone === "ok"
+      ? "text-[var(--edition-success)]"
+      : tone === "warn"
+        ? "text-[var(--edition-warn)]"
+        : "text-edition-muted";
   return (
-    <>
-      <dt className="font-semibold text-edition-ink">{label}</dt>
-      <dd className="flex items-center gap-1.5 text-edition-ink-2">
-        <span aria-hidden="true" className={`material-symbols-outlined text-[16px] ${icon.cls}`}>
-          {icon.name}
-        </span>
-        {value}
+    <div className="flex items-baseline justify-between gap-3 border-b border-edition-line/50 py-1.5">
+      <dt className="text-edition-ink-2">{label}</dt>
+      <dd className={`flex items-center gap-1.5 text-right text-[13px] ${cls}`}>
+        {tone === "ok" ? (
+          <span aria-hidden="true" className="material-symbols-outlined text-[15px]">check_circle</span>
+        ) : tone === "warn" ? (
+          <span aria-hidden="true" className="material-symbols-outlined text-[15px]">error_outline</span>
+        ) : null}
+        {text}
       </dd>
-    </>
+    </div>
   );
 }
 

@@ -140,3 +140,69 @@ Apenas reais:
 - `mobile-topo.png`, `mobile-full.png`, `mobile-drawer.png`
 
 *Nota: capturas “depois” foram geradas em build de produção local, sem overlay de dev.*
+
+---
+
+# Revisão corretiva v2 — composição, eixo e hierarquia
+
+Segunda passada puramente visual sobre `/edicoes/{ano}/{numero}` (sem mudar dados, SSR, APIs ou conteúdo jurídico).
+
+## Desalinhamentos encontrados e causas
+
+- **Página “torta”:** a versão anterior aplicava um grid de duas colunas (`sidebar 300px + documento`) **sempre**, mesmo com uma única matéria, e ainda centralizava o hero. Isso criava um eixo quebrado entre hero centralizado, ações centralizadas e documento deslocado à direita.
+- **Eixos múltiplos:** cada bloco tinha largura própria (hero 1320px, busca card, grid, rodapé) — nada compartilhava o mesmo eixo.
+- **Status contraditórios:** a lista técnica mapeava `false` como “erro” (ícone vermelho de cancelamento) e misturava `true/false/null` sem distinção, gerando leituras como “verificada” ao lado de “Não”.
+- **Repetição de identidade:** o cabeçalho do Diário reaparecia no rodapé documental e havia duplicação do tipo do ato no cabeçalho da matéria (`PORTARIA` duas vezes).
+
+## O que foi removido da visão principal
+
+- O bloco técnico gigante do topo (“Publicação verificada” + signatário/emissor/SHA/manifesto/cadeia ICP-Brasil…) **não aparece mais** no fluxo principal.
+- O rodapé repetindo o masthead completo foi substituído por um encerramento mínimo.
+- A “eyebrow” duplicada de tipo de ato foi removida do cabeçalho da matéria.
+- Em edições de **uma matéria**, a busca/filtros e o sumário lateral deixaram de aparecer (sem o que procurar/filtrar) — a matéria domina imediatamente.
+
+## Como o grid foi corrigido
+
+- Um **único shell** para a página inteira (breadcrumb → hero → ações → documento → rodapé):
+  - 1 matéria → coluna única `max-width: 900px` centrada (eixo único);
+  - várias matérias → `max-width: 1180px` com `260px (sumário) + 32px gap + ~840px (documento)`.
+- Todo o conteúdo principal é **alinhado à esquerda no mesmo eixo** (sem alternar centralizado/esquerda/centralizado).
+- Brasão pequeno (56–64px) ao lado da “marca”; **uma única hierarquia dominante** (“Edição nº 23”), com município discreto acima.
+- Ações: somente **Baixar PDF** sólido; `Visualizar PDF` e `Compartilhar` discretos; `⋯ Mais` reúne Verificar autenticidade, Imprimir e Copiar link.
+- Espaçamentos seguem múltiplos (4/8/12/16/24/32/40/48) para ritmo consistente.
+
+## Informações movidas para “detalhes”
+
+Tudo isto ficou **sob demanda** (botão “Detalhes técnicos” → drawer/sheet acessível):
+assinatura, validade do certificado, cadeia ICP-Brasil, consulta de revogação, carimbo de tempo, integridade do snapshot/documento, signatário, emissor, formato, SHA-256 e manifesto.
+
+No topo ficou apenas o **status resumido honesto**: `✓ Publicação oficial verificada` + data da assinatura + “Ver autenticidade →”.
+
+## Correção do mapeamento de status (verdadeiro/falso/desconhecido)
+
+- `true` → verde (`Assinada`, `Válido`, `Consultada`, `Presente`, `Íntegro`).
+- `false` → **não é erro automático**: tom neutro/âmbar conforme o campo, com texto preciso (ex.: “Certificado próprio, não ancorado” para cadeia de um certificado municipal autoadministrado).
+- `null`/não testado → **“Não verificado”**, sem ícone, tom neutro.
+- Ícones vermelhos de “cancelamento” foram removidos da lista técnica; legenda explica que itens cinza são propriedades que não se aplicam/não atestadas.
+
+## Layout: 1 matéria × várias matérias
+
+- **1 matéria (ex. edição 23):** coluna única centrada, sem sidebar, sem busca — a folha editorial é o protagonista (~70–80% da atenção).
+- **Várias matérias (ex. edição 22):** grid real `260px sumário + 840px documento`; sumário sticky só a partir de `lg`, com drawer/sheet no mobile; busca presente.
+
+## Screenshots produzidos (v2)
+
+`docs/evidencias/redesign-premium-edicao/depois2/`
+- `desktop-topo.png`, `desktop-materia.png`, `desktop-final.png`, `desktop-full.png` (Edição 23)
+- `desktop-autenticidade.png` (drawer de detalhes técnicos aberto)
+- `multi-topo.png`, `multi-full.png` (Edição 22 — várias matérias)
+- `mobile-topo.png`, `mobile-materia.png`, `mobile-autenticidade.png` (bottom-sheet técnico)
+
+## Testes (v2)
+
+- `tsc --noEmit` e `eslint`: ok.
+- `vitest run`: **38/38** (inclui os testes de status/share).
+- SSR e2e (`edition-ssr.spec.ts`): **4/4**.
+- Axe (produção local): **0 violações critical/serious** (edições 23 e 22).
+- Sem overflow horizontal em 1440 / 1366 / 1024 / 768 / 430 / 390 (e 200% zoom).
+- Validação interativa em build de produção: menu “Mais ações”, drawer de detalhes técnicos (abre/fecha por Esc), único `<h1>`, sumário ativo ao rolar (edição 22), busca filtrando.

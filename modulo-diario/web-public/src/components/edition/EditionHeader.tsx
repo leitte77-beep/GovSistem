@@ -1,10 +1,11 @@
 import Image from "next/image";
+import Link from "next/link";
 import type {
   SnapshotEdition,
   OrganizationInfoServer,
   Authenticity,
 } from "@/lib/edition-types";
-import { formatHeaderDate } from "@/lib/dates";
+import { formatHeaderDate, formatBrasiliaDateTime } from "@/lib/dates";
 
 export type EditionHeaderProps = {
   edition: SnapshotEdition;
@@ -13,31 +14,31 @@ export type EditionHeaderProps = {
   authenticity?: Authenticity | null;
   countLabel?: string;
   publishedLabel?: string | null;
+  verificationUrl?: string;
 };
 
-type StatusTone = "ok" | "neutral" | "legacy";
-
-/** A discreet, officially-flavoured status line — never a heavy card. */
-function statusMeta(kind?: string, authenticity?: Authenticity | null): {
-  tone: StatusTone;
+/** Trustworthy headline status — single, honest, non-alarming. */
+function summary(authenticity?: Authenticity | null): {
+  ok: boolean;
   title: string;
-} {
-  if (kind === "limited") return { tone: "neutral", title: "Publicação indisponível" };
-  if (kind === "legacy") return { tone: "legacy", title: "Publicação legada" };
-  if (authenticity) {
-    const trusted = Boolean(authenticity.states.trusted);
-    const intact = Boolean(authenticity.states.intact);
-    if (trusted) return { tone: "ok", title: "Publicação oficial" };
-    if (intact) return { tone: "neutral", title: "Publicação com integridade verificada" };
-    return { tone: "neutral", title: "Publicação verificada" };
+  detail?: string;
+} | null {
+  if (!authenticity) return null;
+  const states = authenticity.states;
+  const first = authenticity.signatures?.[0];
+  const signedAt = first?.signed_at || first?.timestamp || null;
+  if (states.trusted) return { ok: true, title: "Publicação oficial", detail: "Assinatura confiável (ICP-Brasil)" };
+  if (states.signed) {
+    const detail = signedAt ? `Assinada digitalmente em ${formatBrasiliaDateTime(signedAt)}` : "Assinada digitalmente pelo órgão emissor";
+    return { ok: true, title: "Publicação oficial verificada", detail };
   }
-  return { tone: "neutral", title: "Publicação eletrônica oficial" };
+  return { ok: true, title: "Publicação oficial verificada", detail: "Documento eletrônico oficial" };
 }
 
 /**
- * Institutional document masthead of an edition.
- * Single <h1> (visually hidden) carries the full resource name; everything on
- * screen is styled text so the page keeps exactly one h1 for a11y/SEO.
+ * Masthead of an edition. Left-aligned, quiet and editorial: small brasão
+ * beside the nameplate, a single dominant "Edição nº X", the date and one
+ * summary status line. One <h1> (sr-only) keeps the page heading unique.
  */
 export default function EditionHeader({
   edition,
@@ -45,77 +46,87 @@ export default function EditionHeader({
   kind = "snapshot",
   authenticity,
   countLabel,
+  verificationUrl,
 }: EditionHeaderProps) {
-  const orgName = edition.organization || org?.name || "Diário Oficial Eletrônico";
+  const municipality = edition.organization || org?.name || "Diário Oficial Eletrônico";
   const logo = org?.logo_url || "/brasao.png";
-  const dateText = edition.publication_date
-    ? formatHeaderDate(edition.publication_date)
-    : `Ano de ${edition.year}`;
-
-  const { tone, title } = statusMeta(kind, authenticity);
-
-  const dotColor =
-    tone === "ok"
-      ? "bg-[var(--edition-success)]"
-      : tone === "legacy"
-        ? "bg-[var(--edition-muted)]"
-        : "bg-[var(--edition-accent)]";
+  const dateText = edition.publication_date ? formatHeaderDate(edition.publication_date) : `Ano de ${edition.year}`;
+  const status = summary(kind === "snapshot" ? authenticity : null);
 
   return (
-    <header className="edition-header text-center">
+    <header className="edition-header">
       <h1 className="sr-only">
-        {`${orgName} — Diário Oficial Eletrônico, Edição nº ${edition.number} de ${dateText}`}
+        {`Edição nº ${edition.number} de ${dateText} — Diário Oficial Eletrônico de ${municipality}`}
       </h1>
 
-      {logo && (
-        <div className="mx-auto mb-5 flex justify-center">
+      {/* identity lockup: small brasão + nameplate */}
+      <div className="flex items-center gap-4 sm:gap-5">
+        {logo && (
           <Image
             alt={org?.name ? `Brasão de ${org.name}` : "Brasão do município"}
             src={logo}
-            width={96}
-            height={96}
-            className="h-16 w-auto sm:h-20 lg:h-24"
+            width={64}
+            height={64}
             priority
+            className="h-14 w-auto shrink-0 sm:h-16"
           />
+        )}
+        <div className="min-w-0">
+          <p className="truncate text-[13px] font-semibold uppercase tracking-[0.02em] text-edition-muted sm:text-sm">
+            {municipality}
+          </p>
+          <p className="truncate text-lg font-extrabold tracking-tight text-[var(--edition-brand)] sm:text-[22px]">
+            Diário Oficial Eletrônico
+          </p>
         </div>
-      )}
+      </div>
 
-      <p className="text-[11px] font-semibold uppercase tracking-[0.42em] text-edition-accent sm:text-xs">
-        Diário Oficial Eletrônico
-      </p>
-
-      <p className="mx-auto mt-3 max-w-3xl text-base font-bold uppercase leading-snug tracking-[0.02em] text-edition-ink sm:text-xl lg:text-2xl">
-        {orgName}
-      </p>
-
-      <div className="mt-6 flex flex-col items-center">
-        <p className="text-[clamp(2.4rem,6vw,3.4rem)] font-extrabold leading-none tracking-tight text-edition-ink">
-          <span className="text-edition-muted sm:text-edition-ink">Edição nº </span>
-          <span className="text-[var(--edition-brand)]">{edition.number}</span>
-        </p>
-        <p className="mt-3 text-base font-medium text-edition-ink-2 sm:text-lg">
+      {/* edition + date */}
+      <div className="mt-7 sm:mt-9">
+        <h2 className="text-[clamp(2rem,4.5vw,2.9rem)] font-extrabold leading-none tracking-tight text-edition-ink">
+          Edição nº <span className="text-[var(--edition-accent)]">{edition.number}</span>
+        </h2>
+        <p className="mt-2 text-[15px] font-medium text-edition-ink-2 sm:text-[16px]">
           {dateText}
         </p>
+        {countLabel ? (
+          <p className="mt-1 text-[13px] text-edition-muted">{countLabel}</p>
+        ) : null}
       </div>
 
       {edition.subtitle && (
-        <p className="mx-auto mt-4 max-w-2xl text-[15px] leading-relaxed text-edition-muted">
-          {edition.subtitle}
-        </p>
+        <p className="mt-3 max-w-2xl text-[14px] leading-relaxed text-edition-muted">{edition.subtitle}</p>
       )}
 
-      {/* discreet official meta line */}
-      <div className="mt-7 flex flex-col items-center gap-3">
-        <div className="inline-flex items-center gap-2.5 rounded-full px-4 py-1.5 ring-1 ring-edition-line bg-edition-sheet">
-          <span aria-hidden="true" className={`h-2 w-2 rounded-full ${dotColor}`} />
-          <span className="text-xs font-semibold uppercase tracking-[0.12em] text-edition-ink-2">
-            {title}
-          </span>
+      {/* single, honest status line + verification link */}
+      {status && (
+        <div className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2">
+          <p className="flex items-center gap-2 text-[14px] font-semibold text-edition-ink-2">
+            <span aria-hidden="true" className="material-symbols-outlined text-[18px] text-[var(--edition-success)]">
+              check_circle
+            </span>
+            {status.title}
+          </p>
+          {status.detail && <span className="hidden text-[13px] text-edition-muted sm:inline">· {status.detail}</span>}
+          {verificationUrl && (
+            <Link
+              href={verificationUrl}
+              className="inline-flex items-center gap-1 text-[13px] font-semibold text-[var(--edition-accent)] transition hover:text-[var(--edition-accent-strong)]"
+            >
+              Ver autenticidade
+              <span aria-hidden="true" className="material-symbols-outlined text-[16px]">arrow_forward</span>
+            </Link>
+          )}
         </div>
-        <p className="text-sm text-edition-muted">{countLabel}</p>
-      </div>
+      )}
 
-      <hr className="hero-rule mx-auto mt-8 max-w-xl" aria-hidden="true" />
+      {(kind === "legacy" || kind === "limited") && (
+        <p className="mt-5 max-w-2xl rounded-xl bg-edition-sheet px-4 py-3 text-[13.5px] leading-relaxed text-edition-ink-2 ring-1 ring-edition-line">
+          {kind === "legacy"
+            ? "Edição publicada em formato legado — o conteúdo integral pode ser consultado no PDF oficial."
+            : "Esta edição ainda não possui snapshot imutável disponível. Tente novamente ou baixe o PDF oficial."}
+        </p>
+      )}
     </header>
   );
 }

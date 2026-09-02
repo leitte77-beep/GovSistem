@@ -47,7 +47,6 @@ export default function MatterDocument({
   prevLink,
   nextLink,
 }: MatterDocumentProps) {
-  const kindLabel = titleKindLabel(matter.title);
   const showNav = Boolean(prevLink || nextLink);
 
   return (
@@ -56,30 +55,34 @@ export default function MatterDocument({
       data-mid={anchorId}
       className="matter scroll-mt-[7.5rem]"
     >
-      {/* overline: discreet act-type + share */}
-      <div className="mb-5 flex items-start justify-between gap-4">
-        <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-edition-accent">
-          {kindLabel || matter.section_title || `Publicação ${String(position + 1).padStart(2, "0")}`}
-        </p>
-        <span className="shrink-0 no-print">
+      {/* quiet toolbar: copy link only (no duplicated act-type eyebrow) */}
+      <div className="mb-4 flex items-start justify-between gap-4">
+        <span aria-hidden="true" className="sr-only">
+          Publicação {String(position + 1).padStart(2, "0")}
+        </span>
+        <span className="ml-auto shrink-0 no-print">
           <CopyMatterLink anchorId={anchorId} />
         </span>
       </div>
 
       {/* document heading */}
-      <h2 className="text-[26px] font-extrabold uppercase leading-[1.15] tracking-tight text-edition-ink sm:text-[30px] lg:text-[34px]">
+      <h2 className="text-[24px] font-extrabold uppercase leading-[1.15] tracking-tight text-edition-ink sm:text-[28px] lg:text-[30px]">
         {matter.title}
       </h2>
 
       {matter.summary && (
         <div className="mt-5 border-l-[3px] border-[var(--doe-accent,var(--edition-accent))] pl-4 sm:pl-5">
-          <p className="text-[16px] font-medium leading-relaxed text-edition-ink-2 sm:text-[18px] sm:leading-[1.7]">
+          <p className="text-[16px] font-semibold leading-relaxed text-edition-ink sm:text-[18px] sm:leading-[1.65]">
             {matter.summary}
           </p>
         </div>
       )}
 
-      <hr className="my-7 border-0 border-t border-edition-line-strong" aria-hidden="true" />
+      {matter.section_title && (
+        <p className="mt-3 text-[13px] text-edition-muted">{matter.section_title}</p>
+      )}
+
+      <hr className="my-8 border-0 border-t border-edition-line-strong" aria-hidden="true" />
 
       <div
         className="matter-body"
@@ -148,10 +151,4 @@ export default function MatterDocument({
       )}
     </section>
   );
-}
-
-function titleKindLabel(title: string): string | null {
-  const t = (title || "").toUpperCase().trim();
-  const re = /^(LEI|DECRETO|PORTARIA|RESOLU[ÇC]|LICITA[ÇC]|CONTRATO|EXTRATO|ATA)\b/;
-  return re.test(t) ? t.split(/\s/)[0].replace(/[^A-ZÇ]/g, "") : null;
 }
