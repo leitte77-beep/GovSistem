@@ -9,6 +9,7 @@ from sqlalchemy.types import JSON
 from app.models.base import Base, SoftDeleteMixin, TimestampMixin
 
 if TYPE_CHECKING:
+    from app.models.authority import Authority
     from app.models.edition import Edition
     from app.models.file import File
     from app.models.matter import Matter
@@ -52,6 +53,9 @@ class Organization(Base, TimestampMixin, SoftDeleteMixin):
     )
     org_units: Mapped[List["OrgUnit"]] = relationship(
         "OrgUnit", back_populates="organization", lazy="selectin"
+    )
+    authorities: Mapped[List["Authority"]] = relationship(
+        "Authority", back_populates="organization", lazy="selectin"
     )
     users: Mapped[List["User"]] = relationship(
         "User", back_populates="organization", lazy="selectin"

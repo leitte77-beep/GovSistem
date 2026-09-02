@@ -45,6 +45,8 @@ def _make_org_unit(**kwargs):
     ou.id = kwargs.get("id", uuid.uuid4())
     ou.name = kwargs.get("name", "Secretaria de Fazenda")
     ou.abbreviation = kwargs.get("abbreviation", "SEFAZ")
+    ou.parent_id = kwargs.get("parent_id", None)
+    ou.parent = None
     return ou
 
 
@@ -53,6 +55,7 @@ def _make_act_type(**kwargs):
     at.id = kwargs.get("id", uuid.uuid4())
     at.name = kwargs.get("name", "Decreto")
     at.description = kwargs.get("description", "Decree type")
+    at.config = kwargs.get("config", None)
     return at
 
 

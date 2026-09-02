@@ -32,6 +32,14 @@ interface Props {
   html?: string;
   plain?: string;
   onSaved?: (doc: SemanticDocument) => void;
+  /** Reports semantic analysis state so the wizard can show a clear status. */
+  onStatusChange?: (status: {
+    analyzed: boolean;
+    pendingBlocks: number;
+    errors: number;
+    warnings: number;
+    loading: boolean;
+  }) => void;
 }
 
 const sourceCls =
@@ -45,6 +53,7 @@ export default function SemanticEditor({
   html,
   plain,
   onSaved,
+  onStatusChange,
 }: Props) {
   const [sourceHtml, setSourceHtml] = useState(html ?? "");
   const [sourcePlain, setSourcePlain] = useState(plain ?? "");
@@ -159,6 +168,16 @@ export default function SemanticEditor({
 
   const pendingCount = doc?.blocks.filter((b) => !b.confirmed).length ?? 0;
   const blockingErrors = validation?.errors.filter((e) => e.severity === "error") ?? [];
+
+  useEffect(() => {
+    onStatusChange?.({
+      analyzed: !!doc,
+      pendingBlocks: pendingCount,
+      errors: blockingErrors.length,
+      warnings: validation?.warnings.length ?? 0,
+      loading: loadingSaved,
+    });
+  }, [doc, pendingCount, blockingErrors.length, validation, loadingSaved, onStatusChange]);
 
   return (
     <div className="space-y-5">

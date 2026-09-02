@@ -47,7 +47,7 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "N", "W"]
-per-file-ignores = {"app/core/config.py" = ["N802"], "alembic/versions/*" = ["E501", "W291", "I001"], "tests/test_authorization.py" = ["E501"], "app/api/v1/public.py" = ["E501"], "app/api/v1/mfa.py" = ["E501"], "app/api/v1/security.py" = ["E501"], "app/core/password_policy.py" = ["E501"], "app/services/legacy_importer.py" = ["E501"], "tests/test_legacy_import.py" = ["E501"]}
+per-file-ignores = {"app/core/config.py" = ["N802"], "alembic/versions/*" = ["E501", "W291", "I001"], "tests/test_authorization.py" = ["E501"], "tests/test_act_type_config_unit.py" = ["E501"], "tests/test_matter_config_authority_flow.py" = ["E501"], "tests/test_editions.py" = ["E501"], "app/api/v1/public.py" = ["E501"], "app/api/v1/mfa.py" = ["E501"], "app/api/v1/security.py" = ["E501"], "app/core/password_policy.py" = ["E501"], "app/services/legacy_importer.py" = ["E501"], "tests/test_legacy_import.py" = ["E501"]}
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

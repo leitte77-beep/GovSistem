@@ -221,6 +221,42 @@ async def create_edition(
     return await _edition_to_response(edition)
 
 
+@router.get("/editions/open", response_model=list[dict])
+async def list_open_editions(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Editions currently accepting new matters (draft/reviewing/scheduled).
+
+    Used by the matter wizard to let the author pick where the matter will
+    be published instead of guessing a destination.
+    """
+    query = (
+        select(Edition)
+        .where(
+            Edition.organization_id == user.organization_id,
+            Edition.status.in_([EditionStatus.DRAFT, EditionStatus.REVIEWING, EditionStatus.SCHEDULED]),
+        )
+        .options(selectinload(Edition.items))
+        .order_by(Edition.year.desc(), Edition.number.desc())
+        .limit(50)
+    )
+    result = await db.execute(query)
+    editions = result.scalars().all()
+    return [
+        {
+            "id": str(e.id),
+            "number": e.number,
+            "year": e.year,
+            "title": e.title,
+            "publication_date": e.publication_date.isoformat(),
+            "status": _status_value(e.status),
+            "item_count": len(e.items or []),
+        }
+        for e in editions
+    ]
+
+
 @router.get("/editions/next-number", response_model=NextEditionNumberResponse)
 async def get_next_edition_number(
     year: Optional[int] = None,
@@ -371,7 +407,6 @@ async def add_item(
     )
     db.add(item)
     await db.commit()
-    await db.refresh(edition, attribute_names=["updated_at"])
 
     info = await capture_request_info(request)
     await log_audit_event(
@@ -381,8 +416,15 @@ async def add_item(
         description=f"Matter '{matter.title}' added to edition",
         ip_address=info["ip_address"],
     )
-    await db.refresh(edition, attribute_names=["updated_at"])
-    return await _edition_to_response(edition)
+
+    # item_count fix: SQLAlchemy keeps the already-eager-loaded ``edition.items``
+    # collection stale in the identity map after the insert, so building the
+    # response from it returns a defasado count. Expire the collection and
+    # re-select via the helper (which eager-loads items + nested matter), so the
+    # response reflects the state immediately after the addition.
+    db.expire(edition, ["items"])
+    fresh = await _get_edition_or_404(edition_id, db)
+    return await _edition_to_response(fresh)
 
 
 @router.patch("/editions/{edition_id}/items/reorder", response_model=list[EditionItemOut])

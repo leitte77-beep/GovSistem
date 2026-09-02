@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus, FileText, Upload, Search } from "lucide-react";
+import { Plus, FileText, Upload, Search, FilePenLine, Undo2, PenLine } from "lucide-react";
 import { api } from "@/lib/api";
 import { notifyError } from "@/lib/error-handler";
 import { MATTER_STATUSES, EDITION_STATUSES } from "@/lib/statusConfig";
@@ -14,15 +14,56 @@ interface DashboardData {
   health?: { uptime_seconds: number };
 }
 
-function Kpi({ label, value, icon, to, accent }: { label: string; value: number | string; icon: React.ReactNode; to: string; accent: string }) {
+function SummaryCard({
+  label,
+  value,
+  to,
+  icon,
+  iconWrap,
+}: {
+  label: string;
+  value: number | string;
+  to: string;
+  icon: React.ReactNode;
+  iconWrap: string;
+}) {
   return (
-    <Link href={to} className="group flex items-start gap-3 rounded-xl border border-gray-200 bg-white p-4 shadow-sm transition hover:shadow-md">
-      <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-lg ${accent}`} aria-hidden="true">{icon}</span>
-      <span className="min-w-0">
-        <span className="block text-2xl font-bold text-gray-900">{value}</span>
-        <span className="block text-sm text-gray-600">{label}</span>
-      </span>
+    <Link
+      href={to}
+      className="block rounded-xl border border-outline-variant bg-surface-container-lowest p-6 shadow-sm transition hover:shadow-md"
+    >
+      <div className="mb-4 flex items-start justify-between">
+        <div className={`rounded-lg p-2 ${iconWrap}`} aria-hidden="true">
+          {icon}
+        </div>
+      </div>
+      <div className="mb-1 text-display font-display text-on-surface">{value}</div>
+      <div className="text-label-md font-label-md uppercase tracking-wider text-on-surface-variant">{label}</div>
     </Link>
+  );
+}
+
+function FlowRow({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between rounded-lg border border-outline-variant/50 bg-surface p-4 transition-colors hover:bg-surface-container-low">
+      <div className="flex items-center gap-3">
+        <span className="text-outline" aria-hidden="true">{icon}</span>
+        <span className="text-body-md font-body-md text-on-surface">{label}</span>
+      </div>
+      <span className="text-headline-md font-headline-md text-on-surface">{value}</span>
+    </div>
+  );
+}
+
+function FlowCard({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-6">
+      <h2 className="text-headline-md font-headline-md mb-6 flex items-center gap-2 text-on-surface">
+        <span className="text-primary-container" aria-hidden="true">{icon}</span>
+        {title}
+      </h2>
+      <div className="space-y-4">{children}</div>
+    </div>
   );
 }
 
@@ -40,6 +81,37 @@ function DashboardContent() {
   const m = data.matters;
   const e = data.editions;
 
+  const summaryCards = [
+    {
+      label: "Matérias aguardando revisão",
+      value: m?.review ?? 0,
+      to: "/matters?status=review",
+      icon: <FilePenLine size={24} aria-hidden="true" />,
+      iconWrap: "text-primary-container bg-surface-container",
+    },
+    {
+      label: "Matérias devolvidas",
+      value: m?.rejected ?? 0,
+      to: "/matters?status=rejected",
+      icon: <Undo2 size={24} aria-hidden="true" />,
+      iconWrap: "text-error bg-error-container",
+    },
+    {
+      label: "Edições aguardando PDF",
+      value: e?.pdf_generated ?? 0,
+      to: "/editions",
+      icon: <FileText size={24} aria-hidden="true" />,
+      iconWrap: "text-secondary bg-secondary-container opacity-80",
+    },
+    {
+      label: "Edições aguardando assinatura",
+      value: e?.signed ?? 0,
+      to: "/editions",
+      icon: <PenLine size={24} aria-hidden="true" />,
+      iconWrap: "text-on-primary-fixed-variant bg-primary-fixed",
+    },
+  ];
+
   const flowMatters = [
     { code: "draft", value: m?.draft ?? 0 },
     { code: "review", value: m?.review ?? 0 },
@@ -55,76 +127,65 @@ function DashboardContent() {
   ];
 
   const quickActions = [
-    { label: "Nova matéria", href: "/matters/new", icon: <Plus size={18} /> },
-    { label: "Nova edição", href: "/editions/new", icon: <FileText size={18} /> },
-    { label: "Importar publicação", href: "/importar", icon: <Upload size={18} /> },
-    { label: "Verificar PDF", href: "/verify", icon: <Search size={18} /> },
+    { label: "Nova matéria", href: "/matters/new", icon: <Plus size={18} />, style: "bg-primary-container text-on-primary hover:bg-primary" },
+    { label: "Nova edição", href: "/editions/new", icon: <FileText size={18} />, style: "bg-surface-container-high text-on-surface hover:bg-surface-variant border border-outline-variant" },
+    { label: "Importar publicação", href: "/importar", icon: <Upload size={18} />, style: "bg-surface text-primary hover:bg-surface-container-low border border-primary" },
+    { label: "Verificar PDF", href: "/verify", icon: <Search size={18} />, style: "bg-surface text-primary hover:bg-surface-container-low border border-primary" },
   ];
 
   if (loading) {
-    return <div className="flex min-h-[50vh] items-center justify-center text-gray-500">Carregando visão geral…</div>;
+    return <div className="flex min-h-[50vh] items-center justify-center text-on-surface-variant">Carregando visão geral…</div>;
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      <header className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-gray-900">Visão geral</h1>
-        <p className="mt-1 text-sm text-gray-600">Acompanhe o andamento editorial e as pendências do Diário Oficial.</p>
-      </header>
+    <div className="mx-auto w-full max-w-container-max">
+      <div className="px-4 py-6 sm:px-6 lg:px-8">
+        <div className="mb-8">
+          <h1 className="text-display font-display mb-2 text-on-surface">Visão Geral</h1>
+          <p className="text-body-lg font-body-lg text-on-surface-variant">Acompanhamento operacional do Diário Oficial</p>
+        </div>
 
-      {/* Indicadores de pendência */}
-      <section className="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4" aria-label="Indicadores principais">
-        <Kpi label="Matérias aguardando revisão" value={m?.review ?? 0} to="/matters?status=review" accent="bg-amber-100 text-amber-800" icon={<FileText size={20} aria-hidden="true" />} />
-        <Kpi label="Matérias devolvidas" value={m?.rejected ?? 0} to="/matters?status=rejected" accent="bg-red-100 text-red-700" icon={<FileText size={20} aria-hidden="true" />} />
-        <Kpi label="Edições aguardando PDF" value={e?.pdf_generated ?? 0} to="/editions" accent="bg-blue-100 text-blue-700" icon={<FileText size={20} aria-hidden="true" />} />
-        <Kpi label="Edições aguardando assinatura" value={e?.signed ?? 0} to="/editions" accent="bg-teal-100 text-teal-700" icon={<FileText size={20} aria-hidden="true" />} />
-      </section>
+        {/* Summary Cards */}
+        <section className="mb-12 grid grid-cols-1 gap-gutter md:grid-cols-2 lg:grid-cols-4" aria-label="Indicadores principais">
+          {summaryCards.map((c) => (
+            <SummaryCard key={c.label} {...c} />
+          ))}
+        </section>
 
-      {/* Fluxo */}
-      <section className="mb-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="mb-4 text-base font-semibold text-gray-900">Fluxo — Matérias</h2>
-          <div className="space-y-2">
+        {/* Flow Sections */}
+        <section className="mb-12 grid grid-cols-1 gap-gutter lg:grid-cols-2" aria-label="Fluxo editorial">
+          <FlowCard title="Fluxo — Matérias" icon={<FileText size={22} aria-hidden="true" />}>
             {flowMatters.map((f) => {
               const def = MATTER_STATUSES[f.code as keyof typeof MATTER_STATUSES];
               const Icon = def.icon;
-              return (
-                <div key={f.code} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2">
-                  <span className="flex items-center gap-2 text-sm text-gray-700"><Icon size={16} aria-hidden="true" />{def.label}</span>
-                  <span className="font-bold text-gray-900">{f.value}</span>
-                </div>
-              );
+              return <FlowRow key={f.code} label={def.label} value={f.value} icon={<Icon size={20} aria-hidden="true" />} />;
             })}
-          </div>
-        </div>
-        <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-          <h2 className="mb-4 text-base font-semibold text-gray-900">Fluxo — Edições</h2>
-          <div className="space-y-2">
+          </FlowCard>
+          <FlowCard title="Fluxo — Edições" icon={<FileText size={22} aria-hidden="true" />}>
             {flowEditions.map((f) => {
               const def = EDITION_STATUSES[f.code as keyof typeof EDITION_STATUSES];
               const Icon = def.icon;
-              return (
-                <div key={f.code} className="flex items-center justify-between rounded-lg border border-gray-100 px-3 py-2">
-                  <span className="flex items-center gap-2 text-sm text-gray-700"><Icon size={16} aria-hidden="true" />{def.label}</span>
-                  <span className="font-bold text-gray-900">{f.value}</span>
-                </div>
-              );
+              return <FlowRow key={f.code} label={def.label} value={f.value} icon={<Icon size={20} aria-hidden="true" />} />;
             })}
-          </div>
-        </div>
-      </section>
+          </FlowCard>
+        </section>
+      </div>
 
-      {/* Ações rápidas */}
-      <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm" aria-label="Ações rápidas">
-        <h2 className="mb-4 text-base font-semibold text-gray-900">Ações rápidas</h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      {/* Quick Actions Bar */}
+      <div className="sticky bottom-0 z-20 w-full border-t border-outline-variant bg-surface-container-lowest p-4 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)]">
+        <div className="mx-auto flex max-w-container-max flex-wrap items-center justify-center gap-4 md:justify-end">
           {quickActions.map((a) => (
-            <Link key={a.href} href={a.href} className="inline-flex h-11 items-center justify-center gap-2 rounded-lg border border-gray-300 bg-white px-4 text-sm font-semibold text-gray-800 hover:bg-gray-50">
-              {a.icon}{a.label}
+            <Link
+              key={a.href}
+              href={a.href}
+              className={`flex items-center gap-2 rounded-lg px-6 py-2.5 font-label-md transition-colors ${a.style}`}
+            >
+              {a.icon}
+              {a.label}
             </Link>
           ))}
         </div>
-      </section>
+      </div>
     </div>
   );
 }

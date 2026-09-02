@@ -69,6 +69,13 @@ def matter_snapshot(
             .encode("utf-8")
         ).hexdigest()
 
+    responsible = {
+        "id": str(matter.responsible_id) if getattr(matter, "responsible_id", None) else None,
+        "name": getattr(matter, "responsible_name", None),
+        "role": getattr(matter, "responsible_role", None),
+    }
+    metadata = getattr(matter, "metadata_json", None)
+
     return {
         "id": str(matter.id),
         "position": position,
@@ -79,6 +86,17 @@ def matter_snapshot(
         "status": getattr(matter, "status", "published"),
         "act_type_id": str(matter.act_type_id) if matter.act_type_id else None,
         "org_unit_id": str(matter.org_unit_id) if matter.org_unit_id else None,
+        # ── Act identification / responsible snapshot (frozen at close) ──
+        "act_number": getattr(matter, "act_number", None),
+        "act_year": getattr(matter, "act_year", None),
+        "act_date": _iso_date(getattr(matter, "act_date", None)),
+        "publication_type": getattr(matter, "publication_type", "normal"),
+        "references_matter_id": (
+            str(matter.references_matter_id)
+            if getattr(matter, "references_matter_id", None) else None
+        ),
+        "responsible": responsible,
+        "metadata": metadata,
         "content_mode": getattr(matter, "content_mode", "rich_text"),
         "content_html": getattr(matter, "content_html", ""),
         "content_json": getattr(matter, "content_json", None),

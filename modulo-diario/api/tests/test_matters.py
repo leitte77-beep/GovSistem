@@ -131,3 +131,107 @@ class TestEditionReadyStatus:
 
     def test_review_not_ready_for_diagramador(self):
         assert not MatterStatus.REVIEW.can_transition_to(MatterStatus.PUBLISHED)
+
+
+# ── Structured act identification (act_number / act_year / act_date) ─────────
+
+
+@pytest.mark.anyio
+async def test_matter_accepts_structured_act_metadata(db_session):
+    """New optional metadata columns persist alongside legacy title-only data."""
+    import uuid
+    from datetime import date
+
+    from app.models.matter import Matter
+
+    org_id = uuid.uuid4()
+    author_id = uuid.uuid4()
+    act_type_id = uuid.uuid4()
+    m = Matter(
+        organization_id=org_id,
+        act_type_id=act_type_id,
+        author_id=author_id,
+        title="PORTARIA Nº 04/2026",
+        content_html="<p>x</p>",
+        plain_text="x",
+        act_number="04",
+        act_year=2026,
+        act_date=date(2026, 9, 1),
+        responsible_name="Oclécio de Freitas Meneses",
+        responsible_role="Prefeito Municipal",
+        publication_type="normal",
+    )
+    db_session.add(m)
+    await db_session.flush()
+
+    loaded = await db_session.get(Matter, m.id)
+    assert loaded.act_number == "04"
+    assert loaded.act_year == 2026
+    assert loaded.act_date == date(2026, 9, 1)
+    assert loaded.responsible_name == "Oclécio de Freitas Meneses"
+    assert loaded.responsible_role == "Prefeito Municipal"
+    assert loaded.publication_type == "normal"
+    assert loaded.title == "PORTARIA Nº 04/2026"
+
+
+@pytest.mark.anyio
+async def test_legacy_matter_without_act_metadata_is_valid(db_session):
+    """Matters created before structured metadata must keep working (all new
+    columns are nullable) — title/summary/type/unit only."""
+    import uuid
+
+    from app.models.matter import Matter
+
+    m = Matter(
+        organization_id=uuid.uuid4(),
+        act_type_id=uuid.uuid4(),
+        author_id=uuid.uuid4(),
+        title="PORTARIA – 04/2026",
+        summary="Exonera a servidora.",
+        content_html="<p>x</p>",
+        plain_text="x",
+    )
+    db_session.add(m)
+    await db_session.flush()
+
+    loaded = await db_session.get(Matter, m.id)
+    assert loaded.act_number is None
+    assert loaded.act_year is None
+    assert loaded.act_date is None
+    assert loaded.publication_type in (None, "normal")
+    assert loaded.title == "PORTARIA – 04/2026"
+
+
+@pytest.mark.anyio
+async def test_rectification_requires_reference(db_session):
+    """Rectification/republication link to the original published matter."""
+    import uuid
+
+    from app.models.matter import Matter
+
+    original = Matter(
+        organization_id=uuid.uuid4(),
+        act_type_id=uuid.uuid4(),
+        author_id=uuid.uuid4(),
+        title="PORTARIA Nº 03/2026",
+        content_html="<p>x</p>",
+        plain_text="x",
+    )
+    db_session.add(original)
+    await db_session.flush()
+
+    rect = Matter(
+        organization_id=original.organization_id,
+        act_type_id=original.act_type_id,
+        author_id=original.author_id,
+        title="RETIFICAÇÃO – PORTARIA Nº 03/2026",
+        content_html="<p>x</p>",
+        plain_text="x",
+        publication_type="rectification",
+        references_matter_id=original.id,
+    )
+    db_session.add(rect)
+    await db_session.flush()
+
+    assert rect.publication_type == "rectification"
+    assert rect.references_matter_id == original.id

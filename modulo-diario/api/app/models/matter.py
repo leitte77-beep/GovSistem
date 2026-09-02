@@ -1,18 +1,18 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
-from app.models.base import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.types import JSON
 
-from app.models.base import Base, TimestampMixin
+from app.models.base import JSONB, Base, TimestampMixin
 from app.models.enums import MatterStatus
 
 if TYPE_CHECKING:
     from app.models.act_type import ActType
+    from app.models.authority import Authority
     from app.models.edition_item import EditionItem
     from app.models.matter_attachment import MatterAttachment
     from app.models.org_unit import OrgUnit
@@ -88,6 +88,47 @@ class Matter(Base, TimestampMixin):
         nullable=True,
     )
 
+    # ── Structured act identification (additive; legacy matters may be NULL) ─
+    act_number: Mapped[Optional[str]] = mapped_column(
+        String(30), nullable=True,
+        comment="Structured act number (e.g. 04) — search/filter/sort/indexing",
+    )
+    act_year: Mapped[Optional[int]] = mapped_column(
+        Integer, nullable=True,
+        comment="Structured act year (e.g. 2026)",
+    )
+    act_date: Mapped[Optional[date]] = mapped_column(
+        Date, nullable=True,
+        comment="Date the act was issued",
+    )
+    responsible_name: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True,
+        comment="Authority responsible for the act (NOT the author who typed it)",
+    )
+    responsible_role: Mapped[Optional[str]] = mapped_column(
+        String(255), nullable=True,
+        comment="Role/title of the responsible authority (e.g. Prefeito Municipal)",
+    )
+    responsible_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("authorities.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Provenance link to the Authority registry (nullable for legacy "
+                "free-text matters); name/role above are the frozen snapshot",
+    )
+    metadata_json: Mapped[Optional[dict]] = mapped_column(
+        "metadata", JSONB, nullable=True,
+        comment="Extensible per-act-type dynamic field values (JSONB)",
+    )
+    review_reason: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True,
+        comment="Reason the reviewer returned the matter (shown to the author)",
+    )
+    publication_type: Mapped[Optional[str]] = mapped_column(
+        String(20), nullable=True, default="normal",
+        comment="normal | rectification | republication",
+    )
+
     # ── Semantic document engine (additive, feature-flagged) ────────────────
     semantic_content: Mapped[Optional[dict]] = mapped_column(
         JSONB, nullable=True,
@@ -124,6 +165,7 @@ class Matter(Base, TimestampMixin):
     )
     org_unit: Mapped[Optional["OrgUnit"]] = relationship("OrgUnit")
     act_type: Mapped["ActType"] = relationship("ActType")
+    authority: Mapped[Optional["Authority"]] = relationship("Authority")
     author: Mapped["User"] = relationship(
         "User", foreign_keys=[author_id]
     )

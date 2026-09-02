@@ -17,6 +17,8 @@ const NAV_ITEMS: {
 }[] = [
   { label: "Dashboard", href: "/", icon: "dashboard" },
   { label: "Matérias", href: "/matters", icon: "description" },
+  { label: "Tipos de Ato", href: "/tipos-ato", icon: "category", adminOnly: true },
+  { label: "Autoridades", href: "/autoridades", icon: "badge", adminOnly: true },
   { label: "Edições", href: "/editions", icon: "auto_stories" },
   { label: "Importar", href: "/importar", icon: "upload_file" },
   { label: "Modelos", href: "/templates", icon: "dashboard_customize" },

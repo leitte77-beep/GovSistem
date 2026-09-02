@@ -17,6 +17,8 @@ class OrgUnitOut(BaseModel):
     id: uuid.UUID
     name: str
     abbreviation: str | None
+    parent_id: uuid.UUID | None = None
+    parent_name: str | None = None
 
     model_config = {"from_attributes": True}
 
@@ -49,4 +51,13 @@ async def list_org_units(
             .order_by(OrgUnit.name)
         )
         units = result.scalars().all()
-    return units
+    out = []
+    for u in units:
+        out.append(OrgUnitOut(
+            id=u.id,
+            name=u.name,
+            abbreviation=u.abbreviation,
+            parent_id=u.parent_id,
+            parent_name=u.parent.name if u.parent else None,
+        ))
+    return out

@@ -285,7 +285,9 @@ async def test_add_item_to_edition(mock_select, mock_capture, mock_audit, client
     r2 = MagicMock(); r2.scalar_one_or_none.return_value = matter
     r3 = MagicMock(); r3.scalar_one_or_none.return_value = None
     r4 = MagicMock(); r4.scalar.return_value = 0
-    mock_db.execute.side_effect = [r1, r2, r3, r4]
+    # After the insert the endpoint re-reads the edition so item_count is fresh.
+    r5 = MagicMock(); r5.scalar_one_or_none.return_value = edition
+    mock_db.execute.side_effect = [r1, r2, r3, r4, r5]
 
     payload = {"matter_id": str(matter.id)}
     response = await client.post(f"/api/v1/editions/{edition.id}/items", json=payload)

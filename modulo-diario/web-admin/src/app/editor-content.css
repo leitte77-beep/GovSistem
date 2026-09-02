@@ -1,0 +1,80 @@
+/* Editorial content styles shared by the editor, A4 preview and review preview.
+ * Mirrors the spirit of the WeasyPrint layout so the on-screen preview matches
+ * the generated PDF (serif body, justified text, bordered tables, centered
+ * official-act blocks). The inline styles produced by the editor/autoformat
+ * take precedence over these base rules.
+ */
+
+.editor-a4-page,
+.matter-content-preview,
+.ProseMirror {
+  font-family: "Times New Roman", Times, Georgia, serif;
+  font-size: 12pt;
+  line-height: 1.5;
+  color: #1a1a1a;
+}
+
+.editor-a4-page .ProseMirror p,
+.matter-content-preview p {
+  margin: 0 0 0.7em;
+}
+
+.editor-a4-page .ProseMirror p[style*="text-align: justify"],
+.matter-content-preview p[style*="text-align: justify"] {
+  text-align: justify;
+  text-justify: inter-word;
+}
+
+.editor-a4-page .ProseMirror p[style*="text-align: center"],
+.matter-content-preview p[style*="text-align: center"] {
+  text-align: center;
+}
+
+.editor-a4-page .ProseMirror p[style*="margin-left"],
+.matter-content-preview p[style*="margin-left"] {
+  margin-left: 2em;
+}
+
+.editor-a4-page .ProseMirror table,
+.matter-content-preview table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1em 0;
+  font-size: 11pt;
+}
+
+.editor-a4-page .ProseMirror td,
+.editor-a4-page .ProseMirror th,
+.matter-content-preview td,
+.matter-content-preview th {
+  border: 1px solid #000;
+  padding: 4px 6px;
+  vertical-align: top;
+  text-align: left;
+}
+
+.editor-a4-page .ProseMirror th,
+.matter-content-preview th {
+  background: #f2f2f2;
+  font-weight: 700;
+}
+
+.editor-a4-page .ProseMirror td p,
+.editor-a4-page .ProseMirror th p,
+.matter-content-preview td p,
+.matter-content-preview th p {
+  margin: 0;
+}
+
+/* Signature block */
+.signature-block {
+  margin-top: 3em;
+  text-align: center;
+}
+.signature-block .signature-name {
+  font-weight: 700;
+  text-align: center;
+}
+.signature-block .signature-office {
+  text-align: center;
+}

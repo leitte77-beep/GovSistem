@@ -45,21 +45,82 @@ export interface Matter {
   reviewed_by: string | null;
   published_at: string | null;
   is_erratum: boolean;
+  act_number: string | null;
+  act_year: number | null;
+  act_date: string | null;
+  responsible_name: string | null;
+  responsible_role: string | null;
+  responsible_id?: string | null;
+  metadata?: Record<string, unknown> | null;
+  review_reason?: string | null;
+  publication_type: string;
+  references_matter_id: string | null;
   created_at: string;
   updated_at: string;
   attachments: Attachment[];
+}
+
+export type DynamicFieldType =
+  | "text"
+  | "textarea"
+  | "number"
+  | "date"
+  | "currency"
+  | "cpf_cnpj"
+  | "select"
+  | "boolean";
+
+export interface DynamicFieldDef {
+  key: string;
+  label: string;
+  type: DynamicFieldType;
+  required: boolean;
+  placeholder?: string | null;
+  help?: string | null;
+  options?: string[];
+}
+
+export interface ActTypeConfig {
+  number_required?: boolean;
+  year_required?: boolean;
+  date_required?: boolean;
+  responsible_required?: boolean;
+  allow_free_responsible?: boolean;
+  title_pattern?: string | null;
+  title_uppercase?: boolean;
+  dynamic_fields?: DynamicFieldDef[];
 }
 
 export interface ActType {
   id: string;
   name: string;
   description: string | null;
+  config?: ActTypeConfig | null;
+}
+
+export interface ActTypeAdmin extends ActType {
+  is_active: boolean;
+}
+
+export interface Authority {
+  id: string;
+  name: string;
+  role: string | null;
+  org_unit_id: string | null;
+  org_unit_name?: string | null;
+  is_active: boolean;
+  valid_from: string | null;
+  valid_until: string | null;
+  notes?: string | null;
+  created_at?: string | null;
 }
 
 export interface OrgUnit {
   id: string;
   name: string;
   abbreviation: string | null;
+  parent_id?: string | null;
+  parent_name?: string | null;
 }
 
 export interface AuditEvent {
