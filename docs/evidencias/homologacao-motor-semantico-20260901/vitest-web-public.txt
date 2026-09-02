@@ -1,0 +1,15 @@
+
+ RUN  v2.1.9 /home/ubuntu/sistemaweb/modulo-diario/web-public
+
+ ✓ src/lib/__tests__/api.test.ts (17 tests) 137ms
+ ✓ src/lib/__tests__/org-context.test.tsx (8 tests) 112ms
+ ❯ __tests__/page.test.tsx (1 test | 1 failed) 47ms
+   × Home page > renders the main heading 45ms
+     → Objects are not valid as a React child (found: [object Promise]). If you meant to render a collection of children, use an array instead.
+ ❯ e2e/edition-a11y.spec.ts (0 test)
+
+ Test Files  2 failed | 2 passed (4)
+      Tests  1 failed | 25 passed (26)
+   Start at  23:49:59
+   Duration  5.51s (transform 407ms, setup 919ms, collect 1.30s, tests 296ms, environment 5.01s, prepare 529ms)
+

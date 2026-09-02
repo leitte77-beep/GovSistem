@@ -1,0 +1,7 @@
+
+Running 9 tests using 1 worker
+
+  ✓  1 [desktop] › e2e/edition-a11y.spec.ts:23:7 › Página pública da edição (snapshot) › renderiza header institucional e ações (35.7s)
+  ✓  2 [desktop] › e2e/edition-a11y.spec.ts:27:7 › Página pública da edição (snapshot) › exibe exatamente um <h1> na página (23.6s)
+  ✓  3 [desktop] › e2e/edition-a11y.spec.ts:31:7 › Página pública da edição (snapshot) › sumário é navegável por teclado e leva às âncoras (19.1s)
+  ✘  4 [desktop] › e2e/edition-a11y.spec.ts:43:7 › Página pública da edição (snapshot) › busca local na edição filtra matérias (1.5m)

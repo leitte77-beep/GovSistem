@@ -1,0 +1,22 @@
+ Container modulo-diario-redis-1  Running
+6b7c8d9e0f1a, a1f5b7c9d2e4, e1f2g3h4i5j6 -> 9z9z9z9z9z9z (head) (mergepoint), merge multiple heads into a single linear history
+5a6b7c8d9e0f -> 6b7c8d9e0f1a, add plans table and plan_id to organizations
+4ed27b7a7ed6 -> 5a6b7c8d9e0f, add theme_config and public_url to organizations
+b2c3d4e5f6a7 -> 4ed27b7a7ed6, multi-tenant foundation
+9a8b7c6d5e4f -> a1f5b7c9d2e4, add_semantic_document_engine
+b2c3d4e5f6a7 -> 9a8b7c6d5e4f, add_pades_hashes_to_editions
+a1b2c3d4e5f6 -> b2c3d4e5f6a7 (branchpoint), add_signed_pdf_path_to_editions
+b1c2d3e4f5a6 -> a1b2c3d4e5f6, add_read_field_to_audit_events
+a7b8c9d0e1f2 -> b1c2d3e4f5a6, fix_signing_credentials_timezone
+f3a2e1b4c5d6 -> a7b8c9d0e1f2, add_signing_documents_and_jobs
+d1e2f3g4h5i6 -> e1f2g3h4i5j6, add missing indexes
+c1d2e3f4a5b6 -> d1e2f3g4h5i6, add pdf_layout to organizations
+f3a2e1b4c5d6 -> c1d2e3f4a5b6, add require_password_change to users
+b8f07e6285f7 -> f3a2e1b4c5d6 (branchpoint), add_system_settings
+369d85f8d441 -> b8f07e6285f7, add_mfa_password_lockout_fields
+539957eacd12 -> 369d85f8d441, add_search_index
+258eddc9cfcd -> 539957eacd12, add_pdf_generated_and_signed_status
+4d53c4d5d567 -> 258eddc9cfcd, add_closed_status_and_edition_type
+25818ce35b4c -> 4d53c4d5d567, add_content_json_plain_text_to_matters
+7664ca144ad6 -> 25818ce35b4c, add_refresh_tokens
+<base> -> 7664ca144ad6, initial_models
