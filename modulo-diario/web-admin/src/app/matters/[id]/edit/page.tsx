@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import MatterForm from "@/components/Matter/MatterForm";
@@ -40,5 +41,18 @@ export default function EditMatterPage() {
     );
   }
 
-  return <MatterForm matter={matter} initialStep={initialStep} />;
+  return (
+    <div>
+      <div className="max-w-5xl mx-auto px-4 pt-4 flex justify-end">
+        <Link
+          href={`/matters/${matter.id}/relacoes`}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-indigo-700 hover:underline"
+          title="Registrar retificação, revogação, alteração etc. entre publicações"
+        >
+          Relacionar publicações →
+        </Link>
+      </div>
+      <MatterForm matter={matter} initialStep={initialStep} />
+    </div>
+  );
 }

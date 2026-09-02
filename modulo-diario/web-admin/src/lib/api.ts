@@ -9,15 +9,29 @@
  */
 import type {
   ActType,
+  ActTypeAdmin,
   ApiError,
   Attachment,
   AuditEvent,
+  Authority,
   Matter,
   MatterListItem,
   OrgUnit,
 } from "@/types/matter";
 import type { User, UserCreateRequest, UserUpdateRequest } from "@/types/user";
 import type { SystemSetting } from "@/types/setting";
+
+export interface MatterRelation {
+  id: string;
+  source_matter_id: string;
+  target_matter_id: string;
+  source_title?: string | null;
+  target_title?: string | null;
+  relation_type: string;
+  label: string;
+  notes?: string | null;
+  created_at?: string | null;
+}
 
 const BASE_URL = "/api/v1";
 
@@ -200,6 +214,18 @@ export const api = {
     return request<MatterListItem[]>(`/matters${qs ? `?${qs}` : ""}`);
   },
 
+  listMatterStats() {
+    return request<{
+      total: number;
+      published: number;
+      draft: number;
+      review: number;
+      approved: number;
+      archived: number;
+      rejected: number;
+    }>(`/matters/stats`);
+  },
+
   getMatter(id: string) {
     return request<Matter>(`/matters/${id}`);
   },
@@ -214,7 +240,7 @@ export const api = {
 
   getNextMatterTitle(actTypeId: string) {
     const q = new URLSearchParams({ act_type_id: actTypeId });
-    return request<{ title: string; next_number: number; last_number: number }>(
+    return request<{ title: string; next_number: number; last_number: number; year: number; advisory: boolean; reserved: boolean }>(
       `/matters/next-title?${q.toString()}`
     );
   },
@@ -227,6 +253,15 @@ export const api = {
     content_html: string;
     content_json?: Record<string, unknown>;
     content_mode?: string;
+    act_number?: string;
+    act_year?: number;
+    act_date?: string;
+    responsible_name?: string;
+    responsible_role?: string;
+    responsible_id?: string;
+    metadata?: Record<string, unknown>;
+    publication_type?: string;
+    references_matter_id?: string;
   }) {
     return request<Matter>("/matters", {
       method: "POST",
@@ -242,6 +277,15 @@ export const api = {
     content_html: string;
     content_json: Record<string, unknown>;
     content_mode: string;
+    act_number: string;
+    act_year: number;
+    act_date: string;
+    responsible_name: string;
+    responsible_role: string;
+    responsible_id: string;
+    metadata: Record<string, unknown>;
+    publication_type: string;
+    references_matter_id: string;
   }>) {
     return request<Matter>(`/matters/${id}`, {
       method: "PATCH",
@@ -257,8 +301,11 @@ export const api = {
     return request<Matter>(`/matters/${id}/approve`, { method: "POST" });
   },
 
-  reject(id: string) {
-    return request<Matter>(`/matters/${id}/reject`, { method: "POST" });
+  reject(id: string, reason?: string) {
+    return request<Matter>(`/matters/${id}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason: reason ?? null }),
+    });
   },
 
   // Attachments
@@ -298,6 +345,57 @@ export const api = {
     return request<ActType[]>("/act-types");
   },
 
+  // Act types — admin (friendly config, validated server-side)
+  adminListActTypes(includeInactive = false) {
+    const q = includeInactive ? "?include_inactive=true" : "";
+    return request<ActTypeAdmin[]>("/admin/act-types" + q);
+  },
+  adminCreateActType(data: { name: string; description?: string; config: Record<string, unknown> }) {
+    return request<ActTypeAdmin>("/admin/act-types", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  adminUpdateActType(id: string, data: { name?: string; description?: string; is_active?: boolean; config?: Record<string, unknown> }) {
+    return request<ActTypeAdmin>(`/admin/act-types/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+  adminDeleteActType(id: string) {
+    return request<void>(`/admin/act-types/${id}`, { method: "DELETE" });
+  },
+
+  // Authorities (signatários/responsáveis institucionais)
+  listAuthorities(params?: { active_only?: boolean; search?: string }) {
+    const q = new URLSearchParams();
+    if (params?.active_only) q.set("active_only", "true");
+    if (params?.search) q.set("search", params.search);
+    const qs = q.toString();
+    return request<Authority[]>(`/authorities${qs ? `?${qs}` : ""}`);
+  },
+  createAuthority(data: Partial<{
+    name: string; role: string; org_unit_id: string; is_active: boolean;
+    valid_from: string; valid_until: string; notes: string;
+  }>) {
+    return request<Authority>("/authorities", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  updateAuthority(id: string, data: Partial<{
+    name: string; role: string; org_unit_id: string; is_active: boolean;
+    valid_from: string; valid_until: string; notes: string;
+  }>) {
+    return request<Authority>(`/authorities/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+  deleteAuthority(id: string) {
+    return request<void>(`/authorities/${id}`, { method: "DELETE" });
+  },
+
   // Org units
   listOrgUnits() {
     return request<OrgUnit[]>("/org-units");
@@ -315,6 +413,19 @@ export const api = {
     if (params?.status) q.set("status", params.status);
     const qs = q.toString();
     return request<import("../types/edition").EditionListItem[]>(`/editions${qs ? `?${qs}` : ""}`);
+  },
+
+  /** Editions that still accept matters (draft/reviewing/scheduled). */
+  listOpenEditions() {
+    return request<{
+      id: string;
+      number: number;
+      year: number;
+      title: string;
+      publication_date: string;
+      status: string;
+      item_count: number;
+    }[]>("/editions/open");
   },
 
   getEdition(id: string) {
@@ -535,6 +646,43 @@ export const api = {
       method: "PATCH",
       body: body ? JSON.stringify(body) : undefined,
     });
+  },
+
+  // ── Matter relations (Fase 2) ─────────────────────────────────────────
+  listMatterRelations(matterId: string) {
+    return request<{
+      outgoing: MatterRelation[];
+      incoming: MatterRelation[];
+    }>(`/matter-relations?matter_id=${encodeURIComponent(matterId)}`);
+  },
+
+  searchPublishedMatters(q: string) {
+    return request<
+      Array<{
+        id: string;
+        title: string;
+        summary: string | null;
+        act_number: string | null;
+        act_year: number | null;
+        published_at: string | null;
+      }>
+    >(`/matter-relations/search-matters?q=${encodeURIComponent(q)}`);
+  },
+
+  createMatterRelation(data: {
+    source_matter_id: string;
+    target_matter_id: string;
+    relation_type: string;
+    notes?: string;
+  }) {
+    return request<MatterRelation>("/matter-relations", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  deleteMatterRelation(id: string) {
+    return request<void>(`/matter-relations/${id}`, { method: "DELETE" });
   },
 };
 

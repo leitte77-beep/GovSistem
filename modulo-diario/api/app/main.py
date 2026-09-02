@@ -10,6 +10,7 @@ from slowapi.util import get_remote_address
 
 from app.api.public_v1.router import router as public_v1_router
 from app.api.public_v1.semantic import router as public_semantic_router
+from app.api.public_v2 import router as public_v2_router
 from app.api.v1.router import api_router
 from app.core.config import settings
 from app.core.database import dispose_sync_engine
@@ -114,6 +115,7 @@ def create_app() -> FastAPI:
     app.include_router(api_router, prefix="/api/v1")
     app.include_router(public_v1_router)
     app.include_router(public_semantic_router)
+    app.include_router(public_v2_router)
 
     @app.on_event("startup")
     async def startup():

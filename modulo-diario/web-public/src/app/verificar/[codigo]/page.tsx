@@ -1,304 +1,183 @@
-"use client";
-
-import { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useParams } from "next/navigation";
-import { api } from "@/lib/api";
-import { formatBrasiliaDateTime } from "@/lib/dates";
+import type { Metadata } from "next";
+import { getVerificationServer, getRequestOrigin } from "@/lib/server/edition-loader";
+import { formatLongDatePT } from "@/lib/dates";
 
-function certificateIdentity(data: any) {
-  const subject = data?.certificate_subject || "";
-  const cn = subject.match(/(?:^|,)CN=([^,]+)/)?.[1] || subject;
-  const subjectDocument = cn.match(/(\d{14}|\d{11})/)?.[1] || "";
-  const document = subjectDocument.length > (data?.certificate_document || "").length
-    ? subjectDocument
-    : data?.certificate_document || "";
-  const name = data?.certificate_name || cn.split(":")[0].trim();
-  return { name, document };
+export const dynamic = "force-dynamic";
+
+type PageProps = { params: { codigo: string } };
+
+export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
+  const code = params.codigo;
+  const origin = await getRequestOrigin();
+  return {
+    title: `Verificação de autenticidade — ${code}`,
+    robots: { index: false, follow: true },
+    alternates: { canonical: `${origin}/verificar/${code}` },
+  };
 }
 
-function StateChip({ label, ok }: { label: string; ok?: boolean }) {
-  return (
-    <div className="flex items-center justify-between gap-2 rounded-lg bg-surface-container-low px-3 py-2">
-      <span className="text-on-surface-variant">{label}</span>
-      <span className={`flex items-center gap-1 text-xs font-semibold ${ok ? "text-secondary" : "text-error"}`}>
-        <span className="material-symbols-outlined text-[16px]">{ok ? "check_circle" : "cancel"}</span>
-        {ok ? "Sim" : "Não"}
-      </span>
-    </div>
-  );
+function certName(subject: string | undefined): string {
+  return (subject || "").split(":").slice(0, 1).join("").replace(/^CN=/, "").trim();
 }
 
-function formatDocument(document: string) {
-  if (/^\d{14}$/.test(document)) {
-    return document.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
-  }
-  if (/^\d{11}$/.test(document)) {
-    return document.replace(/^(\d{3})(\d{3})(\d{3})(\d{2})$/, "$1.$2.$3-$4");
-  }
-  return document;
-}
+export default async function VerificarCodePage({ params }: PageProps) {
+  const code = params.codigo;
+  const origin = await getRequestOrigin();
+  const result = await getVerificationServer(code).catch(() => null);
 
-export default function VerifyCodePage() {
-  const params = useParams();
-  const code = params.codigo as string;
-  const [data, setData] = useState<any>(null);
-  const [snapshot, setSnapshot] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const certificate = certificateIdentity(data);
-
-  useEffect(() => {
-    api.verify(code)
-      .then(async (result) => {
-        setData(result);
-        if (result.valid && result.edition_year && result.edition_number) {
-          try {
-            const snap = await api.getEditionSnapshot(result.edition_year, result.edition_number);
-            setSnapshot(snap);
-          } catch {
-            /* snapshot não disponível — mantém verificação básica */
-          }
-        }
-      })
-      .catch((e) => setError(e.message))
-      .finally(() => setLoading(false));
-  }, [code]);
+  const valid = Boolean(result && result.found);
+  const doc = result?.document ?? null;
+  const qrUrl = `${origin}/verificar/${encodeURIComponent(code)}`;
 
   return (
     <main className="min-h-[calc(100vh-160px)] bg-surface py-stack-lg">
-      <div className="max-w-[800px] mx-auto px-margin-mobile flex flex-col items-center">
-        {/* Trust Banner */}
+      <div className="max-w-[800px] mx-auto px-gutter flex flex-col items-center">
         <div className="w-full mb-stack-md flex items-center justify-center gap-3 bg-secondary-container/30 border border-secondary/20 py-3 px-6 rounded-full">
-          <span
-            className="material-symbols-outlined text-on-secondary-container"
-            style={{ fontVariationSettings: "'FILL' 1" }}
-          >
+          <span aria-hidden="true" className="material-symbols-outlined text-on-secondary-container">
             verified_user
           </span>
-          <span className="text-on-secondary-container font-label-md text-label-md tracking-wider">
-            ASSINATURA DIGITAL DE CONFIANÇA - PADRÃO ICP-BRASIL
+          <span className="text-on-secondary-container text-label-md tracking-wider">
+            VERIFICAÇÃO PÚBLICA DE AUTENTICIDADE
           </span>
         </div>
 
         <section className="w-full bg-surface-container-lowest rounded-xl border border-outline-variant shadow-xl overflow-hidden">
-          <div className="p-stack-md md:p-12">
-            <div className="text-center mb-6">
-              <span className="material-symbols-outlined text-5xl mb-4 block text-primary">
-                qr_code_scanner
-              </span>
-              <h1 className="text-headline-lg font-headline-lg text-primary mb-2">
-                Resultado da Verificação
-              </h1>
-              <p className="text-body-sm text-on-surface-variant font-mono bg-surface-container-low inline-block px-4 py-1.5 rounded-full">
-                Código: {code}
-              </p>
-            </div>
+          <div className="p-stack-md md:p-10 text-center">
+            <h1 className="text-headline-md font-headline-md text-primary mb-2">
+              Resultado da Verificação
+            </h1>
+            <p className="text-body-sm text-on-surface-variant font-mono bg-surface-container-low inline-block px-4 py-1.5 rounded-full break-all">
+              Código: {code}
+            </p>
           </div>
 
-          {loading ? (
-            <div className="px-8 pb-8 text-center text-on-surface-variant">
-              <span className="material-symbols-outlined text-4xl mb-3 block animate-spin">
-                progress_activity
-              </span>
-              <p>Verificando assinatura digital...</p>
-            </div>
-          ) : error ? (
-            <div className="border-t border-outline-variant p-8">
-              <div className="flex items-start gap-4 bg-error-container text-on-error-container p-6 rounded-xl">
-                <span className="material-symbols-outlined shrink-0">error</span>
+          <div className="border-t border-outline-variant p-6 md:p-8">
+            {!result ? (
+              <p className="text-body-sm text-error">
+                Não foi possível concluir a verificação agora. Tente novamente em instantes.
+              </p>
+            ) : !valid ? (
+              <div className="flex items-start gap-3 bg-error-container text-on-error-container p-6 rounded-xl">
+                <span aria-hidden="true" className="material-symbols-outlined shrink-0">error</span>
                 <div>
-                  <h3 className="font-headline-sm text-headline-sm mb-1">
-                    Erro na Verificação
-                  </h3>
-                  <p className="text-body-sm">{error}</p>
+                  <h2 className="font-headline-sm text-headline-sm mb-1">Código não encontrado</h2>
+                  <p className="text-body-sm">{result.message}</p>
                 </div>
               </div>
-            </div>
-          ) : data && data.valid ? (
-            <div className="border-t border-outline-variant p-8">
-              <div className="bg-secondary-container/20 border border-secondary/30 rounded-xl p-6 mb-6">
-                <div className="flex items-center gap-3 mb-4">
-                  <span
-                    className="material-symbols-outlined text-secondary"
-                    style={{ fontVariationSettings: "'FILL' 1" }}
-                  >
-                    check_circle
-                  </span>
-                  <h3 className="font-headline-sm text-headline-sm text-primary">
-                    Assinatura Válida
-                  </h3>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-body-sm">
-                  {data.edition_title && (
-                    <div>
-                      <span className="text-on-surface-variant">Documento:</span>
-                      <p className="font-semibold text-primary">{data.edition_title}</p>
-                    </div>
-                  )}
-                  {data.edition_year && data.edition_number && (
-                    <div>
-                      <span className="text-on-surface-variant">Edição:</span>
-                      <p className="font-semibold text-primary">
-                        {data.edition_year}/{String(data.edition_number).padStart(3, "0")}
-                      </p>
-                    </div>
-                  )}
-                  {data.publication_date && (
-                    <div>
-                      <span className="text-on-surface-variant">Publicação:</span>
-                      <p className="font-semibold text-primary">
-                        {new Date(data.publication_date + "T00:00:00").toLocaleDateString("pt-BR")}
-                      </p>
-                    </div>
-                  )}
-                  {data.certificate_subject && (
-                    <div className="min-w-0">
-                      <span className="text-on-surface-variant">Certificado:</span>
-                      <p className="font-semibold text-primary break-words">{certificate.name}</p>
-                      {certificate.document && (
-                        <p className="text-primary font-mono text-sm break-all">
-                          {formatDocument(certificate.document)}
-                        </p>
-                      )}
-                    </div>
-                  )}
-                  {data.signed_at && (
-                    <div>
-                      <span className="text-on-surface-variant">Assinado em:</span>
-                      <p className="font-semibold text-primary">
-                        {formatBrasiliaDateTime(data.signed_at)}
-                      </p>
-                    </div>
-                  )}
-                  {data.immutability_hash && (
-                    <div className="md:col-span-2">
-                      <span className="text-on-surface-variant">Hash de imutabilidade:</span>
-                      <code className="block bg-surface-container mt-1 px-3 py-1.5 rounded text-xs font-mono break-all text-primary">
-                        {data.immutability_hash}
-                      </code>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {snapshot?.authenticity && (
-                <div className="rounded-xl border border-outline-variant p-5 mb-6">
-                  <h4 className="text-label-md font-label-md text-primary mb-3">Estados de validação</h4>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-body-sm">
-                    <StateChip label="Arquivo assinado" ok={snapshot.authenticity.states.signed} />
-                    <StateChip label="Integridade criptográfica" ok={snapshot.authenticity.states.intact} />
-                    <StateChip label="Cadeia verificada" ok={snapshot.authenticity.states.trusted} />
-                    <StateChip label="Snapshot imutável íntegro" ok={snapshot.authenticity.snapshot_intact} />
+            ) : (
+              <div className="space-y-6">
+                <div className="flex items-start gap-3 bg-secondary-container/20 border border-secondary/30 rounded-xl p-5">
+                  <span aria-hidden="true" className="material-symbols-outlined text-secondary">verified_user</span>
+                  <div>
+                    <h2 className="font-bold text-on-surface">Documento localizado</h2>
+                    <p className="text-body-sm text-on-surface-variant mt-1">
+                      {doc?.publisher?.name
+                        ? `Este código corresponde a uma publicação oficial da(o) ${doc.publisher.name}.`
+                        : "Este código corresponde a uma publicação oficial."}
+                    </p>
                   </div>
-                  <div className="mt-4 space-y-2">
-                    {snapshot.authenticity.signed_pdf_hash && (
-                      <div>
-                        <span className="text-on-surface-variant text-xs uppercase">SHA-256 do PDF assinado</span>
-                        <code className="block bg-surface-container mt-1 px-3 py-1.5 rounded text-xs font-mono break-all text-primary">
-                          {snapshot.authenticity.signed_pdf_hash}
-                        </code>
+                </div>
+
+                {doc && (
+                  <dl className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-body-sm">
+                    {doc.publisher?.name && (
+                      <div className="sm:col-span-2">
+                        <dt className="text-on-surface-variant uppercase text-label-md">Ente publicador</dt>
+                        <dd className="font-semibold text-primary">{doc.publisher.name}</dd>
                       </div>
                     )}
-                    {snapshot.authenticity.content_manifest_hash && (
+                    <div>
+                      <dt className="text-on-surface-variant uppercase text-label-md">Edição</dt>
+                      <dd className="font-semibold">
+                        <Link className="text-primary hover:underline" href={doc.links.edition}>
+                          nº {doc.edition.number} / {doc.edition.year}
+                        </Link>
+                      </dd>
+                    </div>
+                    <div>
+                      <dt className="text-on-surface-variant uppercase text-label-md">Publicação</dt>
+                      <dd className="font-semibold">
+                        {doc.edition.publication_date ? formatLongDatePT(doc.edition.publication_date) : "—"}
+                      </dd>
+                    </div>
+                    {doc.edition.verification_code && (
                       <div>
-                        <span className="text-on-surface-variant text-xs uppercase">Manifesto de conteúdo</span>
-                        <code className="block bg-surface-container mt-1 px-3 py-1.5 rounded text-xs font-mono break-all text-primary">
-                          {snapshot.authenticity.content_manifest_hash}
-                        </code>
+                        <dt className="text-on-surface-variant uppercase text-label-md">Código</dt>
+                        <dd className="font-mono break-all">{doc.edition.verification_code}</dd>
                       </div>
                     )}
+                    <div>
+                      <dt className="text-on-surface-variant uppercase text-label-md">Status</dt>
+                      <dd className="font-semibold text-secondary">Publicado oficialmente</dd>
+                    </div>
+                    {doc.integrity.content_manifest_hash && (
+                      <div className="sm:col-span-2">
+                        <dt className="text-on-surface-variant uppercase text-label-md">Manifesto de conteúdo (SHA-256)</dt>
+                        <dd className="font-mono text-[11px] break-all">{doc.integrity.content_manifest_hash}</dd>
+                      </div>
+                    )}
+                    {doc.integrity.signed_pdf_hash && (
+                      <div className="sm:col-span-2">
+                        <dt className="text-on-surface-variant uppercase text-label-md">PDF assinado (SHA-256)</dt>
+                        <dd className="font-mono text-[11px] break-all">{doc.integrity.signed_pdf_hash}</dd>
+                      </div>
+                    )}
+                  </dl>
+                )}
+
+                {(result.matters?.length ?? 0) > 0 && (
+                  <div>
+                    <h3 className="text-label-md uppercase tracking-widest text-primary mb-2">
+                      Publicações desta edição ({result.matters.length})
+                    </h3>
+                    <ul className="space-y-2">
+                      {result.matters.map((m) => (
+                        <li key={m.id} className="rounded-lg border border-outline-variant/70 px-3 py-2">
+                          <Link href={`/materias/${m.id}`} className="text-body-sm font-semibold text-primary hover:underline">
+                            {m.title}
+                          </Link>
+                          {m.summary && (
+                            <p className="text-body-sm text-on-surface-variant">{m.summary}</p>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                  <p className="mt-3 text-xs text-on-surface-variant">
-                    {snapshot.authenticity.states.trusted
-                      ? "Assinatura válida e confiável (cadeia ICP-Brasil verificada)."
-                      : snapshot.authenticity.states.intact
-                        ? "Integridade válida; cadeia de certificados não verificada (certificado de teste/raízes ausentes)."
-                        : "Validação indisponível."}
-                  </p>
-                </div>
-              )}
+                )}
 
-              {/* QR Code */}
-              <div className="text-center">
-                <p className="text-label-md font-label-md text-on-surface-variant mb-3">
-                  QR Code de Verificação
-                </p>
-                <div className="inline-block bg-white border border-outline-variant p-2 rounded-xl">
-                  <Image
-                    src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(`${window.location.origin}/verificar/${code}`)}`}
-                    alt="QR Code"
-                    width={144}
-                    height={144}
-                    className="w-36 h-36"
-                  />
+                <div className="flex flex-col sm:flex-row gap-4 items-center justify-between border-t border-outline-variant/60 pt-5">
+                  <div>
+                    <p className="text-label-md text-on-surface-variant mb-1">QR Code de verificação</p>
+                    {/* QR content points to the tenant permanent URL (server-derived). */}
+                    <Image
+                      src={`https://api.qrserver.com/v1/create-qr-code/?size=160x160&data=${encodeURIComponent(qrUrl)}`}
+                      alt={`QR Code de verificação para o código ${code}`}
+                      width={128}
+                      height={128}
+                      className="w-32 h-32 bg-white border border-outline-variant rounded-lg p-1"
+                    />
+                  </div>
+                  <div className="space-y-1 text-body-sm">
+                    {doc?.links.download && (
+                      <p>
+                        <a href={doc.links.download} download className="text-primary hover:underline">
+                          Baixar PDF oficial
+                        </a>
+                      </p>
+                    )}
+                    <p>
+                      <Link href="/verificar" className="text-primary hover:underline">
+                        Verificar outro código
+                      </Link>
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
-          ) : data && !data.valid ? (
-            <div className="border-t border-outline-variant p-8">
-              <div className="flex items-start gap-4 bg-error-container text-on-error-container p-6 rounded-xl">
-                <span className="material-symbols-outlined shrink-0">error</span>
-                <div>
-                  <h3 className="font-headline-sm text-headline-sm mb-1">
-                    Código Não Encontrado
-                  </h3>
-                  <p className="text-body-sm">
-                    {data.message || "O código informado não corresponde a nenhum documento válido."}
-                  </p>
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          {/* Trust Reasons */}
-          <div className="bg-surface-container-low border-t border-outline-variant p-8 md:p-10">
-            <h3 className="text-label-md font-label-md text-on-surface-variant mb-6 text-center uppercase tracking-widest">
-              Por que verificar?
-            </h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-              <div className="flex flex-col items-center text-center">
-                <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center mb-3 shadow-sm border border-outline-variant">
-                  <span className="material-symbols-outlined text-secondary">gavel</span>
-                </div>
-                <h4 className="font-headline-sm text-sm text-primary mb-1">Validade Jurídica</h4>
-                <p className="text-body-sm text-on-surface-variant">
-                  Garante que o ato administrativo possui plena força legal e fé pública.
-                </p>
-              </div>
-              <div className="flex flex-col items-center text-center">
-                <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center mb-3 shadow-sm border border-outline-variant">
-                  <span className="material-symbols-outlined text-secondary">security</span>
-                </div>
-                <h4 className="font-headline-sm text-sm text-primary mb-1">Integridade</h4>
-                <p className="text-body-sm text-on-surface-variant">
-                  Assegura que o conteúdo não foi alterado após a sua publicação original.
-                </p>
-              </div>
-              <div className="flex flex-col items-center text-center">
-                <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center mb-3 shadow-sm border border-outline-variant">
-                  <span className="material-symbols-outlined text-secondary">history_edu</span>
-                </div>
-                <h4 className="font-headline-sm text-sm text-primary mb-1">Autenticidade</h4>
-                <p className="text-body-sm text-on-surface-variant">
-                  Confirma a autoria do órgão emissor através de certificados digitais seguros.
-                </p>
-              </div>
-            </div>
+            )}
           </div>
         </section>
-
-        {/* Navigation */}
-        <div className="w-full mt-stack-lg text-center">
-          <Link
-            href="/verificar"
-            className="text-primary font-label-md text-label-md hover:underline flex items-center justify-center gap-2"
-          >
-            <span className="material-symbols-outlined text-sm">arrow_back</span>
-            Verificar outro código
-          </Link>
-        </div>
       </div>
     </main>
   );

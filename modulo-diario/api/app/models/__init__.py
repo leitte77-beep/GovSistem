@@ -1,5 +1,6 @@
 from app.models.act_type import ActType
 from app.models.audit_event import AuditEvent
+from app.models.authority import Authority
 from app.models.base import Base, SoftDeleteMixin, TimestampMixin
 from app.models.edition import Edition
 from app.models.edition_item import EditionItem
@@ -8,12 +9,14 @@ from app.models.enums import (
     AttachmentType,
     AuditAction,
     EditionStatus,
+    MatterRelationType,
     MatterStatus,
     SignatureProviderType,
 )
 from app.models.file import File
 from app.models.matter import Matter
 from app.models.matter_attachment import MatterAttachment
+from app.models.matter_relation import MatterRelation
 from app.models.org_unit import OrgUnit
 from app.models.organization import Organization
 from app.models.plan import Plan
@@ -39,10 +42,12 @@ __all__ = [
     "AttachmentType",
     "AuditAction",
     "EditionStatus",
+    "MatterRelationType",
     "MatterStatus",
     "SignatureProviderType",
     "ActType",
     "AuditEvent",
+    "Authority",
     "RefreshToken",
     "Edition",
     "EditionItem",
@@ -50,6 +55,7 @@ __all__ = [
     "File",
     "Matter",
     "MatterAttachment",
+    "MatterRelation",
     "Organization",
     "OrgUnit",
     "Plan",

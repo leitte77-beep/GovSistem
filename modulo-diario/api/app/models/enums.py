@@ -17,7 +17,7 @@ class MatterStatus(str, Enum):
             cls.APPROVED: [cls.PUBLISHED, cls.DRAFT],
             cls.PUBLISHED: [cls.ARCHIVED],
             cls.ARCHIVED: [],
-            cls.REJECTED: [cls.DRAFT],
+            cls.REJECTED: [cls.DRAFT, cls.REVIEW],
         }
 
     def can_transition_to(self, target: "MatterStatus") -> bool:
@@ -106,6 +106,58 @@ class EditionStatus(str, Enum):
         return status == cls.SIGNED
 
 
+class MatterRelationType(str, Enum):
+    """Structured, auditable relationship between two published matters.
+
+    Semantics (source acts upon target):
+      RECTIFIES    → source corrects target (target stays published; source is the erratum)
+      REPUBLISHES  → source re-publishes target's content (e.g. after a defect)
+      CANCELS      → source formally cancels target (target stays available)
+      REVOKES      → source revokes the legal effect of target (target text stays)
+      AMENDS       → source alters target (laws/decrees/portarias)
+      SUPERSEDES   → source replaces target
+      COMPLEMENTS  → source supplements target
+    """
+
+    RECTIFIES = "rectifies"
+    REPUBLISHES = "republishes"
+    CANCELS = "cancels"
+    REVOKES = "revokes"
+    AMENDS = "amends"
+    SUPERSEDES = "supersedes"
+    COMPLEMENTS = "complements"
+
+    @property
+    def label(self) -> str:
+        return _RELATION_LABELS.get(self, self.value)
+
+    @property
+    def inverse(self) -> str:
+        """When displayed from the target side ('X was ... by source')."""
+        return _RELATION_INVERSE.get(self, self.value)
+
+
+_RELATION_LABELS = {
+    MatterRelationType.RECTIFIES: "Retifica",
+    MatterRelationType.REPUBLISHES: "Republica",
+    MatterRelationType.CANCELS: "Cancela",
+    MatterRelationType.REVOKES: "Revoga",
+    MatterRelationType.AMENDS: "Altera",
+    MatterRelationType.SUPERSEDES: "Substitui",
+    MatterRelationType.COMPLEMENTS: "Complementa",
+}
+
+_RELATION_INVERSE = {
+    MatterRelationType.RECTIFIES: "Retificada",
+    MatterRelationType.REPUBLISHES: "Republicada",
+    MatterRelationType.CANCELS: "Cancelada",
+    MatterRelationType.REVOKES: "Revogada",
+    MatterRelationType.AMENDS: "Alterada",
+    MatterRelationType.SUPERSEDES: "Substituída",
+    MatterRelationType.COMPLEMENTS: "Complementada",
+}
+
+
 class AttachmentType(str, Enum):
     ANNEX = "annex"
     APPENDIX = "appendix"
@@ -126,6 +178,8 @@ class AuditAction(str, Enum):
     MATTER_UPDATED = "matter.updated"
     MATTER_STATUS_CHANGED = "matter.status_changed"
     MATTER_PUBLISHED = "matter.published"
+    MATTER_RELATION_CREATED = "matter.relation.created"
+    MATTER_RELATION_DELETED = "matter.relation.deleted"
     EDITION_CREATED = "edition.created"
     EDITION_UPDATED = "edition.updated"
     EDITION_STATUS_CHANGED = "edition.status_changed"
