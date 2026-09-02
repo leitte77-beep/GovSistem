@@ -31,10 +31,10 @@ export default function CopyMatterLink({ anchorId, label }: { anchorId: string; 
       type="button"
       onClick={copy}
       aria-live="polite"
-      className="inline-flex items-center gap-1.5 text-label-md font-bold text-primary hover:underline no-print"
+      className="inline-flex items-center gap-1.5 rounded-md text-[12px] font-semibold text-edition-muted no-print transition-colors hover:text-[var(--edition-accent)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--edition-accent)]"
       title="Copiar link para esta matéria"
     >
-      <span aria-hidden="true" className="material-symbols-outlined text-[16px]">
+      <span aria-hidden="true" className="material-symbols-outlined text-[15px]">
         {copied ? "check" : "link"}
       </span>
       {copied ? "Link copiado." : label || "Copiar link"}

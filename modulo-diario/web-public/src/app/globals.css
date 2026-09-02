@@ -5,10 +5,185 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ========== Edition design tokens ==========
+   Neutral "canvas" environment around a pure-white document sheet.
+   The accent is tenant-derived at runtime via --doe-accent. */
+:root {
+  --edition-canvas: #eef1f5;
+  --edition-sheet: #ffffff;
+  --edition-sheet-muted: #f6f7f9;
+  --edition-ink: #1a1f24;
+  --edition-ink-2: #454c55;
+  --edition-muted: #565d66;
+  --edition-line: #e6e9ef;
+  --edition-line-strong: #d3d8e0;
+  --edition-accent: #0a4d9c;
+  --edition-accent-strong: #072f63;
+  --edition-brand: #0f2a52;
+  --doe-accent: #0a4d9c;
+  --edition-success: #14643c;
+  --edition-warn: #8a5a00;
+  --edition-danger: #a2322c;
+  --edition-shadow: 0 1px 2px rgba(16, 24, 40, 0.03), 0 14px 40px rgba(16, 24, 40, 0.07);
+  --edition-shadow-soft: 0 1px 1px rgba(16, 24, 40, 0.03), 0 6px 18px rgba(16, 24, 40, 0.05);
+}
+
 body {
   font-family: 'Inter', sans-serif;
-  background-color: #f7f9fb;
+  background-color: var(--edition-canvas);
 }
+
+/* Smooth anchor landing compensates sticky header and adds gentle focus. */
+section[id], [id^="materia-"] {
+  scroll-margin-top: 7.5rem;
+}
+
+/* Focal matter landed from a URL hash: very soft, temporary wash. */
+@keyframes doe-matter-flash {
+  0%, 100% { background-color: transparent; }
+  20%, 70% { background-color: rgba(10, 77, 156, 0.045); }
+}
+.matter:target {
+  animation: doe-matter-flash 1.6s ease-out;
+}
+
+/* Editorial summary item with a thin left indicator for the active one. */
+.toc-link {
+  position: relative;
+}
+.toc-link::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  border-radius: 999px;
+  background: var(--doe-accent, var(--edition-accent));
+  opacity: 0;
+  transform: scaleY(0.6);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+.toc-link[data-active="true"]::before {
+  opacity: 1;
+  transform: scaleY(1);
+}
+
+/* ========== Official document body typography ==========
+   No tailwind typography plugin is loaded, so the official HTML content
+   (never rewritten) is styled declaratively under the .matter-body scope.
+   Typographic, readable, editorial — never dashboard-like. */
+.matter-body {
+  color: var(--edition-ink);
+  font-size: 16px;
+  line-height: 1.72;
+  word-break: normal;
+  overflow-wrap: break-word;
+}
+@media (min-width: 640px) {
+  .matter-body { font-size: 16.5px; }
+}
+.matter-body > :first-child { margin-top: 0; }
+.matter-body > :last-child { margin-bottom: 0; }
+
+.matter-body p {
+  margin: 0 0 1.1em;
+  text-align: justify;
+  text-justify: inter-word;
+  color: inherit;
+}
+.matter-body strong { font-weight: 700; color: var(--edition-ink); }
+.matter-body em, .matter-body i { font-style: italic; }
+.matter-body u { text-decoration: underline; text-underline-offset: 2px; }
+
+.matter-body h2,
+.matter-body h3,
+.matter-body h4,
+.matter-body h5 {
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--edition-ink);
+  text-align: center;
+  text-transform: uppercase;
+  margin: 1.6em 0 0.6em;
+}
+.matter-body h2 { font-size: 1.18em; letter-spacing: 0.01em; }
+.matter-body h3 { font-size: 1.05em; }
+.matter-body h4, .matter-body h5 { font-size: 1em; }
+
+.matter-body a { color: var(--doe-accent, var(--edition-accent)); text-decoration: underline; text-underline-offset: 2px; }
+
+.matter-body ul,
+.matter-body ol {
+  margin: 0 0 1.1em;
+  padding-left: 1.5em;
+}
+.matter-body ul { list-style: disc; }
+.matter-body ol { list-style: decimal; }
+.matter-body li { margin: 0.2em 0; }
+.matter-body li > p { margin: 0.2em 0; }
+
+.matter-body blockquote {
+  margin: 1.1em 0;
+  padding: 0.1em 0 0.1em 1em;
+  border-left: 2px solid var(--edition-line-strong);
+  color: var(--edition-ink-2);
+}
+.matter-body hr {
+  border: none;
+  border-top: 1px solid var(--edition-line-strong);
+  margin: 1.6em 0;
+}
+
+/* Refined tables — keep cells intact, allow horizontal scroll on small screens. */
+.matter-body .table-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin: 0 0 1.2em;
+  border-radius: 8px;
+}
+.matter-body table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.94em;
+  line-height: 1.5;
+  margin: 0 0 1.2em;
+}
+.matter-body th {
+  background: var(--edition-sheet-muted);
+  font-weight: 700;
+  color: var(--edition-ink);
+  text-align: left;
+}
+.matter-body th, .matter-body td {
+  border: 1px solid var(--edition-line-strong);
+  padding: 8px 10px;
+  vertical-align: top;
+}
+.matter-body tr:nth-child(even) td { background: #fbfcfd; }
+.matter-body table p { margin: 0; text-align: left; }
+
+/* Numbered/field fragments some editors emit as bare paragraphs */
+.matter-body .assinatura,
+.matter-body p[align="center"] { text-align: center !important; }
+
+/* ========== Edition layout helpers ========== */
+.edition-doc-wrap {
+  display: block;
+}
+/* Thin tenant-coloured rule under the masthead */
+.hero-rule {
+  height: 1px;
+  border: none;
+  background: linear-gradient(to right, transparent, color-mix(in srgb, var(--doe-accent, var(--edition-accent)) 55%, transparent), transparent);
+  opacity: 0.5;
+}
+@media (prefers-reduced-motion: reduce) {
+  .matter:target { animation: none; }
+  .toc-link::before { transition: none; }
+  * { scroll-behavior: auto !important; }
+}
+
 
 .material-symbols-outlined {
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
@@ -246,5 +421,94 @@ html.a11y-stop-animations *::after {
   section.matter .prose img {
     break-inside: avoid;
     page-break-inside: avoid;
+  }
+}
+
+/* ===== Premium edition print (later in source so it wins ties) ===== */
+@media print {
+  /* Keep the edition masthead + official closing, drop site chrome */
+  .edition-header,
+  .edition-doc-footer {
+    display: block !important;
+  }
+  footer:not(.edition-doc-footer) {
+    display: none !important;
+  }
+
+  /* Neutralise the "document on canvas" sheet so it prints as plain paper */
+  .edition-canvas {
+    background: #fff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .edition-sheet {
+    background: #fff !important;
+    box-shadow: none !important;
+  }
+  .edition-sheet > div {
+    padding: 0 !important;
+  }
+  [class*="ring-1"],
+  .shadow-\[var\(--edition-shadow\)\],
+  .shadow-\[var\(--edition-shadow-soft\)\] {
+    --tw-ring-shadow: 0 0 #0000 !important;
+    --tw-ring-offset-shadow: 0 0 #0000 !important;
+    box-shadow: none !important;
+    background: #fff !important;
+  }
+
+  /* Break the edition into documents rather than a single giant block */
+  article.space-y-16 > section.matter,
+  article.space-y-16 > * {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  article.space-y-16 > section.matter + section.matter {
+    break-before: page;
+    page-break-before: always;
+  }
+  section.matter {
+    border-top: none !important;
+    padding-top: 0 !important;
+  }
+  section.matter h2 {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+
+  .matter-body {
+    font-size: 10.5pt !important;
+    line-height: 1.6 !important;
+  }
+  .matter-body p {
+    text-align: justify !important;
+    margin: 0 0 0.9em !important;
+  }
+  .matter-body .table-scroll {
+    overflow: visible !important;
+  }
+  .matter-body table,
+  .matter-body tr,
+  .matter-body img {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .table-scroll {
+    width: 100% !important;
+  }
+
+  /* Closing authenticity band lands on its own page */
+  .edition-sheet section[aria-label="Autenticidade da edição"] {
+    break-before: page;
+    page-break-before: always;
+  }
+  .edition-doc-footer {
+    break-before: page;
+    page-break-before: always;
+    margin-top: 0 !important;
+    padding-top: 0 !important;
+  }
+  img {
+    max-height: 55mm !important;
   }
 }

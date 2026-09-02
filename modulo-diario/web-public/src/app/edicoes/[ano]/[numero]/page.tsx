@@ -18,10 +18,11 @@ import { formatHeaderDate, formatLongDatePT } from "@/lib/dates";
 import EditionBreadcrumb from "@/components/edition/EditionBreadcrumb";
 import EditionHeader from "@/components/edition/EditionHeader";
 import EditionActions from "@/components/edition/EditionActions";
-import EditionStatus from "@/components/edition/EditionStatus";
-import EditionSummary from "@/components/edition/EditionSummary";
+import EditionToc from "@/components/edition/EditionToc";
+import MobileTocDrawer from "@/components/edition/MobileTocDrawer";
 import SearchControls from "@/components/edition/SearchControls";
 import MatterDocument from "@/components/edition/MatterDocument";
+import EditionAuthenticity from "@/components/edition/EditionAuthenticity";
 import EditionDocumentFooter from "@/components/edition/EditionDocumentFooter";
 import EditionPager from "@/components/edition/EditionPager";
 
@@ -232,6 +233,9 @@ export default async function EditionDetailPage({ params }: PageProps) {
     ? `Publicada em ${formatLongDatePT(publicationDate)}.`
     : `Edição do ano de ${year}.`;
 
+  const hasMatters = matters.length > 0;
+  const countLabel = `${matters.length} ${matters.length === 1 ? "publicação" : "publicações"} oficiais`;
+
   const jsonLd = [
     org?.name
       ? {
@@ -272,131 +276,148 @@ export default async function EditionDetailPage({ params }: PageProps) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <div className="max-w-container-max mx-auto px-gutter py-stack-md">
-        <EditionBreadcrumb year={year} number={number} />
+      <div className="edition-canvas bg-edition-canvas">
+        {/* ============ Masthead / hero region (on canvas) ============ */}
+        <div className="mx-auto w-full max-w-[1320px] px-5 sm:px-8 lg:px-10 pt-7 sm:pt-10">
+          <EditionBreadcrumb year={year} number={number} />
 
-        <div className="mt-4">
-          <EditionHeader edition={editionMeta} org={org} />
-        </div>
-
-        {/* principal actions */}
-        <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
-          <EditionActions
-            downloadUrl={downloadUrl}
-            viewUrl={viewUrl}
-            verificationUrl={verificationUrl}
-            shareTitle={`Edição nº ${number}/${year} — Diário Oficial Eletrônico`}
+          <EditionHeader
+            edition={editionMeta}
+            org={org}
+            kind={kind}
+            authenticity={authenticity}
+            countLabel={countLabel}
+            publishedLabel={publishedLabel}
           />
+
+          {/* principal actions — only the download stands out */}
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-2.5 no-print">
+            <EditionActions
+              downloadUrl={downloadUrl}
+              viewUrl={viewUrl}
+              verificationUrl={verificationUrl}
+              shareTitle={`Edição nº ${number}/${year} — Diário Oficial Eletrônico`}
+            />
+          </div>
+
+          {/* legacy / limited notice — quiet, not a giant card */}
+          {(kind === "limited" || kind === "legacy") && (
+            <div className="mx-auto mt-7 max-w-2xl rounded-2xl border border-edition-line bg-edition-sheet px-5 py-4 text-center text-[15px] text-edition-ink-2">
+              {kind === "legacy"
+                ? "Edição publicada em formato legado — o conteúdo integral pode ser consultado no PDF oficial."
+                : "Esta edição não possui snapshot imutável disponível no momento. Tente novamente ou baixe o PDF oficial."}
+            </div>
+          )}
         </div>
 
-        {/* official status */}
-        {kind === "snapshot" && authenticity ? (
-          <div className="mt-6 mx-auto max-w-3xl">
-            <EditionStatus edition={editionMeta} authenticity={authenticity} publishedLabel={publishedLabel} />
+        {/* ============ Search + filters ============ */}
+        {hasMatters && (
+          <div className="mx-auto w-full max-w-[1320px] px-5 sm:px-8 lg:px-10 pt-10 no-print">
+            <div className="mx-auto w-full max-w-4xl rounded-[20px] bg-edition-sheet px-4 py-4 shadow-[var(--edition-shadow-soft)] ring-1 ring-edition-line sm:px-6 sm:py-5">
+              <SearchControls matters={meta} />
+            </div>
           </div>
-        ) : kind === "limited" || kind === "legacy" ? (
-          <div className="mt-6 mx-auto max-w-3xl rounded-xl border border-outline-variant bg-surface-container-lowest p-4">
-            <p className="text-body-sm text-on-surface-variant">
-              {kind === "legacy"
-                ? "Edição publicada em formato legado — o conteúdo original pode ser consultado no PDF oficial."
-                : "Esta edição não possui snapshot imutável disponível no momento. Tente novamente ou baixe o PDF oficial."}
-            </p>
-          </div>
-        ) : null}
-      </div>
+        )}
 
-      {kind === "snapshot" ? (
-        <div className="max-w-[1280px] mx-auto px-gutter pb-12">
-          <div className="grid grid-cols-1 xl:grid-cols-[minmax(230px,19rem)_1fr] gap-8 items-start mt-8">
+        {/* ============ Body: summary + official document ============ */}
+        <div className="mx-auto w-full max-w-[1320px] px-5 sm:px-8 lg:px-10 pb-20 pt-8">
+          <div className="grid grid-cols-1 items-start gap-x-10 gap-y-8 xl:grid-cols-[300px_minmax(0,1fr)]">
             {/* desktop sticky summary */}
             <aside
-              aria-label="Painel de navegação da edição"
-              className="hidden xl:block xl:sticky xl:top-24 xl:max-h-[calc(100vh-7rem)] xl:overflow-auto no-print"
+              aria-label="Sumário da edição"
+              className="hidden xl:block xl:sticky xl:top-24 xl:max-h-[calc(100vh-8rem)] xl:overflow-auto no-print"
             >
-              <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-5">
-                <EditionSummary matters={summary} />
-              </div>
+              <EditionToc matters={meta} />
             </aside>
 
             <div className="min-w-0">
-              {/* mobile summary */}
-              <details
-                id="edition-summary"
-                className="xl:hidden mb-6 rounded-xl border border-outline-variant bg-surface-container-lowest p-4 no-print"
-              >
-                <summary className="inline-flex cursor-pointer items-center gap-2 text-label-md font-bold text-primary">
-                  <span aria-hidden="true" className="material-symbols-outlined text-[18px]">
-                    menu_book
-                  </span>
-                  Sumário — {matters.length} {matters.length === 1 ? "publicação" : "publicações"}
-                </summary>
-                <div className="mt-4">
-                  <EditionSummary matters={summary} />
-                </div>
-              </details>
-
-              {/* search + filters */}
-              {matters.length > 0 && (
-                <div className="mb-8 rounded-xl border border-outline-variant bg-surface-container-lowest p-4 no-print">
-                  <SearchControls matters={meta} />
+              {/* mobile summary trigger */}
+              {hasMatters && (
+                <div className="xl:hidden no-print">
+                  <MobileTocDrawer
+                    matters={meta}
+                    totalLabel={countLabel}
+                  />
                 </div>
               )}
 
-              {matters.length === 0 ? (
-                <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-6 text-center text-body-sm text-on-surface-variant">
-                  Nenhuma publicação encontrada nesta edição.
+              {/* the official document */}
+              {hasMatters ? (
+                <div className="edition-sheet overflow-hidden rounded-[18px] bg-edition-sheet ring-1 ring-edition-line shadow-[var(--edition-shadow)]">
+                  <div className="px-5 py-10 sm:px-10 sm:py-12 lg:px-14 lg:py-16">
+                    <article className="space-y-16 lg:space-y-24" aria-label="Publicações da edição">
+                      {matters.map((m, index) => (
+                        <MatterDocument
+                          key={meta[index].anchorId}
+                          matter={m}
+                          anchorId={meta[index].anchorId}
+                          position={index}
+                          last={index === matters.length - 1}
+                          prevLink={
+                            index > 0
+                              ? { anchorId: meta[index - 1].anchorId, title: meta[index - 1].title }
+                              : undefined
+                          }
+                          nextLink={
+                            index < matters.length - 1
+                              ? { anchorId: meta[index + 1].anchorId, title: meta[index + 1].title }
+                              : undefined
+                          }
+                        />
+                      ))}
+                    </article>
+
+                    {/* authenticity + signature + verification */}
+                    <EditionAuthenticity
+                      edition={editionMeta}
+                      authenticity={authenticity}
+                      verificationUrl={verificationUrl}
+                      organizationName={org?.name || editionMeta.organization}
+                    />
+                  </div>
                 </div>
               ) : (
-                <article className="space-y-10" aria-label="Publicações da edição">
-                  {matters.map((m, index) => (
-                    <MatterDocument
-                      key={meta[index].anchorId}
-                      matter={m}
-                      anchorId={meta[index].anchorId}
-                      position={index}
-                      prevLink={
-                        index > 0
-                          ? { anchorId: meta[index - 1].anchorId, title: meta[index - 1].title }
-                          : undefined
-                      }
-                      nextLink={
-                        index < matters.length - 1
-                          ? { anchorId: meta[index + 1].anchorId, title: meta[index + 1].title }
-                          : undefined
-                      }
-                    />
-                  ))}
-                </article>
+                <div className="rounded-[18px] bg-edition-sheet px-6 py-16 text-center shadow-[var(--edition-shadow-soft)] ring-1 ring-edition-line">
+                  <div className="mx-auto flex max-w-md flex-col items-center gap-3">
+                    <span aria-hidden="true" className="material-symbols-outlined text-4xl text-edition-muted">
+                      menu_book
+                    </span>
+                    <h2 className="text-xl font-semibold text-edition-ink">
+                      Esta edição não possui matérias disponíveis
+                    </h2>
+                    <p className="text-[15px] text-edition-muted">
+                      Verifique se há uma nova publicação ou baixe o PDF oficial desta edição.
+                    </p>
+                    {downloadUrl && (
+                      <a
+                        href={downloadUrl}
+                        download
+                        className="mt-2 inline-flex items-center gap-2 rounded-lg bg-edition-brand px-5 py-2.5 text-sm font-semibold text-white transition hover:opacity-95"
+                      >
+                        <span aria-hidden="true" className="material-symbols-outlined text-[18px]">download</span>
+                        Baixar PDF
+                      </a>
+                    )}
+                  </div>
+                </div>
               )}
-
-              <EditionDocumentFooter
-                edition={editionMeta}
-                authenticity={authenticity}
-                downloadUrl={downloadUrl}
-                verificationUrl={verificationUrl}
-                organizationName={org?.name}
-              />
-
-              <div className="mt-6">
-                <EditionPager prevEdition={siblings.prevEdition} nextEdition={siblings.nextEdition} />
-              </div>
             </div>
           </div>
-        </div>
-      ) : (
-        <div className="max-w-[1280px] mx-auto px-gutter pb-12">
+
+          {/* closing masthead — institutional footer of the edition */}
           <EditionDocumentFooter
             edition={editionMeta}
-            authenticity={null}
+            authenticity={authenticity}
             downloadUrl={downloadUrl}
             verificationUrl={verificationUrl}
             organizationName={org?.name}
           />
-          <div className="mt-6">
+
+          <div className="mt-10">
             <EditionPager prevEdition={siblings.prevEdition} nextEdition={siblings.nextEdition} />
           </div>
         </div>
-      )}
+      </div>
     </>
   );
 }

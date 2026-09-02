@@ -5,18 +5,40 @@ export type MatterDocumentProps = {
   matter: SnapshotMatter;
   anchorId: string;
   position: number;
+  last?: boolean;
   prevLink?: { anchorId: string; title: string };
   nextLink?: { anchorId: string; title: string };
 };
 
 /** Demote any inner h1 -> h2 so the page keeps exactly one <h1>. */
 function demoteHeadings(html: string): string {
-  return html.replace(/<h1([^>]*)>/gi, "<h2$1>").replace(/<\/h1>/gi, "</h2>");
+  return html
+    .replace(/<h1([^>]*)>/gi, "<h2$1>")
+    .replace(/<\/h1>/gi, "</h2>")
+    .replace(/<h3([^>]*)>/gi, "<h4$1>")
+    .replace(/<\/h3>/gi, "</h4>");
 }
 
 /**
- * Renders one official matter as a document (server-side, indexable).
- * Presentation is improved but the original HTML content is never rewritten.
+ * Wraps raw <table> elements so they can scroll horizontally on small
+ * screens without clipping or hiding any column. Pure presentation — the
+ * official HTML/text is never rewritten.
+ */
+function wrapTables(html: string): string {
+  return html.replace(
+    /<table[\s\S]*?<\/table>/gi,
+    (table) => `<div class="table-scroll">${table}</div>`,
+  );
+}
+
+function prepareContent(html: string): string {
+  return wrapTables(demoteHeadings(html));
+}
+
+/**
+ * Renders one official matter as part of the edition document. Presentation
+ * is refined and typographic, but the original official content is never
+ * altered or reorganised.
  */
 export default function MatterDocument({
   matter,
@@ -26,49 +48,51 @@ export default function MatterDocument({
   nextLink,
 }: MatterDocumentProps) {
   const kindLabel = titleKindLabel(matter.title);
+  const showNav = Boolean(prevLink || nextLink);
+
   return (
     <section
       id={anchorId}
       data-mid={anchorId}
-      className="matter scroll-mt-28 border-t-2 border-surface-container-highest pt-8"
+      className="matter scroll-mt-[7.5rem]"
     >
-      <div className="flex flex-wrap items-start justify-between gap-2 mb-4">
-        <div className="flex flex-wrap items-center gap-2">
-          {kindLabel && (
-            <span className="inline-flex px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase bg-surface-container-high text-on-surface-variant border border-outline-variant">
-              {kindLabel}
-            </span>
-          )}
-          <span className="text-label-md text-on-surface-variant uppercase">
-            {String(position + 1).padStart(2, "0")} · {matter.section_title || "Publicação"}
-          </span>
-        </div>
-        <span className="no-print">
+      {/* overline: discreet act-type + share */}
+      <div className="mb-5 flex items-start justify-between gap-4">
+        <p className="text-[11px] font-bold uppercase tracking-[0.3em] text-edition-accent">
+          {kindLabel || matter.section_title || `Publicação ${String(position + 1).padStart(2, "0")}`}
+        </p>
+        <span className="shrink-0 no-print">
           <CopyMatterLink anchorId={anchorId} />
         </span>
       </div>
 
-      <h2 className="font-bold text-primary text-body-lg md:text-headline-sm uppercase leading-tight mb-2">
+      {/* document heading */}
+      <h2 className="text-[26px] font-extrabold uppercase leading-[1.15] tracking-tight text-edition-ink sm:text-[30px] lg:text-[34px]">
         {matter.title}
       </h2>
+
       {matter.summary && (
-        <p className="text-body-md font-semibold text-on-surface max-w-3xl leading-relaxed mb-5 border-l-2 border-primary-container pl-4">
-          {matter.summary}
-        </p>
+        <div className="mt-5 border-l-[3px] border-[var(--doe-accent,var(--edition-accent))] pl-4 sm:pl-5">
+          <p className="text-[16px] font-medium leading-relaxed text-edition-ink-2 sm:text-[18px] sm:leading-[1.7]">
+            {matter.summary}
+          </p>
+        </div>
       )}
 
+      <hr className="my-7 border-0 border-t border-edition-line-strong" aria-hidden="true" />
+
       <div
-        className="prose max-w-none text-on-surface prose-p:my-3 prose-p:text-justify prose-p:text-body-md prose-p:leading-relaxed prose-strong:font-bold prose-headings:text-center prose-headings:uppercase prose-table:w-full prose-th:bg-surface-container-low prose-td:border prose-th:border prose-td:border-outline-variant"
-        dangerouslySetInnerHTML={{ __html: demoteHeadings(matter.content_html || "") }}
+        className="matter-body"
+        dangerouslySetInnerHTML={{ __html: prepareContent(matter.content_html || "") }}
       />
 
       {matter.attachments && matter.attachments.length > 0 && (
-        <div className="mt-6">
-          <span className="text-label-md text-on-surface-variant uppercase">Anexos</span>
-          <ul className="mt-2 space-y-1">
+        <div className="mt-8">
+          <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-edition-muted">Anexos</p>
+          <ul className="mt-3 space-y-1.5">
             {matter.attachments.map((a, i) => (
-              <li key={a.id || i} className="flex items-center gap-2 text-body-sm text-on-surface">
-                <span aria-hidden="true" className="material-symbols-outlined text-sm text-secondary">
+              <li key={a.id || i} className="flex items-center gap-2 text-[15px] text-edition-ink">
+                <span aria-hidden="true" className="material-symbols-outlined text-[16px] text-edition-accent">
                   attach_file
                 </span>
                 {a.title || a.filename || "Anexo"}
@@ -78,26 +102,44 @@ export default function MatterDocument({
         </div>
       )}
 
-      {(prevLink || nextLink) && (
+      {showNav && (
         <nav
-          aria-label={`Navegação entre publicações (${matter.title})`}
-          className="mt-6 pt-4 border-t border-outline-variant/60 flex flex-wrap items-center justify-between gap-3 no-print"
+          aria-label={`Navegação entre publicações — ${matter.title}`}
+          className="no-print mt-14 grid gap-4 border-t border-edition-line pt-7 sm:grid-cols-2"
         >
           {prevLink ? (
-            <a href={`#${prevLink.anchorId}`} className="inline-flex items-center gap-1 text-body-sm font-bold text-primary hover:underline">
-              <span aria-hidden="true" className="material-symbols-outlined text-[18px]">chevron_left</span>
-              <span className="max-w-[220px] truncate">{prevLink.title}</span>
+            <a
+              href={`#${prevLink.anchorId}`}
+              className="group flex items-start gap-2 rounded-xl p-2 -m-2"
+            >
+              <span aria-hidden="true" className="material-symbols-outlined mt-0.5 text-edition-muted">chevron_left</span>
+              <span className="min-w-0">
+                <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-edition-muted">
+                  Matéria anterior
+                </span>
+                <span className="block truncate text-[14px] font-semibold text-edition-ink group-hover:text-[var(--edition-accent)]">
+                  {prevLink.title}
+                </span>
+              </span>
             </a>
           ) : (
             <span aria-hidden="true" />
           )}
-          <a href="#edition-summary" className="text-body-sm font-bold text-on-surface-variant hover:underline">
-            Voltar ao sumário
-          </a>
+
           {nextLink ? (
-            <a href={`#${nextLink.anchorId}`} className="inline-flex items-center gap-1 text-body-sm font-bold text-primary hover:underline">
-              <span className="max-w-[220px] truncate">{nextLink.title}</span>
-              <span aria-hidden="true" className="material-symbols-outlined text-[18px]">chevron_right</span>
+            <a
+              href={`#${nextLink.anchorId}`}
+              className="group flex items-start justify-end gap-2 rounded-xl p-2 -m-2 text-right sm:justify-start sm:flex-row-reverse sm:text-left"
+            >
+              <span aria-hidden="true" className="material-symbols-outlined mt-0.5 text-edition-muted">chevron_right</span>
+              <span className="min-w-0">
+                <span className="block text-[11px] font-semibold uppercase tracking-[0.18em] text-edition-muted">
+                  Próxima matéria
+                </span>
+                <span className="block truncate text-[14px] font-semibold text-edition-ink group-hover:text-[var(--edition-accent)]">
+                  {nextLink.title}
+                </span>
+              </span>
             </a>
           ) : (
             <span aria-hidden="true" />

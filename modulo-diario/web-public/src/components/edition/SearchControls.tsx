@@ -10,7 +10,7 @@ export type SearchControlsProps = {
 
 const ALL = "__all__";
 
-type FilterKey = string; // "__all__" or a kind key / section label
+type FilterKey = string;
 
 function escapeRegExp(s: string) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -29,17 +29,13 @@ export default function SearchControls({ matters }: SearchControlsProps) {
   const kindMeta = kindCounts(matters);
   const sections = Array.from(new Set(matters.map((m) => m.section).filter(Boolean) as string[]));
 
-  // debounce the query so content scanning stays cheap on large editions
   useEffect(() => {
     setHasInput(query.length > 0);
     const t = setTimeout(() => setDebounced(query), 180);
     return () => clearTimeout(t);
   }, [query]);
 
-  const sectionEl = useCallback(
-    (anchorId: string): HTMLElement | null => document.getElementById(anchorId),
-    [],
-  );
+  const sectionEl = useCallback((anchorId: string): HTMLElement | null => document.getElementById(anchorId), []);
 
   const matchesMatter = useCallback(
     (m: MatterMeta): boolean => {
@@ -49,7 +45,6 @@ export default function SearchControls({ matters }: SearchControlsProps) {
       const q = debounced.trim().toLowerCase();
       if (!q) return true;
       if (`${m.title} ${m.summary || ""} ${m.section || ""}`.toLowerCase().includes(q)) return true;
-      // Search the full official text present in the rendered document.
       const el = sectionEl(m.anchorId);
       const text = el ? (el as HTMLElement).innerText || "" : "";
       return text.toLowerCase().includes(q);
@@ -67,7 +62,6 @@ export default function SearchControls({ matters }: SearchControlsProps) {
       const el = sectionEl(m.anchorId);
       if (el) {
         el.hidden = !show;
-        // accessible highlight for the current term inside visible documents
         if (show && rx && query) {
           el.dataset.searchTerm = debounced.trim();
         } else {
@@ -80,8 +74,7 @@ export default function SearchControls({ matters }: SearchControlsProps) {
       }
     }
 
-    const active =
-      activeKind !== ALL || activeSection !== ALL || Boolean(debounced && debounced.trim().length > 0);
+    const active = activeKind !== ALL || activeSection !== ALL || Boolean(debounced && debounced.trim().length > 0);
     setEmptyResult(active && visible === 0);
 
     if (activeKind === ALL && activeSection === ALL && !rx) {
@@ -125,10 +118,10 @@ export default function SearchControls({ matters }: SearchControlsProps) {
         type="button"
         aria-pressed={selected}
         onClick={() => onSelect(key === active ? ALL : key)}
-        className={`inline-flex items-center gap-1 px-3 py-1.5 rounded-full text-label-md font-bold border transition-colors whitespace-nowrap ${
+        className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-3.5 py-1.5 text-[13px] transition-colors duration-150 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--edition-accent)] ${
           selected
-            ? "bg-primary text-on-primary border-primary"
-            : "bg-surface-container-low border-outline-variant text-on-surface-variant hover:bg-surface-container-high"
+            ? "bg-edition-sheet-muted font-semibold text-[var(--edition-accent-strong)] ring-1 ring-inset ring-[var(--edition-accent)]"
+            : "font-medium text-edition-muted ring-1 ring-inset ring-transparent hover:text-edition-ink-2"
         }`}
       >
         {label}
@@ -137,75 +130,74 @@ export default function SearchControls({ matters }: SearchControlsProps) {
   };
 
   return (
-    <div className="space-y-3">
-      <div role="search" className="relative">
+    <div className="space-y-4">
+      <div role="search">
         <label htmlFor="edition-search" className="sr-only">
           Pesquisar nesta edição
         </label>
-        <div className="flex items-center gap-2 bg-surface-container-low rounded-xl px-4 py-2.5 border border-outline-variant focus-within:ring-2 focus-within:ring-primary">
-          <span aria-hidden="true" className="material-symbols-outlined text-on-surface-variant">
-            search
-          </span>
+        <div className="flex items-center gap-3 rounded-[14px] bg-edition-sheet-muted px-4 py-3 ring-1 ring-inset ring-edition-line transition focus-within:ring-2 focus-within:ring-[var(--edition-accent)] sm:px-5">
+          <span aria-hidden="true" className="material-symbols-outlined text-edition-muted">search</span>
           <input
             id="edition-search"
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Pesquisar nesta edição — portaria, contrato, nome, número…"
-            className="bg-transparent outline-none w-full text-body-sm text-on-surface"
+            placeholder="Pesquisar nesta edição por ato, número, nome ou assunto…"
+            className="w-full bg-transparent text-[15px] text-edition-ink outline-none placeholder:text-edition-muted"
           />
           {query && (
             <button
               type="button"
               onClick={reset}
               aria-label="Limpar busca"
-              className="text-on-surface-variant hover:text-primary"
+              className="text-edition-muted transition hover:text-[var(--edition-accent)]"
             >
               <span className="material-symbols-outlined text-[18px]">close</span>
             </button>
           )}
         </div>
-        <p aria-live="polite" className="text-xs text-on-surface-variant mt-1.5 px-1" data-testid="search-status">
+        <p aria-live="polite" className="mt-2 px-1 text-[12.5px] text-edition-muted" data-testid="search-status">
           {announce}
         </p>
         {emptyResult && (
-          <p className="text-sm text-on-surface font-semibold mt-2 px-1" role="status">
-            Nenhuma matéria encontrada para a busca atual. Limpe a busca para ver todas as publicações.
+          <p className="mt-1 px-1 text-sm font-semibold text-edition-ink-2" role="status">
+            Nenhuma matéria encontrada. Verifique o termo ou limpe a busca para ver todas as publicações.
           </p>
         )}
-        {hasInput && (
+        {hasInput && !emptyResult && (
           <button
             type="button"
             onClick={goToFirst}
-            className="mt-1 text-label-md font-bold text-primary hover:underline"
+            className="mt-2 px-1 text-[13px] font-semibold text-[var(--edition-accent)] transition hover:text-[var(--edition-accent-strong)]"
           >
-            Ir para o primeiro resultado
+            Ir para o primeiro resultado →
           </button>
         )}
       </div>
 
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-1.5">
         <div
-          className="flex gap-2 overflow-x-auto pb-1 no-scrollbar"
+          className="flex items-center gap-1 overflow-x-auto pb-1 no-scrollbar"
           role="group"
           aria-label="Filtrar por tipo de ato"
         >
-          {chip(ALL, `Todos`, activeKind, setActiveKind)}
-          {KIND_ORDER.filter((k) => kindMeta.find((c) => c.key === k)?.count).map((k) =>
-            chip(k, `${KIND_LABEL[k]} (${kindMeta.find((c) => c.key === k)!.count})`, activeKind, setActiveKind),
-          )}
+          {chip(ALL, "Todas as publicações", activeKind, setActiveKind)}
+          {KIND_ORDER.filter((k) => kindMeta.find((c) => c.key === k)?.count).map((k) => {
+            const c = kindMeta.find((c) => c.key === k)!;
+            return chip(k, `${KIND_LABEL[k]}${c.count > 0 ? ` (${c.count})` : ""}`, activeKind, setActiveKind);
+          })}
         </div>
 
         {sections.length > 0 && (
           <div
-            className="flex gap-2 overflow-x-auto pb-1 no-scrollbar"
+            className="flex items-center gap-1 overflow-x-auto pb-1 no-scrollbar"
             role="group"
             aria-label="Filtrar por secretaria ou unidade"
           >
             {chip(ALL, "Todas as unidades", activeSection, setActiveSection)}
             {sections.map((s) => {
               const count = matters.filter((m) => m.section === s).length;
-              return chip(s, `${s} (${count})`, activeSection, setActiveSection);
+              return chip(s, `${s}${count > 0 ? ` (${count})` : ""}`, activeSection, setActiveSection);
             })}
           </div>
         )}
