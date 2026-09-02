@@ -35,7 +35,7 @@ function formatDate(dateStr: string): string {
   });
 }
 
-interface Props {
+export interface Props {
   initialEditions: Edition[];
 }
 

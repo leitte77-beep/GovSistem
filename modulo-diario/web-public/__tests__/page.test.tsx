@@ -47,7 +47,20 @@ describe("Home page", () => {
   it("renders editions from initialEditions", async () => {
     renderHome({
       initialEditions: [
-        { id: "1", year: 2026, number: 21, title: "Edição 21", type: "normal" },
+        {
+          id: "1",
+          year: 2026,
+          number: 21,
+          title: "Edição 21",
+          type: "normal",
+          subtitle: null,
+          daily_summary: null,
+          publication_date: "2026-08-01",
+          verification_code: null,
+          item_count: 0,
+          signature_count: 0,
+          pdf_url: null,
+        },
       ],
     });
     await waitFor(() =>

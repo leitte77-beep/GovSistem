@@ -75,6 +75,15 @@ html.a11y-stop-animations *::after {
   transition-delay: 0s !important;
 }
 
+/* Hide horizontal scrollbars for filter chip rows while keeping them usable */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
 /* Hide article content on screen when PDF is available */
 .print-only {
   display: none;
@@ -213,5 +222,29 @@ html.a11y-stop-animations *::after {
 
   img {
     max-height: 60mm !important;
+  }
+
+  /* New edition layout: keep masthead + official documents, drop nav tooling */
+  .edition-header,
+  .edition-doc-footer {
+    display: block !important;
+  }
+  [hidden] {
+    display: none !important;
+  }
+  section.matter {
+    break-inside: auto;
+    page-break-inside: auto;
+    border-top: none !important;
+  }
+  section.matter h2 {
+    page-break-after: avoid;
+    break-after: avoid;
+  }
+  section.matter .prose table,
+  section.matter .prose tr,
+  section.matter .prose img {
+    break-inside: avoid;
+    page-break-inside: avoid;
   }
 }
