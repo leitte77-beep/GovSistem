@@ -102,40 +102,6 @@ export function AuthenticityRows({
   labelOverride?: string | null;
   opened?: boolean;
 }) {
-  const { states } = authenticity;
-  const first = authenticity.signatures?.[0];
-
-  const rows = [
-    row("signed", "Assinatura digital", "Assinada", "Não assinada", "Não verificado", "ok", "neutral"),
-    row("certificate_valid", "Validade do certificado", "Válido", "Fora da validade", "Não verificado", "ok", "warn"),
-    row("chain_trusted", "Cadeia de certificação (ICP-Brasil)", "Ancorada (ICP-Brasil)", "Certificado próprio, não ancorado", "Não verificado", "ok", "neutral"),
-    row("revocation_checked", "Consulta de revogação", "Consultada", "Não consultada", "Não verificado", "ok", "neutral"),
-    row("timestamped", "Carimbo de tempo", "Presente", "Ausente", "Não verificado", "ok", "neutral"),
-    row("snapshot_intact", "Integridade do conteúdo (snapshot)", "Íntegro", "Divergência detectada", "Não verificado", "ok", "warn"),
-    row("intact", "Integridade do documento assinado", "Íntegro", "Não atestada", "Não verificado", "ok", "neutral"),
-  ].map((def) => stateRow(def, states));
-
-  function row(
-    key: keyof typeof states,
-    label: string,
-    t: string,
-    f: string,
-    n: string,
-    toneT: Tone,
-    toneF: Tone,
-  ) {
-    return { key, label, t, f, n, toneT, toneF };
-  }
-  function stateRow(
-    def: ReturnType<typeof row>,
-    s: typeof states,
-  ) {
-    const val = s[def.key];
-    const tone: Tone = val === true ? def.toneT : val === false ? def.toneF : "neutral";
-    const text = val === true ? def.t : val === false ? def.f : def.n;
-    return { label: def.label, text, tone };
-  }
-
   return (
     <details className="group mt-4" open={opened}>
       <summary className="inline-flex cursor-pointer items-center gap-1.5 text-[13px] font-semibold text-[var(--edition-accent)] transition hover:text-[var(--edition-accent-strong)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--edition-accent)]">
@@ -144,53 +110,68 @@ export function AuthenticityRows({
         </span>
         Ver detalhes técnicos
       </summary>
-      <div className="mt-4 border-t border-edition-line pt-4">
-        <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
-          {rows.map((r) => (
-            <RowLine key={r.label} label={r.label} text={r.text} tone={r.tone} />
-          ))}
-          <RowLine label="Situação do snapshot" text={authenticity.snapshot_status || "—"} tone="neutral" />
-        </dl>
-
-        {first?.subject && (
-          <div className="mt-5 border-t border-edition-line pt-4">
-            <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.16em] text-edition-muted">
-              Signatário
-            </p>
-            <p className="text-sm font-semibold text-edition-ink">
-              {first.subject.split(":").slice(0, 1).join("").replace(/^CN=/, "") || first.subject}
-            </p>
-            {first.issuer && <p className="mt-0.5 break-words text-[13px] text-edition-muted">Emissor: {first.issuer}</p>}
-            {first.signature_format && (
-              <p className="mt-0.5 text-[13px] text-edition-muted">Formato: {first.signature_format}</p>
-            )}
-            {first.signed_at && (
-              <p className="mt-0.5 text-[13px] text-edition-muted">Assinado em: {formatBrasiliaDateTime(first.signed_at)}</p>
-            )}
-            {first.timestamp && (
-              <p className="mt-0.5 text-[13px] text-edition-muted">Carimbo de tempo: {first.timestamp}</p>
-            )}
-          </div>
-        )}
-
-        {authenticity.signed_pdf_hash && (
-          <div className="mt-5 border-t border-edition-line pt-4">
-            <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.16em] text-edition-muted">SHA-256 do PDF assinado</p>
-            <p className="break-all font-mono text-[11px] leading-relaxed text-edition-ink-2">
-              {authenticity.signed_pdf_hash}
-            </p>
-          </div>
-        )}
-        {authenticity.content_manifest_hash && (
-          <div className="mt-4">
-            <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.16em] text-edition-muted">Manifesto de conteúdo</p>
-            <p className="break-all font-mono text-[11px] leading-relaxed text-edition-ink-2">
-              {authenticity.content_manifest_hash}
-            </p>
-          </div>
-        )}
-      </div>
+      <AuthenticityDetails authenticity={authenticity} />
     </details>
+  );
+}
+
+/**
+ * Always-open body of the technical authenticity details: the 3-state rows,
+ * snapshot status, signer and the content hashes. Shared by the inline
+ * <details> (AuthenticityRows) and the persistent right-hand rail.
+ */
+export function AuthenticityDetails({ authenticity }: { authenticity: Authenticity }) {
+  const { states } = authenticity;
+  const first = authenticity.signatures?.[0];
+  const rows = buildAuthenticityRows(states);
+
+  return (
+    <div className="mt-4 border-t border-edition-line pt-4">
+      <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+        {rows.map((r) => (
+          <RowLine key={r.label} label={r.label} text={r.text} tone={r.tone} />
+        ))}
+        <RowLine label="Situação do snapshot" text={authenticity.snapshot_status || "—"} tone="neutral" />
+      </dl>
+
+      {first?.subject && (
+        <div className="mt-5 border-t border-edition-line pt-4">
+          <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.16em] text-edition-muted">
+            Signatário
+          </p>
+          <p className="text-sm font-semibold text-edition-ink">
+            {first.subject.split(":").slice(0, 1).join("").replace(/^CN=/, "") || first.subject}
+          </p>
+          {first.issuer && <p className="mt-0.5 break-words text-[13px] text-edition-muted">Emissor: {first.issuer}</p>}
+          {first.signature_format && (
+            <p className="mt-0.5 text-[13px] text-edition-muted">Formato: {first.signature_format}</p>
+          )}
+          {first.signed_at && (
+            <p className="mt-0.5 text-[13px] text-edition-muted">Assinado em: {formatBrasiliaDateTime(first.signed_at)}</p>
+          )}
+          {first.timestamp && (
+            <p className="mt-0.5 text-[13px] text-edition-muted">Carimbo de tempo: {first.timestamp}</p>
+          )}
+        </div>
+      )}
+
+      {authenticity.signed_pdf_hash && (
+        <div className="mt-5 border-t border-edition-line pt-4">
+          <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.16em] text-edition-muted">SHA-256 do PDF assinado</p>
+          <p className="break-all font-mono text-[11px] leading-relaxed text-edition-ink-2">
+            {authenticity.signed_pdf_hash}
+          </p>
+        </div>
+      )}
+      {authenticity.content_manifest_hash && (
+        <div className="mt-4">
+          <p className="mb-1 text-[11px] font-bold uppercase tracking-[0.16em] text-edition-muted">Manifesto de conteúdo</p>
+          <p className="break-all font-mono text-[11px] leading-relaxed text-edition-ink-2">
+            {authenticity.content_manifest_hash}
+          </p>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -214,6 +195,37 @@ function RowLine({ label, text, tone }: { label: string; text: string; tone: Ton
       </dd>
     </div>
   );
+}
+
+export interface AuthenticityRowItem {
+  key: string;
+  label: string;
+  text: string;
+  tone: Tone;
+  value: boolean | null | undefined;
+}
+
+const ROW_DEFS: Array<{
+  key: keyof Authenticity["states"];
+  label: string;
+  t: string;
+  f: string;
+  n: string;
+  toneT: Tone;
+  toneF: Tone;
+}> = [
+  { key: "signed", label: "Assinatura digital", t: "Assinada", f: "Não assinada", n: "Não verificado", toneT: "ok", toneF: "neutral" },
+  { key: "timestamped", label: "Carimbo de tempo", t: "Presente", f: "Ausente", n: "Não verificado", toneT: "ok", toneF: "neutral" },
+];
+
+/** Single source of truth for the human-facing technical state rows. */
+export function buildAuthenticityRows(states: Authenticity["states"]): AuthenticityRowItem[] {
+  return ROW_DEFS.map((d) => {
+    const val = states[d.key];
+    const tone: Tone = val === true ? d.toneT : val === false ? d.toneF : "neutral";
+    const text = val === true ? d.t : val === false ? d.f : d.n;
+    return { key: d.key, label: d.label, text, tone, value: val };
+  });
 }
 
 export { VERIFIED_LABELS };

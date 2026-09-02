@@ -88,9 +88,14 @@ section[id], [id^="materia-"] {
 
 .matter-body p {
   margin: 0 0 1.1em;
-  text-align: justify;
+  text-align: left;
   text-justify: inter-word;
   color: inherit;
+}
+@media (min-width: 640px) {
+  .matter-body p {
+    text-align: justify;
+  }
 }
 .matter-body strong { font-weight: 700; color: var(--edition-ink); }
 .matter-body em, .matter-body i { font-style: italic; }
@@ -166,6 +171,221 @@ section[id], [id^="materia-"] {
 /* Numbered/field fragments some editors emit as bare paragraphs */
 .matter-body .assinatura,
 .matter-body p[align="center"] { text-align: center !important; }
+
+/* ========== Official newspaper layout (modelo.pdf) ==========
+   Faithful reproduction of the printed Diário Oficial: centered masthead,
+   3-column metadata row, green signature banner, navy rule, grey SUMÁRIO
+   band and banded matter headings. Neutral and documentary. */
+.doe-page {
+  background: #fff;
+  border: 1px solid var(--edition-line-strong);
+  box-shadow: 0 1px 1px rgba(16, 24, 40, 0.02), 0 12px 30px rgba(16, 24, 40, 0.05);
+}
+.doe-nameplate {
+  color: #123058;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  line-height: 1.05;
+  font-size: clamp(26px, 6.5vw, 42px);
+}
+.doe-municipality {
+  color: #123058;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-size: clamp(13px, 3.4vw, 18px);
+}
+
+/* Thin navy hairline under the masthead */
+.doe-masthead-rule {
+  border: none;
+  border-top: 1.5px solid #9aa4b1;
+  margin: 0;
+}
+
+/* 3-column metadata row with vertical separators */
+.doe-meta-row {
+  display: grid;
+  grid-template-columns: 1fr 1.6fr 1fr;
+  border-top: 1px solid #cfd4db;
+  border-bottom: 1px solid #cfd4db;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 12px;
+  font-weight: 600;
+  color: #123058;
+}
+.doe-meta-cell {
+  padding: 9px 8px;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.doe-meta-cell.center { justify-content: center; text-align: center; }
+.doe-meta-cell.right { justify-content: flex-end; text-align: right; }
+.doe-meta-cell + .doe-meta-cell { border-left: 1px solid #d5dae1; }
+@media (max-width: 480px) {
+  .doe-meta-row { grid-template-columns: 1fr; font-size: 11px; }
+  .doe-meta-cell { padding: 6px 4px; }
+  .doe-meta-cell.center { justify-content: flex-start; text-align: left; }
+  .doe-meta-cell.right { justify-content: flex-start; text-align: left; }
+  .doe-meta-cell + .doe-meta-cell { border-left: none; border-top: 1px solid #d5dae1; }
+}
+
+/* Green "signed digitally" banner */
+.doe-signed {
+  background: #dbeee0;
+  border: 1px solid #b4d6bd;
+  color: #3f5247;
+  font-size: 13.5px;
+  padding: 10px 14px;
+}
+
+/* Heavy navy rule separating banner from body */
+.doe-navy-rule {
+  border: none;
+  height: 3px;
+  background: #123058;
+}
+
+/* Grey band heading — used for SUMÁRIO and each matter's title */
+.doe-band {
+  background: #d8d8d8;
+  color: #123058;
+  text-align: center;
+  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  font-size: 16px;
+  padding: 7px 12px;
+}
+
+/* Sumário item row: title left, index right */
+.doe-summary-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  padding: 8px 2px;
+  font-size: 15px;
+  min-width: 0;
+}
+.doe-summary-item > a {
+  min-width: 0;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.doe-summary-index {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  color: var(--edition-ink-2);
+}
+
+/* Matter heading band inside the document */
+.doe-matter-head {
+  background: #d8d8d8;
+  color: #123058;
+  text-align: center;
+  text-transform: uppercase;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  font-size: 15px;
+  padding: 7px 12px;
+}
+.doe-matter-title {
+  text-transform: uppercase;
+  text-align: center;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #16305a;
+  font-size: 16px;
+  line-height: 1.35;
+  margin: 12px auto 14px;
+}
+
+/* Centered signature place block */
+.doe-signature {
+  text-align: center;
+  margin-top: 28px;
+  line-height: 1.7;
+}
+
+/* "Validação do Documento" box */
+.doe-validation {
+  border: 1px solid #b7c1ce;
+  padding: 18px 18px 16px;
+}
+.doe-validation h3 {
+  color: #123058;
+  font-weight: 800;
+  font-size: 16px;
+  margin: 0 0 14px;
+}
+.doe-validation-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6b7480;
+  margin-bottom: 6px;
+}
+.doe-validation-code {
+  display: block;
+  width: 100%;
+  border: 1px solid #c6ccd3;
+  background: #fff;
+  padding: 8px 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13.5px;
+  color: #1a1f24;
+}
+.doe-validation-link {
+  display: block;
+  margin-top: 12px;
+  font-size: 12.5px;
+  color: #1a1f24;
+  word-break: break-all;
+}
+
+/* Page footer with centered page marker */
+.doe-page-footer {
+  border-top: 1px solid var(--edition-line);
+  margin-top: 28px;
+  padding-top: 12px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--edition-muted);
+}
+
+/* Sticky side panel for sumário (left) and technical data (right) */
+.doe-side-panel {
+  background: #fff;
+  border: 1px solid #d3d8e0;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.doe-side-panel .doe-band {
+  border-radius: 0;
+  font-size: 14px;
+  letter-spacing: 0.14em;
+}
+.doe-side-panel > div { padding: 14px 16px; }
+.doe-side-scroll {
+  overflow-y: auto;
+  max-height: calc(100vh - 8rem - 46px);
+  scrollbar-width: thin;
+  overscroll-behavior: contain;
+}
+.doe-side-block + .doe-side-block { border-top: 1px solid #e6e9ef; }
+.doe-side-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #6b7480;
+  margin-bottom: 8px;
+}
 
 /* ========== Edition layout helpers ========== */
 .edition-doc-wrap {
