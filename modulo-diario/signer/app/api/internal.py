@@ -1,6 +1,6 @@
 """Internal signing endpoint - protected, not exposed to public.
 
-Implements ICP-Brasil PAdES AD-RB signing flow:
+Implements a PAdES-B-B signing flow:
 1. Load and validate A1 certificate
 2. Sign PDF with proper PAdES parameters
 3. Verify signature locally
@@ -11,10 +11,10 @@ import asyncio
 import base64
 import hashlib
 import logging
+import uuid
 from datetime import datetime, timezone
-from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Header, UploadFile, File, Form
+from fastapi import APIRouter, Depends, Form, Header, HTTPException
 from pydantic import BaseModel
 
 from app.core.config import settings
@@ -54,10 +54,11 @@ class InternalSignRequest(BaseModel):
     unsigned_pdf_base64: str
     pfx_base64: str
     pfx_password: str
-    reason: str = "Assinatura Digital - Doe ICP-Brasil AD-RB"
+    reason: str = "Assinatura Digital - Diário Oficial Eletrônico"
     location: str = ""
     visible: bool = False
     verification_code: str = ""
+    correlation_id: str = ""
 
 
 class SignResponse(BaseModel):
@@ -104,6 +105,9 @@ class VerifySignatureInfo(BaseModel):
     signing_time: str
     byte_range: list[int]
     format_ok: bool
+    intact: bool = False
+    valid: bool = False
+    trusted: bool = False
 
 
 class VerifyResponse(BaseModel):
@@ -156,7 +160,7 @@ async def sign_pdf(
     request: InternalSignRequest,
     _auth: None = Depends(_verify_internal_api_key),
 ):
-    """Sign a PDF with an A1 certificate using PAdES AD-RB (ICP-Brasil)."""
+    """Sign a PDF with an A1 certificate using PAdES-B-B."""
 
     logger.info(
         "Signing request: edition_id=%s reason='%s' visible=%s",
@@ -191,7 +195,7 @@ async def sign_pdf(
             provider.sign,
             pdf_bytes,
             visible=request.visible,
-            reason=request.reason or "Assinatura Digital - Doe ICP-Brasil AD-RB",
+            reason=request.reason or "Assinatura Digital - Diário Oficial Eletrônico",
             location=request.location or "",
             verification_code=request.verification_code,
         )
@@ -212,7 +216,9 @@ async def sign_pdf(
         val_status = "verification_error"
 
     audit_entry = {
+        "operation_id": uuid.uuid4().hex,
         "edition_id": request.edition_id,
+        "correlation_id": request.correlation_id or "",
         "sha256_original": sha256_original,
         "sha256_signed": sha256_signed,
         "certificate_subject": ci["subject"],
@@ -221,7 +227,10 @@ async def sign_pdf(
         "validation_status": val_status,
     }
     _audit_log.append(audit_entry)
-    logger.info("Signing complete: edition_id=%s sha256=%s status=%s", request.edition_id, sha256_signed, val_status)
+    logger.info(
+        "Signing complete: edition_id=%s correlation_id=%s sha256=%s status=%s",
+        request.edition_id, request.correlation_id or "-", sha256_signed, val_status,
+    )
 
     return SignResponse(
         signed_pdf_base64=signed_b64,
@@ -233,7 +242,7 @@ async def sign_pdf(
         certificate_issuer=ci.get("issuer", ""),
         valid_from=ci.get("valid_from", ""),
         valid_to=ci.get("valid_to", ""),
-        policy_oid=ci.get("policy_oid", "2.16.76.1.7.1.11.1.3"),
+        policy_oid=ci.get("policy_oid", ""),
         signature_format=result.signature_format,
         signed_at=now,
         validation_status=val_status,

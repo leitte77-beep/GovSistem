@@ -90,18 +90,18 @@ export default function EditionActions({
   );
 
   const ghost =
-    "inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3.5 text-sm font-semibold text-slate-600 transition-colors hover:border-brand-100 hover:bg-brand-50 hover:text-brand-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent";
+    "inline-flex h-10 items-center gap-2 rounded-xl border border-transparent bg-slate-50 px-3.5 text-sm font-semibold text-slate-600 transition-all hover:border-brand-100 hover:bg-brand-50 hover:text-brand-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent";
 
   const menuItem =
     "flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-edition-ink transition-colors hover:bg-slate-50 hover:text-brand-900";
 
   return (
-    <div className="flex flex-wrap items-center gap-2 no-print">
+    <div className="flex flex-wrap items-center gap-1.5 no-print sm:gap-2">
       {downloadUrl && (
         <a
           href={downloadUrl}
           download
-          className="inline-flex h-10 items-center gap-2 rounded-lg bg-brand-900 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-800 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent sm:px-5"
+          className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-900 px-4 text-sm font-semibold text-white shadow-[0_5px_14px_rgba(15,42,82,0.18)] transition hover:-translate-y-px hover:bg-brand-800 hover:shadow-[0_7px_18px_rgba(15,42,82,0.24)] active:translate-y-0 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent sm:px-5"
         >
           {icon("download")}
           <span>Baixar PDF</span>
@@ -133,7 +133,7 @@ export default function EditionActions({
           aria-haspopup="menu"
           aria-expanded={menuOpen}
           aria-label="Mais ações"
-          className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition-colors hover:border-brand-100 hover:bg-brand-50 hover:text-brand-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent"
+          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-transparent bg-slate-50 text-slate-600 transition-colors hover:border-brand-100 hover:bg-brand-50 hover:text-brand-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent"
         >
           {icon("more_horiz", "22px")}
         </button>

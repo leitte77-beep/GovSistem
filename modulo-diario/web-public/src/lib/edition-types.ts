@@ -5,6 +5,7 @@
 export interface SnapshotSignature {
   signed_at: string | null;
   subject: string;
+  certificate_document: string;
   serial: string;
   serial_masked: string;
   issuer: string;

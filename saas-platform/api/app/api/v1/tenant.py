@@ -11,13 +11,14 @@ from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, field_validator
 from sqlalchemy import desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_client_info
 from app.core.config import settings
 from app.core.database import get_db
+from app.core.security import hash_password
 from app.core.membership_deps import (
     TenantContext,
     get_tenant_context,
@@ -790,6 +791,58 @@ async def request_password_reset(
     await _log(db, request, ctx, "password_reset_requested", "user", resource_id=str(user_id))
     await db.commit()
     return {"status": "reset_required"}
+
+
+class TenantPasswordSet(BaseModel):
+    password: str
+
+    @field_validator("password")
+    @classmethod
+    def password_strength(cls, v: str) -> str:
+        import re as _re
+        if len(v) < 8:
+            raise ValueError("A senha deve ter no mínimo 8 caracteres")
+        if len(v) > 72:
+            raise ValueError("A senha deve ter no máximo 72 caracteres")
+        if not _re.search(r"[A-Z]", v):
+            raise ValueError("A senha deve conter ao menos uma letra maiúscula")
+        if not _re.search(r"[a-z]", v):
+            raise ValueError("A senha deve conter ao menos uma letra minúscula")
+        if not _re.search(r"[0-9]", v):
+            raise ValueError("A senha deve conter ao menos um número")
+        if not _re.search(r"[^A-Za-z0-9]", v):
+            raise ValueError("A senha deve conter ao menos um caractere especial")
+        return v
+
+
+@router.post("/users/{user_id}/password")
+async def set_tenant_user_password(
+    user_id: uuid.UUID,
+    body: TenantPasswordSet,
+    request: Request,
+    ctx: TenantContext = Depends(require_tenant_manager),
+    db: AsyncSession = Depends(get_db),
+):
+    """Gestor define uma nova senha para o usuário do órgão (redefinição direta).
+
+    Permite ao gestor recuperar o acesso de um usuário que esqueceu a senha,
+    definindo uma nova senha e invalidando o flag de troca no próximo acesso,
+    sem depender de o usuário estar logado.
+    """
+    mem = await get_membership(db, user_id, ctx.organization_id)
+    if not mem or mem.deleted_at is not None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não pertence ao órgão")
+
+    mem.user.password_hash = hash_password(body.password)
+    mem.user.password_changed_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    mem.user.password_failures = 0
+    mem.user.locked_until = None
+    mem.user.force_password_reset = False
+
+    await _log(db, request, ctx, "password_set_by_manager", "user", resource_id=str(user_id))
+    await _revoke_user_sessions(db, user_id, ctx.organization_id)
+    await db.commit()
+    return {"status": "password_set"}
 
 
 @router.post("/users/{user_id}/force-password-reset")

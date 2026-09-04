@@ -12,11 +12,15 @@ if TYPE_CHECKING:
     from app.models.authority import Authority
     from app.models.edition import Edition
     from app.models.file import File
+    from app.models.integration_client import IntegrationClient
+    from app.models.legacy_url_map import LegacyUrlMap
     from app.models.matter import Matter
+    from app.models.matter_version import MatterVersion
     from app.models.org_unit import OrgUnit
     from app.models.plan import Plan
     from app.models.signing_credential import SigningCredential
     from app.models.tenant_domain import TenantDomain
+    from app.models.timestamp_record import TimestampRecord
     from app.models.user import User
 
 
@@ -63,6 +67,9 @@ class Organization(Base, TimestampMixin, SoftDeleteMixin):
     matters: Mapped[List["Matter"]] = relationship(
         "Matter", back_populates="organization", lazy="selectin"
     )
+    matter_versions: Mapped[List["MatterVersion"]] = relationship(
+        "MatterVersion", back_populates="organization", lazy="selectin"
+    )
     editions: Mapped[List["Edition"]] = relationship(
         "Edition", back_populates="organization", lazy="selectin"
     )
@@ -71,6 +78,15 @@ class Organization(Base, TimestampMixin, SoftDeleteMixin):
     )
     signing_credentials: Mapped[List["SigningCredential"]] = relationship(
         "SigningCredential", back_populates="organization", lazy="selectin"
+    )
+    integration_clients: Mapped[List["IntegrationClient"]] = relationship(
+        "IntegrationClient", back_populates="organization", lazy="selectin"
+    )
+    legacy_url_maps: Mapped[List["LegacyUrlMap"]] = relationship(
+        "LegacyUrlMap", back_populates="organization", lazy="selectin"
+    )
+    timestamp_records: Mapped[List["TimestampRecord"]] = relationship(
+        "TimestampRecord", back_populates="organization", lazy="selectin"
     )
     tenant_domains: Mapped[List["TenantDomain"]] = relationship(
         "TenantDomain", back_populates="organization", lazy="selectin",

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState, useCallback } from "react";
+import { Suspense, useEffect, useRef, useState, useCallback } from "react";
 import Link from "next/link";
 import { useSearchParams, useRouter } from "next/navigation";
 import { api, MatterSummary } from "@/lib/api";
@@ -41,13 +41,15 @@ function SearchPageContent() {
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
+  const initialSearchDone = useRef(false);
 
   const doSearch = useCallback(
-    (p?: { page?: number }) => {
-      if (!query.trim()) return;
+    (p?: { page?: number; query?: string }) => {
+      const searchTerm = p?.query ?? query;
+      if (!searchTerm.trim()) return;
       setLoading(true);
       setSearched(true);
-      const params: any = { q: query.trim() };
+      const params: any = { q: searchTerm.trim() };
       if (actType) params.act_type = actType;
       if (orgUnit) params.org_unit = orgUnit;
       if (dateFrom) params.date_from = dateFrom;
@@ -63,12 +65,14 @@ function SearchPageContent() {
   );
 
   useEffect(() => {
+    if (initialSearchDone.current) return;
+    initialSearchDone.current = true;
     if (sp.get("q")) {
       const urlQ = sp.get("q") || "";
       setQuery(urlQ);
-      doSearch();
+      doSearch({ query: urlQ });
     }
-  }, []);
+  }, [doSearch, sp]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -97,32 +101,38 @@ function SearchPageContent() {
     router.push("/buscar");
   };
 
+  const runQuickSearch = (term: string) => {
+    setQuery(term);
+    router.push(`/buscar?q=${encodeURIComponent(term)}`);
+    doSearch({ query: term });
+  };
+
   return (
-    <main className="max-w-container-max mx-auto px-gutter py-stack-lg min-h-screen">
+    <main className="min-h-screen bg-slate-50">
       {/* Hero Section */}
-      <header className="mb-stack-lg border-l-4 border-primary pl-6">
-        <h1 className="text-headline-lg font-headline-lg text-primary mb-stack-sm">
-          Pesquisa Avançada
-        </h1>
-        <p className="text-body-lg font-body-lg text-on-surface-variant max-w-3xl">
-          Encontre atos oficiais, decretos, portarias e publicações
-          legislativas com precisão técnica em todo o acervo histórico
-          {org?.name ? ` da(o) ${org.name}` : " do Diário Oficial"}.
-        </p>
+      <header className="relative overflow-hidden bg-[#071a33] text-white">
+        <div aria-hidden="true" className="absolute inset-0 opacity-[0.06] [background-image:linear-gradient(rgba(255,255,255,.35)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.35)_1px,transparent_1px)] [background-size:44px_44px]" />
+        <div className="relative mx-auto max-w-[1240px] px-4 pb-28 pt-14 sm:px-6 lg:px-8 lg:pb-32 lg:pt-16">
+          <p className="mb-3 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-300"><span className="h-px w-7 bg-emerald-400" /> Consulta ao acervo</p>
+          <h1 className="text-3xl font-extrabold tracking-[-0.03em] sm:text-4xl">Pesquisa avançada</h1>
+          <p className="mt-4 max-w-3xl text-base leading-7 text-slate-300">
+            Localize atos oficiais, decretos e portarias em todo o histórico{org?.name ? ` de ${org.name}` : " do Diário Oficial"}.
+          </p>
+        </div>
       </header>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-stack-lg items-start">
+      <div className="relative z-10 mx-auto -mt-16 grid max-w-[1240px] grid-cols-1 items-start gap-5 px-4 sm:px-6 lg:grid-cols-12 lg:px-8">
         {/* Search Form */}
-        <section className="lg:col-span-8 bg-surface-container-lowest p-stack-lg rounded-xl shadow-sm border border-outline-variant">
-          <form className="space-y-stack-md" onSubmit={handleSubmit}>
+        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_20px_55px_rgba(7,26,51,.14)] sm:p-7 lg:col-span-8">
+          <form className="space-y-6" onSubmit={handleSubmit}>
             {/* Keyword Search */}
             <div className="flex flex-col gap-2">
-              <label className="text-label-md font-label-md text-primary" id="search-label">
-                Termos de Pesquisa
+              <label className="text-[11px] font-bold uppercase tracking-[0.12em] text-slate-600" id="search-label">
+                O que você procura?
               </label>
-              <div className="relative">
+              <div className="group relative rounded-xl bg-slate-50 ring-1 ring-inset ring-slate-200 focus-within:bg-white focus-within:ring-2 focus-within:ring-brand-accent">
                 <input
-                  className="w-full h-14 pl-12 pr-4 border border-outline rounded-lg text-body-md font-body-md outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 transition-all"
+                  className="h-14 w-full border-0 bg-transparent pl-12 pr-4 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:ring-0"
                   placeholder="Digite palavras-chave, número do ato ou frase exata..."
                   type="text"
                   value={query}
@@ -130,30 +140,30 @@ function SearchPageContent() {
                   aria-labelledby="search-label"
                   aria-describedby="search-tips"
                 />
-                <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-outline">
+                <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-[21px] text-slate-400 group-focus-within:text-brand-accent">
                   search
                 </span>
               </div>
             </div>
 
             {/* Date Range & Type */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-stack-md">
+            <div className="grid grid-cols-1 gap-5 border-t border-slate-100 pt-6 md:grid-cols-2">
               <div className="flex flex-col gap-2">
-                <label htmlFor="date-from" className="text-label-md font-label-md text-primary">
+                <label htmlFor="date-from" className="text-[11px] font-bold uppercase tracking-[0.1em] text-slate-600">
                   Período de Publicação
                 </label>
                 <div className="flex items-center gap-2">
                   <input
                     id="date-from"
-                    className="w-full h-12 border border-outline rounded-lg px-3 text-body-sm font-body-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 transition-all"
+                    className="h-12 w-full min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs text-slate-700 outline-none focus:border-brand-accent focus:bg-white focus:ring-2 focus:ring-blue-100"
                     type="date"
                     value={dateFrom}
                     onChange={(e) => setDateFrom(e.target.value)}
                   />
-                  <span className="text-outline shrink-0">até</span>
+                  <span className="shrink-0 text-xs text-slate-400">até</span>
                   <input
                     id="date-to"
-                    className="w-full h-12 border border-outline rounded-lg px-3 text-body-sm font-body-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 transition-all"
+                    className="h-12 w-full min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs text-slate-700 outline-none focus:border-brand-accent focus:bg-white focus:ring-2 focus:ring-blue-100"
                     type="date"
                     value={dateTo}
                     onChange={(e) => setDateTo(e.target.value)}
@@ -161,12 +171,12 @@ function SearchPageContent() {
                 </div>
               </div>
               <div className="flex flex-col gap-2">
-                <label htmlFor="act-type" className="text-label-md font-label-md text-primary">
+                <label htmlFor="act-type" className="text-[11px] font-bold uppercase tracking-[0.1em] text-slate-600">
                   Tipo de Ato
                 </label>
                 <select
                   id="act-type"
-                  className="w-full h-12 border border-outline rounded-lg px-3 text-body-sm font-body-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 transition-all appearance-none bg-surface-container-lowest"
+                  className="h-12 w-full appearance-none rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none focus:border-brand-accent focus:bg-white focus:ring-2 focus:ring-blue-100"
                   value={actType}
                   onChange={(e) => setActType(e.target.value)}
                 >
@@ -182,14 +192,14 @@ function SearchPageContent() {
             </div>
 
             {/* Specific Fields */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-stack-md">
+            <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
               <div className="flex flex-col gap-2">
-                <label htmlFor="edition-no" className="text-label-md font-label-md text-primary">
+                <label htmlFor="edition-no" className="text-[11px] font-bold uppercase tracking-[0.1em] text-slate-600">
                   Edição Nº
                 </label>
                 <input
                   id="edition-no"
-                  className="w-full h-12 border border-outline rounded-lg px-3 text-body-sm font-body-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 transition-all"
+                  className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none placeholder:text-slate-400 focus:border-brand-accent focus:bg-white focus:ring-2 focus:ring-blue-100"
                   placeholder="Ex: 245"
                   type="text"
                   value={editionNo}
@@ -197,12 +207,12 @@ function SearchPageContent() {
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <label htmlFor="page-no" className="text-label-md font-label-md text-primary">
+                <label htmlFor="page-no" className="text-[11px] font-bold uppercase tracking-[0.1em] text-slate-600">
                   Página
                 </label>
                 <input
                   id="page-no"
-                  className="w-full h-12 border border-outline rounded-lg px-3 text-body-sm font-body-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 transition-all"
+                  className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none placeholder:text-slate-400 focus:border-brand-accent focus:bg-white focus:ring-2 focus:ring-blue-100"
                   placeholder="Ex: 12"
                   type="text"
                   value={pageNo}
@@ -210,12 +220,12 @@ function SearchPageContent() {
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <label htmlFor="org-unit" className="text-label-md font-label-md text-primary">
+                <label htmlFor="org-unit" className="text-[11px] font-bold uppercase tracking-[0.1em] text-slate-600">
                   Órgão / Entidade
                 </label>
                 <input
                   id="org-unit"
-                  className="w-full h-12 border border-outline rounded-lg px-3 text-body-sm font-body-sm outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 transition-all"
+                  className="h-12 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm outline-none placeholder:text-slate-400 focus:border-brand-accent focus:bg-white focus:ring-2 focus:ring-blue-100"
                   placeholder="Ex: Secretaria de Saúde"
                   type="text"
                   value={orgUnit}
@@ -225,63 +235,63 @@ function SearchPageContent() {
             </div>
 
             {/* Action Buttons */}
-            <div className="flex flex-col sm:flex-row justify-end gap-stack-sm pt-stack-sm">
+            <div className="flex flex-col justify-end gap-2 border-t border-slate-100 pt-5 sm:flex-row">
               <button
                 type="button"
                 onClick={handleReset}
-                className="flex items-center justify-center gap-2 px-6 h-12 border border-primary text-primary font-bold rounded-lg hover:bg-primary-fixed transition-all"
+                className="flex h-12 items-center justify-center gap-2 rounded-xl border border-slate-200 px-6 text-xs font-bold text-slate-600 transition hover:bg-slate-50 hover:text-brand-900"
               >
                 <span className="material-symbols-outlined text-[20px]">
                   filter_alt_off
                 </span>
-                Limpar Filtros
+                Limpar filtros
               </button>
               <button
                 type="submit"
-                className="flex items-center justify-center gap-2 px-8 h-12 bg-primary text-on-primary font-bold rounded-lg hover:opacity-90 active:scale-95 transition-all shadow-md"
+                className="flex h-12 items-center justify-center gap-2 rounded-xl bg-brand-900 px-8 text-xs font-bold text-white shadow-[0_8px_20px_rgba(11,25,44,.18)] transition hover:-translate-y-px hover:bg-brand-800"
               >
                 <span className="material-symbols-outlined text-[20px]">
                   search
                 </span>
-                Buscar Matérias
+                Buscar publicações
               </button>
             </div>
           </form>
         </section>
 
         {/* Tips Sidebar */}
-        <aside className="lg:col-span-4 space-y-stack-md">
-          <div className="bg-surface-container-high p-stack-md rounded-xl border border-outline-variant" id="search-tips">
-            <div className="flex items-center gap-2 mb-4 text-primary">
-              <span className="material-symbols-outlined">lightbulb</span>
-              <h3 className="text-headline-sm font-headline-sm">
-                Dicas de Pesquisa
+        <aside className="space-y-5 lg:col-span-4">
+          <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-[0_8px_28px_rgba(15,42,82,.05)]" id="search-tips">
+            <div className="mb-5 flex items-center gap-3 text-brand-900">
+              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-50 text-amber-600"><span className="material-symbols-outlined text-[20px]">lightbulb</span></span>
+              <h3 className="text-base font-bold">
+                Dicas de pesquisa
               </h3>
             </div>
-            <ul className="space-y-4">
+            <ul className="space-y-5">
               <li className="flex gap-3">
-                <div className="mt-1 w-5 h-5 flex items-center justify-center bg-primary text-on-primary text-[10px] rounded-full shrink-0 font-bold">
+                <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-[10px] font-bold text-brand-900">
                   1
                 </div>
-                <p className="text-body-sm font-body-sm">
+                <p className="text-xs leading-5 text-slate-600">
                    Use <strong>aspas</strong> para buscar termos exatos. Ex:
                   &ldquo;Decreto Municipal&rdquo;.
                 </p>
               </li>
               <li className="flex gap-3">
-                <div className="mt-1 w-5 h-5 flex items-center justify-center bg-primary text-on-primary text-[10px] rounded-full shrink-0 font-bold">
+                <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-[10px] font-bold text-brand-900">
                   2
                 </div>
-                <p className="text-body-sm font-body-sm">
+                <p className="text-xs leading-5 text-slate-600">
                   Utilize o sinal de <strong>menos (-)</strong> para excluir
                   palavras. Ex: Nomeação -Exoneração.
                 </p>
               </li>
               <li className="flex gap-3">
-                <div className="mt-1 w-5 h-5 flex items-center justify-center bg-primary text-on-primary text-[10px] rounded-full shrink-0 font-bold">
+                <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-brand-50 text-[10px] font-bold text-brand-900">
                   3
                 </div>
-                <p className="text-body-sm font-body-sm">
+                <p className="text-xs leading-5 text-slate-600">
                   Combine múltiplos filtros para restringir os resultados a
                   órgãos específicos.
                 </p>
@@ -292,17 +302,17 @@ function SearchPageContent() {
           {/* Digital Verification Teaser */}
           <Link
             href="/verificar"
-            className="block relative overflow-hidden bg-primary text-on-primary p-stack-md rounded-xl shadow-lg group"
+            className="group relative block overflow-hidden rounded-2xl bg-[#071a33] p-6 text-white shadow-[0_16px_35px_rgba(7,26,51,.16)]"
           >
             <div className="relative z-10">
-              <h4 className="text-headline-sm font-headline-sm mb-2">
-                Assinatura Digital
+              <h4 className="mb-2 text-lg font-bold">
+                Autenticidade digital
               </h4>
-              <p className="text-body-sm font-body-sm opacity-90 mb-4">
+              <p className="mb-5 text-xs leading-5 text-slate-300">
                 Todas as publicações são assinadas digitalmente para garantir
                 autenticidade jurídica.
               </p>
-              <span className="inline-flex items-center gap-2 bg-secondary-fixed text-on-secondary-fixed-variant px-4 py-2 rounded font-bold text-label-md group-hover:bg-secondary group-hover:text-on-secondary transition-colors">
+              <span className="inline-flex items-center gap-2 rounded-lg bg-emerald-400 px-4 py-2.5 text-xs font-bold text-brand-900 transition group-hover:bg-emerald-300">
                 <span
                   className="material-symbols-outlined text-[18px]"
                   style={{ fontVariationSettings: "'FILL' 1" }}
@@ -323,14 +333,17 @@ function SearchPageContent() {
 
       {/* Results */}
       {searched && (
-        <section className="mt-stack-lg">
-          <div className="flex items-center justify-between mb-stack-md">
-            <h2 className="text-headline-sm font-headline-sm text-primary">
-              Resultados da Pesquisa
-            </h2>
+        <section className="mx-auto max-w-[1240px] px-4 pb-20 pt-12 sm:px-6 lg:px-8">
+          <div className="mb-6 flex items-center justify-between gap-4">
+            <div>
+              <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.16em] text-emerald-700">Acervo encontrado</p>
+              <h2 className="text-xl font-extrabold text-brand-900">
+                Resultados da pesquisa
+              </h2>
+            </div>
             {!loading && (
-              <span className="text-label-md font-label-md text-on-surface-variant">
-                {total} resultado(s) encontrado(s)
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500">
+                {total} {total === 1 ? "resultado" : "resultados"}
               </span>
             )}
           </div>
@@ -355,38 +368,39 @@ function SearchPageContent() {
                 <Link
                   key={m.id}
                   href={`/materias/${m.id}`}
-                  className="block bg-surface-container-lowest border border-outline-variant rounded-xl p-5 hover:border-primary transition-all shadow-sm"
+                  className="group block rounded-2xl border border-slate-200 bg-white p-5 shadow-[0_6px_22px_rgba(15,42,82,.045)] transition hover:-translate-y-0.5 hover:border-brand-100 hover:shadow-[0_12px_30px_rgba(15,42,82,.08)]"
                 >
                   <div className="flex items-start justify-between gap-4">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
                         {m.act_type && (
-                          <span className="text-label-sm font-label-sm text-primary bg-primary-fixed px-2 py-0.5 rounded">
+                          <span className="rounded-full bg-brand-50 px-2.5 py-1 text-[10px] font-bold text-brand-900 ring-1 ring-inset ring-brand-100">
                             {m.act_type}
                           </span>
                         )}
                         {m.org_unit && (
-                          <span className="text-label-sm font-label-sm text-on-surface-variant">
+                          <span className="text-xs font-semibold text-slate-500">
                             {m.org_unit}
                           </span>
                         )}
                       </div>
-                      <h3 className="font-headline-sm text-headline-sm text-primary truncate">
+                      <h3 className="truncate text-base font-bold text-brand-900">
                         {m.title}
                       </h3>
                       {m.summary && (
-                        <p className="text-body-sm font-body-sm text-on-surface-variant mt-1 line-clamp-2">
+                        <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-600">
                           {m.summary}
                         </p>
                       )}
                       {m.publication_date && (
-                        <p className="text-label-sm font-label-sm text-outline mt-2">
+                        <p className="mt-3 flex items-center gap-1.5 text-[11px] font-medium text-slate-400">
+                          <span className="material-symbols-outlined text-[15px]">calendar_month</span>
                           {formatDate(m.publication_date)}
                         </p>
                       )}
                     </div>
-                    <span className="material-symbols-outlined text-primary shrink-0">
-                      chevron_right
+                    <span className="material-symbols-outlined shrink-0 text-slate-300 transition group-hover:translate-x-0.5 group-hover:text-brand-accent">
+                      arrow_forward
                     </span>
                   </div>
                 </Link>
@@ -397,68 +411,40 @@ function SearchPageContent() {
       )}
 
       {!searched && !loading && (
-        <section className="mt-stack-lg">
-          <h3 className="text-headline-sm font-headline-sm text-primary mb-stack-md flex items-center gap-2">
-            <span className="material-symbols-outlined">history</span>
-            Pesquisas Recentes
-          </h3>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <div
-              className="bg-surface-container-lowest p-4 rounded-lg border border-outline-variant hover:border-primary transition-colors cursor-pointer group"
-              onClick={() => {
-                setQuery("Licitações");
-                doSearch();
-              }}
+        <section className="mx-auto max-w-[1240px] px-4 pb-20 pt-12 sm:px-6 lg:px-8">
+          <h2 className="mb-5 flex items-center gap-2 text-lg font-bold text-brand-900">
+            <span className="material-symbols-outlined text-[20px] text-brand-accent">bolt</span>
+            Sugestões de pesquisa
+          </h2>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <button
+              type="button"
+              className="group flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-brand-100 hover:bg-brand-50"
+              onClick={() => runQuickSearch("Licitações")}
             >
-              <span className="text-label-md font-label-md text-outline group-hover:text-primary">
-                Hoje
-              </span>
-              <p className="text-body-md font-body-md font-bold text-primary mt-1">
-                Licitações
-              </p>
-            </div>
-            <div
-              className="bg-surface-container-lowest p-4 rounded-lg border border-outline-variant hover:border-primary transition-colors cursor-pointer group"
-              onClick={() => {
-                setQuery("Concursos");
-                doSearch();
-              }}
+              <span className="text-sm font-bold text-brand-900">Licitações</span><span className="material-symbols-outlined text-[17px] text-slate-300 group-hover:text-brand-accent">arrow_forward</span>
+            </button>
+            <button
+              type="button"
+              className="group flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-brand-100 hover:bg-brand-50"
+              onClick={() => runQuickSearch("Concursos")}
             >
-              <span className="text-label-md font-label-md text-outline group-hover:text-primary">
-                Ontem
-              </span>
-              <p className="text-body-md font-body-md font-bold text-primary mt-1">
-                Concursos
-              </p>
-            </div>
-            <div
-              className="bg-surface-container-lowest p-4 rounded-lg border border-outline-variant hover:border-primary transition-colors cursor-pointer group"
-              onClick={() => {
-                setQuery("Portaria");
-                doSearch();
-              }}
+              <span className="text-sm font-bold text-brand-900">Concursos</span><span className="material-symbols-outlined text-[17px] text-slate-300 group-hover:text-brand-accent">arrow_forward</span>
+            </button>
+            <button
+              type="button"
+              className="group flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-brand-100 hover:bg-brand-50"
+              onClick={() => runQuickSearch("Portaria")}
             >
-              <span className="text-label-md font-label-md text-outline group-hover:text-primary">
-                15 Mai
-              </span>
-              <p className="text-body-md font-body-md font-bold text-primary mt-1">
-                Portaria nº 250
-              </p>
-            </div>
-            <div
-              className="bg-surface-container-lowest p-4 rounded-lg border border-outline-variant hover:border-primary transition-colors cursor-pointer group"
-              onClick={() => {
-                setQuery("Decreto");
-                doSearch();
-              }}
+              <span className="text-sm font-bold text-brand-900">Portarias</span><span className="material-symbols-outlined text-[17px] text-slate-300 group-hover:text-brand-accent">arrow_forward</span>
+            </button>
+            <button
+              type="button"
+              className="group flex items-center justify-between rounded-xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-brand-100 hover:bg-brand-50"
+              onClick={() => runQuickSearch("Decreto")}
             >
-              <span className="text-label-md font-label-md text-outline group-hover:text-primary">
-                12 Mai
-              </span>
-              <p className="text-body-md font-body-md font-bold text-primary mt-1">
-                Decretos
-              </p>
-            </div>
+              <span className="text-sm font-bold text-brand-900">Decretos</span><span className="material-symbols-outlined text-[17px] text-slate-300 group-hover:text-brand-accent">arrow_forward</span>
+            </button>
           </div>
         </section>
       )}

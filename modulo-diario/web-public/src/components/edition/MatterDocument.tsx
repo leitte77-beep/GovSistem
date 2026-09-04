@@ -55,37 +55,27 @@ export default function MatterDocument({
       data-mid={anchorId}
       className="matter scroll-mt-[7.5rem]"
     >
-      {/* quiet toolbar: copy link only (no duplicated act-type eyebrow) */}
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <span aria-hidden="true" className="sr-only">
+      {/* quiet meta line + copy link (not part of the printed doc) */}
+      <div className="mb-2 flex items-center justify-between gap-4 no-print">
+        <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#6b7480]">
           Publicação {String(position + 1).padStart(2, "0")}
         </span>
-        <span className="ml-auto shrink-0 no-print">
+        <span className="shrink-0">
           <CopyMatterLink anchorId={anchorId} />
         </span>
       </div>
 
-      {/* document heading */}
-      <h2 className="text-[24px] font-extrabold uppercase leading-[1.15] tracking-tight text-edition-ink sm:text-[28px] lg:text-[30px]">
-        {matter.title}
-      </h2>
+      {/* banded matter heading (official newspaper look) */}
+      <div className="doe-matter-head">
+        <h2 className="text-[15px] font-extrabold uppercase leading-none">{matter.title}</h2>
+      </div>
 
       {matter.summary && (
-        <div className="mt-5 border-l-[3px] border-[var(--doe-accent,var(--edition-accent))] pl-4 sm:pl-5">
-          <p className="text-[16px] font-semibold leading-relaxed text-edition-ink sm:text-[18px] sm:leading-[1.65]">
-            {matter.summary}
-          </p>
-        </div>
+        <p className="doe-matter-title">{matter.summary}</p>
       )}
-
-      {matter.section_title && (
-        <p className="mt-3 text-[13px] text-edition-muted">{matter.section_title}</p>
-      )}
-
-      <hr className="my-8 border-0 border-t border-edition-line-strong" aria-hidden="true" />
 
       <div
-        className="matter-body"
+        className="matter-body mt-6"
         dangerouslySetInnerHTML={{ __html: prepareContent(matter.content_html || "") }}
       />
 

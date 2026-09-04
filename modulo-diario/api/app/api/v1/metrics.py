@@ -10,7 +10,7 @@ from sqlalchemy import func as sa_func
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import require_roles
+from app.core.auth import get_current_user, require_roles
 from app.core.database import get_db
 from app.models.audit_event import AuditEvent
 from app.models.edition import Edition
@@ -128,35 +128,37 @@ async def operations_health(
 @router.get("/operations/dashboard")
 async def operations_dashboard(
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ADMIN", "AUDITOR")),
+    user: User = Depends(get_current_user),
 ):
-    """Admin dashboard with system status."""
-    total_editions = await db.execute(select(sa_func.count(Edition.id)))
+    """Dashboard with system status (scoped to the user's organization)."""
+    org_scope = (Edition.organization_id == user.organization_id) if user.organization_id else True
+    total_editions = await db.execute(select(sa_func.count(Edition.id)).where(org_scope))
     published = await db.execute(
-        select(sa_func.count(Edition.id)).where(Edition.status == EditionStatus.PUBLISHED)
+        select(sa_func.count(Edition.id)).where(Edition.status == EditionStatus.PUBLISHED, org_scope)
     )
     draft_editions = await db.execute(
-        select(sa_func.count(Edition.id)).where(Edition.status == EditionStatus.DRAFT)
+        select(sa_func.count(Edition.id)).where(Edition.status == EditionStatus.DRAFT, org_scope)
     )
     signed = await db.execute(
-        select(sa_func.count(Edition.id)).where(Edition.status == EditionStatus.SIGNED)
+        select(sa_func.count(Edition.id)).where(Edition.status == EditionStatus.SIGNED, org_scope)
     )
     pdf_gen = await db.execute(
-        select(sa_func.count(Edition.id)).where(Edition.status == EditionStatus.PDF_GENERATED)
+        select(sa_func.count(Edition.id)).where(Edition.status == EditionStatus.PDF_GENERATED, org_scope)
     )
 
-    total_matters = await db.execute(select(sa_func.count(Matter.id)))
+    org_matters = (Matter.organization_id == user.organization_id) if user.organization_id else True
+    total_matters = await db.execute(select(sa_func.count(Matter.id)).where(org_matters))
     draft_matters = await db.execute(
-        select(sa_func.count(Matter.id)).where(Matter.status == MatterStatus.DRAFT)
+        select(sa_func.count(Matter.id)).where(Matter.status == MatterStatus.DRAFT, org_matters)
     )
     review_matters = await db.execute(
-        select(sa_func.count(Matter.id)).where(Matter.status == MatterStatus.REVIEW)
+        select(sa_func.count(Matter.id)).where(Matter.status == MatterStatus.REVIEW, org_matters)
     )
     approved_matters = await db.execute(
-        select(sa_func.count(Matter.id)).where(Matter.status == MatterStatus.APPROVED)
+        select(sa_func.count(Matter.id)).where(Matter.status == MatterStatus.APPROVED, org_matters)
     )
     published_matters = await db.execute(
-        select(sa_func.count(Matter.id)).where(Matter.status == MatterStatus.PUBLISHED)
+        select(sa_func.count(Matter.id)).where(Matter.status == MatterStatus.PUBLISHED, org_matters)
     )
 
     return {

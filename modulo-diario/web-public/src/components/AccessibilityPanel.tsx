@@ -95,11 +95,11 @@ export default function AccessibilityPanel() {
     <>
       <button
         onClick={() => setOpen(!open)}
-        className="relative p-2 text-on-surface-variant hover:bg-surface-container-low transition-colors duration-200 rounded-full"
+        className="relative flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition-colors duration-200 hover:bg-slate-100 hover:text-brand-900"
         aria-label="Acessibilidade"
         title="Acessibilidade"
       >
-        <span className="material-symbols-outlined">accessibility_new</span>
+        <span className="material-symbols-outlined text-[21px]">accessibility_new</span>
         {tools.some((t) => t.active) && (
           <span className="absolute top-1 right-1 w-2 h-2 bg-secondary rounded-full" />
         )}

@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime, timezone
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Text
 from sqlalchemy.dialects.postgresql import UUID
@@ -12,6 +12,7 @@ from app.models.base import Base, TimestampMixin
 if TYPE_CHECKING:
     from app.models.edition import Edition
     from app.models.signing_credential import SigningCredential
+    from app.models.timestamp_record import TimestampRecord
     from app.models.user import User
 
 
@@ -48,6 +49,9 @@ class Signature(Base, TimestampMixin):
 
     edition: Mapped["Edition"] = relationship(
         "Edition", back_populates="signatures"
+    )
+    timestamp_records: Mapped[List["TimestampRecord"]] = relationship(
+        "TimestampRecord", back_populates="signature", lazy="selectin",
     )
     user: Mapped["User"] = relationship("User")
     credential: Mapped["SigningCredential"] = relationship(

@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from app.models.edition_item import EditionItem
     from app.models.organization import Organization
     from app.models.signature import Signature
+    from app.models.timestamp_record import TimestampRecord
     from app.models.user import User
 
 
@@ -93,7 +94,11 @@ class Edition(Base, TimestampMixin):
         comment="Version of the template layout used to generate the source PDF",
     )
     verification_code: Mapped[Optional[str]] = mapped_column(
-        String(20), nullable=True, unique=True
+        String(64), nullable=True, unique=True
+    )
+    verification_code_hash: Mapped[Optional[str]] = mapped_column(
+        String(64), nullable=True,
+        comment="SHA-256 of normalized verification code (integrity check; both forms stored)",
     )
     immutability_hash: Mapped[Optional[str]] = mapped_column(
         String(64), nullable=True,
@@ -130,6 +135,9 @@ class Edition(Base, TimestampMixin):
     signatures: Mapped[List["Signature"]] = relationship(
         "Signature", back_populates="edition", lazy="selectin",
     )
+    timestamp_records: Mapped[List["TimestampRecord"]] = relationship(
+        "TimestampRecord", back_populates="edition", lazy="selectin",
+    )
 
     def can_edit(self) -> bool:
         return EditionStatus.can_edit(self.status)
@@ -141,9 +149,10 @@ class Edition(Base, TimestampMixin):
     def generate_verification_code(self) -> str:
         if self.verification_code:
             return self.verification_code
-        raw = f"{self.id}{self.year}{self.number}"
-        h = hashlib.sha256(raw.encode()).hexdigest()[:8].upper()
-        self.verification_code = f"{self.year}{self.number:04d}-{h}"
+        from app.services.verification_code import generate_secure_code, hash_code
+
+        self.verification_code = generate_secure_code()
+        self.verification_code_hash = hash_code(self.verification_code)
         return self.verification_code
 
     def compute_immutability_hash(self) -> str:

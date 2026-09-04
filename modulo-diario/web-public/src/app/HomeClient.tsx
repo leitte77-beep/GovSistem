@@ -16,15 +16,9 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 const TYPE_STYLES: Record<string, string> = {
-  normal: "bg-secondary-container text-on-secondary-container",
-  extra: "bg-primary-container text-on-primary-container",
-  suplementar: "bg-tertiary-container text-on-tertiary-container",
-};
-
-const TYPE_BG: Record<string, string> = {
-  normal: "bg-surface-container-low/30",
-  extra: "bg-tertiary-container/10",
-  suplementar: "bg-surface-container-low/30",
+  normal: "border-emerald-200 bg-emerald-50 text-emerald-700",
+  extra: "border-blue-200 bg-blue-50 text-blue-700",
+  suplementar: "border-amber-200 bg-amber-50 text-amber-700",
 };
 
 function formatDate(dateStr: string): string {
@@ -71,78 +65,96 @@ export default function HomeClient({ initialEditions }: Props) {
 
   const displayed = editions.slice(0, 3);
 
-  const heroImage = initialEditions.length > 0
-    ? undefined
-    : undefined;
-
   return (
     <>
       {/* Hero Section */}
-      <section className="bg-surface py-stack-lg border-b border-outline-variant">
-        <div className="max-w-container-max mx-auto px-gutter text-center">
-          <h1 className="font-headline-lg text-headline-lg text-primary mb-stack-sm">
-            {org?.name || "Diário Oficial Eletrônico"}
-          </h1>
-          <p className="text-body-lg font-body-lg text-on-surface-variant mb-stack-md max-w-2xl mx-auto">
-            {org?.description || "Acesse publicações oficiais, atos normativos e transparência governamental com facilidade e segurança jurídica."}
-          </p>
-
-          <div className="bg-surface-container-lowest p-2 rounded-xl shadow-lg border border-outline-variant max-w-4xl mx-auto">
-            <form onSubmit={handleSearch} className="flex flex-col md:flex-row gap-2">
-              <div className="flex-1 relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-outline material-symbols-outlined">search</span>
-                <input
-                  className="w-full pl-12 pr-4 py-4 bg-transparent border-0 focus:ring-0 text-body-md font-body-md placeholder:text-outline outline-none"
-                  placeholder="Palavras-chave ou Termos..."
-                  type="text"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                />
-              </div>
-              <div className="flex flex-wrap md:flex-nowrap gap-2 p-2 bg-surface-container-low rounded-lg">
-                <div className="flex items-center gap-2 px-3 border-r border-outline-variant last:border-0">
-                  <span className="material-symbols-outlined text-primary text-[18px]">tag</span>
-                  <input
-                    className="w-24 bg-transparent border-0 focus:ring-0 text-label-md font-label-md p-0 outline-none"
-                    placeholder="Nº Edição"
-                    type="text"
-                    value={filterNumber}
-                    onChange={(e) => setFilterNumber(e.target.value)}
-                  />
-                </div>
-                <div className="flex items-center gap-2 px-3 border-r border-outline-variant last:border-0">
-                  <span className="material-symbols-outlined text-primary text-[18px]">calendar_today</span>
-                  <input
-                    className="w-28 bg-transparent border-0 focus:ring-0 text-label-md font-label-md p-0 outline-none"
-                    placeholder="Data"
-                    type="text"
-                    value={filterDate}
-                    onChange={(e) => setFilterDate(e.target.value)}
-                  />
-                </div>
-                <button
-                  type="submit"
-                  className="bg-primary text-on-primary px-8 py-3 rounded-lg font-label-md text-label-md hover:opacity-90 transition-all flex items-center gap-2 shadow-md"
-                >
-                  BUSCAR
-                </button>
-              </div>
-            </form>
+      <section className="relative overflow-hidden bg-[#071a33] text-white">
+        <div aria-hidden="true" className="absolute inset-0 opacity-[0.07] [background-image:linear-gradient(rgba(255,255,255,.35)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.35)_1px,transparent_1px)] [background-size:44px_44px]" />
+        <div aria-hidden="true" className="absolute -right-24 -top-32 h-96 w-96 rounded-full border-[70px] border-white/[0.025]" />
+        <div className="relative mx-auto max-w-[1440px] px-4 pb-32 pt-16 sm:px-6 sm:pt-20 lg:px-8 lg:pb-36">
+          <div className="mx-auto max-w-3xl text-center">
+            <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/[0.06] px-3.5 py-1.5 text-[11px] font-bold uppercase tracking-[0.18em] text-blue-100">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-[0_0_0_4px_rgba(52,211,153,.12)]" />
+              Portal oficial de publicações
+            </div>
+            <h1 className="text-4xl font-extrabold tracking-[-0.035em] sm:text-5xl lg:text-[58px] lg:leading-[1.06]">
+              Diário Oficial <span className="text-blue-300">Eletrônico</span>
+            </h1>
+            <p className="mt-4 text-sm font-bold uppercase tracking-[0.16em] text-white/65 sm:text-base">
+              {org?.name || "Administração pública municipal"}
+            </p>
+            <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
+              Consulte atos oficiais, acompanhe as edições mais recentes e valide documentos com segurança.
+            </p>
           </div>
         </div>
       </section>
 
+      <div className="relative z-10 mx-auto -mt-20 max-w-5xl px-4 sm:px-6">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_22px_60px_rgba(7,26,51,0.18)] sm:p-4">
+          <div className="mb-3 flex items-center justify-between px-1 sm:px-2">
+            <p className="text-[11px] font-bold uppercase tracking-[0.15em] text-slate-500">Pesquisar no Diário Oficial</p>
+            <Link href="/buscar" className="hidden text-xs font-semibold text-brand-accent hover:underline sm:block">Pesquisa avançada</Link>
+          </div>
+          <form onSubmit={handleSearch} className="flex flex-col gap-2 lg:flex-row">
+              <div className="group relative flex-1 rounded-xl bg-slate-50 ring-1 ring-inset ring-slate-200 transition focus-within:bg-white focus-within:ring-2 focus-within:ring-brand-accent">
+                <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-[22px] text-slate-400 transition group-focus-within:text-brand-accent">search</span>
+                <input
+                  className="h-14 w-full border-0 bg-transparent pl-12 pr-4 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:ring-0"
+                  placeholder="Busque por assunto, órgão, portaria, decreto..."
+                  type="text"
+                  aria-label="Termos da pesquisa"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2 lg:flex lg:shrink-0">
+                <label className="flex h-14 items-center gap-2 rounded-xl bg-slate-50 px-4 ring-1 ring-inset ring-slate-200 focus-within:ring-2 focus-within:ring-brand-accent">
+                  <span className="material-symbols-outlined text-[19px] text-brand-900">tag</span>
+                  <input
+                    className="w-full min-w-0 border-0 bg-transparent p-0 text-sm font-semibold outline-none placeholder:font-medium placeholder:text-slate-400 focus:ring-0 lg:w-24"
+                    placeholder="Nº da edição"
+                    type="text"
+                    inputMode="numeric"
+                    aria-label="Número da edição"
+                    value={filterNumber}
+                    onChange={(e) => setFilterNumber(e.target.value)}
+                  />
+                </label>
+                <label className="flex h-14 items-center gap-2 rounded-xl bg-slate-50 px-4 ring-1 ring-inset ring-slate-200 focus-within:ring-2 focus-within:ring-brand-accent">
+                  <span className="material-symbols-outlined text-[19px] text-brand-900">calendar_today</span>
+                  <input
+                    className="w-full min-w-0 border-0 bg-transparent p-0 text-sm font-semibold text-slate-700 outline-none focus:ring-0 lg:w-32"
+                    type="date"
+                    aria-label="Data da publicação"
+                    value={filterDate}
+                    onChange={(e) => setFilterDate(e.target.value)}
+                  />
+                </label>
+                <button
+                  type="submit"
+                  className="col-span-2 inline-flex h-14 items-center justify-center gap-2 rounded-xl bg-brand-900 px-7 text-sm font-bold text-white shadow-[0_8px_20px_rgba(11,25,44,.18)] transition hover:-translate-y-px hover:bg-brand-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent"
+                >
+                  <span className="material-symbols-outlined text-[19px]">search</span>
+                  Buscar publicações
+                </button>
+              </div>
+          </form>
+        </div>
+      </div>
+
       {/* Latest Editions */}
-      <section className="py-stack-lg max-w-container-max mx-auto px-gutter">
-        <div className="flex justify-between items-end mb-stack-md">
+      <section className="mx-auto max-w-[1240px] px-4 pb-20 pt-16 sm:px-6 lg:px-8 lg:pt-20">
+        <div className="mb-8 flex items-end justify-between gap-4">
           <div>
-            <h2 className="font-headline-md text-headline-md text-primary">Últimas Edições</h2>
-            <p className="text-body-sm font-body-sm text-on-surface-variant">
-              Publicações recentes{org?.name ? ` da(o) ${org.name}` : ""}
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">Atualizações oficiais</p>
+            <h2 className="text-2xl font-extrabold tracking-tight text-brand-900 sm:text-3xl">Últimas edições</h2>
+            <p className="mt-1.5 text-sm text-slate-500">
+              Publicações mais recentes{org?.name ? ` de ${org.name}` : ""}
             </p>
           </div>
-          <Link href="/edicoes" className="text-primary font-label-md text-label-md flex items-center gap-1 hover:underline">
-            Ver todas as edições <span className="material-symbols-outlined text-[16px]">arrow_forward</span>
+          <Link href="/edicoes" className="group flex shrink-0 items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-bold text-brand-900 shadow-sm transition hover:border-brand-100 hover:bg-brand-50">
+            Ver todas <span className="material-symbols-outlined text-[17px] transition-transform group-hover:translate-x-0.5">arrow_forward</span>
           </Link>
         </div>
 
@@ -151,37 +163,56 @@ export default function HomeClient({ initialEditions }: Props) {
         ) : displayed.length === 0 ? (
           <div className="text-center py-12 text-on-surface-variant">Nenhuma edição publicada</div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-gutter">
+          <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
             {displayed.map((edition) => (
-              <div key={edition.id} className="bg-surface-container-lowest rounded-xl border border-outline-variant shadow-sm flex flex-col hover:shadow-md transition-shadow duration-300">
-                <div className={`p-6 border-b border-outline-variant ${TYPE_BG[edition.type] || "bg-surface-container-low/30"}`}>
-                  <div className="flex justify-between items-start mb-2">
-                    <span className={`${TYPE_STYLES[edition.type] || TYPE_STYLES.normal} px-2 py-0.5 rounded text-[10px] font-bold tracking-wider`}>
+              <article key={edition.id} className="group relative flex min-h-[340px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_8px_30px_rgba(15,42,82,0.06)] transition duration-300 hover:-translate-y-1 hover:border-brand-100 hover:shadow-[0_18px_42px_rgba(15,42,82,0.12)]">
+                <div aria-hidden="true" className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-brand-900 via-brand-accent to-emerald-500 opacity-80" />
+                <div className="relative overflow-hidden bg-gradient-to-br from-brand-50/80 via-white to-blue-50/40 p-6 pb-5">
+                  <div aria-hidden="true" className="absolute -right-8 -top-9 h-28 w-28 rounded-full border-[20px] border-brand-100/25" />
+                  <div className="relative mb-5 flex items-center justify-between gap-3">
+                    <span className={`${TYPE_STYLES[edition.type] || TYPE_STYLES.normal} rounded-full border px-2.5 py-1 text-[9px] font-extrabold tracking-[0.12em]`}>
                       {TYPE_LABELS[edition.type] || TYPE_LABELS.normal}
                     </span>
-                    <span className="text-label-md font-label-md text-on-surface-variant">{formatDate(edition.publication_date)}</span>
+                    <span className="flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
+                      <span className="material-symbols-outlined text-[15px]">calendar_month</span>
+                      {formatDate(edition.publication_date)}
+                    </span>
                   </div>
-                  <h3 className="font-headline-sm text-headline-sm text-primary leading-tight">{edition.title}</h3>
+                  <div className="relative flex items-start gap-3">
+                    <span aria-hidden="true" className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-900 text-white shadow-[0_6px_14px_rgba(11,25,44,.18)]">
+                      <span className="material-symbols-outlined text-[21px]">newspaper</span>
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-brand-accent">Diário Oficial</p>
+                      <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                        <h3 className="text-[22px] font-extrabold leading-tight tracking-[-0.025em] text-brand-900">Edição nº {edition.number}</h3>
+                        <span className="rounded-md bg-white px-2 py-0.5 text-[10px] font-bold text-slate-500 ring-1 ring-inset ring-slate-200">{edition.year}</span>
+                      </div>
+                      <span className="sr-only">{edition.title}</span>
+                    </div>
+                  </div>
                 </div>
-                <div className="p-6 flex-grow">
-                  <div className="mb-3 flex items-center gap-2 text-label-md font-label-md text-on-surface-variant uppercase tracking-widest">
-                    <span className="h-px w-6 bg-secondary" />Súmula do Dia
-                  </div>
-                  <div className="relative min-h-[116px] rounded-lg border border-outline-variant/70 bg-surface-container-low/45 px-4 py-3">
-                    <p className="text-body-sm font-body-sm text-on-surface leading-7" style={{ display: "-webkit-box", WebkitLineClamp: 4, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                <div className="mx-6 h-px bg-slate-100" />
+                <div className="flex flex-1 flex-col px-6 py-5">
+                  <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-400">Resumo desta edição</p>
+                  <div className="relative flex-1">
+                    <p className="text-sm leading-6 text-slate-700" style={{ display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
                       {formatSummary(edition.daily_summary)}
                     </p>
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 rounded-b-lg bg-gradient-to-t from-surface-container-low to-transparent" />
+                  </div>
+                  <div className="mt-5 flex items-center gap-4 text-[11px] font-semibold text-slate-500">
+                    <span className="flex items-center gap-1.5"><span className="material-symbols-outlined text-[16px] text-brand-accent">description</span>{edition.item_count} {edition.item_count === 1 ? "publicação" : "publicações"}</span>
+                    {edition.signature_count > 0 && <span className="flex items-center gap-1.5 text-emerald-700"><span className="material-symbols-outlined text-[16px]">verified</span>Assinada</span>}
                   </div>
                 </div>
-                <div className="p-4 bg-surface-container-low flex items-center justify-between">
-                  <Link href={`/edicoes/${edition.year}/${edition.number}`} className="bg-primary text-on-primary px-4 py-2 rounded-lg text-label-md font-label-md hover:opacity-90 transition-all">
-                    Visualizar
+                <div className="flex items-center justify-between border-t border-slate-100 bg-slate-50/70 p-4 pl-6">
+                  <Link href={`/edicoes/${edition.year}/${edition.number}`} className="group/link flex items-center gap-2 text-sm font-bold text-brand-900">
+                    Consultar edição <span className="material-symbols-outlined text-[18px] transition-transform group-hover/link:translate-x-0.5">arrow_forward</span>
                   </Link>
                   <div className="flex gap-1">
                     {edition.pdf_url && (
-                      <a href={edition.pdf_url} target="_blank" rel="noopener noreferrer" className="p-2 text-on-surface-variant hover:bg-surface-container-highest rounded-lg transition-colors" aria-label="Baixar PDF">
-                        <span className="material-symbols-outlined">download</span>
+                      <a href={edition.pdf_url} target="_blank" rel="noopener noreferrer" className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-white hover:text-brand-900 hover:shadow-sm" aria-label="Baixar PDF">
+                        <span className="material-symbols-outlined text-[19px]">download</span>
                       </a>
                     )}
                     <ShareDialog
@@ -190,33 +221,34 @@ export default function HomeClient({ initialEditions }: Props) {
                     />
                   </div>
                 </div>
-              </div>
+              </article>
             ))}
           </div>
         )}
       </section>
 
       {/* Transparency */}
-      <section className="bg-primary text-on-primary py-stack-lg">
-        <div className="max-w-container-max mx-auto px-gutter">
-          <div className="text-center mb-stack-md">
-            <h2 className="font-headline-md text-headline-md">Transparência e Serviços</h2>
-            <p className="text-body-md font-body-md text-on-primary-container">Ferramentas essenciais para garantir a autenticidade e o acesso à informação.</p>
+      <section className="bg-[#071a33] py-20 text-white">
+        <div className="mx-auto max-w-[1240px] px-4 sm:px-6 lg:px-8">
+          <div className="mb-10 max-w-2xl">
+            <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-400">Acesso e confiança</p>
+            <h2 className="text-2xl font-extrabold tracking-tight sm:text-3xl">Transparência e serviços</h2>
+            <p className="mt-3 text-sm leading-6 text-slate-300">Ferramentas para consultar o acervo público e confirmar a autenticidade de cada documento.</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             {[
               { icon: "verified_user", title: "Verificar Assinatura", desc: "Confirme a validade jurídica de documentos digitais através do nosso sistema de verificação ICP-Brasil.", href: "/verificar", label: "ACESSAR VALIDADOR" },
               { icon: "archive", title: "Acervo Histórico", desc: "Pesquise em nossa base de dados histórica que contempla edições desde a primeira edição do Diário Oficial.", href: "/acervo", label: "EXPLORAR ACERVO" },
               { icon: "gavel", title: "Pesquisa Legislativa", desc: "Localize leis, decretos, portarias e normas por assunto, órgão emissor ou numeração específica.", href: "/buscar", label: "INICIAR PESQUISA" },
             ].map((svc) => (
-              <div key={svc.href} className="bg-primary-container p-8 rounded-xl border border-on-primary-fixed-variant/20 hover:scale-[1.02] transition-transform duration-300">
-                <div className="w-16 h-16 bg-secondary text-on-secondary rounded-full flex items-center justify-center mb-6 shadow-lg">
-                  <span className="material-symbols-outlined text-[32px]" style={{ fontVariationSettings: "'FILL' 1" }}>{svc.icon}</span>
+              <div key={svc.href} className="group flex flex-col rounded-2xl border border-white/10 bg-white/[0.055] p-7 transition hover:-translate-y-1 hover:border-white/20 hover:bg-white/[0.08]">
+                <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-xl bg-white/10 text-blue-200 ring-1 ring-inset ring-white/10">
+                  <span className="material-symbols-outlined text-[25px]">{svc.icon}</span>
                 </div>
-                <h4 className="font-headline-sm text-headline-sm mb-2">{svc.title}</h4>
-                <p className="text-body-sm font-body-sm text-on-primary-container mb-6">{svc.desc}</p>
-                <Link href={svc.href} className="text-secondary-fixed font-label-md text-label-md hover:underline flex items-center gap-2">
-                  {svc.label} <span className="material-symbols-outlined text-[16px]">open_in_new</span>
+                <h3 className="mb-2 text-lg font-bold">{svc.title}</h3>
+                <p className="mb-7 flex-1 text-sm leading-6 text-slate-300">{svc.desc}</p>
+                <Link href={svc.href} className="flex items-center gap-2 text-xs font-bold text-emerald-300">
+                  {svc.label} <span className="material-symbols-outlined text-[16px] transition-transform group-hover:translate-x-0.5">arrow_forward</span>
                 </Link>
               </div>
             ))}
@@ -225,20 +257,19 @@ export default function HomeClient({ initialEditions }: Props) {
       </section>
 
       {/* Newsletter */}
-      <section className="py-stack-lg bg-surface-container-low">
-        <div className="max-w-container-max mx-auto px-gutter">
-          <div className="flex flex-col lg:flex-row items-center gap-12 bg-surface-container-lowest p-10 rounded-2xl shadow-sm border border-outline-variant overflow-hidden relative">
-            <div className="lg:w-1/2">
-              <h2 className="font-headline-md text-headline-md text-primary mb-4">Mantenha-se Informado</h2>
-              <p className="text-body-md font-body-md text-on-surface-variant mb-6">Assine nosso boletim informativo para receber os resumos diários das edições mais importantes diretamente em seu e-mail.</p>
-              <form className="flex flex-col sm:flex-row gap-3" onSubmit={(e) => e.preventDefault()}>
-                <input className="flex-grow px-4 py-3 rounded-lg border border-outline-variant focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-all" placeholder="seu@email.com" type="email" />
-                <button type="submit" className="bg-primary text-on-primary px-8 py-3 rounded-lg font-label-md text-label-md hover:shadow-lg transition-all">ASSINAR AGORA</button>
+      <section className="bg-slate-50 py-20">
+        <div className="mx-auto max-w-[1240px] px-4 sm:px-6 lg:px-8">
+          <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white px-6 py-10 shadow-[0_16px_50px_rgba(15,42,82,.08)] sm:px-10 lg:px-14">
+            <div aria-hidden="true" className="absolute bottom-0 right-0 h-48 w-48 translate-x-12 translate-y-12 rounded-full border-[38px] border-brand-50" />
+            <div className="relative max-w-3xl">
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-700">Boletim oficial</p>
+              <h2 className="mb-3 text-2xl font-extrabold tracking-tight text-brand-900 sm:text-3xl">Receba as novas edições</h2>
+              <p className="mb-6 max-w-2xl text-sm leading-6 text-slate-600">Acompanhe as publicações oficiais do município diretamente em seu e-mail.</p>
+              <form className="flex max-w-2xl flex-col gap-3 sm:flex-row" onSubmit={(e) => e.preventDefault()}>
+                <input className="h-12 flex-grow rounded-xl border border-slate-200 bg-slate-50 px-4 text-sm outline-none transition focus:border-brand-accent focus:bg-white focus:ring-2 focus:ring-blue-100" placeholder="seu@email.com" type="email" />
+                <button type="submit" className="h-12 rounded-xl bg-brand-900 px-7 text-xs font-bold text-white transition hover:bg-brand-800">Assinar boletim</button>
               </form>
-              <p className="text-[11px] text-outline mt-4">Ao assinar, você concorda com nossa Política de Privacidade e Termos de Uso.</p>
-            </div>
-            <div className="lg:w-1/2 relative min-h-[300px] w-full rounded-xl overflow-hidden shadow-inner bg-surface-container-high flex items-center justify-center">
-              <span className="material-symbols-outlined text-8xl text-outline/30">newspaper</span>
+              <p className="mt-3 text-[10px] text-slate-400">Ao assinar, você concorda com nossa Política de Privacidade.</p>
             </div>
           </div>
         </div>

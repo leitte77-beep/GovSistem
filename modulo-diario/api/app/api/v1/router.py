@@ -8,8 +8,10 @@ from app.api.v1.backup import router as backup_router
 from app.api.v1.editions import router as editions_router
 from app.api.v1.health import router as health_router
 from app.api.v1.imports import router as imports_router
+from app.api.v1.integrations import router as integrations_router
 from app.api.v1.internal import router as internal_router
 from app.api.v1.legacy_import import router as legacy_router
+from app.api.v1.legacy_urls import router as legacy_urls_router
 from app.api.v1.matter_relations import router as matter_relations_router
 from app.api.v1.matters import router as matters_router
 from app.api.v1.metrics import router as metrics_router
@@ -36,7 +38,9 @@ api_router.include_router(authorities_router)
 api_router.include_router(plans_router)
 api_router.include_router(editions_router)
 api_router.include_router(imports_router)
+api_router.include_router(integrations_router)
 api_router.include_router(legacy_router)
+api_router.include_router(legacy_urls_router)
 api_router.include_router(matters_router)
 api_router.include_router(matter_relations_router)
 api_router.include_router(roles_router)

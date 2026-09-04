@@ -173,6 +173,20 @@ class SignatureProviderType(str, Enum):
     SEAL = "seal"
 
 
+class ValidationStatus(str, Enum):
+    """Consistent validation states for signatures and timestamps.
+
+    Adopted instead of the limited ``valid|invalid|not_validated`` so that a
+    signature/timestamp can be in an explicitly pending or indeterminate
+    state until full cryptographic + chain validation completes.
+    """
+
+    PENDING_VALIDATION = "pending_validation"
+    VALID = "valid"
+    INVALID = "invalid"
+    INDETERMINATE = "indeterminate"
+
+
 class AuditAction(str, Enum):
     MATTER_CREATED = "matter.created"
     MATTER_UPDATED = "matter.updated"

@@ -1,15 +1,8 @@
-"""PAdES A1 signer for ICP-Brasil AD-RB compliance.
+"""Incremental PAdES Baseline signer backed by an A1 PKCS#12 credential.
 
-Implements PDF signing per DOC-ICP-15.03 (PAdES AD-RB):
-- Filter: PBAD_PAdES
-- SubFilter: PBAD.PAdES
-- CMS with required signed attributes
-- AD-RB policy OID: 2.16.76.1.7.1.11.1.3
-
-Visual features:
-- Rotated sidebar seal on every page
-- ICP-Brasil logo alongside rotated text
-- Signature manifest page (optional)
+The current implementation produces PAdES-B-B (ETSI.CAdES.detached).  It does
+not claim ICP-Brasil AD-RB policy conformance unless a policy signed attribute
+is actually embedded and independently validated.
 """
 
 import base64
@@ -50,7 +43,6 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 SIG_PLACEHOLDER_SIZE = 12288
-PADES_AD_RB_OID = "2.16.76.1.7.1.11.1.3"
 
 
 @dataclass
@@ -69,7 +61,7 @@ class CertificateInspection:
 
 
 class PfxA1SignerProvider(SignatureProvider):
-    """PAdES ICP-Brasil AD-RB digital signer using A1 certificates."""
+    """PAdES-B-B digital signer using an A1 certificate."""
 
     def __init__(self, pfx_bytes: bytes, password: str):
         self._password = password
@@ -204,7 +196,7 @@ class PfxA1SignerProvider(SignatureProvider):
             field_name=field_name,
             md_algorithm="sha256",
             subfilter=SigSeedSubFilter.PADES,
-            reason=reason or "Assinatura Digital - Doe ICP-Brasil AD-RB",
+            reason=reason or "Assinatura Digital - Diário Oficial Eletrônico",
             location=location or "",
         )
         field_spec = None
@@ -244,7 +236,12 @@ class PfxA1SignerProvider(SignatureProvider):
         # intact over the /ByteRange (i.e. no corruption/truncation). Chain
         # trust is validated separately (with ICP-Brasil roots) on demand.
         det = self.verify_detailed(pdf_bytes)
-        return any(s.get("intact") for s in det.get("signatures", []))
+        signatures = det.get("signatures", [])
+        return bool(
+            det.get("valid")
+            and signatures
+            and all(s.get("intact") and s.get("valid") for s in signatures)
+        )
 
     def verify_detailed(self, pdf_bytes: bytes) -> dict:
         """Cryptographically validate every signature field in the PDF.
@@ -287,12 +284,16 @@ class PfxA1SignerProvider(SignatureProvider):
                     "byte_range": list(emb.sig_object.get("/ByteRange", [])),
                     "intact": False,
                     "valid": False,
+                    "format_ok": False,
+                    "trusted": False,
                 }
                 try:
                     status = validate_pdf_signature(emb, vc)
                     entry["intact"] = bool(status.intact)
                     entry["valid"] = bool(status.valid)
-                    if not status.intact or not status.valid:
+                    entry["format_ok"] = entry["subfilter"] == "/ETSI.CAdES.detached"
+                    entry["trusted"] = bool(getattr(status, "trusted", False))
+                    if not status.intact or not status.valid or not entry["format_ok"]:
                         all_ok = False
                         entry["errors"] = [str(e) for e in (status.errors or [])]
                 except Exception as exc:  # noqa: BLE001
@@ -313,8 +314,8 @@ class PfxA1SignerProvider(SignatureProvider):
     def get_certificate_info(self) -> dict:
         return {
             "provider": "a1",
-            "format": "PAdES-AD-RB",
-            "policy_oid": PADES_AD_RB_OID,
+            "format": "PAdES-B-B",
+            "policy_oid": "",
             "subject": self._subject,
             "serial": self._serial,
             "issuer": self._cert.issuer.rfc4514_string(),

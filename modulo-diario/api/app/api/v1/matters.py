@@ -350,7 +350,7 @@ async def list_matters(
     query = select(Matter).where(Matter.organization_id == user.organization_id)
     user_roles = {ur.role.name for ur in user.user_roles}
 
-    if "ADMIN" not in user_roles and "AUDITOR" not in user_roles:
+    if "ADMIN" not in user_roles and "AUDITOR" not in user_roles and "CONSULTA" not in user_roles:
         if "AUTOR" in user_roles:
             query = query.where(Matter.author_id == user.id)
         elif "REVISOR" in user_roles:
@@ -410,7 +410,7 @@ async def matter_stats(
     query = select(Matter.status, func.count()).where(Matter.organization_id == user.organization_id)
     user_roles = {ur.role.name for ur in user.user_roles}
 
-    if "ADMIN" not in user_roles and "AUDITOR" not in user_roles:
+    if "ADMIN" not in user_roles and "AUDITOR" not in user_roles and "CONSULTA" not in user_roles:
         if "AUTOR" in user_roles:
             query = query.where(Matter.author_id == user.id)
         elif "REVISOR" in user_roles:
@@ -559,6 +559,16 @@ async def update_matter(
         matter.references_matter_id = body.references_matter_id
 
     matter.version += 1
+    # Capture an immutable version on this explicit save (server source).
+    from app.services.matter_version import MatterVersionService
+
+    await MatterVersionService(db, user.id).capture(
+        matter, reason="update", source="explicit_save"
+    )
+    # Content changed => invalidate any active conference (Fasa 8).
+    from app.services.conference import ConferenceService
+
+    await ConferenceService(db).invalidate_for_matter(matter.id)
     await db.commit()
     await db.refresh(matter)
 
@@ -612,6 +622,9 @@ async def submit_for_review(
 
     matter.change_status(MatterStatus.REVIEW)
     matter.review_reason = None  # cleared on (re)submission
+    from app.services.matter_version import MatterVersionService
+
+    await MatterVersionService(db, user.id).capture(matter, reason="submit", source="workflow_event")
     await db.commit()
     await db.refresh(matter)
 
@@ -641,9 +654,22 @@ async def approve_matter(
     user: User = Depends(require_roles("REVISOR", "ADMIN")),
 ):
     matter = await _get_matter_or_404(matter_id, db)
+    # Four-eyes: quem cria a matéria não pode aprová-la.
+    # ADMINS/SUPER_ADMIN são a exceção administrativa expressa (podem operar
+    # com operação única quando a política exigir), conforme política.
+    from app.core.permissions import PermissionService
+    from app.services.four_eyes import FourEyesService
+
+    perm = PermissionService(user)
+    is_privileged = bool(perm.role_names() & {"SUPER_ADMIN", "ADMIN"})
+    if not (is_privileged and FourEyesService().config_allows_admin_bypass()):
+        FourEyesService().check(user.id, matter.author_id, "CREATE_APPROVE")
     matter.change_status(MatterStatus.APPROVED)
     matter.reviewed_by = user.id
     matter.review_reason = None
+    from app.services.matter_version import MatterVersionService
+
+    await MatterVersionService(db, user.id).capture(matter, reason="approve", source="workflow_event")
     await db.commit()
     await db.refresh(matter)
 

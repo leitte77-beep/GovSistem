@@ -15,6 +15,8 @@ if TYPE_CHECKING:
     from app.models.authority import Authority
     from app.models.edition_item import EditionItem
     from app.models.matter_attachment import MatterAttachment
+    from app.models.matter_review import MatterReview
+    from app.models.matter_version import MatterVersion
     from app.models.org_unit import OrgUnit
     from app.models.organization import Organization
     from app.models.user import User
@@ -178,6 +180,14 @@ class Matter(Base, TimestampMixin):
     )
     edition_items: Mapped[List["EditionItem"]] = relationship(
         "EditionItem", back_populates="matter", lazy="selectin",
+    )
+    versions: Mapped[List["MatterVersion"]] = relationship(
+        "MatterVersion", back_populates="matter", lazy="selectin",
+        cascade="all, delete-orphan",
+    )
+    reviews: Mapped[List["MatterReview"]] = relationship(
+        "MatterReview", back_populates="matter", lazy="selectin",
+        cascade="all, delete-orphan",
     )
 
     def can_edit(self) -> bool:

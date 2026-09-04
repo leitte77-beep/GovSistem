@@ -12,11 +12,17 @@ from app.models.enums import (
     MatterRelationType,
     MatterStatus,
     SignatureProviderType,
+    ValidationStatus,
 )
 from app.models.file import File
+from app.models.integration_client import IntegrationClient
+from app.models.integration_idempotency_key import IntegrationIdempotencyKey
+from app.models.legacy_url_map import LegacyUrlMap
 from app.models.matter import Matter
 from app.models.matter_attachment import MatterAttachment
 from app.models.matter_relation import MatterRelation
+from app.models.matter_review import MatterReview
+from app.models.matter_version import MatterVersion
 from app.models.org_unit import OrgUnit
 from app.models.organization import Organization
 from app.models.plan import Plan
@@ -28,10 +34,13 @@ from app.models.role import Role
 from app.models.search_index import SearchIndex
 from app.models.setting import SystemSetting
 from app.models.signature import Signature
+from app.models.signature_operation_audit import SignatureOperationAudit
 from app.models.signing_credential import SigningCredential
 from app.models.signing_document import SigningDocument
 from app.models.signing_job import SigningJob
 from app.models.tenant_domain import TenantDomain
+from app.models.timestamp_record import TimestampRecord
+from app.models.trust_anchor import TrustAnchors
 from app.models.user import User
 from app.models.user_role import UserRole
 
@@ -45,6 +54,7 @@ __all__ = [
     "MatterRelationType",
     "MatterStatus",
     "SignatureProviderType",
+    "ValidationStatus",
     "ActType",
     "AuditEvent",
     "Authority",
@@ -53,9 +63,14 @@ __all__ = [
     "EditionItem",
     "EditionPublicationSnapshot",
     "File",
+    "IntegrationClient",
+    "IntegrationIdempotencyKey",
+    "LegacyUrlMap",
     "Matter",
     "MatterAttachment",
     "MatterRelation",
+    "MatterReview",
+    "MatterVersion",
     "Organization",
     "OrgUnit",
     "Plan",
@@ -66,10 +81,13 @@ __all__ = [
     "SearchIndex",
     "SystemSetting",
     "Signature",
+    "SignatureOperationAudit",
     "SigningCredential",
     "SigningDocument",
     "SigningJob",
     "TenantDomain",
+    "TimestampRecord",
+    "TrustAnchors",
     "User",
     "UserRole",
 ]

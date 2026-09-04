@@ -4,6 +4,7 @@ import io
 import os
 import re
 import uuid
+import base64
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
@@ -15,6 +16,7 @@ from app.core.config import settings
 from app.core.database import get_sync_db
 from app.models.enums import EditionStatus
 from app.services.pdf_utils import compute_hash, detect_landscape, format_date
+from app.semantic.snapshot import verify_snapshot
 
 TEMPLATE_DIR = Path(__file__).parent.parent / "templates" / "pdf"
 LAYOUTS_DIR = TEMPLATE_DIR / "layouts"
@@ -59,6 +61,16 @@ def _save_to_storage(filename: str, content: bytes) -> str:
     return filename
 
 
+def _qr_data_uri(url: str) -> str:
+    """Generate the verification QR locally; no citizen data reaches a third party."""
+    import qrcode
+
+    image = qrcode.make(url)
+    output = io.BytesIO()
+    image.save(output, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(output.getvalue()).decode("ascii")
+
+
 def generate_edition_pdf_sync(
     edition_id: str,
     organ_name: str | None = None,
@@ -79,6 +91,7 @@ def generate_edition_pdf_sync(
     try:
         from app.models.edition import Edition
         from app.models.edition_item import EditionItem
+        from app.models.edition_publication_snapshot import EditionPublicationSnapshot
 
         result = db.execute(
             select(Edition)
@@ -101,13 +114,27 @@ def generate_edition_pdf_sync(
         verification_code = edition.verification_code
         db.commit()
 
+        snapshot = db.execute(
+            select(EditionPublicationSnapshot)
+            .where(
+                EditionPublicationSnapshot.edition_id == edition.id,
+                EditionPublicationSnapshot.is_valid.is_(True),
+            )
+            .order_by(EditionPublicationSnapshot.frozen_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        if snapshot is None:
+            raise ValueError("Canonical publication snapshot is required before PDF generation")
+        snapshot_ok, snapshot_reason = verify_snapshot(snapshot.content)
+        if not snapshot_ok:
+            raise ValueError(f"Invalid canonical publication snapshot: {snapshot_reason}")
+
         sections_map: dict[str, list] = {}
-        for item in sorted(edition.items or [], key=lambda i: i.position):
-            section_key = item.section_title or "Geral"
+        for item in sorted(snapshot.content.get("items", []), key=lambda i: i["position"]):
+            section_key = item.get("section_title") or "Geral"
             if section_key not in sections_map:
                 sections_map[section_key] = []
-            matter = item.matter
-            content_html = matter.content_html if matter else ""
+            content_html = item.get("content_html") or ""
             # Convert HTTP image URLs to local file:// URIs for weasyprint
             content_html = re.sub(
                 r'<img\s+src="https?://[^"]+/matter-content/([^/]+)/(page_\d+\.(?:png|jpg|jpeg))"',
@@ -115,13 +142,13 @@ def generate_edition_pdf_sync(
                 content_html,
             )
             sections_map[section_key].append({
-                "id": str(item.id),
-                "title": matter.title if matter else "Matéria",
-                "summary": matter.summary if matter else None,
+                "id": item["id"],
+                "title": item.get("title") or "Matéria",
+                "summary": item.get("summary"),
                 "content_html": content_html,
-                "act_type": matter.act_type.name if matter and matter.act_type else "",
-                "org_unit": matter.org_unit.abbreviation if matter and matter.org_unit else "",
-                "author": matter.author.name if matter and matter.author else "",
+                "act_type": (item.get("metadata") or {}).get("act_type_name", ""),
+                "org_unit": (item.get("metadata") or {}).get("org_unit_name", ""),
+                "author": (item.get("responsible") or {}).get("name", ""),
                 "is_landscape": detect_landscape(content_html),
                 "is_pdf_image_content": "matter-content" in content_html and "<img" in content_html.lower(),
             })
@@ -155,6 +182,7 @@ def generate_edition_pdf_sync(
         css_path = str(template_dir / "edition.css")
 
         def _render_html(total_pages: str = "") -> str:
+            verification_target = f"{verification_base_url.rstrip('/')}/{verification_code}"
             return template.render(
                 organ_name=organ_name,
                 edition=edition,
@@ -175,6 +203,8 @@ def generate_edition_pdf_sync(
                 sections=sections,
                 css_path=css_path,
                 total_pages=total_pages,
+                total_matters=len(summary_items),
+                qr_code_uri=_qr_data_uri(verification_target),
             )
 
         from weasyprint import CSS, HTML  # noqa: N811
@@ -196,12 +226,26 @@ def generate_edition_pdf_sync(
             base_url=str(template_dir),
         ).write_pdf(stylesheets=[CSS(filename=css_path)])
 
+        # A page-count label can itself affect pagination. Converge once more
+        # and fail rather than publishing a PDF with an incorrect total.
+        final_page_count = len(PdfReader(io.BytesIO(pdf_bytes)).pages)
+        if final_page_count != int(total_pages):
+            total_pages = str(final_page_count)
+            pdf_bytes = HTML(
+                string=_render_html(total_pages=total_pages),
+                base_url=str(template_dir),
+            ).write_pdf(stylesheets=[CSS(filename=css_path)])
+            if len(PdfReader(io.BytesIO(pdf_bytes)).pages) != int(total_pages):
+                raise ValueError("PDF pagination did not converge")
+
         pdf_hash = compute_hash(pdf_bytes)
         filename = f"edition_{edition.year}_{edition.number}_{uuid.uuid4().hex[:8]}.pdf"
         _save_to_storage(filename, pdf_bytes)
 
         edition.pdf_path = filename
         edition.pdf_hash = pdf_hash
+        edition.source_pdf_hash = pdf_hash
+        edition.content_manifest_hash = snapshot.content_manifest_hash
         edition.verification_code = verification_code
         edition.status = EditionStatus.PDF_GENERATED
         db.commit()

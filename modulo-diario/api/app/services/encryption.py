@@ -1,51 +1,66 @@
 """Encryption service for sensitive data at rest.
 
-Uses Fernet (symmetric encryption) with a key derived from the master SECRET_KEY.
-Supports encrypt/decrypt of strings and bytes for PFX passwords, API keys, etc.
+Uses the versioned :class:`FernetKeyRing` from :mod:`app.services.secrets`.
+Every ciphertext is tagged with its ``encryption_key_id`` so keys can be
+rotated without re-encrypting existing material. Legacy Fernet payloads
+(no ``v1.<key_id>.`` prefix) are transparently decrypted with the active
+key for backward compatibility.
 """
 
-import base64
-import hashlib
-import logging
-from typing import Optional
+from __future__ import annotations
 
-from cryptography.fernet import Fernet
+import logging
+from functools import lru_cache
 
 from app.core.config import settings
+from app.services.secrets import FernetKeyRing, seal, unseal
 
 logger = logging.getLogger(__name__)
 
-_fernet: Optional[Fernet] = None
+
+@lru_cache(maxsize=1)
+def get_key_ring() -> FernetKeyRing:
+    """Build the process-level key ring from the master SECRET_KEY.
+
+    A single active key ("v1") is used by default. Future key rotation can
+    pass additional ``ENC_KEYS_*`` configurations; the ring already supports
+    multiple versions and key_id tagging.
+    """
+    master = settings.SECRET_KEY.get_secret_value()
+    versions: dict[str, str] = {}
+    for i in range(1, 6):
+        segment = getattr(settings, f"ENC_KEY_V{i}", None)
+        if segment:
+            versions[f"v{i}"] = segment
+    if not versions:
+        versions = {"v1": master}
+    return FernetKeyRing(master_key=master, key_versions=versions)
 
 
-def _get_fernet() -> Fernet:
-    global _fernet
-    if _fernet is None:
-        raw = settings.SECRET_KEY.get_secret_value().encode("utf-8")
-        key = base64.urlsafe_b64encode(hashlib.sha256(raw).digest())
-        _fernet = Fernet(key)
-    return _fernet
+def _ring() -> FernetKeyRing:
+    return get_key_ring()
 
 
 def encrypt(plaintext: str) -> str:
-    """Encrypt a string. Returns base64-encoded ciphertext."""
-    f = _get_fernet()
-    return f.encrypt(plaintext.encode("utf-8")).decode("utf-8")
+    """Encrypt a string. Returns a versioned, base64-encoded ciphertext string."""
+    return seal(plaintext.encode("utf-8"), _ring())
 
 
 def decrypt(ciphertext: str) -> str:
-    """Decrypt a base64-encoded ciphertext."""
-    f = _get_fernet()
-    return f.decrypt(ciphertext.encode("utf-8")).decode("utf-8")
+    """Decrypt a versioned (or legacy) ciphertext string."""
+    return unseal(ciphertext, _ring()).decode("utf-8")
 
 
 def encrypt_bytes(data: bytes) -> bytes:
-    """Encrypt raw bytes."""
-    f = _get_fernet()
-    return f.encrypt(data)
+    """Encrypt raw bytes. Returns the versioned, base64-encoded bytes."""
+    return seal(data, _ring()).encode("utf-8")
 
 
 def decrypt_bytes(data: bytes) -> bytes:
-    """Decrypt raw bytes."""
-    f = _get_fernet()
-    return f.decrypt(data)
+    """Decrypt raw bytes (versioned or legacy)."""
+    return unseal(data.decode("utf-8"), _ring())
+
+
+def current_key_id() -> str:
+    """Return the active encryption key id for auditing/rotation."""
+    return _ring().active_key_id

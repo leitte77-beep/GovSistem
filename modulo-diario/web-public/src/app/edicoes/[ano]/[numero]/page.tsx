@@ -26,6 +26,12 @@ export const dynamic = "force-dynamic";
 
 type PageProps = { params: { ano: string; numero: string } };
 
+function formatCnpj(value?: string | null): string | null {
+  const digits = (value || "").replace(/\D/g, "");
+  if (digits.length !== 14) return value?.trim() || null;
+  return digits.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5");
+}
+
 interface EditionContent {
   editionMeta: SnapshotEdition;
   matters: SnapshotMatter[];
@@ -274,43 +280,72 @@ export default async function EditionDetailPage({ params }: PageProps) {
       />
       <div className="edition-canvas bg-edition-canvas">
         <div className={`${shell} py-8`}>
-          {/* ===== Breadcrumb + actions card (mockup style) ===== */}
-          <div className="mx-auto w-full max-w-[1280px]">
-            <div className="flex flex-col gap-4 rounded-none border-b border-slate-200 bg-white pb-4 md:flex-row md:items-center md:justify-between no-print">
-              <EditionBreadcrumb year={year} number={number} />
-              <EditionActions
-                downloadUrl={downloadUrl}
-                viewUrl={viewUrl}
-                verificationUrl={verificationUrl}
-                shareTitle={`Edição nº ${number}/${year} — Diário Oficial Eletrônico`}
-              />
+          {/* ===== Context + actions bar ===== */}
+          <div className="mx-auto w-full max-w-[1480px]">
+            <div className="relative overflow-visible rounded-2xl border border-slate-200/90 bg-white shadow-[0_10px_30px_rgba(15,42,82,0.07)] no-print">
+              <div aria-hidden="true" className="absolute inset-x-6 top-0 h-[3px] rounded-b-full bg-gradient-to-r from-brand-900 via-brand-accent to-amber-400" />
+              <div className="flex flex-col gap-4 px-4 pb-4 pt-5 sm:px-5 md:flex-row md:items-center md:justify-between md:gap-6 md:px-6 md:py-4">
+                <div className="flex min-w-0 items-center gap-3">
+                  <span aria-hidden="true" className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-900 sm:flex">
+                    <span className="material-symbols-outlined text-[20px]">article</span>
+                  </span>
+                  <div className="min-w-0">
+                    <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                      Você está consultando
+                    </p>
+                    <EditionBreadcrumb year={year} number={number} />
+                  </div>
+                </div>
+                <div className="shrink-0 border-t border-slate-100 pt-3 md:border-l md:border-t-0 md:pl-6 md:pt-0">
+                  <EditionActions
+                    downloadUrl={downloadUrl}
+                    viewUrl={viewUrl}
+                    verificationUrl={verificationUrl}
+                    shareTitle={`Edição nº ${number}/${year} — Diário Oficial Eletrônico`}
+                  />
+                </div>
+              </div>
             </div>
 
             {/* ===== Three-zone card grid: sumário | documento | dados técnicos ===== */}
-            <div className="mt-8 grid grid-cols-1 items-start gap-8 lg:grid-cols-[250px_minmax(0,1fr)_290px]">
+            <div className="mt-8 grid grid-cols-1 items-start gap-6 lg:grid-cols-[230px_minmax(0,1fr)_270px] xl:grid-cols-[240px_minmax(0,1fr)_280px]">
               {/* LEFT — Sumário */}
               <aside
                 aria-label="Sumário da edição"
                 className="hidden no-print lg:sticky lg:top-24 lg:block"
               >
                 <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                  <div className="border-b border-slate-200 bg-slate-50 px-5 py-4">
-                    <h2 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-600">
-                      <span aria-hidden="true" className="material-symbols-outlined text-[16px] text-[#102a43]">toc</span>
+                  <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50/80 px-4 py-4">
+                    <h2 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-700">
+                      <span aria-hidden="true" className="flex h-7 w-7 items-center justify-center rounded-lg bg-brand-50 text-brand-900">
+                        <span className="material-symbols-outlined text-[16px]">toc</span>
+                      </span>
                       Sumário
                     </h2>
+                    <span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-slate-500 ring-1 ring-inset ring-slate-200">
+                      {meta.length} {meta.length === 1 ? "item" : "itens"}
+                    </span>
                   </div>
-                  <div className="doe-side-scroll p-3">
-                    <ol>
+                  <div className="doe-side-scroll p-2.5">
+                    <ol className="space-y-1">
                       {meta.map((m, index) => (
-                        <li key={m.anchorId} className="py-0.5">
+                        <li key={m.anchorId}>
                           <a
                             href={`#${m.anchorId}`}
-                            className="flex items-center justify-between gap-2 rounded-xl border border-blue-100 bg-blue-50/60 p-3 text-[14px] font-medium text-[#102a43] transition hover:bg-blue-100"
+                            className="group flex items-start gap-3 rounded-xl border border-transparent px-2.5 py-2.5 transition hover:border-brand-100 hover:bg-brand-50 focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-accent"
                           >
-                            <span className="min-w-0 truncate">{m.title}</span>
-                            <span className="shrink-0 rounded-md bg-[#0b192c] px-2 py-0.5 text-xs font-bold text-white">
+                            <span className="mt-0.5 flex h-7 min-w-7 shrink-0 items-center justify-center rounded-lg bg-brand-900 px-1.5 text-[11px] font-bold text-white shadow-sm transition group-hover:bg-brand-accent">
                               {String(index + 1).padStart(2, "0")}
+                            </span>
+                            <span className="min-w-0 py-0.5">
+                              {m.section && (
+                                <span className="mb-0.5 block text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                                  {m.section}
+                                </span>
+                              )}
+                              <span className="line-clamp-2 block text-[12px] font-semibold leading-[1.35] text-slate-700 group-hover:text-brand-900">
+                                {m.title}
+                              </span>
                             </span>
                           </a>
                         </li>
@@ -543,12 +578,12 @@ export default async function EditionDetailPage({ params }: PageProps) {
                         <p className="font-bold uppercase tracking-wider text-slate-500 text-[10px]">
                           Signatário
                         </p>
-                        <div className="space-y-1 rounded-lg bg-slate-50 p-3">
-                          <p className="font-bold text-slate-800">
-                            {authenticity.signatures[0].subject.split(":").slice(0, 1).join("").replace(/^CN=/, "") || authenticity.signatures[0].subject}
-                          </p>
-                          {authenticity.signatures[0].issuer && (
-                            <p className="break-words text-slate-500">{authenticity.signatures[0].issuer}</p>
+                        <div className="rounded-lg bg-slate-50 p-3">
+                          <p className="font-bold uppercase text-slate-800">{municipality}</p>
+                          {formatCnpj(authenticity.signatures[0].certificate_document) && (
+                            <p className="mt-1 text-slate-500">
+                              CNPJ {formatCnpj(authenticity.signatures[0].certificate_document)}
+                            </p>
                           )}
                         </div>
                       </div>

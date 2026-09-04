@@ -1,12 +1,17 @@
 import type { MetadataRoute } from "next";
 
-export default function robots(): MetadataRoute.Robots {
+import { getRequestOrigin } from "@/lib/server/edition-loader";
+
+export default async function robots(): Promise<MetadataRoute.Robots> {
+  const origin = await getRequestOrigin();
+  const baseUrl = origin || "https://diario.govsistem.com.br";
+
   return {
     rules: {
       userAgent: "*",
       allow: "/",
-      disallow: "/api/",
+      disallow: ["/api/", "/api", "/verificar/"],
     },
-    sitemap: "https://diario.govsistem.com.br/sitemap.xml",
+    sitemap: `${baseUrl}/sitemap.xml`,
   };
 }

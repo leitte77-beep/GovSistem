@@ -13,6 +13,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.auth import get_current_user, require_roles
 from app.core.config import settings
+from app.core.config import settings as api_settings
 from app.core.database import get_db
 from app.middleware.audit import capture_request_info, log_audit_event
 from app.models.edition import Edition
@@ -20,6 +21,7 @@ from app.models.edition_item import EditionItem
 from app.models.enums import AuditAction, EditionStatus, EditionType, MatterStatus
 from app.models.matter import Matter
 from app.models.signature import Signature
+from app.models.signature_operation_audit import SignatureOperationAudit
 from app.models.signing_credential import SigningCredential
 from app.models.user import User
 from app.schemas.edition import (
@@ -40,6 +42,53 @@ from app.schemas.edition import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["editions"])
+
+
+def no_hard_errors(errors: list[str]) -> bool:
+    """False if any validation error indicates a real integrity failure."""
+    hard = [e for e in (errors or []) if not e.startswith("Certificate issuer")]
+    return len(hard) == 0
+
+
+async def _record_signature_operation(
+    db: AsyncSession,
+    operation_id: str,
+    organization_id: uuid.UUID | None,
+    edition_id: uuid.UUID | None,
+    credential_id: uuid.UUID | None,
+    provider: str | None,
+    requested_by: uuid.UUID | None,
+    started_at: datetime,
+    finished_at: datetime | None,
+    result: str | None,
+    source_hash: str | None,
+    signed_hash: str | None,
+    certificate_serial: str | None,
+    correlation_id: str | None,
+    client_service: str | None,
+    error: str | None = None,
+) -> None:
+    """Persist a signing operation audit entry. Never stores secrets."""
+    op = SignatureOperationAudit(
+        operation_id=operation_id,
+        organization_id=organization_id,
+        edition_id=edition_id,
+        credential_id=credential_id,
+        provider=provider,
+        requested_by=requested_by,
+        requested_at=started_at,
+        started_at=started_at,
+        finished_at=finished_at,
+        result=result,
+        source_hash=source_hash,
+        signed_hash=signed_hash,
+        certificate_serial=certificate_serial,
+        correlation_id=correlation_id,
+        client_service=client_service,
+        error=error,
+    )
+    db.add(op)
+    await db.flush()
 
 
 def _status_value(status) -> str:
@@ -148,7 +197,9 @@ async def create_edition(
 
     server_assigned = auto_numbering or body.number is None
     if server_assigned:
-        number = await _next_edition_number(
+        from app.services.edition_number import edition_number_service
+
+        number = await edition_number_service.allocate(
             db, user.organization_id, body.year, body.type
         )
     else:
@@ -492,6 +543,8 @@ async def close_edition(
     user: User = Depends(require_roles("DIAGRAMADOR", "ADMIN")),
 ):
     edition = await _get_edition_or_404(edition_id, db)
+    if not edition.verification_code:
+        edition.generate_verification_code()
     edition_meta = {
         "id": edition.id,
         "organization_id": edition.organization_id,
@@ -507,32 +560,25 @@ async def close_edition(
     await db.commit()
     await db.refresh(edition, attribute_names=["updated_at"])
 
-    # Fase 11: freeze an immutable snapshot when the semantic engine is enabled
-    from app.core.feature_flags import is_feature_enabled
-    if await is_feature_enabled(
-        db, "semantic_document_engine_enabled", edition_meta["organization_id"]
-    ):
-        from app.models.edition_publication_snapshot import EditionPublicationSnapshot
-        existing = await db.execute(
-            select(EditionPublicationSnapshot)
-            .where(
-                EditionPublicationSnapshot.edition_id == edition_id,
-                EditionPublicationSnapshot.is_valid.is_(True),
-            )
-            .limit(1)
+    # The frozen snapshot is mandatory: web, PDF and validation must all refer
+    # to exactly the same canonical content. Fail closed if freezing fails.
+    from app.models.edition_publication_snapshot import EditionPublicationSnapshot
+    existing = await db.execute(
+        select(EditionPublicationSnapshot)
+        .where(
+            EditionPublicationSnapshot.edition_id == edition_id,
+            EditionPublicationSnapshot.is_valid.is_(True),
         )
-        if existing.scalar_one_or_none() is None:
-            from app.services.edition_snapshot import create_edition_snapshot
-            try:
-                await create_edition_snapshot(db, edition_meta, user_id=user.id)
-                await db.commit()
-            except Exception as e:  # noqa: BLE001
-                logger.warning("Snapshot creation failed for edition %s: %s", edition_id, e)
-                await db.rollback()
+        .limit(1)
+    )
+    if existing.scalar_one_or_none() is None:
+        from app.services.edition_snapshot import create_edition_snapshot
+        await create_edition_snapshot(db, edition_meta, user_id=user.id)
+        await db.commit()
 
     # Auto-generate PDF after closing (uses its own sync session)
-    from app.services.edition_pdf import generate_edition_pdf_sync
     from app.models.organization import Organization
+    from app.services.edition_pdf import generate_edition_pdf_sync
     org_result = await db.execute(
         select(Organization).where(Organization.id == edition_meta["organization_id"])
     )
@@ -648,8 +694,8 @@ async def generate_edition_pdf(
     if edition.status == EditionStatus.SIGNED:
         raise HTTPException(409, "Cannot regenerate PDF for a signed edition")
 
-    from app.services.edition_pdf import generate_edition_pdf_sync
     from app.models.organization import Organization
+    from app.services.edition_pdf import generate_edition_pdf_sync
 
     org_result = await db.execute(
         select(Organization).where(Organization.id == edition.organization_id)
@@ -720,7 +766,6 @@ async def sign_edition(
                 raise e
             raise HTTPException(500, f"Erro ao descriptografar certificado: {e}")
 
-    from app.core.config import settings as api_settings
     from app.models.organization import Organization
 
     org_result = await db.execute(
@@ -746,6 +791,9 @@ async def sign_edition(
 
     import base64
     result = None
+    operation_id = uuid.uuid4().hex
+    correlation_id = uuid.uuid4().hex
+    start_time = datetime.now(timezone.utc)
     try:
         import httpx
         signer_payload = {
@@ -757,6 +805,7 @@ async def sign_edition(
             "location": body.location or "",
             "visible": body.visible or False,
             "verification_code": edition.verification_code or "",
+            "correlation_id": correlation_id,
         }
         async with httpx.AsyncClient() as http_client:
             signer_resp = await http_client.post(
@@ -769,6 +818,25 @@ async def sign_edition(
             raise RuntimeError(f"Signer error: {signer_resp.text}")
         result = signer_resp.json()
     except Exception as e:
+        await _record_signature_operation(
+            db=db,
+            operation_id=operation_id,
+            organization_id=edition.organization_id,
+            edition_id=edition.id,
+            credential_id=credential.id if credential else None,
+            provider=credential.provider_type if credential else "a1",
+            requested_by=user.id,
+            started_at=start_time,
+            finished_at=datetime.now(timezone.utc),
+            result="failed",
+            source_hash=source_pdf_hash,
+            signed_hash=None,
+            certificate_serial=credential.certificate_serial if credential else None,
+            correlation_id=correlation_id,
+            client_service="api",
+            error=str(e),
+        )
+        await db.commit()
         raise HTTPException(502, f"Signing service failed: {e}")
 
     # Cross-check: o signer deve ter assinado exatamente os bytes enviados.
@@ -781,33 +849,13 @@ async def sign_edition(
         raise HTTPException(502, "Hash do PDF assinado difere do informado pelo signer")
 
     # Só prossegue para SIGNED se o signer confirmou a validação criptográfica.
-    if result.get("validation_status") not in ("ok", "verification_failed", None):
+    if result.get("validation_status") != "ok":
         raise HTTPException(502, "Falha na validação criptográfica pós-assinatura no signer")
 
-    # content_manifest_hash: representação canônica do conteúdo + layout + source.
-    import json as _json
-    _manifest = {
-        "organization_id": str(edition.organization_id),
-        "edition_id": str(edition.id),
-        "year": edition.year,
-        "number": edition.number,
-        "type": edition.type.value if hasattr(edition.type, "value") else str(edition.type),
-        "layout": pdf_layout,
-        "renderer_version": "weasyprint",
-        "items": [
-            {
-                "id": str(it.matter_id),
-                "position": it.position,
-                "version": it.matter.version if it.matter else None,
-                "content_hash": hashlib.sha256((it.matter.content_html or "").encode()).hexdigest() if it.matter else None,
-            }
-            for it in (edition.items or [])
-        ],
-        "source_pdf_hash": source_pdf_hash,
-    }
-    edition.content_manifest_hash = hashlib.sha256(
-        _json.dumps(_manifest, sort_keys=True).encode()
-    ).hexdigest()
+    # content_manifest_hash was produced from the canonical frozen snapshot at
+    # close time. Never replace it with a second, incompatible hash scheme.
+    if not edition.content_manifest_hash:
+        raise HTTPException(409, "Snapshot canônico/hash do manifesto ausente")
     edition.renderer_version = "weasyprint"
     edition.layout_version = pdf_layout
 
@@ -833,7 +881,7 @@ async def sign_edition(
             "issuer": result.get("certificate_issuer", ""),
             "valid_from": result.get("valid_from", ""),
             "valid_to": result.get("valid_to", ""),
-            "policy_oid": result.get("policy_oid", "2.16.76.1.7.1.11.1.3"),
+            "policy_oid": result.get("policy_oid", ""),
             "signature_format": result.get("signature_format", "PAdES"),
             "sha256_original": source_pdf_hash,
             "sha256_signed": signed_pdf_hash,
@@ -849,7 +897,35 @@ async def sign_edition(
     edition.signed_pdf_hash = signed_pdf_hash
     edition.pdf_hash = signed_pdf_hash  # legado
     edition.immutability_hash = edition.compute_immutability_hash()
+    edition.signature_validation_status = "valid"
+    edition.signature_validation_details = {
+        "integrity": True,
+        "signature_valid": True,
+        "chain_trusted": False,
+        "revocation_status": "not_checked",
+        "timestamp_status": "not_present",
+        "pades_profile": "PAdES-B-B / ICP-Brasil AD-RB",
+    }
     edition.change_status(EditionStatus.SIGNED)
+    await db.commit()
+
+    await _record_signature_operation(
+        db=db,
+        operation_id=operation_id,
+        organization_id=edition.organization_id,
+        edition_id=edition.id,
+        credential_id=credential.id if credential else None,
+        provider=credential.provider_type if credential else "a1",
+        requested_by=user.id,
+        started_at=start_time,
+        finished_at=datetime.now(timezone.utc),
+        result="success",
+        source_hash=source_pdf_hash,
+        signed_hash=signed_pdf_hash,
+        certificate_serial=result["certificate_serial"],
+        correlation_id=correlation_id,
+        client_service="api",
+    )
     await db.commit()
 
     info = await capture_request_info(request)
@@ -874,6 +950,7 @@ async def sign_edition(
 @router.post("/editions/{edition_id}/validate-signature", response_model=ValidateSignatureResponse)
 async def validate_edition_signature(
     edition_id: uuid.UUID,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
@@ -898,16 +975,83 @@ async def validate_edition_signature(
             issues.append("Immutability hash mismatch")
             valid = False
 
+    # Re-verify cryptographically through the signer when the signed PDF exists.
+    stored_report = {}
+    import base64
+    import hashlib as _hl
+
+    from app.services.signature_validation import SignatureValidationService
+
+    svc = SignatureValidationService()
+    actual_signed_hash = None
+    signed_path = edition.signed_pdf_path
+    if signed_path:
+        import os as _os
+        pdf_full_path = _os.path.join(api_settings.UPLOAD_DIR, signed_path)
+        if _os.path.exists(pdf_full_path):
+            try:
+                with open(pdf_full_path, "rb") as f:
+                    signed_bytes = f.read()
+                actual_signed_hash = _hl.sha256(signed_bytes).hexdigest()
+                import httpx
+                resp = await httpx.AsyncClient().post(
+                    f"{settings.SIGNER_URL}/internal/verify-pdf",
+                    json={"signed_pdf_base64": base64.b64encode(signed_bytes).decode("utf-8")},
+                    headers={"X-Internal-Key": settings.INTERNAL_API_KEY.get_secret_value()},
+                    timeout=60,
+                )
+                if resp.status_code == 200:
+                    stored_report = resp.json()
+                    if stored_report.get("warnings"):
+                        issues.extend(stored_report.get("warnings", []))
+                else:
+                    issues.append(f"Signer verify returned {resp.status_code}")
+            except Exception as e:  # noqa: BLE001
+                issues.append(f"Signer verify unavailable: {e}")
+
+    # Chain/cert trust is only asserted via the recorded validation metadata.
+    chain_trusted = bool(cert_info.get("chain_trusted"))
+    certificate_valid = bool(edition.signature_validation_status == "valid")
+    timestamp_status = edition.signature_validation_status or "pending_validation"
+
+    result = svc.normalize(
+        stored_report,
+        signed_pdf_hash=edition.signed_pdf_hash,
+        actual_signed_hash=actual_signed_hash,
+        certificate_valid=certificate_valid,
+        chain_trusted=chain_trusted,
+        timestamp_status=timestamp_status,
+    )
+
+    normalized_status = result.status
+    if not valid:
+        issues.append("Stored integrity hashes inconsistent")
+    final_status = "valid" if (valid and result.integrity and no_hard_errors(result.errors)) else "invalid"
+
+    # Persist the validation outcome.
+    edition.signature_validation_status = final_status
+    edition.signature_validation_details = result.to_dict()
+
+    info = await capture_request_info(request)
+    await log_audit_event(
+        db=db, action=AuditAction.EDITION_SIGNED,
+        user_id=user.id, organization_id=user.organization_id,
+        entity_type="edition", entity_id=edition.id,
+        description=f"Signature re-validated for edition {edition.year}/{edition.number} -> {final_status}",
+        ip_address=info["ip_address"],
+    )
+    await db.commit()
+
     return ValidateSignatureResponse(
         edition_id=str(edition.id),
-        status="valid" if valid else "invalid",
+        status=final_status,
         signed_at=sig.signed_at.isoformat() if sig.signed_at else "",
         certificate_subject=cert_info.get("subject", ""),
         certificate_serial=cert_info.get("serial", ""),
         certificate_thumbprint=cert_info.get("thumbprint", ""),
         verification_code=edition.verification_code or "",
         issues=issues,
-        recommendation="OK" if valid else "Re-sign required",
+        recommendation="OK" if final_status == "valid" else "Re-sign required",
     )
 
 
@@ -922,6 +1066,21 @@ async def publish_edition(
     user: User = Depends(require_roles("PUBLICADOR", "ADMIN")),
 ):
     edition = await _get_edition_or_404(edition_id, db)
+    # Fase 12: publicação é uma operação crítica. Se a política estiver ativa,
+    # exige reautenticação forte (MFA) recente. O frontend deve enviar
+    # `X-Recent-Auth` (emitido pelo MFA) — controlado por flag para não quebrar
+    # o fluxo atual até a UI ser atualizada.
+    from app.core.config import settings as _cfg
+
+    if getattr(_cfg, "REQUIRE_RECENT_AUTH_FOR_PUBLISH", False):
+        from app.services.recent_auth import validate_recent_auth
+
+        token = request.headers.get("X-Recent-Auth")
+        if not token or not validate_recent_auth(token, user.id):
+            raise HTTPException(
+                403,
+                "Reautenticação forte (MFA) recente é obrigatória para publicar esta edição.",
+            )
     if edition.status == EditionStatus.PUBLISHED:
         return PublishResponse(
             edition_id=str(edition.id),
@@ -939,6 +1098,21 @@ async def publish_edition(
         )
     if not edition.signatures:
         raise HTTPException(422, "Edition has no signatures")
+    if not edition.signed_pdf_path or not edition.signed_pdf_hash:
+        raise HTTPException(422, "Artefato PDF assinado imutável ausente")
+    if edition.signature_validation_status != "valid":
+        raise HTTPException(422, "A assinatura digital ainda não foi validada")
+
+    from app.core.public_utils import read_public_file
+    from app.models.organization import Organization
+    org_result = await db.execute(select(Organization).where(Organization.id == edition.organization_id))
+    organization = org_result.scalar_one_or_none()
+    stored_bytes, _mime = read_public_file(
+        edition.signed_pdf_path,
+        organization.slug if organization else None,
+    )
+    if stored_bytes is None or hashlib.sha256(stored_bytes).hexdigest() != edition.signed_pdf_hash:
+        raise HTTPException(409, "PDF assinado ausente ou com hash divergente")
 
     # Validate all matters can transition to PUBLISHED before any DB changes
     from app.services.search_indexer import get_search_provider

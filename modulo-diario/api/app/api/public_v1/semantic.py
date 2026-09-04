@@ -131,9 +131,17 @@ def _build_authenticity(edition: Edition, snapshot: Optional[dict]) -> dict:
         subject = ci.get("subject", "")
         serial = ci.get("serial", "")
         masked_serial = _mask_serial(serial)
+        document_match = re.search(
+            r"(?<!\d)(\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}|\d{14})(?!\d)",
+            subject,
+        )
+        certificate_document = (
+            re.sub(r"\D", "", document_match.group(1)) if document_match else ""
+        )
         signatures.append({
             "signed_at": sig.signed_at.isoformat() if sig.signed_at else None,
             "subject": subject,
+            "certificate_document": certificate_document,
             "serial": serial,
             "serial_masked": masked_serial,
             "issuer": ci.get("issuer", ""),

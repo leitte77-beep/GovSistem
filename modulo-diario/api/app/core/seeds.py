@@ -64,6 +64,12 @@ SEED_ROLES: List[dict] = [
         "is_system": True,
     },
     {
+        "name": "CONSULTA",
+        "label": "Consulta",
+        "description": "Acesso somente leitura a matérias e publicações do órgão",
+        "is_system": True,
+    },
+    {
         "name": "SUPER_ADMIN",
         "label": "Super Administrador",
         "description": "Acesso total a todas as organizações e configurações da plataforma",

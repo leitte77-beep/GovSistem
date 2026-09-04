@@ -20,6 +20,15 @@ class Settings(BaseSettings):
     POSTGRES_USER: str = "doe_user"
     POSTGRES_PASSWORD: SecretStr = SecretStr("")
 
+    # Accepts a secret provider backend selector; kept simple to avoid
+    # over-engineering the local deployment (see app/services/secrets.py).
+    SECRET_PROVIDER: str = "database"
+    SIGNER_PROVIDER: str = "a1"
+
+    @property
+    def is_production(self) -> bool:
+        return self.ENVIRONMENT.lower() == "production"
+
     @property
     def DATABASE_URL(self) -> str:
         return (
@@ -57,7 +66,7 @@ class Settings(BaseSettings):
 
     PUBLIC_URL: str = "http://localhost:7200"
 
-    VERIFICATION_BASE_URL: str = "https://govsistem.com.br/verificar"
+    VERIFICATION_BASE_URL: str = "https://farol.govsistem.com.br/verificar"
 
     SENTRY_DSN: str | None = None
     ENVIRONMENT: str = "development"
@@ -113,10 +122,32 @@ class Settings(BaseSettings):
 
     LOG_RETENTION_DAYS: int = 365
     BACKUP_ENCRYPTED_DIR: str = "backups/encrypted"
+    FOUR_EYES_REQUIRED: bool = True
+    RECENT_AUTH_TTL_MINUTES: int = 5
+    REQUIRE_RECENT_AUTH_FOR_PUBLISH: bool = False
 
     @model_validator(mode="after")
     def validate_secrets(self):
-        if not self.SECRET_KEY.get_secret_value():
+        insecure_defaults = {
+            "change-me-in-dev",
+            "change_me_in_dev",
+            "change-me",
+            "change_me",
+            "secret",
+            "secret-key",
+            "changeme",
+        }
+        is_prod = self.ENVIRONMENT.strip().lower() == "production"
+
+        def _guard_known_default(value: str, env_name: str) -> None:
+            if value.lower() in insecure_defaults:
+                raise ValueError(
+                    f"{env_name} uses an insecure known default in production "
+                    f"({self.ENVIRONMENT!r}). Set a strong random value."
+                )
+
+        sk = self.SECRET_KEY.get_secret_value()
+        if not sk:
             if self.DEBUG:
                 import logging
                 import secrets as _secrets
@@ -128,6 +159,28 @@ class Settings(BaseSettings):
                 object.__setattr__(self, "SECRET_KEY", SecretStr(key))
             else:
                 raise ValueError("SECRET_KEY must be set in production")
+        elif is_prod:
+            _guard_known_default(sk, "SECRET_KEY")
+
+        # Fail-closed: internal API key must exist and be strong in production.
+        ikey = self.INTERNAL_API_KEY.get_secret_value()
+        if is_prod:
+            if not ikey or len(ikey) < 32 or ikey.lower() in insecure_defaults:
+                raise ValueError(
+                    "INTERNAL_API_KEY must be set to a strong random value "
+                    "(>=32 chars) in production."
+                )
+            # Mocks never run in production.
+            if self.SIGNER_PROVIDER.strip().lower() == "mock":
+                raise ValueError(
+                    "SIGNER_PROVIDER=mock is forbidden in production. "
+                    "Refusing to start."
+                )
+            if str(self.POSTGRES_PASSWORD.get_secret_value()).lower() in insecure_defaults:
+                raise ValueError(
+                    "POSTGRES_PASSWORD uses an insecure known default in production."
+                )
+
         if not self.POSTGRES_PASSWORD.get_secret_value():
             raise ValueError("POSTGRES_PASSWORD must be set")
         return self
