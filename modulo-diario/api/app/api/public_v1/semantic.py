@@ -63,12 +63,15 @@ async def _load_edition_and_snapshot(
     result = await db.execute(
         select(Edition)
         .where(*_find_edition_conditions(year, number, tenant))
+        .order_by(Edition.created_at.desc())
         .options(
             selectinload(Edition.signatures),
             selectinload(Edition.organization),
         )
     )
-    edition = result.scalar_one_or_none()
+    # Números são únicos por (org, ano, tipo); normal e extra podem compartilhar
+    # o número. `.first()` com ordem determinística evita MultipleResultsFound.
+    edition = result.scalars().first()
     if edition is None:
         raise HTTPException(404, "Edição não encontrada")
 

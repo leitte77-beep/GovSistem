@@ -195,6 +195,41 @@ async def test_author_cannot_use_admin_act_type_route(api_client, ctx):
     assert resp.status_code == 403
 
 
+@pytest.mark.anyio
+async def test_admin_delete_act_type_is_reversible_deactivation(api_client, ctx, db_session):
+    client = api_client(ctx.admin)
+
+    resp = await client.delete(f"/api/v1/admin/act-types/{ctx.strict.id}")
+
+    assert resp.status_code == 204, resp.text
+    await db_session.refresh(ctx.strict)
+    assert ctx.strict.is_active is False
+    assert ctx.strict.deleted_at is None
+
+    listed = await client.get("/api/v1/admin/act-types?include_inactive=true")
+    assert listed.status_code == 200, listed.text
+    assert any(row["id"] == str(ctx.strict.id) and row["is_active"] is False for row in listed.json())
+
+    rejected = await client.post(
+        "/api/v1/matters",
+        json=_payload(
+            ctx.strict,
+            act_number="05",
+            act_year=2026,
+            responsible_id=str(ctx.active.id),
+            metadata={"cnpj_contratado": "12345678000190"},
+        ),
+    )
+    assert rejected.status_code == 404, rejected.text
+
+    reactivated = await client.patch(
+        f"/api/v1/admin/act-types/{ctx.strict.id}",
+        json={"is_active": True},
+    )
+    assert reactivated.status_code == 200, reactivated.text
+    assert reactivated.json()["is_active"] is True
+
+
 # ── Backend validation of dynamic fields on create ───────────────────────────
 
 

@@ -14,6 +14,11 @@ from app.models.enums import EditionStatus, EditionType
 # ── Fixtures ──────────────────────────────────────────────────────────────────
 
 @pytest.fixture(autouse=True)
+def setup_db():
+    """These endpoint unit tests use mocked sessions and need no schema setup."""
+    yield
+
+@pytest.fixture(autouse=True)
 def override_db_and_auth():
     """Override get_db and get_current_user for all tests."""
     mock_session = AsyncMock()
@@ -64,6 +69,7 @@ def _make_edition(*, status: EditionStatus = EditionStatus.DRAFT, pdf_path=None,
     e.signatures = []
     e.pdf_path = pdf_path
     e.pdf_hash = pdf_hash
+    e.source_pdf_hash = pdf_hash
     e.verification_code = None
     e.immutability_hash = None
     e.can_edit = MagicMock(return_value=(status in (EditionStatus.DRAFT, EditionStatus.SCHEDULED)))
@@ -510,7 +516,12 @@ async def test_sign_edition(
     mock_capture, mock_audit, client, override_db_and_auth, tmp_path,
 ):
     mock_db = override_db_and_auth
-    edition = _make_edition(status=EditionStatus.PDF_GENERATED, pdf_path="test.pdf", pdf_hash="hash123")
+    source_hash = __import__("hashlib").sha256(b"fake-pdf-bytes").hexdigest()
+    edition = _make_edition(
+        status=EditionStatus.PDF_GENERATED,
+        pdf_path="test.pdf",
+        pdf_hash=source_hash,
+    )
     edition.signatures = []
 
     mock_result = MagicMock()
@@ -525,8 +536,8 @@ async def test_sign_edition(
     mock_resp.status_code = 200
     mock_resp.json.return_value = {
         "signed_pdf_base64": "c2lnbmVk",
-        "sha256_signed": "signedhash",
-        "sha256_original": "orighash",
+        "sha256_signed": __import__("hashlib").sha256(b"signed").hexdigest(),
+        "sha256_original": source_hash,
         "certificate_subject": "CN=Test",
         "certificate_serial": "12345",
         "certificate_thumbprint": "thumb",
@@ -534,6 +545,7 @@ async def test_sign_edition(
         "valid_from": "2026-01-01",
         "valid_to": "2027-01-01",
         "signature_format": "PAdES",
+        "validation_status": "ok",
     }
     mock_http_client = AsyncMock()
     mock_http_client.__aenter__.return_value = mock_http_client
@@ -548,6 +560,32 @@ async def test_sign_edition(
     assert response.status_code == 200
     data = response.json()
     assert "verification_code" in data
+
+
+@patch("builtins.open")
+@patch("os.path.exists", return_value=True)
+@patch("os.path.join", return_value="/tmp/mock.pdf")
+@patch("httpx.AsyncClient")
+@pytest.mark.anyio
+async def test_sign_edition_rejects_pdf_changed_after_generation(
+    mock_http, mock_join, mock_exists, mock_open, client, override_db_and_auth,
+):
+    mock_db = override_db_and_auth
+    edition = _make_edition(
+        status=EditionStatus.PDF_GENERATED,
+        pdf_path="test.pdf",
+        pdf_hash=__import__("hashlib").sha256(b"original").hexdigest(),
+    )
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = edition
+    mock_db.execute.return_value = mock_result
+    mock_open.return_value.__enter__.return_value.read.return_value = b"adulterado"
+
+    response = await client.post(f"/api/v1/editions/{edition.id}/sign", json={})
+
+    assert response.status_code == 409
+    assert "alterado após a geração" in response.json()["detail"]
+    mock_http.assert_not_called()
 
 
 @pytest.mark.anyio

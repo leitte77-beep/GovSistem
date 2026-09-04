@@ -11,6 +11,18 @@
 <body>
 {% set effective_verification_code = verification_code|default(preliminary_code|default(""), true) %}
 
+<aside class="page-authenticity-seal" aria-label="Selo de autenticidade">
+  <img src="{{ qr_code_uri }}" alt="">
+  <div class="page-authenticity-copy">
+    <strong>IDENTIFICAÇÃO E VERIFICAÇÃO DO DOCUMENTO</strong>
+    <span>{{ organ_name }} · Edição {{ edition.number }} · {{ publication_date }}</span>
+    <span>Código de verificação: {{ effective_verification_code }}</span>
+    <span>SHA-256 do conteúdo canônico: {{ content_manifest_hash }}</span>
+    <span>{{ verification_url }}/{{ effective_verification_code }}</span>
+  </div>
+  <div class="page-authenticity-number"></div>
+</aside>
+
 <article class="document">
   <div class="template-metadata">{{ organ_name }} {{ edition.title }} {{ edition_type_label }} {{ publication_date }}</div>
 
@@ -85,7 +97,7 @@
     {% endif %}
 
     {% for matter in section.matters %}
-    <section class="matter{% if matter.is_landscape %} matter-landscape{% endif %}{% if matter.is_pdf_image_content %} matter-image-content{% endif %}" id="matter-{{ matter.id }}">
+    <section class="matter{% if matter.is_pdf_image_content %} matter-image-content{% endif %}" id="matter-{{ matter.id }}">
       <h2 class="matter-title">{{ matter.title }}</h2>
 
       {% if matter.summary %}

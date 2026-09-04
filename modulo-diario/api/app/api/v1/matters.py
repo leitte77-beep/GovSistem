@@ -78,8 +78,16 @@ def _check_required_fields(
     return errors
 
 
-async def _load_act_type(db: AsyncSession, act_type_id: uuid.UUID) -> ActType:
-    result = await db.execute(select(ActType).where(ActType.id == act_type_id))
+async def _load_act_type(
+    db: AsyncSession,
+    act_type_id: uuid.UUID,
+    *,
+    active_only: bool = False,
+) -> ActType:
+    query = select(ActType).where(ActType.id == act_type_id)
+    if active_only:
+        query = query.where(ActType.is_active.is_(True), ActType.deleted_at.is_(None))
+    result = await db.execute(query)
     act_type = result.scalar_one_or_none()
     if act_type is None:
         raise HTTPException(status_code=404, detail="ActType not found")
@@ -179,7 +187,7 @@ async def get_next_matter_title(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("AUTOR", "ADMIN")),
 ):
-    act_type = await _load_act_type(db, act_type_id)
+    act_type = await _load_act_type(db, act_type_id, active_only=True)
 
     matter_result = await db.execute(
         select(Matter.act_number, Matter.act_year, Matter.title).where(
@@ -245,9 +253,7 @@ async def create_matter(
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("AUTOR", "ADMIN")),
 ):
-    await _entity_exists_or_404(
-        ActType, body.act_type_id, db, "ActType"
-    )
+    await _load_act_type(db, body.act_type_id, active_only=True)
     if body.org_unit_id:
         await _entity_exists_or_404(
             OrgUnit, body.org_unit_id, db, "OrgUnit"
@@ -495,9 +501,7 @@ async def update_matter(
     if body.summary is not None:
         matter.summary = body.summary.strip() if body.summary else None
     if body.act_type_id is not None:
-        await _entity_exists_or_404(
-            ActType, body.act_type_id, db, "ActType"
-        )
+        await _load_act_type(db, body.act_type_id, active_only=True)
         matter.act_type_id = body.act_type_id
     if body.org_unit_id is not None:
         await _entity_exists_or_404(

@@ -55,6 +55,7 @@ export default function ActTypesAdminPage() {
   const [deleting, setDeleting] = useState<ActTypeAdmin | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const patternRef = useRef<HTMLInputElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
 
   const isNew = !editing.id;
 
@@ -73,6 +74,13 @@ export default function ActTypesAdminPage() {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showInactive]);
+
+  useEffect(() => {
+    if (editorOpen) {
+      editorRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      editorRef.current?.focus({ preventScroll: true });
+    }
+  }, [editorOpen, editing.id]);
 
   function patchConfig<K extends keyof NonNullable<ActTypeAdmin["config"]>>(key: K, value: unknown) {
     setEditing((prev) => ({ ...prev, config: { ...(prev.config ?? {}), [key]: value } }));
@@ -262,7 +270,7 @@ export default function ActTypesAdminPage() {
 
       {/* Editor */}
       {editorOpen && (
-        <div className="rounded-xl border border-outline-variant bg-surface-container-lowest p-6 space-y-5">
+        <div ref={editorRef} tabIndex={-1} className="rounded-xl border border-outline-variant bg-surface-container-lowest p-6 space-y-5 focus:outline-none">
           <h3 className="text-lg font-semibold">{isNew ? "Novo tipo" : `Editar: ${editing.name}`}</h3>
 
           {saveError && <div className="rounded-lg bg-error/10 px-4 py-2 text-sm text-error">{saveError}</div>}

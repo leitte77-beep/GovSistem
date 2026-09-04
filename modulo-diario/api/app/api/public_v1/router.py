@@ -237,7 +237,16 @@ async def v1_list_editions(
     if search:
         like = f"%{search}%"
         query = query.where(or_(Edition.title.ilike(like), Edition.subtitle.ilike(like)))
-    query = query.order_by(Edition.year.desc(), Edition.number.desc())
+    # Ordena pela data de publicação (a edição mais recente/publicada fica na
+    # frente), com desempate pela hora de publicação e, por fim, número. É o que
+    # garante que uma edição EXTRA publicada depois da última normal apareça
+    # à frente dela (não no fim por ter número menor).
+    query = query.order_by(
+        Edition.publication_date.desc().nullslast(),
+        Edition.published_at.desc().nullslast(),
+        Edition.year.desc(),
+        Edition.number.desc(),
+    )
 
     total_query = select(Edition).where(
         Edition.status == EditionStatus.PUBLISHED,
@@ -297,6 +306,7 @@ async def v1_get_edition_by_year_number(
     request: Request,
     year: int,
     number: int,
+    type: Optional[str] = Query(None, description="Edition type: normal, extra, suplementar"),
     tenant: Organization | None = Depends(resolve_tenant_from_domain),
     db: AsyncSession = Depends(get_db),
 ):
@@ -308,9 +318,12 @@ async def v1_get_edition_by_year_number(
         Edition.status == EditionStatus.PUBLISHED,
         Edition.organization_id == tenant.id,
     ]
+    if type:
+        conditions.append(Edition.type == type)
     result = await db.execute(
         select(Edition)
         .where(*conditions)
+        .order_by(Edition.created_at.desc())
         .options(
             selectinload(Edition.items).selectinload(EditionItem.matter).selectinload(Matter.act_type),
             selectinload(Edition.items).selectinload(EditionItem.matter).selectinload(Matter.org_unit),
@@ -318,7 +331,10 @@ async def v1_get_edition_by_year_number(
             selectinload(Edition.signatures),
         )
     )
-    edition = result.scalar_one_or_none()
+    # Números são únicos por (org, ano, tipo); sem `type` pode haver colisão
+    # (ex.: normal e extra com o mesmo número). `.first()` evita MultipleResultsFound
+    # e, com `type`, a consulta é sempre única.
+    edition = result.scalars().first()
     if edition is None:
         raise HTTPException(status_code=404, detail="Edition not found")
 
@@ -336,6 +352,7 @@ async def v1_get_edition_by_year_number_alt(
     request: Request,
     year: int,
     number: int,
+    type: Optional[str] = Query(None, description="Edition type: normal, extra, suplementar"),
     tenant: Organization | None = Depends(resolve_tenant_from_domain),
     db: AsyncSession = Depends(get_db),
 ):
@@ -347,9 +364,12 @@ async def v1_get_edition_by_year_number_alt(
         Edition.status == EditionStatus.PUBLISHED,
         Edition.organization_id == tenant.id,
     ]
+    if type:
+        conditions.append(Edition.type == type)
     result = await db.execute(
         select(Edition)
         .where(*conditions)
+        .order_by(Edition.created_at.desc())
         .options(
             selectinload(Edition.items).selectinload(EditionItem.matter).selectinload(Matter.act_type),
             selectinload(Edition.items).selectinload(EditionItem.matter).selectinload(Matter.org_unit),
@@ -357,7 +377,7 @@ async def v1_get_edition_by_year_number_alt(
             selectinload(Edition.signatures),
         )
     )
-    edition = result.scalar_one_or_none()
+    edition = result.scalars().first()
     if edition is None:
         raise HTTPException(status_code=404, detail="Edition not found")
 

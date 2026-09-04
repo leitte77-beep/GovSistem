@@ -1,20 +1,21 @@
 @page {
   size: A4;
-  margin: 1.4cm 1.7cm 1.3cm 1.7cm;
+  margin: 1.4cm 1.7cm 3.2cm 1.7cm;
   @bottom-center {
-    content: counter(page);
-    font-family: "Liberation Serif", "Times New Roman", serif;
-    font-size: 9pt;
-    color: #555;
+    content: element(authenticity-seal);
+    width: 100%;
   }
 }
 
-@page landscape {
-  size: A4 landscape;
-  margin: 1cm 1.3cm;
-}
-
 * { margin: 0; padding: 0; box-sizing: border-box; }
+
+.page-authenticity-seal { position: running(authenticity-seal); display: flex; align-items: center; width: 100%; height: 2.15cm; padding: 3pt 6pt; border: .8pt solid #002b5c; border-radius: 5pt; background: #fff; color: #001b3f; font: 5.5pt/1.18 "Liberation Sans", Arial, sans-serif; text-align: left; }
+.page-authenticity-seal img { width: 31pt; height: 31pt; margin-right: 7pt; object-fit: contain; }
+.page-authenticity-copy { flex: 1; min-width: 0; }
+.page-authenticity-copy strong, .page-authenticity-copy span { display: block; }
+.page-authenticity-copy strong { font-size: 8pt; }
+.page-authenticity-copy span { overflow-wrap: anywhere; }
+.page-authenticity-number::before { content: "PÁGINA " counter(page) "/" counter(pages); font-weight: 700; white-space: nowrap; }
 
 body {
   font-family: "Liberation Sans", Arial, Helvetica, "DejaVu Sans", sans-serif;
@@ -149,10 +150,6 @@ body {
 .matter + .matter {
   page-break-before: always;
   break-before: page;
-}
-
-.matter-landscape {
-  page: landscape;
 }
 
 .matter-title {
@@ -343,9 +340,12 @@ body {
 .matter-content h3,
 .matter-content h4 { font-size: 14pt; }
 
-/* Tabelas do editor: preserva larguras/colspan/rowspan/alinham. definidos
-   no conteúdo. Sem table-layout: fixed e sem larguras forçadas por coluna. */
+/* Tabelas do editor: cabem na área útil; colspan/rowspan e alinhamento são
+   preservados, enquanto larguras autorais cedem ao layout fixo de impressão. */
 .matter-content table {
+  width: 100% !important;
+  max-width: 100% !important;
+  table-layout: fixed;
   border-collapse: collapse;
   border-spacing: 0;
   margin: 8pt 0;
@@ -353,7 +353,7 @@ body {
   border: 1px solid #333;
 }
 
-.matter-content tr { page-break-inside: auto; }
+.matter-content tr { page-break-inside: avoid; break-inside: avoid; }
 .matter-content thead { display: table-header-group; }
 .matter-content tbody { display: table-row-group; }
 
@@ -363,8 +363,10 @@ body {
   padding: 3pt 5pt;
   vertical-align: top;
   overflow-wrap: anywhere;
-  word-break: normal;
+  word-break: break-word;
 }
+
+.matter-content img { display: block; max-width: 100% !important; max-height: 225mm; width: auto !important; height: auto !important; object-fit: contain; page-break-inside: avoid; break-inside: avoid; }
 
 .matter-content th {
   background: #eee;

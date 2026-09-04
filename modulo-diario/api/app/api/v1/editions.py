@@ -1,3 +1,5 @@
+import hashlib
+import hmac
 import logging
 import os
 import re
@@ -754,17 +756,12 @@ async def sign_edition(
         if credential is None:
             raise HTTPException(404, "Signing credential not found")
 
-        from app.services.encryption import decrypt_bytes
-        try:
-            pfx_encrypted = credential.config.get("pfx_encrypted", "")
-            pfx_b64 = base64.b64encode(decrypt_bytes(pfx_encrypted.encode("utf-8"))).decode("utf-8")
-            if not body.pfx_password:
-                raise HTTPException(422, "Informe a senha do certificado")
-            pfx_pass = body.pfx_password
-        except Exception as e:
-            if isinstance(e, HTTPException):
-                raise e
-            raise HTTPException(500, f"Erro ao descriptografar certificado: {e}")
+        from app.services.credential_secrets import decrypt_credential_secrets
+        pfx_bytes, _ = decrypt_credential_secrets(credential)
+        pfx_b64 = base64.b64encode(pfx_bytes).decode("utf-8")
+        if not body.pfx_password:
+            raise HTTPException(422, "Informe a senha do certificado")
+        pfx_pass = body.pfx_password
 
     from app.models.organization import Organization
 
@@ -786,8 +783,13 @@ async def sign_edition(
     with open(pdf_full_path, "rb") as f:
         pdf_bytes = f.read()
 
-    import hashlib
     source_pdf_hash = hashlib.sha256(pdf_bytes).hexdigest()
+    expected_source_hash = edition.source_pdf_hash or edition.pdf_hash
+    if not expected_source_hash or not hmac.compare_digest(source_pdf_hash, expected_source_hash):
+        raise HTTPException(
+            409,
+            "PDF não assinado foi alterado após a geração. Gere o PDF novamente antes de assinar.",
+        )
 
     import base64
     result = None

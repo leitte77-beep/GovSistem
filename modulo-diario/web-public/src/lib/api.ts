@@ -113,8 +113,9 @@ export const api = {
     return get<EditionListResponse>(`/api/public/v1/editions${qs ? `?${qs}` : ""}`);
   },
 
-  getEdition(year: number, number: number) {
-    return get<any>(`/api/public/v1/editions/by-year/${year}/${number}`);
+  getEdition(year: number, number: number, type?: string) {
+    const q = type ? `?type=${encodeURIComponent(type)}` : "";
+    return get<any>(`/api/public/v1/editions/by-year/${year}/${number}${q}`);
   },
 
   getEditionSnapshot(year: number, number: number) {

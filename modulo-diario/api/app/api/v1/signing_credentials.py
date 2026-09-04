@@ -206,14 +206,9 @@ async def sign_pdf(
     vcode_raw = hl.sha256(f"{credential.certificate_serial or credential.id}{ts}".encode()).hexdigest()[:8].upper()
     vcode = f"{vcode_raw[:4]}-{vcode_raw[4:8]}"
 
-    from app.services.encryption import decrypt_bytes, decrypt
+    from app.services.credential_secrets import decrypt_credential_secrets
 
-    try:
-        pfx_encrypted = credential.config.get("pfx_encrypted", "")
-        pfx_bytes = decrypt_bytes(pfx_encrypted.encode("utf-8"))
-        pfx_password = decrypt(credential.config.get("password_encrypted", ""))
-    except Exception as e:
-        raise HTTPException(500, f"Erro ao descriptografar certificado: {e}")
+    pfx_bytes, pfx_password = decrypt_credential_secrets(credential)
 
     try:
         import httpx

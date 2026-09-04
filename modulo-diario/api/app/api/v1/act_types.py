@@ -128,16 +128,14 @@ async def admin_delete_act_type(
     db: AsyncSession = Depends(get_db),
     _: User = Depends(require_roles("ADMIN", "SUPER_ADMIN")),
 ):
-    from datetime import datetime, timezone
-
     result = await db.execute(
         select(ActType).where(ActType.id == act_type_id)
     )
     at = result.scalar_one_or_none()
     if at is None:
         raise HTTPException(404, "ActType not found")
-    # Soft delete only; matters reference act_types with RESTRICT.
+    # Reversible deactivation; the admin list can include inactive types and
+    # PATCH can reactivate them without recreating referenced records.
     at.is_active = False
-    at.deleted_at = datetime.now(timezone.utc)
     await db.commit()
     return None
