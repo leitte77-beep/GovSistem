@@ -9,7 +9,9 @@ from sqlalchemy.types import JSON
 from app.models.base import Base, SoftDeleteMixin, TimestampMixin
 
 if TYPE_CHECKING:
+    from app.models.ai_config import AiConfig
     from app.models.authority import Authority
+    from app.models.document_model import DocumentModel
     from app.models.edition import Edition
     from app.models.file import File
     from app.models.integration_client import IntegrationClient
@@ -33,15 +35,19 @@ class Organization(Base, TimestampMixin, SoftDeleteMixin):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     logo_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     theme_config: Mapped[Optional[dict]] = mapped_column(
-        JSON, nullable=True,
+        JSON,
+        nullable=True,
         comment="Theme customization: primary_color, secondary_color, font_family, etc.",
     )
     public_url: Mapped[Optional[str]] = mapped_column(
-        String(255), nullable=True,
+        String(255),
+        nullable=True,
         comment="Default public portal URL for this organization",
     )
     pdf_layout: Mapped[str] = mapped_column(
-        String(20), default="classico", nullable=False,
+        String(20),
+        default="classico",
+        nullable=False,
         comment="PDF layout template: classico, moderno, minimalista",
     )
     plan_id: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -79,6 +85,12 @@ class Organization(Base, TimestampMixin, SoftDeleteMixin):
     signing_credentials: Mapped[List["SigningCredential"]] = relationship(
         "SigningCredential", back_populates="organization", lazy="selectin"
     )
+    ai_config: Mapped[Optional["AiConfig"]] = relationship(
+        "AiConfig", back_populates="organization", uselist=False, lazy="selectin"
+    )
+    document_models: Mapped[List["DocumentModel"]] = relationship(
+        "DocumentModel", back_populates="organization", lazy="selectin"
+    )
     integration_clients: Mapped[List["IntegrationClient"]] = relationship(
         "IntegrationClient", back_populates="organization", lazy="selectin"
     )
@@ -89,7 +101,9 @@ class Organization(Base, TimestampMixin, SoftDeleteMixin):
         "TimestampRecord", back_populates="organization", lazy="selectin"
     )
     tenant_domains: Mapped[List["TenantDomain"]] = relationship(
-        "TenantDomain", back_populates="organization", lazy="selectin",
+        "TenantDomain",
+        back_populates="organization",
+        lazy="selectin",
         cascade="all, delete-orphan",
     )
 

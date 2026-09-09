@@ -1,11 +1,16 @@
 from app.models.act_type import ActType
+from app.models.ai_config import AiConfig
+from app.models.ai_execution import AiExecution
 from app.models.audit_event import AuditEvent
 from app.models.authority import Authority
 from app.models.base import Base, SoftDeleteMixin, TimestampMixin
+from app.models.document_model import DocumentModel, DocumentModelVersion
 from app.models.edition import Edition
 from app.models.edition_item import EditionItem
 from app.models.edition_publication_snapshot import EditionPublicationSnapshot
 from app.models.enums import (
+    AiExecutionKind,
+    AiExecutionStatus,
     AttachmentType,
     AuditAction,
     EditionStatus,
@@ -23,6 +28,7 @@ from app.models.matter_attachment import MatterAttachment
 from app.models.matter_relation import MatterRelation
 from app.models.matter_review import MatterReview
 from app.models.matter_version import MatterVersion
+from app.models.numbering import ActNumberSeries
 from app.models.org_unit import OrgUnit
 from app.models.organization import Organization
 from app.models.plan import Plan
@@ -56,7 +62,14 @@ __all__ = [
     "SignatureProviderType",
     "ValidationStatus",
     "ActType",
+    "AiConfig",
+    "AiExecution",
+    "AiExecutionKind",
+    "AiExecutionStatus",
     "AuditEvent",
+    "DocumentModel",
+    "DocumentModelVersion",
+    "ActNumberSeries",
     "Authority",
     "RefreshToken",
     "Edition",

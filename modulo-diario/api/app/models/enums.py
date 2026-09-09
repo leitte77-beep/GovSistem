@@ -187,6 +187,29 @@ class ValidationStatus(str, Enum):
     INDETERMINATE = "indeterminate"
 
 
+class AiExecutionKind(str, Enum):
+    """Business operation performed against the shared DeepSeek integration.
+
+    Kept enum-typed so future AI operations (document-model authoring) reuse a
+    single execution/audit trail without free-form strings.
+    """
+
+    TEST_CONNECTION = "test_connection"
+    CHAT = "chat"
+    IDENTIFY_MODEL = "identify_model"
+    EXTRACT_FIELDS = "extract_fields"
+    ANALYZE_EXAMPLES = "analyze_examples"
+    PROPOSE_STRUCTURE = "propose_structure"
+    DRAFT_BLOCKS = "draft_blocks"
+
+
+class AiExecutionStatus(str, Enum):
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
 class AuditAction(str, Enum):
     MATTER_CREATED = "matter.created"
     MATTER_UPDATED = "matter.updated"
@@ -210,3 +233,17 @@ class AuditAction(str, Enum):
     LOGIN = "auth.login"
     LOGIN_FAILED = "auth.login_failed"
     LOGOUT = "auth.logout"
+    AI_CONFIG_UPDATED = "ai.config.updated"
+    AI_KEY_REPLACED = "ai.config.key_replaced"
+    AI_KEY_REMOVED = "ai.config.key_removed"
+    AI_CONFIG_DISABLED = "ai.config.disabled"
+    AI_CONFIG_TESTED = "ai.config.tested"
+    AI_EXECUTION = "ai.execution"
+    DOCUMENT_MODEL_CREATED = "document_model.created"
+    DOCUMENT_MODEL_UPDATED = "document_model.updated"
+    DOCUMENT_MODEL_VERSIONED = "document_model.versioned"
+    DOCUMENT_MODEL_SUBMITTED = "document_model.submitted"
+    DOCUMENT_MODEL_APPROVED = "document_model.approved"
+    DOCUMENT_MODEL_ARCHIVED = "document_model.archived"
+    DOCUMENT_MODEL_MATERIAL_CREATED = "document_model.material.created"
+    ACT_NUMBER_ISSUED = "act.number.issued"

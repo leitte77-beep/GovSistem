@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
 
-    ALEMBIC_EXPECTED_HEAD: str = "3e4a5b6c7d8e"
+    ALEMBIC_EXPECTED_HEAD: str = "h5i6j7k8l9m0"
 
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
@@ -125,6 +125,18 @@ class Settings(BaseSettings):
     FOUR_EYES_REQUIRED: bool = True
     RECENT_AUTH_TTL_MINUTES: int = 5
     REQUIRE_RECENT_AUTH_FOR_PUBLISH: bool = False
+
+    # ── Centralized DeepSeek integration (server-side defaults) ────────────
+    # Every Diário Oficial menu/feature uses this single provider + model.
+    # The per-organization API key is stored encrypted at rest (never here);
+    # these values are only safe server defaults. Endpoint/model are kept on
+    # the server so no client or per-org config can redirect calls elsewhere.
+    DEEPSEEK_API_BASE: str = "https://api.deepseek.com"
+    DEEPSEEK_MODEL: str = "deepseek-v4-flash"
+    AI_DEFAULT_TIMEOUT_SECONDS: int = 60
+    AI_MAX_TOKENS: int = 4096
+    AI_MAX_CONCURRENCY: int = 4
+    AI_MAX_RETRIES: int = 3
 
     @model_validator(mode="after")
     def validate_secrets(self):

@@ -1,10 +1,12 @@
 from fastapi import APIRouter
 
 from app.api.v1.act_types import router as act_types_router
+from app.api.v1.ai_config import router as ai_config_router
 from app.api.v1.ai_formatter import router as ai_formatter_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.authorities import router as authorities_router
 from app.api.v1.backup import router as backup_router
+from app.api.v1.document_models import router as document_models_router
 from app.api.v1.editions import router as editions_router
 from app.api.v1.health import router as health_router
 from app.api.v1.imports import router as imports_router
@@ -31,7 +33,9 @@ api_router.include_router(health_router, tags=["health"])
 api_router.include_router(internal_router, tags=["internal"])
 api_router.include_router(auth_router)
 api_router.include_router(backup_router)
+api_router.include_router(document_models_router)
 api_router.include_router(act_types_router)
+api_router.include_router(ai_config_router)
 api_router.include_router(ai_formatter_router)
 api_router.include_router(org_units_router)
 api_router.include_router(authorities_router)

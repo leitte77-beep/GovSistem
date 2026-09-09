@@ -40,17 +40,44 @@ ALL_PERMISSIONS = {
     "role.manage",
     "settings.manage",
     "integration.matter.create",
+    # AI (Diário Oficial) — centralized DeepSeek integration.
+    # ``ai.manage``: admin the org AI settings/config (incl. API key).
+    # ``ai.run``:   trigger generation/extraction/classification operations.
+    # ``ai.audit``: read AI execution & usage logs.
+    "ai.manage",
+    "ai.run",
+    "ai.audit",
+    # Document models (modelos documentais).
+    # ``document_model.manage``: create/edit/import/version document models.
+    # ``document_model.approve``: approve a version (activates, becomes immutable).
+    # ``document_model.use``: generate drafts from an approved document model.
+    "document_model.manage",
+    "document_model.approve",
+    "document_model.use",
 }
 
 ROLE_PERMISSIONS: dict[str, set[str]] = {
     "SUPER_ADMIN": set(ALL_PERMISSIONS),
     "ADMIN": set(ALL_PERMISSIONS),
-    "AUTOR": {"matter.create", "matter.read", "matter.edit_own", "matter.submit"},
-    "REVISOR": {"matter.read", "matter.review", "matter.approve", "matter.reject"},
+    "AUTOR": {
+        "matter.create",
+        "matter.read",
+        "matter.edit_own",
+        "matter.submit",
+        "document_model.manage",
+        "document_model.use",
+    },
+    "REVISOR": {
+        "matter.read",
+        "matter.review",
+        "matter.approve",
+        "matter.reject",
+        "document_model.approve",
+    },
     "DIAGRAMADOR": {"edition.create", "edition.edit", "edition.compose", "edition.review"},
     "ASSINADOR": {"certificate.read", "edition.sign"},
     "PUBLICADOR": {"edition.publish", "edition.schedule", "edition.close"},
-    "AUDITOR": {"audit.read", "matter.read"},
+    "AUDITOR": {"audit.read", "ai.audit", "matter.read"},
     "CONSULTA": {"matter.read"},
 }
 

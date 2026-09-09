@@ -17,6 +17,8 @@ const NAV_ITEMS: {
 }[] = [
   { label: "Dashboard", href: "/", icon: "dashboard" },
   { label: "Matérias", href: "/matters", icon: "description" },
+  { label: "Documentos oficiais", href: "/documentos", icon: "badge" },
+  { label: "Modelos documentais", href: "/documentos/modelos", icon: "dashboard_customize" },
   { label: "Tipos de Ato", href: "/tipos-ato", icon: "category", adminOnly: true },
   { label: "Autoridades", href: "/autoridades", icon: "badge", adminOnly: true },
   { label: "Edições", href: "/editions", icon: "auto_stories" },
@@ -25,6 +27,7 @@ const NAV_ITEMS: {
   { label: "Operações", href: "/operacoes", icon: "settings_suggest" },
   { label: "Usuários", href: "/users", icon: "group" },
   { label: "Configurações", href: "/settings", icon: "tune", adminOnly: true },
+  { label: "Inteligência artificial", href: "/settings/ai", icon: "smart_toy", adminOnly: true },
   { label: "Certificados", href: "/settings/certificates", icon: "verified_user", adminOnly: true },
   { label: "Verificar PDF", href: "/verify", icon: "picture_as_pdf" },
   { label: "Voltar ao SaaS", href: SAAS_URL, icon: "arrow_back", external: true },

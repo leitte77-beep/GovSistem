@@ -20,6 +20,19 @@ import type {
 } from "@/types/matter";
 import type { User, UserCreateRequest, UserUpdateRequest } from "@/types/user";
 import type { SystemSetting } from "@/types/setting";
+import type {
+  AiConfigMetadata,
+  AiExtractResult,
+  AiTestResult,
+  DocumentModelDetail,
+  DocumentModelSummary,
+  MaterialCreated,
+  MaterialsResult,
+  NumberIssue,
+  PreviewResult,
+  VersionDetail,
+  VersionSummary,
+} from "@/types/document_model";
 
 export interface MatterRelation {
   id: string;
@@ -683,6 +696,118 @@ export const api = {
 
   deleteMatterRelation(id: string) {
     return request<void>(`/matter-relations/${id}`, { method: "DELETE" });
+  },
+
+  // ── Document models (modelos documentais) ─────────────────────────────
+  listDocumentModels(params?: { document_type?: string; status?: string }) {
+    const q = new URLSearchParams();
+    if (params?.document_type) q.set("document_type", params.document_type);
+    if (params?.status) q.set("status_filter", params.status);
+    const qs = q.toString();
+    return request<DocumentModelSummary[]>(`/document-models${qs ? `?${qs}` : ""}`);
+  },
+  listMaterials(params?: {
+    document_type?: string;
+    editorial?: string;
+    signature?: string;
+    publication?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const q = new URLSearchParams();
+    if (params?.document_type) q.set("document_type", params.document_type);
+    if (params?.editorial) q.set("editorial", params.editorial);
+    if (params?.signature) q.set("signature", params.signature);
+    if (params?.publication) q.set("publication", params.publication);
+    if (params?.search) q.set("search", params.search);
+    if (params?.page) q.set("page", String(params.page));
+    if (params?.limit) q.set("limit", String(params.limit));
+    const qs = q.toString();
+    return request<MaterialsResult>(`/document-models/materials${qs ? `?${qs}` : ""}`);
+  },
+  getDocumentModel(id: string) {
+    return request<DocumentModelDetail>(`/document-models/${id}`);
+  },
+  getVersion(modelId: string, version: number) {
+    return request<VersionDetail>(`/document-models/${modelId}/versions/${version}`);
+  },
+  createDocumentModel(data: { name: string; slug: string; config: Record<string, unknown> }) {
+    return request<DocumentModelSummary>("/document-models", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  createModelVersion(modelId: string, data: { config: Record<string, unknown>; change_reason?: string }) {
+    return request<VersionDetail>(`/document-models/${modelId}/versions`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  submitModelVersion(modelId: string, version: number) {
+    return request<VersionDetail>(`/document-models/${modelId}/versions/${version}/submit`, {
+      method: "POST",
+    });
+  },
+  approveModelVersion(modelId: string, version: number) {
+    return request<VersionDetail>(`/document-models/${modelId}/versions/${version}/approve`, {
+      method: "POST",
+    });
+  },
+  archiveDocumentModel(modelId: string) {
+    return request<DocumentModelSummary>(`/document-models/${modelId}/archive`, {
+      method: "POST",
+    });
+  },
+  previewVersion(modelId: string, version: number, values: Record<string, string>) {
+    return request<PreviewResult>(`/document-models/${modelId}/versions/${version}/preview`, {
+      method: "POST",
+      body: JSON.stringify({ values }),
+    });
+  },
+  aiExtract(data: { prompt: string; document_type?: string | null; model_id?: string | null }) {
+    return request<AiExtractResult>("/document-models/ai/extract", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  createMaterialFromModel(modelId: string, version: number, data: { act_type_id: string; values: Record<string, string>; title_override?: string }) {
+    return request<MaterialCreated>(`/document-models/${modelId}/versions/${version}/material`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  issueNumber(data: { matter_id: string; year?: number }) {
+    return request<NumberIssue>("/numbering/issue", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  // ── IA configuration (Configurações → Inteligência artificial) ───────
+  getAiConfig() {
+    return request<AiConfigMetadata>("/ai/config");
+  },
+  saveAiConfig(data: Partial<{ enabled: boolean; api_key: string; timeout_seconds: number; max_tokens: number; max_concurrency: number }>) {
+    return request<AiConfigMetadata>("/ai/config", { method: "PUT", body: JSON.stringify(data) });
+  },
+  replaceAiKey(api_key: string) {
+    return request<AiConfigMetadata>("/ai/config/key", {
+      method: "POST",
+      body: JSON.stringify({ api_key }),
+    });
+  },
+  removeAiKey() {
+    return request<void>("/ai/config/key", { method: "DELETE" });
+  },
+  disableAi() {
+    return request<AiConfigMetadata>("/ai/config/disable", { method: "POST" });
+  },
+  testAiConnection(api_key?: string) {
+    return request<AiTestResult>("/ai/config/test-connection", {
+      method: "POST",
+      body: JSON.stringify({ api_key: api_key ?? null }),
+    });
   },
 };
 

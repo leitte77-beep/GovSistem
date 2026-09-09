@@ -122,6 +122,11 @@ class Matter(Base, TimestampMixin):
         "metadata", JSONB, nullable=True,
         comment="Extensible per-act-type dynamic field values (JSONB)",
     )
+    document_type: Mapped[Optional[str]] = mapped_column(
+        String(50), nullable=True, index=True,
+        comment="Document model scope (edital/portaria/lei/oficio/decreto/resolucao). "
+                "Populado para atos gerados por modelo documental; nulo em matérias legadas.",
+    )
     review_reason: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True,
         comment="Reason the reviewer returned the matter (shown to the author)",
