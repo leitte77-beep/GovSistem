@@ -1242,7 +1242,8 @@ export function PaginaRelatorios() {
                 icone: Clock, cor: T.primary,
               }),
               React.createElement(CartaoKPI, {
-                titulo: 'P95', valor: formatarMinutos((sla.p95_resposta_seg || 0) / 60),
+                // P95 é em segundos: formatarMinutos arredondava 20s para "0min".
+                titulo: 'P95', valor: formatarSeg(sla.p95_resposta_seg || 0),
                 icone: Timer, cor: sla.p95_resposta_seg > 600 ? T.warning : T.text,
                 sub: '95% das conversas',
               }),
@@ -1279,7 +1280,7 @@ export function PaginaRelatorios() {
             // Assuntos (opcional, carrega junto com SLA)
             React.createElement('div', {
               style: { marginTop: 18, textAlign: 'center', fontSize: 12, color: T.textMuted },
-            }, 'Os dados de SLA são atualizados ao aplicar os filtros e clicar em "Atualizar".'),
+            }, 'Os dados acompanham automaticamente o período e os filtros; use "Atualizar" para recarregar na hora.'),
           ),
     ),
   );
