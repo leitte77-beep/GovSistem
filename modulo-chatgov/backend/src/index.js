@@ -3299,27 +3299,35 @@ app.use('/api', rateLimiter);
   });
 
   // === Relatórios: Conversas por assunto (admin/supervisor) ===
+  // Assuntos reais, agrupados pelo campo `protocolos.assunto` (o endpoint antes
+  // devolvia departamentos, o que não era "assunto").
   app.get('/api/relatorios/conversas-por-assunto', requirePapel('admin', 'supervisor'), async (req, res) => {
     try {
       const t = req.operador.tenantId;
       const hojeStr = new Date().toISOString().slice(0, 10);
       const fim = String(req.query.fim || hojeStr).slice(0, 10);
       const inicio = String(req.query.inicio || new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10)).slice(0, 10);
+      const { departamento_id, operador_id } = req.query;
+
+      const params = [t, inicio, fim];
+      let filtro = '';
+      if (departamento_id) { params.push(departamento_id); filtro += ` AND p.departamento_id = $${params.length}::uuid`; }
+      if (operador_id) { params.push(operador_id); filtro += ` AND p.operador_id = $${params.length}::uuid`; }
 
       const assuntos = await db.manyOrNone(
-        `SELECT COALESCE(d.nome, 'Sem setor') AS assunto, COUNT(*)::int AS total
-         FROM conversas c
-         LEFT JOIN departamentos d ON d.id = c.departamento_id
-         WHERE c.tenant_id = $1 AND c.criado_em::date BETWEEN $2 AND $3
-         GROUP BY d.nome
-         ORDER BY total DESC`,
-        [t, inicio, fim]
+        `SELECT COALESCE(p.assunto, 'Geral') AS assunto, COUNT(*)::int AS total
+         FROM protocolos p
+         WHERE p.tenant_id = $1 AND p.aberto_em::date BETWEEN $2 AND $3${filtro}
+         GROUP BY p.assunto
+         ORDER BY total DESC
+         LIMIT 12`,
+        params
       );
 
       res.json({ assuntos });
     } catch (err) {
       console.error('[API] conversas-por-assunto error:', err.message);
-      res.status(500).json({ erro: 'Erro ao carregar conversas por assunto' });
+      res.status(500).json({ erro: 'Erro ao carregar assuntos' });
     }
   });
 

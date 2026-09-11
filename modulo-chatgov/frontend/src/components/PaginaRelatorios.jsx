@@ -10,6 +10,7 @@ import {
   fetchRelatorioMetricas,
   fetchRelatorioNPSDetalhado,
   fetchRelatorioSLA,
+  fetchRelatorioAssuntos,
   fetchFiltrosRelatorio,
   registrarExportacaoRelatorio,
 } from '../api';
@@ -73,7 +74,7 @@ function faixaNps(valor) {
 
 // ─────────── EXPORTAÇÃO ───────────
 
-function matrizesRelatorio(d, npsDetalhado, sla, selecao) {
+function matrizesRelatorio(d, npsDetalhado, sla, selecao, assuntos) {
   const r = d.resumo || {};
   const comp = d.comparacao;
   const sel = (key) => !selecao || selecao.length === 0 || selecao.includes(key);
@@ -122,6 +123,10 @@ function matrizesRelatorio(d, npsDetalhado, sla, selecao) {
 
   if (sel('ranking')) {
     blocos.push([[],[`Atendente`,`Enviadas`,`Conversas`],...((d.ranking_atendentes || []).map((x) => [x.nome, x.enviadas, x.conversas]))]);
+  }
+
+  if (sel('assuntos') && (assuntos || []).length > 0) {
+    blocos.push([[],[`Assunto`,`Total`],...assuntos.map((x) => [x.assunto, x.total])]);
   }
 
   if (sel('nps') && npsDetalhado?.geral) {
@@ -226,6 +231,7 @@ const SECOES_EXPORT = [
   { key: 'por_setor', label: 'Conversas por setor' },
   { key: 'status', label: 'Status' },
   { key: 'ranking', label: 'Ranking de atendentes' },
+  { key: 'assuntos', label: 'Assuntos mais frequentes' },
   { key: 'nps', label: 'NPS detalhado' },
   { key: 'sla', label: 'SLA' },
 ];
@@ -709,6 +715,7 @@ export function PaginaRelatorios() {
   const [dados, setDados] = useState(null);
   const [npsDetalhado, setNpsDetalhado] = useState(null);
   const [sla, setSla] = useState(null);
+  const [assuntos, setAssuntos] = useState([]);
   const [filtros, setFiltros] = useState({ departamentos: [], operadores: [] });
 
   // ── loading / erro ──
@@ -786,10 +793,20 @@ export function PaginaRelatorios() {
     }
   }, [inicio, fim, paramsFiltro]);
 
+  // ── carregar assuntos (protocolos) ──
+  const carregarAssuntos = useCallback(async () => {
+    try {
+      const res = await fetchRelatorioAssuntos(inicio, fim, paramsFiltro);
+      setAssuntos(res?.assuntos || []);
+    } catch {
+      setAssuntos([]);
+    }
+  }, [inicio, fim, paramsFiltro]);
+
   // ── carregar tudo ──
   const carregarTudo = useCallback(async () => {
-    await Promise.all([carregarMetricas(), carregarNPS(), carregarSLA()]);
-  }, [carregarMetricas, carregarNPS, carregarSLA]);
+    await Promise.all([carregarMetricas(), carregarNPS(), carregarSLA(), carregarAssuntos()]);
+  }, [carregarMetricas, carregarNPS, carregarSLA, carregarAssuntos]);
 
   // ── carrega métricas ao montar e a cada mudança de período/filtros ──
   // Debounce para não disparar uma query por ajuste de data. Antes o efeito só
@@ -799,6 +816,11 @@ export function PaginaRelatorios() {
     const id = setTimeout(() => { carregarMetricas(); }, 350);
     return () => clearTimeout(id);
   }, [carregarMetricas]);
+
+  useEffect(() => {
+    const id = setTimeout(() => { carregarAssuntos(); }, 350);
+    return () => clearTimeout(id);
+  }, [carregarAssuntos]);
 
   // A aba aberta acompanha os filtros (NPS e SLA têm endpoints próprios).
   useEffect(() => {
@@ -914,23 +936,23 @@ export function PaginaRelatorios() {
   const exportarCSV = useCallback(() => {
     if (!dados) return;
     registrarExportacao('csv');
-    const { blocos } = matrizesRelatorio(dados, npsDetalhado, sla, exportSelecao);
+    const { blocos } = matrizesRelatorio(dados, npsDetalhado, sla, exportSelecao, assuntos);
     const linhas = [].concat(...blocos).map((linha) => linha.map(celulaCsv).join(';'));
     baixarArquivo('\uFEFF' + linhas.join('\r\n'), `${baseNome}.csv`, 'text/csv;charset=utf-8');
-  }, [dados, npsDetalhado, sla, exportSelecao, baseNome, registrarExportacao]);
+  }, [dados, npsDetalhado, sla, assuntos, exportSelecao, baseNome, registrarExportacao]);
 
   const exportarExcel = useCallback(async () => {
     if (!dados) return;
     registrarExportacao('xlsx');
     const { createXlsx } = await import('../utils/xlsx');
-    const { blocos } = matrizesRelatorio(dados, npsDetalhado, sla, exportSelecao);
+    const { blocos } = matrizesRelatorio(dados, npsDetalhado, sla, exportSelecao, assuntos);
     const arquivo = createXlsx(blocos.map((rows, index) => ({ name: `Seção ${index + 1}`, rows })));
     baixarArquivo(
       arquivo,
       `${baseNome}.xlsx`,
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     );
-  }, [dados, npsDetalhado, sla, exportSelecao, baseNome, registrarExportacao]);
+  }, [dados, npsDetalhado, sla, assuntos, exportSelecao, baseNome, registrarExportacao]);
 
   const imprimir = () => {
     registrarExportacao('impressao');
@@ -1187,6 +1209,16 @@ export function PaginaRelatorios() {
             React.createElement(BarrasHorizontais, {
               corPadrao: T.primary,
               dados: (dados.ranking_atendentes || []).map((a) => ({ label: a.nome, value: a.enviadas, sub: `${a.enviadas} · ${a.conversas} conv.` })),
+              onHover: setTooltip,
+            }),
+          ),
+        ),
+
+        // ── Assuntos mais frequentes (protocolos) ──
+        React.createElement('div', { style: { marginBottom: 18 } },
+          React.createElement(Secao, { titulo: 'Assuntos mais frequentes' },
+            React.createElement(BarrasHorizontais, {
+              dados: (assuntos || []).map((a) => ({ label: a.assunto, value: a.total })),
               onHover: setTooltip,
             }),
           ),

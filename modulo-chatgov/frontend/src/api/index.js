@@ -616,10 +616,8 @@ export async function fetchRelatorioSLA(inicio, fim, filtros) {
   return res.json();
 }
 
-export async function fetchRelatorioAssuntos(inicio, fim) {
-  const params = new URLSearchParams();
-  if (inicio) params.set('inicio', inicio);
-  if (fim) params.set('fim', fim);
+export async function fetchRelatorioAssuntos(inicio, fim, filtros) {
+  const params = paramsRelatorio(inicio, fim, filtros);
   const res = await fetch(`/api/relatorios/conversas-por-assunto?${params.toString()}`, { headers: { Authorization: `Bearer ${getToken()}` } });
   if (!res.ok) throw new Error('Erro ao carregar relatório de assuntos');
   return res.json();
