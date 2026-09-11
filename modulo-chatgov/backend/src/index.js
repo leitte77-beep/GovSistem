@@ -3198,6 +3198,14 @@ app.use('/api', rateLimiter);
         deptoFilter = ' AND c.departamento_id = $4::uuid';
         slaParams.push(departamento_id);
       }
+      // P95 e distribuição partem de mensagens; o filtro de setor precisa passar
+      // pela conversa dona da mensagem.
+      let msgDeptoFilter = '';
+      const msgSlaParams = [t, inicio, fim];
+      if (departamento_id) {
+        msgDeptoFilter = ' AND m.conversa_id IN (SELECT id FROM conversas WHERE tenant_id=$1 AND departamento_id=$4::uuid)';
+        msgSlaParams.push(departamento_id);
+      }
 
       const [tmaGeral, tmaSetor, abandono, p95Resp, distTempo] = await Promise.all([
         db.oneOrNone(
@@ -3229,39 +3237,44 @@ app.use('/api', rateLimiter);
           slaParams
         ),
         db.oneOrNone(
-          `SELECT percentile_cont(0.95) WITHIN GROUP (ORDER BY primeira_saida - primeira_entrada)::int AS seg
+          // percentile_cont sobre interval precisa de EXTRACT(EPOCH ...) para
+          // virar número — antes o `::int` direto no interval derrubava a query.
+          `SELECT EXTRACT(EPOCH FROM percentile_cont(0.95) WITHIN GROUP (ORDER BY primeira_saida - primeira_entrada))::int AS seg
            FROM (
-             SELECT MIN(criado_em) FILTER (WHERE direcao='entrada') AS primeira_entrada,
-                    MIN(criado_em) FILTER (WHERE direcao='saida')   AS primeira_saida
+             SELECT MIN(m.criado_em) FILTER (WHERE m.direcao='entrada') AS primeira_entrada,
+                    MIN(m.criado_em) FILTER (WHERE m.direcao='saida')   AS primeira_saida
              FROM mensagens m
-             WHERE m.tenant_id=$1 AND m.criado_em::date BETWEEN $2 AND $3
+             WHERE m.tenant_id=$1 AND m.criado_em::date BETWEEN $2 AND $3${msgDeptoFilter}
              GROUP BY m.conversa_id
            ) q
            WHERE primeira_entrada IS NOT NULL AND primeira_saida IS NOT NULL AND primeira_saida > primeira_entrada`,
-          [t, inicio, fim]
+          msgSlaParams
         ),
         db.manyOrNone(
+          // O segundos de cada faixa precisam ser projetados no subselect para o
+          // ORDER BY final — antes referenciava colunas que não existiam fora.
           `SELECT faixa, COUNT(*)::int AS total FROM (
              SELECT CASE
-               WHEN EXTRACT(EPOCH FROM (primeira_saida - primeira_entrada)) <= 30 THEN '0-30s'
-               WHEN EXTRACT(EPOCH FROM (primeira_saida - primeira_entrada)) <= 60 THEN '30s-1min'
-               WHEN EXTRACT(EPOCH FROM (primeira_saida - primeira_entrada)) <= 300 THEN '1min-5min'
-               WHEN EXTRACT(EPOCH FROM (primeira_saida - primeira_entrada)) <= 900 THEN '5min-15min'
-               WHEN EXTRACT(EPOCH FROM (primeira_saida - primeira_entrada)) <= 1800 THEN '15min-30min'
-               WHEN EXTRACT(EPOCH FROM (primeira_saida - primeira_entrada)) <= 3600 THEN '30min-1h'
+               WHEN seg <= 30 THEN '0-30s'
+               WHEN seg <= 60 THEN '30s-1min'
+               WHEN seg <= 300 THEN '1min-5min'
+               WHEN seg <= 900 THEN '5min-15min'
+               WHEN seg <= 1800 THEN '15min-30min'
+               WHEN seg <= 3600 THEN '30min-1h'
                ELSE '1h+'
-             END AS faixa
+             END AS faixa,
+             seg
              FROM (
-               SELECT MIN(criado_em) FILTER (WHERE direcao='entrada') AS primeira_entrada,
-                      MIN(criado_em) FILTER (WHERE direcao='saida')   AS primeira_saida
+               SELECT EXTRACT(EPOCH FROM (MIN(m.criado_em) FILTER (WHERE m.direcao='saida')
+                        - MIN(m.criado_em) FILTER (WHERE m.direcao='entrada'))) AS seg
                FROM mensagens m
-               WHERE m.tenant_id=$1 AND m.criado_em::date BETWEEN $2 AND $3
+               WHERE m.tenant_id=$1 AND m.criado_em::date BETWEEN $2 AND $3${msgDeptoFilter}
                GROUP BY m.conversa_id
              ) q
-             WHERE primeira_entrada IS NOT NULL AND primeira_saida IS NOT NULL AND primeira_saida > primeira_entrada
+             WHERE seg IS NOT NULL AND seg > 0
            ) sub
-           GROUP BY faixa ORDER BY MIN(EXTRACT(EPOCH FROM (primeira_saida - primeira_entrada)))`,
-          [t, inicio, fim]
+           GROUP BY faixa ORDER BY MIN(seg)`,
+          msgSlaParams
         ),
       ]);
 
@@ -3273,6 +3286,8 @@ app.use('/api', rateLimiter);
 
       res.json({
         tma_geral_seg: tmaGeral?.seg || 0,
+        // Mesmo nome usado em /relatorios/metricas e lido pela tela (por_setor).
+        por_setor: tmaSetor,
         tma_por_setor: tmaSetor,
         taxa_abandono: parseFloat(abandono?.pct) || 0,
         p95_resposta_seg: p95Resp?.seg || 0,

@@ -10,34 +10,41 @@ import {
   fetchRelatorioMetricas,
   fetchRelatorioNPSDetalhado,
   fetchRelatorioSLA,
-  fetchRelatorioAssuntos,
   fetchFiltrosRelatorio,
   registrarExportacaoRelatorio,
 } from '../api';
 
 // ─────────── UTILITÁRIOS DE DATA ───────────
 
+// Data no fuso LOCAL do navegador. Antes usávamos toISOString() (UTC): no
+// Brasil, depois das 21h o "Hoje" virava o dia seguinte e o período saía errado.
+function dataLocal(d = new Date()) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function isoHoje() {
-  return new Date().toISOString().slice(0, 10);
+  return dataLocal();
 }
 
 function isoDiasAtras(n) {
-  return new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return dataLocal(d);
 }
 
 function primeiroDiaMes() {
   const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 1).toISOString().slice(0, 10);
+  return dataLocal(new Date(d.getFullYear(), d.getMonth(), 1));
 }
 
 function primeiroDiaMesPassado() {
   const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth() - 1, 1).toISOString().slice(0, 10);
+  return dataLocal(new Date(d.getFullYear(), d.getMonth() - 1, 1));
 }
 
 function ultimoDiaMesPassado() {
   const d = new Date();
-  return new Date(d.getFullYear(), d.getMonth(), 0).toISOString().slice(0, 10);
+  return dataLocal(new Date(d.getFullYear(), d.getMonth(), 0));
 }
 
 function formatarSeg(seg) {
@@ -57,11 +64,18 @@ function formatarMinutos(min) {
   return `${h}h ${m % 60}min`;
 }
 
+// Faixa clássica do NPS: 50+ excelente, 0+ razoável, negativo crítico.
+function faixaNps(valor) {
+  if (valor >= 50) return { rotulo: 'Excelente', cor: T.success };
+  if (valor >= 0) return { rotulo: 'Razoável', cor: T.warning };
+  return { rotulo: 'Crítico', cor: T.danger };
+}
+
 // ─────────── EXPORTAÇÃO ───────────
 
 function matrizesRelatorio(d, npsDetalhado, sla, selecao) {
   const r = d.resumo || {};
-  const temComparacao = d.comparacao?.resumo;
+  const comp = d.comparacao;
   const sel = (key) => !selecao || selecao.length === 0 || selecao.includes(key);
 
   const blocos = [];
@@ -82,10 +96,14 @@ function matrizesRelatorio(d, npsDetalhado, sla, selecao) {
       ['NPS', d.nps && d.nps.total_respondidos > 0 ? d.nps.nps : '—'],
       ['NPS (respostas)', d.nps?.total_respondidos ?? 0],
     ];
-    if (temComparacao) {
+    if (comp) {
       resumo.push([]);
-      resumo.push(['Comparação período anterior']);
-      resumo.push(['Conversas', r.comparacao_anterior?.criadas ?? '—']);
+      resumo.push([`Comparação período anterior (${comp.periodo?.inicio || ''} a ${comp.periodo?.fim || ''})`]);
+      resumo.push(['Conversas', comp.criadas ?? '—']);
+      resumo.push(['Mensagens recebidas', comp.recebidas ?? '—']);
+      resumo.push(['Mensagens enviadas', comp.enviadas ?? '—']);
+      resumo.push(['Taxa de resolução (%)', comp.taxa_resolucao ?? '—']);
+      resumo.push(['Tempo médio 1ª resposta (s)', comp.tempo_primeira_resposta_seg ?? '—']);
     }
     blocos.push(resumo);
   }
@@ -162,7 +180,7 @@ const ESTILO_IMPRESSAO = `
   .so-imprimir { display: block !important; }
   body * { visibility: hidden; }
   #relatorios-root, #relatorios-root * { visibility: visible; }
-  #relatorios-root { position: absolute; left: 0; top: 0; width: 100%; padding: 12px; overflow: visible !important; }
+  #relatorios-root { position: absolute; left: 0; top: 0; width: 100%; padding: 12px; overflow: visible !important; height: auto !important; max-height: none !important; }
   * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   @page { margin: 12mm; }
 }
@@ -689,10 +707,23 @@ export function PaginaRelatorios() {
     await Promise.all([carregarMetricas(), carregarNPS(), carregarSLA()]);
   }, [carregarMetricas, carregarNPS, carregarSLA]);
 
-  // ── carregamento inicial ──
+  // ── carrega métricas ao montar e a cada mudança de período/filtros ──
+  // Debounce para não disparar uma query por ajuste de data. Antes o efeito só
+  // rodava uma vez (deps []), e trocar filtro deixava a tela desatualizada até
+  // clicar em "Atualizar".
   useEffect(() => {
-    carregarMetricas();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    const id = setTimeout(() => { carregarMetricas(); }, 350);
+    return () => clearTimeout(id);
+  }, [carregarMetricas]);
+
+  // A aba aberta acompanha os filtros (NPS e SLA têm endpoints próprios).
+  useEffect(() => {
+    if (abaAtiva === 'nps') carregarNPS();
+  }, [abaAtiva, carregarNPS]);
+
+  useEffect(() => {
+    if (abaAtiva === 'sla') carregarSLA();
+  }, [abaAtiva, carregarSLA]);
 
   // ── aplicar período rápido ──
   const aplicarPeriodoRapido = useCallback((label) => {
@@ -790,17 +821,23 @@ export function PaginaRelatorios() {
   // ── exportação ──
   const baseNome = `relatorio-chatgov-${inicio}_a_${fim}`;
 
-  const exportarCSV = useCallback(async () => {
+  // O registro da exportação é auditoria: não pode impedir o download se a API
+  // falhar. Antes o `await` sem catch travava a entrega do arquivo.
+  const registrarExportacao = useCallback((formato) => {
+    registrarExportacaoRelatorio(formato, { inicio, fim }, paramsFiltro).catch(() => {});
+  }, [inicio, fim, paramsFiltro]);
+
+  const exportarCSV = useCallback(() => {
     if (!dados) return;
-    await registrarExportacaoRelatorio('csv', { inicio, fim }, paramsFiltro);
+    registrarExportacao('csv');
     const { blocos } = matrizesRelatorio(dados, npsDetalhado, sla, exportSelecao);
     const linhas = [].concat(...blocos).map((linha) => linha.map(celulaCsv).join(';'));
     baixarArquivo('\uFEFF' + linhas.join('\r\n'), `${baseNome}.csv`, 'text/csv;charset=utf-8');
-  }, [dados, npsDetalhado, sla, exportSelecao, baseNome, inicio, fim, paramsFiltro]);
+  }, [dados, npsDetalhado, sla, exportSelecao, baseNome, registrarExportacao]);
 
   const exportarExcel = useCallback(async () => {
     if (!dados) return;
-    await registrarExportacaoRelatorio('xlsx', { inicio, fim }, paramsFiltro);
+    registrarExportacao('xlsx');
     const { createXlsx } = await import('../utils/xlsx');
     const { blocos } = matrizesRelatorio(dados, npsDetalhado, sla, exportSelecao);
     const arquivo = createXlsx(blocos.map((rows, index) => ({ name: `Seção ${index + 1}`, rows })));
@@ -809,10 +846,10 @@ export function PaginaRelatorios() {
       `${baseNome}.xlsx`,
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     );
-  }, [dados, npsDetalhado, sla, exportSelecao, baseNome, inicio, fim, paramsFiltro]);
+  }, [dados, npsDetalhado, sla, exportSelecao, baseNome, registrarExportacao]);
 
-  const imprimir = async () => {
-    await registrarExportacaoRelatorio('impressao', { inicio, fim }, paramsFiltro);
+  const imprimir = () => {
+    registrarExportacao('impressao');
     window.print();
   };
 
@@ -951,9 +988,9 @@ export function PaginaRelatorios() {
     React.createElement('div', { style: { display: 'flex', gap: 4, marginBottom: 18, overflowX: 'auto', scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', maskImage: 'linear-gradient(to right, #000 92%, transparent)', WebkitMaskImage: 'linear-gradient(to right, #000 92%, transparent)', paddingRight: 20 } },
       React.createElement('button', { onClick: () => setAbaAtiva('geral'), style: { ...tabEstilo(abaAtiva === 'geral'), scrollSnapAlign: 'start', flexShrink: 0 } },
         React.createElement(LayoutDashboard, { size: 14 }), 'Visão Geral'),
-      React.createElement('button', { onClick: () => { setAbaAtiva('nps'); if (!npsDetalhado) carregarNPS(); }, style: { ...tabEstilo(abaAtiva === 'nps'), scrollSnapAlign: 'start', flexShrink: 0 } },
+      React.createElement('button', { onClick: () => setAbaAtiva('nps'), style: { ...tabEstilo(abaAtiva === 'nps'), scrollSnapAlign: 'start', flexShrink: 0 } },
         React.createElement(ThumbsUp, { size: 14 }), 'NPS'),
-      React.createElement('button', { onClick: () => { setAbaAtiva('sla'); if (!sla) carregarSLA(); }, style: { ...tabEstilo(abaAtiva === 'sla'), scrollSnapAlign: 'start', flexShrink: 0 } },
+      React.createElement('button', { onClick: () => setAbaAtiva('sla'), style: { ...tabEstilo(abaAtiva === 'sla'), scrollSnapAlign: 'start', flexShrink: 0 } },
         React.createElement(Clock, { size: 14 }), 'SLA'),
     ),
 
@@ -1093,8 +1130,13 @@ export function PaginaRelatorios() {
               style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 18 },
             },
               React.createElement(CartaoKPI, {
-                titulo: 'NPS Score', valor: npsDetalhado.geral?.nps ?? '—',
-                icone: ThumbsUp, cor: T.primary,
+                titulo: 'NPS Score',
+                valor: (npsDetalhado.geral?.total_respondidos || 0) > 0 ? Math.round(npsDetalhado.geral.nps) : '—',
+                sub: (npsDetalhado.geral?.total_respondidos || 0) > 0
+                  ? `${faixaNps(npsDetalhado.geral.nps).rotulo} · ${npsDetalhado.geral.total_respondidos} respostas`
+                  : 'sem respostas no período',
+                icone: ThumbsUp,
+                cor: (npsDetalhado.geral?.total_respondidos || 0) > 0 ? faixaNps(npsDetalhado.geral.nps).cor : T.textMuted,
               }),
               React.createElement(CartaoKPI, {
                 titulo: 'Promotores', valor: npsDetalhado.geral?.promotores ?? 0,
