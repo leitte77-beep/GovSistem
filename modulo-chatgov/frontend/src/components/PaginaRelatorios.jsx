@@ -320,13 +320,22 @@ function Skeleton({ altura, largura }) {
   });
 }
 
-function Toggle({ ativo, onChange }) {
+function Toggle({ ativo, onChange, label }) {
+  const alternar = () => onChange(!ativo);
   return React.createElement('div', {
-    onClick: () => onChange(!ativo),
+    role: 'switch',
+    'aria-checked': ativo,
+    'aria-label': label || 'Alternar',
+    tabIndex: 0,
+    onClick: alternar,
+    onKeyDown: (e) => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); alternar(); }
+    },
     style: {
       width: 40, height: 22, borderRadius: 11, cursor: 'pointer',
       background: ativo ? T.primary : T.surfaceMuted,
       position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+      outlineOffset: 2,
     },
   },
     React.createElement('div', {
@@ -349,7 +358,11 @@ function DonutChart({ dados, tamanho }) {
   const r = size * 0.35;
   const strokeW = size * 0.12;
   const circunferencia = 2 * Math.PI * r;
-  const total = dados.reduce((s, d) => s + d.value, 0) || 1;
+  const soma = (dados || []).reduce((s, d) => s + (Number(d.value) || 0), 0);
+  if (!dados || dados.length === 0 || soma === 0) {
+    return React.createElement('div', { style: { fontSize: 13, color: T.textMuted, padding: '8px 0' } }, 'Sem dados no período.');
+  }
+  const total = soma;
   let offset = 0;
 
   return React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 20, flexWrap: 'wrap' } },
@@ -420,47 +433,118 @@ function BarrasHorizontais({ dados, corPadrao, onHover }) {
   );
 }
 
+// ─────────── BARRAS DE NPS (DIVERGENTES, CENTRADAS NO ZERO) ───────────
+
+function BarrasNps({ dados, onHover }) {
+  const lista = dados || [];
+  if (lista.length === 0) {
+    return React.createElement('div', { style: { fontSize: 13, color: T.textMuted, padding: '8px 0' } }, 'Sem respostas no período.');
+  }
+  const cor = (v) => (v >= 50 ? T.success : v >= 0 ? T.warning : T.danger);
+  return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+    React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', fontSize: 10, color: T.textMuted, paddingLeft: 130, paddingRight: 84 } },
+      React.createElement('span', null, '−100'),
+      React.createElement('span', null, '0'),
+      React.createElement('span', null, '+100'),
+    ),
+    lista.map((d, i) => {
+      const v = Math.max(-100, Math.min(100, Number(d.value) || 0));
+      const largura = Math.min(100, Math.abs(v)) / 2; // 0..50% de cada lado
+      return React.createElement('div', { key: d.label + i, style: { display: 'flex', alignItems: 'center', gap: 10 } },
+        React.createElement('span', {
+          title: d.label,
+          style: { width: 130, flexShrink: 0, fontSize: 12.5, color: T.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
+        }, d.label),
+        React.createElement('div', {
+          style: { flex: 1, position: 'relative', height: 18, background: T.surfaceMuted, borderRadius: 6, overflow: 'hidden' },
+        },
+          React.createElement('div', { style: { position: 'absolute', left: '50%', top: 0, bottom: 0, width: 1, background: T.borderStrong } }),
+          React.createElement('div', {
+            onMouseEnter: (e) => onHover && onHover({ texto: `${d.label}: NPS ${v}`, x: e.clientX, y: e.clientY }),
+            onMouseLeave: () => onHover && onHover(null),
+            style: {
+              position: 'absolute', top: 0, bottom: 0,
+              left: v >= 0 ? '50%' : undefined,
+              right: v < 0 ? '50%' : undefined,
+              width: `${largura}%`, minWidth: v !== 0 ? 4 : 0,
+              background: cor(v), borderRadius: 6, transition: 'width 0.4s ease',
+            },
+          }),
+        ),
+        React.createElement('span', { style: { width: 74, flexShrink: 0, textAlign: 'right', fontSize: 12.5, fontWeight: 600, color: T.textSecondary } },
+          d.sub != null ? d.sub : v),
+      );
+    }),
+  );
+}
+
 // ─────────── BARRAS VERTICAIS COM LINHA DE TENDÊNCIA ───────────
 
 function BarrasVerticais({ dados, mostrarLabelCada, linhaTendencia, onHover }) {
   const cada = mostrarLabelCada || 1;
   const max = Math.max(1, ...dados.map((d) => d.value));
-  const barrasW = Math.max(14, Math.min(30, 600 / Math.max(1, dados.length)));
+  const wrapRef = useRef(null);
+  const [largura, setLargura] = useState(0);
 
-  return React.createElement('div', { style: { position: 'relative' } },
-    React.createElement('div', { style: { display: 'flex', alignItems: 'flex-end', gap: 2, height: 140, overflowX: 'auto' } },
-      dados.map((d, i) => React.createElement('div', {
-        key: d.label + i,
-        style: { flex: `1 0 ${barrasW}px`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%', gap: 4, minWidth: barrasW },
+  // Mede a largura disponível para posicionar a linha de tendência exatamente
+  // sobre o centro das barras (antes a coordenada era chutada e desalinhava
+  // quando as barras cresciam além do mínimo ou havia scroll horizontal).
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return undefined;
+    const medir = () => setLargura(el.clientWidth);
+    medir();
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver(medir);
+      ro.observe(el);
+      return () => ro.disconnect();
+    }
+    window.addEventListener('resize', medir);
+    return () => window.removeEventListener('resize', medir);
+  }, []);
+
+  const gap = 2;
+  const n = Math.max(1, dados.length);
+  const barraMin = Math.max(14, Math.min(30, 600 / n));
+  const barraW = largura > 0 ? Math.max(barraMin, (largura - (n - 1) * gap) / n) : barraMin;
+  const total = n * barraW + (n - 1) * gap;
+
+  return React.createElement('div', { ref: wrapRef, style: { overflowX: 'auto' } },
+    React.createElement('div', { style: { position: 'relative', width: total, minWidth: '100%' } },
+      React.createElement('div', { style: { display: 'flex', alignItems: 'flex-end', gap, height: 140 } },
+        dados.map((d, i) => React.createElement('div', {
+          key: d.label + i,
+          style: { flex: `0 0 ${barraW}px`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%', gap: 4 },
+        },
+          React.createElement('div', {
+            style: {
+              width: '70%', height: `${(d.value / max) * 100}%`, minHeight: d.value > 0 ? 3 : 0,
+              background: d.destaque ? T.primary : (T.chartBar || T.primarySoft), borderRadius: '3px 3px 0 0', transition: 'height 0.3s', cursor: 'pointer',
+            },
+            onMouseEnter: (e) => onHover && onHover({ texto: `${d.label}: ${d.value}`, x: e.clientX, y: e.clientY }),
+            onMouseLeave: () => onHover && onHover(null),
+          }),
+          React.createElement('span', {
+            style: { fontSize: 9, color: T.textSecondary, whiteSpace: 'nowrap' },
+          }, (i % cada === 0) ? d.label : ''),
+        )),
+      ),
+      linhaTendencia && linhaTendencia.length > 0 && React.createElement('svg', {
+        style: { position: 'absolute', top: 0, left: 0, width: total, height: 140, pointerEvents: 'none' },
       },
-        React.createElement('div', {
-          style: {
-            width: '70%', height: `${(d.value / max) * 100}%`, minHeight: d.value > 0 ? 3 : 0,
-            background: d.destaque ? T.primary : (T.chartBar || T.primarySoft), borderRadius: '3px 3px 0 0', transition: 'height 0.3s', cursor: 'pointer',
-          },
-          onMouseEnter: (e) => onHover && onHover({ texto: `${d.label}: ${d.value}`, x: e.clientX, y: e.clientY }),
-          onMouseLeave: () => onHover && onHover(null),
+        React.createElement('polyline', {
+          points: linhaTendencia.map((v, i) => {
+            const x = i * (barraW + gap) + barraW / 2;
+            const y = 140 - (v / max) * 140;
+            return `${x},${y}`;
+          }).join(' '),
+          fill: 'none',
+          stroke: T.primary,
+          strokeWidth: 2,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
         }),
-        React.createElement('span', {
-          style: { fontSize: 9, color: T.textSecondary, whiteSpace: 'nowrap' },
-        }, (i % cada === 0) ? d.label : ''),
-      )),
-    ),
-    linhaTendencia && linhaTendencia.length > 0 && React.createElement('svg', {
-      style: { position: 'absolute', top: 0, left: 0, width: '100%', height: 140, pointerEvents: 'none' },
-    },
-      React.createElement('polyline', {
-        points: linhaTendencia.map((v, i) => {
-          const x = (i + 0.5) / dados.length * (dados.length * (barrasW + 2));
-          const y = 140 - (v / max) * 140;
-          return `${x},${y}`;
-        }).join(' '),
-        fill: 'none',
-        stroke: T.primary,
-        strokeWidth: 2,
-        strokeLinecap: 'round',
-        strokeLinejoin: 'round',
-      }),
+      ),
     ),
   );
 }
@@ -978,7 +1062,7 @@ export function PaginaRelatorios() {
 
       // Toggle comparação (abaixo dos filtros)
       React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 } },
-        React.createElement(Toggle, { ativo: comparar, onChange: setComparar }),
+        React.createElement(Toggle, { ativo: comparar, onChange: setComparar, label: 'Comparar com período anterior' }),
         React.createElement('span', { style: { fontSize: 12.5, color: T.textSecondary } }, 'Comparar com período anterior'),
         React.createElement(Filter, { size: 13, style: { color: T.textMuted } }),
       ),
@@ -1195,20 +1279,18 @@ export function PaginaRelatorios() {
             // NPS por setor e por atendente
             React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))', gap: 18 } },
                 React.createElement(Secao, { titulo: 'NPS por Setor' },
-                  React.createElement(BarrasHorizontais, {
-                    corPadrao: T.primary,
+                  React.createElement(BarrasNps, {
                     dados: (npsDetalhado.por_setor || []).map((s) => ({
-                      label: s.departamento_nome, value: Math.abs((s.nps || 0) + 100), cor: (s.nps || 0) >= 50 ? T.success : (s.nps || 0) >= 0 ? T.warning : T.danger,
+                      label: s.departamento_nome, value: s.nps || 0,
                       sub: `${s.nps ?? '—'} · ${s.total || 0} respostas`,
                     })),
                     onHover: setTooltip,
                   }),
                 ),
                 React.createElement(Secao, { titulo: 'NPS por Atendente' },
-                  React.createElement(BarrasHorizontais, {
-                    corPadrao: T.primary,
+                  React.createElement(BarrasNps, {
                     dados: (npsDetalhado.por_atendente || []).map((a) => ({
-                      label: a.operador_nome, value: Math.abs((a.nps || 0) + 100), cor: (a.nps || 0) >= 50 ? T.success : (a.nps || 0) >= 0 ? T.warning : T.danger,
+                      label: a.operador_nome, value: a.nps || 0,
                       sub: `${a.nps ?? '—'} · ${a.total || 0} respostas`,
                     })),
                     onHover: setTooltip,
