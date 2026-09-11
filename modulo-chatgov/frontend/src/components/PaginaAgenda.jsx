@@ -50,7 +50,7 @@ export function PaginaAgenda({ onSendMessage, breakpoint }) {
   const [editandoId, setEditandoId] = useState(null);
   const [nomeEdit, setNomeEdit] = useState('');
   const [enviandoId, setEnviandoId] = useState(null);
-  const [modoGrade, setModoGrade] = useState(false);
+  const [modoGrade, setModoGrade] = useState(true);
   const [filtroAtivo, setFiltroAtivo] = useState('todos');
   const [excluindoId, setExcluindoId] = useState(null);
   const [showNovaConversa, setShowNovaConversa] = useState(false);
