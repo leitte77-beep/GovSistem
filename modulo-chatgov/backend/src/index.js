@@ -3092,7 +3092,10 @@ app.use('/api', rateLimiter);
           ]);
 
           const taxaAnt = resumoAnt.criadas > 0 ? Math.round((resumoAnt.resolvidas_periodo / resumoAnt.criadas) * 100) : 0;
-          const pct = (atual, ant) => ant > 0 ? Math.round(((atual - ant) / ant) * 100) : (atual > 0 ? 100 : 0);
+          // Sem base de comparação (período anterior zerado) não há variação
+          // percentual que faça sentido: devolve null para a UI não exibir um
+          // número absurdo (ex.: 31700% quando a média anterior era ~1s).
+          const pct = (atual, ant) => (ant > 0 ? Math.round(((atual - ant) / ant) * 100) : null);
 
           comparacao = {
             periodo: { inicio: inicioAnt, fim: fimAnt },
@@ -3108,9 +3111,9 @@ app.use('/api', rateLimiter);
             delta_recebidas: pct(resumoData.recebidas, resumoAnt.recebidas),
             delta_enviadas: pct(resumoData.enviadas, resumoAnt.enviadas),
             delta_taxa_resolucao: pct(resumoData.taxa_resolucao, taxaAnt),
-            delta_tempo_resposta: resumoAnt.criadas > 0
-              ? pct(resumoData.tempo_primeira_resposta_seg, resumoAnt.tempo_primeira_resposta_seg || 1)
-              : 0,
+            delta_tempo_resposta: resumoAnt.tempo_primeira_resposta_seg > 0
+              ? pct(resumoData.tempo_primeira_resposta_seg, resumoAnt.tempo_primeira_resposta_seg)
+              : null,
           };
         } catch (e) {
           console.error('[API] comparacao error:', e.message);

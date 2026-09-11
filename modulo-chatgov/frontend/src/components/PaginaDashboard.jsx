@@ -50,10 +50,19 @@ function formatarDataCurta(valor) {
   return `${dia}/${mes}`;
 }
 
+// Faixa clássica do NPS: 50+ excelente, 0+ razoável, negativo crítico.
+function faixaNps(valor) {
+  if (valor >= 50) return { rotulo: 'Excelente', cor: T.success };
+  if (valor >= 0) return { rotulo: 'Razoável', cor: T.warning };
+  return { rotulo: 'Crítico', cor: T.danger };
+}
+
 function CartaoKpi({ titulo, valor, detalhe, icon: Icone, cor = T.primary, delta, deltaInvertido = false }) {
-  const deltaNumero = Number(delta);
-  const temDelta = Number.isFinite(deltaNumero);
+  // delta null/undefined = período anterior sem base; não mostra variação.
+  const temDelta = delta !== null && delta !== undefined && delta !== '' && Number.isFinite(Number(delta));
+  const deltaNumero = temDelta ? Number(delta) : 0;
   const positivo = deltaInvertido ? deltaNumero <= 0 : deltaNumero >= 0;
+  const deltaTexto = Math.abs(deltaNumero) > 999 ? '>999%' : `${Math.abs(deltaNumero)}%`;
 
   return React.createElement('article', {
     style: {
@@ -88,7 +97,7 @@ function CartaoKpi({ titulo, valor, detalhe, icon: Icone, cor = T.primary, delta
         deltaNumero >= 0
           ? React.createElement(ArrowUpRight, { size: 13 })
           : React.createElement(ArrowDownRight, { size: 13 }),
-        `${Math.abs(deltaNumero)}%`,
+        deltaTexto,
       ),
       React.createElement('span', { style: { color: T.textSecondary } }, detalhe),
     ),
@@ -129,6 +138,14 @@ function EstadoVazioDashboard({ mensagem, dica }) {
       React.createElement('div', { style: { marginTop: 4, color: T.textSecondary, fontSize: 11 } }, dica),
     ),
   );
+}
+
+function Skeleton({ height = 14, width = '100%', radius = 8, style }) {
+  return React.createElement('div', {
+    'aria-hidden': true,
+    className: 'dash-skeleton',
+    style: { height, width, borderRadius: radius, background: T.surfaceMuted, ...style },
+  });
 }
 
 function GraficoLinha({ dados }) {
@@ -339,10 +356,11 @@ export function PaginaDashboard({ breakpoint }) {
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState('');
   const [atualizadoEm, setAtualizadoEm] = useState(null);
+  const [autoAtualizar, setAutoAtualizar] = useState(true);
   const ehMobile = breakpoint === 'mobile';
 
-  const carregar = useCallback(async () => {
-    setCarregando(true);
+  const carregar = useCallback(async (silencioso = false) => {
+    if (!silencioso) setCarregando(true);
     setErro('');
     try {
       const [dadosMetricas, dadosAdmin, listaDepartamentos] = await Promise.all([
@@ -363,6 +381,16 @@ export function PaginaDashboard({ breakpoint }) {
 
   useEffect(() => { carregar(); }, [carregar]);
 
+  // Auto-refresh: recarrega em silêncio a cada 60s enquanto a aba está visível,
+  // sem piscar o skeleton nem perder os dados já exibidos.
+  useEffect(() => {
+    if (!autoAtualizar) return undefined;
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') carregar(true);
+    }, 60000);
+    return () => clearInterval(id);
+  }, [autoAtualizar, carregar]);
+
   const selecionarPeriodo = (dias) => {
     setPeriodo(dias);
     setInicio(inicioPeriodo(dias));
@@ -372,6 +400,9 @@ export function PaginaDashboard({ breakpoint }) {
   const resumo = metricas?.resumo || {};
   const comparacao = metricas?.comparacao || {};
   const nps = metricas?.nps?.nps;
+  const npsTotal = metricas?.nps?.total_respondidos || 0;
+  const npsTem = Number.isFinite(Number(nps)) && npsTotal > 0;
+  const npsFaixa = npsTem ? faixaNps(Number(nps)) : null;
   const online = useMemo(
     () => (administrativo?.operadores_online || []).filter((item) => item.online).length,
     [administrativo],
@@ -390,6 +421,8 @@ export function PaginaDashboard({ breakpoint }) {
     'aria-labelledby': 'dashboard-titulo',
     style: { flex: 1, minWidth: 0, minHeight: 0, overflowY: 'auto', background: T.bg },
   },
+    React.createElement('style', null,
+      '@keyframes dash-pulse { 0%, 100% { opacity: 0.55; } 50% { opacity: 0.95; } } .dash-skeleton { animation: dash-pulse 1.4s ease-in-out infinite; }'),
     React.createElement('header', {
       style: {
         background: T.surface, borderBottom: `1px solid ${T.border}`,
@@ -401,11 +434,23 @@ export function PaginaDashboard({ breakpoint }) {
           React.createElement('h1', { id: 'dashboard-titulo', style: { margin: 0, fontSize: ehMobile ? 22 : 24, letterSpacing: -0.6 } }, 'Dashboard operacional'),
           React.createElement('p', { style: { margin: '5px 0 0', color: T.textSecondary, fontSize: 13 } }, 'Acompanhe demanda, desempenho da equipe e qualidade do atendimento.'),
         ),
-        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
           atualizadoEm && React.createElement('span', { style: { color: T.textSecondary, fontSize: 11 } },
             `Atualizado às ${atualizadoEm.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`),
           React.createElement('button', {
-            type: 'button', onClick: carregar, disabled: carregando,
+            type: 'button', onClick: () => setAutoAtualizar((v) => !v),
+            'aria-pressed': autoAtualizar,
+            'aria-label': autoAtualizar ? 'Desativar atualização automática' : 'Ativar atualização automática',
+            title: autoAtualizar ? 'Atualização automática a cada 60s (ativa)' : 'Atualização automática desativada',
+            style: {
+              minHeight: 40, padding: '0 13px', border: `1px solid ${autoAtualizar ? T.primary : T.borderStrong}`,
+              borderRadius: T.radiusSm, background: autoAtualizar ? T.primarySoft : T.surface,
+              color: autoAtualizar ? T.primary : T.textSecondary,
+              display: 'inline-flex', alignItems: 'center', gap: 7, cursor: 'pointer', fontWeight: 700,
+            },
+          }, React.createElement(Activity, { size: 16 }), 'Auto'),
+          React.createElement('button', {
+            type: 'button', onClick: () => carregar(), disabled: carregando,
             'aria-label': 'Atualizar dados do dashboard',
             style: {
               minHeight: 40, padding: '0 13px', border: `1px solid ${T.borderStrong}`,
@@ -470,7 +515,28 @@ export function PaginaDashboard({ breakpoint }) {
         style: { marginBottom: 16, padding: 14, borderRadius: T.radius, background: T.dangerSoft, color: T.dangerDark, fontSize: 13 },
       }, erro),
       carregando && !metricas
-        ? React.createElement('div', { role: 'status', style: { padding: 40, textAlign: 'center', color: T.textMuted } }, 'Carregando indicadores…')
+        ? React.createElement(React.Fragment, null,
+            React.createElement('div', {
+              role: 'status', 'aria-label': 'Carregando indicadores',
+              style: { display: 'grid', gridTemplateColumns: ehMobile ? '1fr' : 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14, marginBottom: 18 },
+            },
+              Array.from({ length: 6 }, (_, i) => React.createElement('div', {
+                key: i,
+                style: { background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radiusLg, padding: 18, boxShadow: T.shadow },
+              },
+                React.createElement(Skeleton, { width: '55%', height: 12 }),
+                React.createElement(Skeleton, { width: '40%', height: 28, style: { marginTop: 12 } }),
+                React.createElement(Skeleton, { width: '70%', height: 10, style: { marginTop: 14 } }),
+              )),
+            ),
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: ehMobile ? '1fr' : 'minmax(0, 1.65fr) minmax(300px, 1fr)', gap: 18, marginBottom: 18 } },
+              React.createElement(Skeleton, { height: 300, radius: T.radiusLg }),
+              React.createElement(Skeleton, { height: 300, radius: T.radiusLg }),
+            ),
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: ehMobile ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 18 } },
+              Array.from({ length: 4 }, (_, i) => React.createElement(Skeleton, { key: i, height: 240, radius: T.radiusLg })),
+            ),
+          )
         : React.createElement(React.Fragment, null,
           React.createElement('section', {
             'aria-label': 'Indicadores principais',
@@ -486,7 +552,13 @@ export function PaginaDashboard({ breakpoint }) {
             React.createElement(CartaoKpi, { titulo: 'Mensagens recebidas', valor: resumo.recebidas || 0, detalhe: 'vs. período anterior', icon: MessageSquare, cor: '#0891B2', delta: comparacao.delta_recebidas }),
             React.createElement(CartaoKpi, { titulo: 'Mensagens respondidas', valor: resumo.enviadas || 0, detalhe: 'vs. período anterior', icon: Send, cor: T.primary, delta: comparacao.delta_enviadas }),
             React.createElement(CartaoKpi, { titulo: 'Primeira resposta', valor: formatarTempo(resumo.tempo_primeira_resposta_seg), detalhe: 'média do período', icon: Clock3, cor: '#0891B2', delta: comparacao.delta_tempo_resposta, deltaInvertido: true }),
-            React.createElement(CartaoKpi, { titulo: 'NPS', valor: Number.isFinite(Number(nps)) ? Math.round(nps) : '—', detalhe: 'satisfação do cidadão', icon: Star, cor: T.warning }),
+            React.createElement(CartaoKpi, {
+              titulo: 'NPS',
+              valor: npsTem ? Math.round(nps) : '—',
+              detalhe: npsTem ? `${npsFaixa.rotulo} · ${npsTotal} resposta(s)` : 'sem respostas no período',
+              icon: Star,
+              cor: npsFaixa ? npsFaixa.cor : T.textMuted,
+            }),
           ),
 
           React.createElement('div', {
