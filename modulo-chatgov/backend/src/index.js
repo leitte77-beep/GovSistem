@@ -2954,7 +2954,17 @@ app.use('/api', rateLimiter);
       const allParams = [t, inicio, fim, ...msgExtra4];
       const baseParams = [t, ...extraParams2];
 
-      const [resumo, primeiraResposta, porStatus, porDia, porSetor, porHora, ranking] = await Promise.all([
+      // Protocolos (assuntos e TMA por setor): filtram por período e, quando
+      // houver, pelo departamento selecionado — para a tela não misturar o
+      // recorte do mês com o período escolhido pelo usuário.
+      const protParams = [t, inicio, fim];
+      let protDep = '';
+      if (departamento_id) {
+        protDep = ` AND p.departamento_id = $${protParams.length + 1}::uuid`;
+        protParams.push(departamento_id);
+      }
+
+      const [resumo, primeiraResposta, porStatus, porDia, porSetor, porHora, ranking, topAssuntos, tmaPorSetor] = await Promise.all([
         db.one(
           `SELECT
              (SELECT COUNT(*)::int FROM conversas WHERE tenant_id=$1 AND criado_em::date BETWEEN $2 AND $3${convFilter4}) AS criadas,
@@ -3008,9 +3018,25 @@ app.use('/api', rateLimiter);
                   COUNT(*) FILTER (WHERE m.direcao='saida')::int AS enviadas,
                   COUNT(DISTINCT m.conversa_id)::int AS conversas
            FROM mensagens m JOIN operadores o ON o.id=m.operador_id
-           WHERE m.tenant_id=$1 AND m.operador_id IS NOT NULL AND m.criado_em::date BETWEEN $2 AND $3${msgFilter4}
-           GROUP BY o.id, o.nome ORDER BY enviadas DESC LIMIT 10`,
+            WHERE m.tenant_id=$1 AND m.operador_id IS NOT NULL AND m.criado_em::date BETWEEN $2 AND $3${msgFilter4}
+            GROUP BY o.id, o.nome ORDER BY enviadas DESC LIMIT 10`,
           allParams
+        ),
+        db.manyOrNone(
+          `SELECT COALESCE(p.assunto, 'Geral') AS nome, COUNT(*)::int AS total
+           FROM protocolos p
+           WHERE p.tenant_id=$1 AND p.aberto_em::date BETWEEN $2 AND $3${protDep}
+           GROUP BY p.assunto ORDER BY total DESC LIMIT 6`,
+          protParams
+        ),
+        db.manyOrNone(
+          `SELECT COALESCE(d.nome, 'Sem setor') AS nome,
+                  AVG(EXTRACT(EPOCH FROM (p.fechado_em - p.aberto_em))/60)::int AS minutos
+           FROM protocolos p LEFT JOIN departamentos d ON d.id = p.departamento_id
+           WHERE p.tenant_id=$1 AND p.fechado_em IS NOT NULL
+             AND p.fechado_em::date BETWEEN $2 AND $3${protDep}
+           GROUP BY d.nome ORDER BY minutos DESC LIMIT 8`,
+          protParams
         ),
       ]);
 
@@ -3099,6 +3125,8 @@ app.use('/api', rateLimiter);
         por_setor: porSetor,
         por_hora: porHora,
         ranking_atendentes: ranking,
+        top_assuntos: topAssuntos,
+        tma_por_setor: tmaPorSetor,
         nps,
         comparacao,
       });

@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Activity, ArrowDownRight, ArrowUpRight, BarChart3, Bot, CheckCircle2,
-  Clock3, Headphones, Inbox, MessageCircle, RefreshCw, Star, Users,
+  Clock3, Headphones, Inbox, MessageCircle, MessageSquare, RefreshCw, Send,
+  Star, Timer, Trophy, Users,
 } from 'lucide-react';
 import { fetchDashboard, fetchDepartamentos, fetchRelatorioMetricas } from '../api';
 import { T } from '../theme';
@@ -138,6 +139,18 @@ function GraficoLinha({ dados }) {
       dica: 'Ajuste os filtros ou aguarde a entrada de novas conversas.',
     });
   }
+  // Série de um único dia (ex.: filtro "Hoje"): uma polilinha com um ponto não
+  // desenha nada. Mostra o número em destaque em vez de um gráfico vazio.
+  if (pontos.length === 1) {
+    const valor = Number(pontos[0].total) || 0;
+    return React.createElement('div', {
+      style: { padding: '18px 20px 16px', minHeight: 214, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 6 },
+    },
+      React.createElement('div', { style: { fontSize: 42, lineHeight: 1, fontWeight: 800, color: T.text, letterSpacing: -1.5 } }, valor),
+      React.createElement('div', { style: { fontSize: 12, color: T.textSecondary } },
+        `${formatarDataCurta(pontos[0].dia)} · conversa(s) iniciada(s)`),
+    );
+  }
   const largura = 720;
   const altura = 180;
   const margem = 18;
@@ -184,7 +197,7 @@ function GraficoLinha({ dados }) {
   );
 }
 
-function Barras({ dados, vazio, sufixo = '' }) {
+function Barras({ dados, vazio, sufixo = '', formatarValor }) {
   const lista = (dados || []).slice(0, 6);
   if (!lista.some((item) => Number(item.total ?? item.minutos) > 0)) {
     return React.createElement(EstadoVazioDashboard, {
@@ -199,7 +212,7 @@ function Barras({ dados, vazio, sufixo = '' }) {
       return React.createElement('div', { key: item.nome || item.assunto || item.hora, style: { minWidth: 0 } },
         React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', gap: 12, marginBottom: 5, fontSize: 12 } },
           React.createElement('span', { style: { color: T.textSecondary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, item.nome || item.assunto || `${item.hora}h`),
-          React.createElement('strong', { style: { color: T.text } }, `${valor}${sufixo}`),
+          React.createElement('strong', { style: { color: T.text } }, formatarValor ? formatarValor(valor) : `${valor}${sufixo}`),
         ),
         React.createElement('div', { style: { height: 7, borderRadius: 8, background: T.surfaceMuted, overflow: 'hidden' } },
           React.createElement('div', {
@@ -271,6 +284,46 @@ function ListaOperadores({ operadores }) {
       }, operador.status_atendente || 'disponível'),
       React.createElement('span', { style: { color: T.textSecondary, fontSize: 10 } }, `Carga ${operador.carga || 0}`),
     )),
+  );
+}
+
+function RankingAtendentes({ dados }) {
+  const lista = dados || [];
+  if (!lista.length) {
+    return React.createElement(EstadoVazioDashboard, {
+      mensagem: 'Sem atividade no período',
+      dica: 'O ranking aparece quando houver mensagens enviadas pela equipe.',
+    });
+  }
+  const maximo = Math.max(...lista.map((item) => Number(item.enviadas) || 0), 1);
+  const medalha = ['#D97706', '#64748B', '#B45309'];
+  return React.createElement('div', { style: { padding: '6px 20px 14px' } },
+    lista.slice(0, 6).map((item, index) => {
+      const enviadas = Number(item.enviadas) || 0;
+      return React.createElement('div', {
+        key: item.nome, style: { padding: '10px 0', borderBottom: `1px solid ${T.border}` },
+      },
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 } },
+          React.createElement('span', {
+            'aria-hidden': true,
+            style: {
+              width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
+              display: 'grid', placeItems: 'center', fontSize: 11, fontWeight: 800,
+              background: index < 3 ? `${medalha[index]}20` : T.surfaceMuted,
+              color: index < 3 ? medalha[index] : T.textSecondary,
+            },
+          }, index + 1),
+          React.createElement('span', { style: { flex: 1, minWidth: 0, color: T.text, fontSize: 12, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, item.nome),
+          React.createElement('span', { style: { color: T.textSecondary, fontSize: 11 } }, `${item.conversas || 0} conversa(s)`),
+          React.createElement('strong', { style: { color: T.text, fontSize: 12, minWidth: 62, textAlign: 'right' } }, `${enviadas} env.`),
+        ),
+        React.createElement('div', { style: { height: 6, borderRadius: 6, background: T.surfaceMuted, overflow: 'hidden' } },
+          React.createElement('div', {
+            style: { height: '100%', width: `${Math.max(4, (enviadas / maximo) * 100)}%`, borderRadius: 6, background: T.primary },
+          }),
+        ),
+      );
+    }),
   );
 }
 
@@ -430,6 +483,8 @@ export function PaginaDashboard({ breakpoint }) {
             React.createElement(CartaoKpi, { titulo: 'Aguardando atendimento', valor: resumo.na_fila || 0, detalhe: 'na fila agora', icon: Inbox, cor: T.warning }),
             React.createElement(CartaoKpi, { titulo: 'Em atendimento', valor: resumo.em_aberto || 0, detalhe: 'conversas ativas', icon: Headphones, cor: '#7C3AED' }),
             React.createElement(CartaoKpi, { titulo: 'Taxa de resolução', valor: `${resumo.taxa_resolucao || 0}%`, detalhe: 'vs. período anterior', icon: CheckCircle2, cor: T.success, delta: comparacao.delta_taxa_resolucao }),
+            React.createElement(CartaoKpi, { titulo: 'Mensagens recebidas', valor: resumo.recebidas || 0, detalhe: 'vs. período anterior', icon: MessageSquare, cor: '#0891B2', delta: comparacao.delta_recebidas }),
+            React.createElement(CartaoKpi, { titulo: 'Mensagens respondidas', valor: resumo.enviadas || 0, detalhe: 'vs. período anterior', icon: Send, cor: T.primary, delta: comparacao.delta_enviadas }),
             React.createElement(CartaoKpi, { titulo: 'Primeira resposta', valor: formatarTempo(resumo.tempo_primeira_resposta_seg), detalhe: 'média do período', icon: Clock3, cor: '#0891B2', delta: comparacao.delta_tempo_resposta, deltaInvertido: true }),
             React.createElement(CartaoKpi, { titulo: 'NPS', valor: Number.isFinite(Number(nps)) ? Math.round(nps) : '—', detalhe: 'satisfação do cidadão', icon: Star, cor: T.warning }),
           ),
@@ -463,8 +518,8 @@ export function PaginaDashboard({ breakpoint }) {
               React.createElement(ListaOperadores, { operadores: administrativo?.operadores_online }),
             ),
             React.createElement(Painel, null,
-              React.createElement(CabecalhoPainel, { titulo: 'Assuntos mais frequentes', subtitulo: 'Top 5 protocolos do mês' }),
-              React.createElement(Barras, { dados: administrativo?.top_assuntos, vazio: 'Ainda não há assuntos suficientes' }),
+              React.createElement(CabecalhoPainel, { titulo: 'Assuntos mais frequentes', subtitulo: 'Protocolos abertos no período selecionado' }),
+              React.createElement(Barras, { dados: metricas?.top_assuntos, vazio: 'Ainda não há assuntos suficientes' }),
             ),
             React.createElement(Painel, null,
               React.createElement(CabecalhoPainel, { titulo: 'Horários de maior demanda', subtitulo: 'Mensagens recebidas por hora' }),
@@ -491,6 +546,22 @@ export function PaginaDashboard({ breakpoint }) {
                     mensagem: 'Sem demanda por horário',
                     dica: 'O gráfico será preenchido quando houver mensagens recebidas.',
                   }),
+            ),
+            React.createElement(Painel, null,
+              React.createElement(CabecalhoPainel, {
+                titulo: 'Ranking de atendentes',
+                subtitulo: 'Mensagens enviadas no período',
+                complemento: React.createElement(Trophy, { size: 15, color: T.warning, 'aria-hidden': true }),
+              }),
+              React.createElement(RankingAtendentes, { dados: metricas?.ranking_atendentes }),
+            ),
+            React.createElement(Painel, null,
+              React.createElement(CabecalhoPainel, {
+                titulo: 'Tempo médio por setor',
+                subtitulo: 'Duração média dos protocolos fechados no período',
+                complemento: React.createElement(Timer, { size: 15, color: T.textSecondary, 'aria-hidden': true }),
+              }),
+              React.createElement(Barras, { dados: metricas?.tma_por_setor, vazio: 'Sem protocolos fechados no período', formatarValor: (min) => formatarTempo(Number(min) * 60) }),
             ),
           ),
 
