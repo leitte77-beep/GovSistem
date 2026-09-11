@@ -33,29 +33,41 @@ export async function criarPesquisaNPS(tenantId, protocoloId, conversaId, depart
   );
 }
 
-export async function calcularNPS(tenantId, dataInicio, dataFim) {
-  let query = `
-    SELECT
-      COUNT(*) FILTER (WHERE nota BETWEEN 9 AND 10) AS promotores,
-      COUNT(*) FILTER (WHERE nota BETWEEN 7 AND 8)  AS neutros,
-      COUNT(*) FILTER (WHERE nota BETWEEN 0 AND 6)  AS detratores,
-      COUNT(*) FILTER (WHERE respondida_em IS NOT NULL) AS total_respondidos,
-      COUNT(*) AS total_enviados
-    FROM pesquisas_nps
-    WHERE tenant_id = $1
-  `;
+// Filtros comuns (operador/status/canal) sobre pesquisas_nps p. Status e canal
+// olham a conversa dona da pesquisa (alias c), por isso a query precisa do
+// LEFT JOIN conversas c ON c.id = p.conversa_id.
+function filtrosNps(filtros, params) {
+  const { departamentoId, operadorId, status, canal } = filtros || {};
+  let sql = '';
+  if (departamentoId) { params.push(departamentoId); sql += ` AND p.departamento_id = $${params.length}::uuid`; }
+  if (operadorId) { params.push(operadorId); sql += ` AND p.operador_id = $${params.length}`; }
+  if (status) { params.push(status); sql += ` AND c.status = $${params.length}`; }
+  if (canal === 'chatbot') sql += ' AND c.operador_id IS NULL';
+  else if (canal === 'interno') sql += ' AND FALSE';
+  return sql;
+}
+
+export async function calcularNPS(tenantId, dataInicio, dataFim, filtros = {}) {
   const params = [tenantId];
+  let where = 'p.tenant_id = $1';
+  if (dataInicio) { params.push(dataInicio); where += ` AND p.enviada_em >= $${params.length}`; }
+  if (dataFim) { params.push(dataFim); where += ` AND p.enviada_em <= $${params.length}`; }
+  where += filtrosNps(filtros, params);
 
-  if (dataInicio) {
-    query += ' AND enviada_em >= $2';
-    params.push(dataInicio);
-  }
-  if (dataFim) {
-    query += ' AND enviada_em <= $' + (params.length + 1);
-    params.push(dataFim);
-  }
-
-  const row = await db.one(query, params);
+  const row = await db.one(
+    // Promotores/neutros/detratores só contam respostas de fato (respondida_em),
+    // senão as pesquisas ainda sem nota (nota 0) entravam como detratores.
+    `SELECT
+       COUNT(*) FILTER (WHERE p.respondida_em IS NOT NULL AND p.nota BETWEEN 9 AND 10) AS promotores,
+       COUNT(*) FILTER (WHERE p.respondida_em IS NOT NULL AND p.nota BETWEEN 7 AND 8)  AS neutros,
+       COUNT(*) FILTER (WHERE p.respondida_em IS NOT NULL AND p.nota BETWEEN 0 AND 6)  AS detratores,
+       COUNT(*) FILTER (WHERE p.respondida_em IS NOT NULL) AS total_respondidos,
+       COUNT(*) AS total_enviados
+     FROM pesquisas_nps p
+     LEFT JOIN conversas c ON c.id = p.conversa_id
+     WHERE ${where}`,
+    params
+  );
 
   const total = parseInt(row.total_respondidos) || 0;
   const promotores = parseInt(row.promotores) || 0;
@@ -73,33 +85,28 @@ export async function calcularNPS(tenantId, dataInicio, dataFim) {
   };
 }
 
-export async function npsPorSetor(tenantId, dataInicio, dataFim) {
-  let query = `
-    SELECT
-      d.id AS departamento_id,
-      d.nome AS departamento_nome,
-      COUNT(*) FILTER (WHERE p.nota BETWEEN 9 AND 10) AS promotores,
-      COUNT(*) FILTER (WHERE p.nota BETWEEN 7 AND 8)  AS neutros,
-      COUNT(*) FILTER (WHERE p.nota BETWEEN 0 AND 6)  AS detratores,
-      COUNT(*) FILTER (WHERE p.respondida_em IS NOT NULL) AS total
-    FROM pesquisas_nps p
-    JOIN departamentos d ON d.id = p.departamento_id
-    WHERE p.tenant_id = $1 AND p.respondida_em IS NOT NULL
-  `;
+export async function npsPorSetor(tenantId, dataInicio, dataFim, filtros = {}) {
   const params = [tenantId];
+  let where = 'p.tenant_id = $1 AND p.respondida_em IS NOT NULL';
+  if (dataInicio) { params.push(dataInicio); where += ` AND p.enviada_em >= $${params.length}`; }
+  if (dataFim) { params.push(dataFim); where += ` AND p.enviada_em <= $${params.length}`; }
+  where += filtrosNps(filtros, params);
 
-  if (dataInicio) {
-    query += ' AND p.enviada_em >= $2';
-    params.push(dataInicio);
-  }
-  if (dataFim) {
-    query += ' AND p.enviada_em <= $' + (params.length + 1);
-    params.push(dataFim);
-  }
-
-  query += ' GROUP BY d.id, d.nome ORDER BY total DESC';
-
-  const rows = await db.manyOrNone(query, params);
+  const rows = await db.manyOrNone(
+    `SELECT
+       d.id AS departamento_id,
+       d.nome AS departamento_nome,
+       COUNT(*) FILTER (WHERE p.nota BETWEEN 9 AND 10) AS promotores,
+       COUNT(*) FILTER (WHERE p.nota BETWEEN 7 AND 8)  AS neutros,
+       COUNT(*) FILTER (WHERE p.nota BETWEEN 0 AND 6)  AS detratores,
+       COUNT(*) FILTER (WHERE p.respondida_em IS NOT NULL) AS total
+     FROM pesquisas_nps p
+     JOIN departamentos d ON d.id = p.departamento_id
+     LEFT JOIN conversas c ON c.id = p.conversa_id
+     WHERE ${where}
+     GROUP BY d.id, d.nome ORDER BY total DESC`,
+    params
+  );
 
   return rows.map((r) => {
     const t = parseInt(r.total) || 1;
@@ -115,33 +122,28 @@ export async function npsPorSetor(tenantId, dataInicio, dataFim) {
   });
 }
 
-export async function npsPorAtendente(tenantId, dataInicio, dataFim) {
-  let query = `
-    SELECT
-      o.id AS operador_id,
-      o.nome AS operador_nome,
-      COUNT(*) FILTER (WHERE p.nota BETWEEN 9 AND 10) AS promotores,
-      COUNT(*) FILTER (WHERE p.nota BETWEEN 7 AND 8)  AS neutros,
-      COUNT(*) FILTER (WHERE p.nota BETWEEN 0 AND 6)  AS detratores,
-      COUNT(*) FILTER (WHERE p.respondida_em IS NOT NULL) AS total
-    FROM pesquisas_nps p
-    JOIN operadores o ON o.id = p.operador_id
-    WHERE p.tenant_id = $1 AND p.respondida_em IS NOT NULL
-  `;
+export async function npsPorAtendente(tenantId, dataInicio, dataFim, filtros = {}) {
   const params = [tenantId];
+  let where = 'p.tenant_id = $1 AND p.respondida_em IS NOT NULL';
+  if (dataInicio) { params.push(dataInicio); where += ` AND p.enviada_em >= $${params.length}`; }
+  if (dataFim) { params.push(dataFim); where += ` AND p.enviada_em <= $${params.length}`; }
+  where += filtrosNps(filtros, params);
 
-  if (dataInicio) {
-    query += ' AND p.enviada_em >= $2';
-    params.push(dataInicio);
-  }
-  if (dataFim) {
-    query += ' AND p.enviada_em <= $' + (params.length + 1);
-    params.push(dataFim);
-  }
-
-  query += ' GROUP BY o.id, o.nome ORDER BY total DESC';
-
-  const rows = await db.manyOrNone(query, params);
+  const rows = await db.manyOrNone(
+    `SELECT
+       o.id AS operador_id,
+       o.nome AS operador_nome,
+       COUNT(*) FILTER (WHERE p.nota BETWEEN 9 AND 10) AS promotores,
+       COUNT(*) FILTER (WHERE p.nota BETWEEN 7 AND 8)  AS neutros,
+       COUNT(*) FILTER (WHERE p.nota BETWEEN 0 AND 6)  AS detratores,
+       COUNT(*) FILTER (WHERE p.respondida_em IS NOT NULL) AS total
+     FROM pesquisas_nps p
+     JOIN operadores o ON o.id = p.operador_id
+     LEFT JOIN conversas c ON c.id = p.conversa_id
+     WHERE ${where}
+     GROUP BY o.id, o.nome ORDER BY total DESC`,
+    params
+  );
 
   return rows.map((r) => {
     const t = parseInt(r.total) || 1;

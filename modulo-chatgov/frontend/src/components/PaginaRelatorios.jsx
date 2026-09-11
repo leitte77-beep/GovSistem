@@ -765,26 +765,26 @@ export function PaginaRelatorios() {
     setCarregandoNPS(true);
     setErroNPS('');
     try {
-      setNpsDetalhado(await fetchRelatorioNPSDetalhado(inicio, fim));
+      setNpsDetalhado(await fetchRelatorioNPSDetalhado(inicio, fim, paramsFiltro));
     } catch (e) {
       setErroNPS(e.message || 'Erro ao carregar NPS.');
     } finally {
       setCarregandoNPS(false);
     }
-  }, [inicio, fim]);
+  }, [inicio, fim, paramsFiltro]);
 
   // ── carregar SLA ──
   const carregarSLA = useCallback(async () => {
     setCarregandoSLA(true);
     setErroSLA('');
     try {
-      setSla(await fetchRelatorioSLA(inicio, fim, departamentoId || undefined));
+      setSla(await fetchRelatorioSLA(inicio, fim, paramsFiltro));
     } catch (e) {
       setErroSLA(e.message || 'Erro ao carregar SLA.');
     } finally {
       setCarregandoSLA(false);
     }
-  }, [inicio, fim, departamentoId]);
+  }, [inicio, fim, paramsFiltro]);
 
   // ── carregar tudo ──
   const carregarTudo = useCallback(async () => {

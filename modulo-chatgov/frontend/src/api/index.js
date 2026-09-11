@@ -590,20 +590,27 @@ export async function fetchRelatorioMetricas(inicio, fim, { departamentoId, oper
   return res.json();
 }
 
-export async function fetchRelatorioNPSDetalhado(inicio, fim) {
+// Filtros comuns de relatório (setor/atendente/status/canal) aplicados na URL.
+function paramsRelatorio(inicio, fim, { departamentoId, operadorId, status, canal } = {}) {
   const params = new URLSearchParams();
   if (inicio) params.set('inicio', inicio);
   if (fim) params.set('fim', fim);
+  if (departamentoId) params.set('departamento_id', departamentoId);
+  if (operadorId) params.set('operador_id', operadorId);
+  if (status) params.set('status', status);
+  if (canal) params.set('canal', canal);
+  return params;
+}
+
+export async function fetchRelatorioNPSDetalhado(inicio, fim, filtros) {
+  const params = paramsRelatorio(inicio, fim, filtros);
   const res = await fetch(`/api/relatorios/nps-detalhado?${params.toString()}`, { headers: { Authorization: `Bearer ${getToken()}` } });
   if (!res.ok) throw new Error('Erro ao carregar relatório NPS detalhado');
   return res.json();
 }
 
-export async function fetchRelatorioSLA(inicio, fim, departamentoId) {
-  const params = new URLSearchParams();
-  if (inicio) params.set('inicio', inicio);
-  if (fim) params.set('fim', fim);
-  if (departamentoId) params.set('departamento_id', departamentoId);
+export async function fetchRelatorioSLA(inicio, fim, filtros) {
+  const params = paramsRelatorio(inicio, fim, filtros);
   const res = await fetch(`/api/relatorios/sla?${params.toString()}`, { headers: { Authorization: `Bearer ${getToken()}` } });
   if (!res.ok) throw new Error('Erro ao carregar relatório SLA');
   return res.json();

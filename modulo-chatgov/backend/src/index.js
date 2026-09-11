@@ -3170,10 +3170,12 @@ app.use('/api', rateLimiter);
       const fim = String(req.query.fim || hojeStr).slice(0, 10);
       const inicio = String(req.query.inicio || new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10)).slice(0, 10);
 
+      const { departamento_id, operador_id, status: statusFiltro, canal } = req.query;
+      const filtros = { departamentoId: departamento_id, operadorId: operador_id, status: statusFiltro, canal };
       const [geral, por_setor, por_atendente] = await Promise.all([
-        calcularNPS(t, inicio, fim),
-        npsPorSetor(t, inicio, fim),
-        npsPorAtendente(t, inicio, fim),
+        calcularNPS(t, inicio, fim, filtros),
+        npsPorSetor(t, inicio, fim, filtros),
+        npsPorAtendente(t, inicio, fim, filtros),
       ]);
 
       res.json({ geral, por_setor, por_atendente });
@@ -3190,22 +3192,19 @@ app.use('/api', rateLimiter);
       const hojeStr = new Date().toISOString().slice(0, 10);
       const fim = String(req.query.fim || hojeStr).slice(0, 10);
       const inicio = String(req.query.inicio || new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10)).slice(0, 10);
-      const { departamento_id } = req.query;
+      const { departamento_id, operador_id, status: statusFiltro, canal } = req.query;
 
-      let deptoFilter = '';
+      // Filtros aplicados sobre a conversa (alias c). Os mesmos parâmetros
+      // servem para as queries de mensagens, via subquery em conversas.
       const slaParams = [t, inicio, fim];
-      if (departamento_id) {
-        deptoFilter = ' AND c.departamento_id = $4::uuid';
-        slaParams.push(departamento_id);
-      }
-      // P95 e distribuição partem de mensagens; o filtro de setor precisa passar
-      // pela conversa dona da mensagem.
-      let msgDeptoFilter = '';
-      const msgSlaParams = [t, inicio, fim];
-      if (departamento_id) {
-        msgDeptoFilter = ' AND m.conversa_id IN (SELECT id FROM conversas WHERE tenant_id=$1 AND departamento_id=$4::uuid)';
-        msgSlaParams.push(departamento_id);
-      }
+      const convConds = [];
+      if (departamento_id) { slaParams.push(departamento_id); convConds.push(`c.departamento_id = $${slaParams.length}::uuid`); }
+      if (operador_id) { slaParams.push(operador_id); convConds.push(`c.operador_id = $${slaParams.length}::uuid`); }
+      if (statusFiltro) { slaParams.push(statusFiltro); convConds.push(`c.status = $${slaParams.length}`); }
+      if (canal === 'chatbot') convConds.push('c.operador_id IS NULL');
+      else if (canal === 'interno') convConds.push('FALSE');
+      const convFilter = convConds.length ? ' AND ' + convConds.join(' AND ') : '';
+      const msgConvFilter = ` AND m.conversa_id IN (SELECT id FROM conversas c WHERE c.tenant_id=$1${convFilter})`;
 
       const [tmaGeral, tmaSetor, abandono, p95Resp, distTempo] = await Promise.all([
         db.oneOrNone(
@@ -3213,7 +3212,7 @@ app.use('/api', rateLimiter);
            FROM conversas c
            WHERE c.tenant_id=$1 AND c.status IN ('resolvida','arquivada')
              AND c.ultima_mensagem_em IS NOT NULL
-             AND c.criado_em::date BETWEEN $2 AND $3${deptoFilter}`,
+             AND c.criado_em::date BETWEEN $2 AND $3${convFilter}`,
           slaParams
         ),
         db.manyOrNone(
@@ -3223,7 +3222,7 @@ app.use('/api', rateLimiter);
            FROM conversas c LEFT JOIN departamentos d ON d.id=c.departamento_id
            WHERE c.tenant_id=$1 AND c.status IN ('resolvida','arquivada')
              AND c.ultima_mensagem_em IS NOT NULL
-             AND c.criado_em::date BETWEEN $2 AND $3${deptoFilter}
+             AND c.criado_em::date BETWEEN $2 AND $3${convFilter}
            GROUP BY d.nome ORDER BY conversas DESC`,
           slaParams
         ),
@@ -3233,7 +3232,7 @@ app.use('/api', rateLimiter);
                * 100.0 / GREATEST(COUNT(*), 1), 1
            ) AS pct
            FROM conversas c
-           WHERE c.tenant_id=$1 AND c.criado_em::date BETWEEN $2 AND $3${deptoFilter}`,
+           WHERE c.tenant_id=$1 AND c.criado_em::date BETWEEN $2 AND $3${convFilter}`,
           slaParams
         ),
         db.oneOrNone(
@@ -3244,11 +3243,11 @@ app.use('/api', rateLimiter);
              SELECT MIN(m.criado_em) FILTER (WHERE m.direcao='entrada') AS primeira_entrada,
                     MIN(m.criado_em) FILTER (WHERE m.direcao='saida')   AS primeira_saida
              FROM mensagens m
-             WHERE m.tenant_id=$1 AND m.criado_em::date BETWEEN $2 AND $3${msgDeptoFilter}
+             WHERE m.tenant_id=$1 AND m.criado_em::date BETWEEN $2 AND $3${msgConvFilter}
              GROUP BY m.conversa_id
            ) q
            WHERE primeira_entrada IS NOT NULL AND primeira_saida IS NOT NULL AND primeira_saida > primeira_entrada`,
-          msgSlaParams
+          slaParams
         ),
         db.manyOrNone(
           // O segundos de cada faixa precisam ser projetados no subselect para o
@@ -3268,13 +3267,13 @@ app.use('/api', rateLimiter);
                SELECT EXTRACT(EPOCH FROM (MIN(m.criado_em) FILTER (WHERE m.direcao='saida')
                         - MIN(m.criado_em) FILTER (WHERE m.direcao='entrada'))) AS seg
                FROM mensagens m
-               WHERE m.tenant_id=$1 AND m.criado_em::date BETWEEN $2 AND $3${msgDeptoFilter}
+               WHERE m.tenant_id=$1 AND m.criado_em::date BETWEEN $2 AND $3${msgConvFilter}
                GROUP BY m.conversa_id
              ) q
              WHERE seg IS NOT NULL AND seg > 0
            ) sub
            GROUP BY faixa ORDER BY MIN(seg)`,
-          msgSlaParams
+          slaParams
         ),
       ]);
 
