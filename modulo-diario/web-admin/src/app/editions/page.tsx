@@ -31,7 +31,16 @@ export default function EditionsPage() {
     api.listEditions({ status: status || undefined })
       .then((data) => {
         const filtered = data.filter((e) => !status || e.status === status);
-        const sorted = [...filtered].sort((a, b) => b.year - a.year || b.number - a.number);
+        // Ordena pela hora de publicação (a edição mais recente/publicada fica na
+        // frente), desempate por data de publicação e número. Garante que uma
+        // edição EXTRA publicada depois da última normal apareça à frente dela.
+        const sorted = [...filtered].sort(
+          (a, b) =>
+            (b.published_at || "").localeCompare(a.published_at || "") ||
+            (b.publication_date || "").localeCompare(a.publication_date || "") ||
+            b.year - a.year ||
+            b.number - a.number,
+        );
         const slice = sorted.slice(page * PAGE_SIZE, page * PAGE_SIZE + PAGE_SIZE + 1);
         if (slice.length > PAGE_SIZE) { setHasMore(true); setEditions(slice.slice(0, PAGE_SIZE)); }
         else { setHasMore(false); setEditions(slice); }

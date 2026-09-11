@@ -35,6 +35,7 @@ export interface EditionListItem {
   title: string;
   status: EditionStatus;
   publication_date: string;
+  published_at: string | null;
   created_at: string;
   item_count: number;
   signature_count: number;

@@ -1,5 +1,6 @@
 import uuid
 from datetime import date, datetime
+from typing import Optional
 
 from pydantic import BaseModel, field_validator
 
@@ -80,6 +81,7 @@ class EditionListResponse(BaseModel):
     title: str
     status: EditionStatus
     publication_date: date
+    published_at: Optional[datetime] = None
     created_at: datetime
     item_count: int = 0
     signature_count: int = 0

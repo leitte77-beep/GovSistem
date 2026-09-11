@@ -356,7 +356,8 @@ async def list_editions(
         EditionListResponse(
             id=e.id, number=e.number, year=e.year, type=e.type,
             title=e.title, status=e.status, publication_date=e.publication_date,
-            created_at=e.created_at, item_count=len(e.items or []),
+            published_at=e.published_at, created_at=e.created_at,
+            item_count=len(e.items or []),
             signature_count=len(e.signatures or []),
         )
         for e in editions
