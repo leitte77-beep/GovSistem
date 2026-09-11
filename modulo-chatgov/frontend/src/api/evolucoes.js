@@ -104,6 +104,10 @@ export async function arquivarNotificacaoApi(id) {
   return jsonReq(`/api/evolucoes/notificacoes/${id}/arquivar`, 'POST');
 }
 
+export async function desarquivarNotificacaoApi(id) {
+  return jsonReq(`/api/evolucoes/notificacoes/${id}/desarquivar`, 'POST');
+}
+
 export async function fetchConfigNotificacoes() {
   const res = await fetch('/api/evolucoes/config/notificacoes', { headers: { Authorization: `Bearer ${getToken()}` } });
   if (!res.ok) return { push_ativo: true, som_ativado: true };

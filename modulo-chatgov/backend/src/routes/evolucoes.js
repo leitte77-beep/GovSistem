@@ -20,7 +20,7 @@ import {
 } from '../services/reunioes.js';
 import {
   criarNotificacao, listarNotificacoes, contarNaoLidasNotificacoes,
-  marcarNotificacaoLida, marcarTodasLidas, arquivarNotificacao,
+  marcarNotificacaoLida, marcarTodasLidas, arquivarNotificacao, desarquivarNotificacao,
   getConfigNotificacoes, atualizarConfigNotificacoes,
   silenciarConversa, getSilenciadas, getContagemNaoLidasPorCanal
 } from '../services/notificacoes.js';
@@ -501,6 +501,17 @@ router.post('/notificacoes/:id/arquivar', async (req, res) => {
     res.json(notificacao);
   } catch (err) {
     res.status(500).json({ erro: 'Erro ao arquivar notificação' });
+  }
+});
+
+router.post('/notificacoes/:id/desarquivar', async (req, res) => {
+  try {
+    const op = req.operador;
+    const notificacao = await desarquivarNotificacao(op.tenantId, op.id, req.params.id);
+    if (!notificacao) return res.status(404).json({ erro: 'Notificação não encontrada' });
+    res.json(notificacao);
+  } catch (err) {
+    res.status(500).json({ erro: 'Erro ao desarquivar notificação' });
   }
 });
 

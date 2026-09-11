@@ -115,6 +115,20 @@ export function ChatGov() {
     try { localStorage.setItem('chatgov_view', v); } catch {}
   }, []);
 
+  // Leva a notificação ao seu destino (o backend grava `link`): conversa abre
+  // pelo id; os demais links apontam para uma view (ex.: configurações). Antes
+  // o clique só marcava como lida e o link era descartado.
+  const abrirLinkNotificacao = useCallback((link) => {
+    if (!link) return;
+    try {
+      const url = new URL(link, window.location.origin);
+      const conversaId = url.searchParams.get('conversa');
+      if (conversaId) { abrirConversaPorId(conversaId); return; }
+      if (url.pathname.includes('configuracoes')) { handleChangeView('configuracoes'); return; }
+      if (url.pathname.includes('atendimento')) { handleChangeView('atendimento'); return; }
+    } catch { /* link inválido: ignora */ }
+  }, [abrirConversaPorId, handleChangeView]);
+
   const handleVoltar = useCallback(() => {
     setConversaAtiva(null);
     setCanalAtivo(null);
@@ -318,7 +332,7 @@ export function ChatGov() {
         )
       : view === 'notificacoes'
       ? React.createElement('div', { style: pageShellStyle },
-          React.createElement(CentroNotificacoes, { onCountChange: setNotifCount }),
+          React.createElement(CentroNotificacoes, { onCountChange: setNotifCount, onAbrirLink: abrirLinkNotificacao }),
         )
       : view === 'compromissos'
       ? React.createElement('div', { style: pageShellStyle },

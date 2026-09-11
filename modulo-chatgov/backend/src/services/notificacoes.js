@@ -68,6 +68,15 @@ export async function arquivarNotificacao(tenantId, operadorId, notificacaoId) {
   );
 }
 
+export async function desarquivarNotificacao(tenantId, operadorId, notificacaoId) {
+  return db.oneOrNone(
+    `UPDATE notificacoes SET arquivada_em = NULL
+     WHERE id = $1 AND tenant_id = $2 AND operador_id = $3 AND arquivada_em IS NOT NULL
+     RETURNING *`,
+    [notificacaoId, tenantId, operadorId]
+  );
+}
+
 export async function getConfigNotificacoes(tenantId, operadorId) {
   const cfg = await db.oneOrNone(
     'SELECT * FROM config_notificacoes WHERE operador_id = $1',
