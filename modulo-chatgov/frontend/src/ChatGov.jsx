@@ -19,7 +19,7 @@ import { useAuth } from './context/AuthContext';
 import { useSocket } from './context/SocketContext';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { T } from './theme';
-import { fetchConversa, fetchWhatsAppStatus, fetchAvisoAtivo } from './api';
+import { fetchConversa, fetchWhatsAppStatus, fetchAvisoAtivo, marcarAvisoVisualizado } from './api';
 import { fetchNotificacoesStatus } from './api/evolucoes';
 import { useNotificacoesDesktop } from './hooks/useNotificacoesDesktop';
 
@@ -226,12 +226,17 @@ export function ChatGov() {
     };
     socket.on('aviso:global', onAviso);
     socket.on('aviso:global:limpar', onLimpar);
-    // No load (F5): mostra o aviso ativo apenas se ainda não foi dispensado hoje.
+    // No load (F5): o backend já não devolve avisos que este operador fechou
+    // (único = nunca mais; diário = só volta no dia seguinte). O localStorage
+    // abaixo é só um reforço para o caso de a marcação no servidor ter falhado.
     fetchAvisoAtivo().then((a) => {
       if (!a?.mensagem) return;
       try {
         const visto = JSON.parse(localStorage.getItem('chatgov_aviso_visto') || 'null');
-        if (visto && visto.id === a.id && visto.dia === new Date().toDateString()) return;
+        if (visto && visto.id === a.id) {
+          const diario = a.recorrencia === 'diario';
+          if (!diario || visto.dia === new Date().toDateString()) return;
+        }
       } catch { /* ignore */ }
       setAvisoAtivo(a);
     }).catch(() => {});
@@ -241,14 +246,22 @@ export function ChatGov() {
     };
   }, [socket, auth?.operador?.id]);
 
-  const fecharAviso = () => {
+  // useCallback mantém a identidade estável entre re-renders do ChatGov. Sem
+  // isso, o useEffect do ModalAvisoGlobal (que depende de onClose) reiniciava o
+  // timer de fechamento automático a cada evento em tempo real, e o popup de
+  // prioridade média/baixa nunca sumia sozinho.
+  const fecharAviso = useCallback(() => {
     if (avisoAtivo) {
       try {
         localStorage.setItem('chatgov_aviso_visto', JSON.stringify({ id: avisoAtivo.id, dia: new Date().toDateString() }));
       } catch { /* ignore */ }
+      // Persiste no servidor: aviso único não reaparece mais para este operador;
+      // diário só volta no dia seguinte. Assim o popup para de aparecer a cada
+      // entrada no ChatGov mesmo sem duração definida.
+      marcarAvisoVisualizado(avisoAtivo.id).catch(() => {});
     }
     setAvisoAtivo(null);
-  };
+  }, [avisoAtivo]);
 
   const mostrarListaMobile = ehMobile && !conversaAtiva && !canalAtivo;
   const mostrarPainelMobile = ehMobile && (conversaAtiva || canalAtivo);

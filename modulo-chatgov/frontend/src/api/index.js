@@ -283,6 +283,9 @@ export async function fetchAvisoAtivo() {
   if (!res.ok) throw new Error('Erro ao buscar aviso');
   return res.json();
 }
+export async function marcarAvisoVisualizado(id) {
+  return jsonReq(`/api/avisos/${id}/visualizar`, 'POST');
+}
 export async function removerBloqueio(id) {
   return jsonReq(`/api/bloqueios/${id}`, 'DELETE');
 }

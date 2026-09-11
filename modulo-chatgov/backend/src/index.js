@@ -2041,13 +2041,22 @@ app.use('/api', rateLimiter);
     try {
       const op = req.operador;
       const aviso = await db.oneOrNone(
-        `SELECT id, titulo, mensagem, criado_em, importancia, expiracao_em, destino, departamento_ids, operador_ids
+        `SELECT id, titulo, mensagem, criado_em, importancia, expiracao_em, destino, departamento_ids, operador_ids, recorrencia, encerra_em
          FROM avisos_globais
          WHERE tenant_id = $1 AND ativo = true AND enviado_em IS NOT NULL
            AND (expiracao_em IS NULL OR expiracao_em > now())
            AND (encerra_em IS NULL OR encerra_em > now())
+           AND NOT EXISTS (
+             SELECT 1 FROM avisos_globais_visualizados v
+              WHERE v.aviso_id = avisos_globais.id
+                AND v.operador_id = $2
+                AND (
+                  avisos_globais.recorrencia <> 'diario'
+                  OR v.visualizado_em >= date_trunc('day', now())
+                )
+           )
          ORDER BY enviado_em DESC NULLS LAST LIMIT 1`,
-        [op.tenantId]
+        [op.tenantId, op.id]
       );
       if (!aviso) return res.json(null);
       const destino = aviso.destino || 'todos';
@@ -2065,6 +2074,31 @@ app.use('/api', rateLimiter);
       return res.json(alvo ? aviso : null);
     } catch (err) {
       res.status(500).json({ erro: 'Erro ao buscar aviso' });
+    }
+  });
+
+  // Marca que o operador fechou o aviso. A partir daqui ele não recebe mais
+  // esse aviso no login (aviso único) ou só volta no dia seguinte (diário).
+  app.post('/api/avisos/:id/visualizar', async (req, res) => {
+    try {
+      const op = req.operador;
+      const { id } = req.params;
+      const aviso = await db.oneOrNone(
+        'SELECT id FROM avisos_globais WHERE id = $1 AND tenant_id = $2',
+        [id, op.tenantId]
+      );
+      if (!aviso) return res.status(404).json({ erro: 'Aviso não encontrado' });
+      await db.none(
+        `INSERT INTO avisos_globais_visualizados (aviso_id, operador_id, tenant_id)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (aviso_id, operador_id)
+         DO UPDATE SET visualizado_em = now()`,
+        [id, op.id, op.tenantId]
+      );
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[Aviso] visualizar error:', err.message);
+      res.status(500).json({ erro: 'Erro ao registrar visualização' });
     }
   });
 
