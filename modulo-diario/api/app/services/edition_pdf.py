@@ -241,6 +241,27 @@ def _render_semantic_content(item: dict) -> str | None:
         return None
 
 
+def _item_has_large_table(item: dict) -> bool:
+    """Whether an item needs a clean page start for an extended table.
+
+    A long procurement/accounting table is difficult to attribute when it
+    begins below the preceding act's signature and then continues for pages.
+    This is deliberately selective: ordinary short matters still share a
+    page, as required by the editorial flow.
+    """
+    semantic = item.get("semantic") or {}
+    for block in semantic.get("blocks", []) if isinstance(semantic, dict) else []:
+        if block.get("type") != "table":
+            continue
+        if len(block.get("rows") or []) >= 12:
+            return True
+        if len(block.get("headers") or []) >= 8:
+            return True
+    # Legacy HTML has no structured rows. A conservative row count avoids
+    # applying a page break to ordinary layout tables.
+    return (item.get("content_html") or "").lower().count("<tr") >= 13
+
+
 def _save_to_storage(
     filename: str, content: bytes, tenant_slug: str | None = None
 ) -> str:
@@ -362,6 +383,7 @@ def generate_edition_pdf_sync(
                 "is_pdf_image_content": (
                     "matter-content" in content_html and "<img" in content_html.lower()
                 ),
+                "has_large_table": _item_has_large_table(item),
             })
 
         sections = [

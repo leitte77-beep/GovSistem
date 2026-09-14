@@ -101,7 +101,7 @@
     {% endif %}
 
     {% for matter in section.matters %}
-    <div class="matter{% if matter.is_pdf_image_content %} matter-image-content{% endif %}" id="matter-{{ matter.id }}">
+    <div class="matter{% if matter.is_pdf_image_content %} matter-image-content{% endif %}{% if matter.has_large_table %} matter--long-table{% endif %}" id="matter-{{ matter.id }}">
       <div class="matter-title">{{ matter.title }}</div>
 
       {% if matter.summary and not matter.has_semantic_content %}

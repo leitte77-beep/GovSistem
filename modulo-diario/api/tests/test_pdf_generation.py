@@ -27,9 +27,22 @@ def setup_db():
 
 
 class TestTemplateRendering:
+
+    def test_large_table_matter_starts_on_a_clean_page(self):
+        from app.services.edition_pdf import _item_has_large_table
+
+        item = {"semantic": {"blocks": [{"type": "table", "rows": [{}] * 12}]}}
+        assert _item_has_large_table(item) is True
+        assert _item_has_large_table({"semantic": {"blocks": [{"type": "table", "rows": [{}] * 2}]}}) is False
+
     def test_template_exists(self):
         assert (LAYOUTS_DIR / "classico" / "edition.html").exists()
         assert (LAYOUTS_DIR / "classico" / "edition.css").exists()
+        for layout in LAYOUTS:
+            css = (LAYOUTS_DIR / layout / "edition.css").read_text(encoding="utf-8")
+            assert ".matter--long-table { break-before: page" in css
+            assert "thead { display: table-header-group !important; }" in css
+            assert ".matter + .matter {\n  break-before: page;" in css
 
     def test_template_renders_basic_edition(self, template_env):
         template = template_env.get_template("edition.html")

@@ -179,8 +179,8 @@ body {
    em vez de forçar cada ato a começar numa nova página (desperdício de papel e
    "atos pulando página"). */
 .matter + .matter {
-  break-before: auto;
-  page-break-before: auto;
+  break-before: page;
+  page-break-before: always;
 }
 
 .matter-title {
@@ -395,7 +395,7 @@ body {
 }
 
 .matter-content tr { page-break-inside: avoid; break-inside: avoid; }
-.matter-content thead { display: table-header-group; }
+.matter-content thead { display: table-header-group !important; }
 .matter-content tbody { display: table-row-group; }
 
 .matter-content th,
@@ -486,3 +486,4 @@ body {
   break-inside: auto;
   page-break-inside: auto;
 }
+.matter--long-table { break-before: page; page-break-before: always; }

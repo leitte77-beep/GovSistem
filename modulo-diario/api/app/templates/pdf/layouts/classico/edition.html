@@ -109,7 +109,7 @@
     {% endif %}
 
     {% for matter in section.matters %}
-    <section class="matter{% if matter.is_pdf_image_content %} matter-image-content{% endif %}" id="matter-{{ matter.id }}">
+    <section class="matter{% if matter.is_pdf_image_content %} matter-image-content{% endif %}{% if matter.has_large_table %} matter--long-table{% endif %}" id="matter-{{ matter.id }}">
       <h2 class="matter-title">{{ matter.title }}</h2>
 
       {% if matter.summary and not matter.has_semantic_content %}
