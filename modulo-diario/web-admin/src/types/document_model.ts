@@ -78,6 +78,7 @@ export type DocumentSectionKind =
   | "inciso"
   | "alinea"
   | "quote"
+  | "table"
   | "signature_block"
   | "attachment_reference";
 
@@ -105,6 +106,9 @@ export interface DocumentSection {
   fixed_text?: boolean;
   locked?: boolean;
   ai_generated?: boolean;
+  table_headers?: string[];
+  table_rows?: string[][];
+  table_column_widths?: number[];
   entries?: SignatureEntry[];
   children?: DocumentSection[];
 }

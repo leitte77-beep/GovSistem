@@ -87,6 +87,15 @@ function SectionBody({ section }: { section: DocumentSection }) {
           })}
         </div>
       );
+    case "table":
+      return (
+        <table className="mt-3 w-full border-collapse text-[0.85em]">
+          {section.table_headers?.length ? (
+            <thead><tr>{section.table_headers.map((header, index) => <th key={index} className="border border-gray-500 bg-gray-100 p-1 text-left"><RichText text={header} /></th>)}</tr></thead>
+          ) : null}
+          <tbody>{(section.table_rows ?? []).map((row, rowIndex) => <tr key={rowIndex}>{row.map((cell, cellIndex) => <td key={cellIndex} className="border border-gray-500 p-1"><RichText text={cell} /></td>)}</tr>)}</tbody>
+        </table>
+      );
     default:
       return <RichText text={section.text ?? ""} align={section.alignment} />;
   }

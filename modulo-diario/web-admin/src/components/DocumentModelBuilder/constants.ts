@@ -12,6 +12,11 @@ export const TIPO_LABEL: Record<string, string> = {
   portaria: "Portaria",
   lei: "Lei",
   edital: "Edital",
+  licitacao: "Licitação",
+  contrato: "Contrato/Termo",
+  relatorio: "Relatório/Laudo",
+  extrato: "Extrato",
+  audiencia: "Audiência pública",
   oficio: "Ofício",
   resolucao: "Resolução",
   outro: "Outro",
@@ -39,6 +44,7 @@ export const SECTION_KIND_LABEL: Record<DocumentSectionKind, string> = {
   inciso: "Inciso",
   alinea: "Alínea",
   quote: "Citação",
+  table: "Tabela",
   signature_block: "Assinatura",
   attachment_reference: "Anexo",
 };
@@ -89,6 +95,12 @@ export const ROOT_ELEMENTS: ElementDef[] = [
     icon: "format_quote",
     description: "Citação de norma/trecho",
     defaultText: "",
+  },
+  {
+    kind: "table",
+    label: "Tabela",
+    icon: "table_chart",
+    description: "Quadro estruturado com campos variáveis",
   },
   {
     kind: "signature_block",
@@ -192,6 +204,11 @@ export function sectionFromElement(def: ElementDef): DocumentSection {
   if (def.kind === "article") {
     base.number = null;
     base.children = [];
+  }
+  if (def.kind === "table") {
+    base.table_headers = ["Campo", "Valor"];
+    base.table_rows = [["", ""]];
+    base.table_column_widths = [35, 65];
   }
   return base;
 }
@@ -413,4 +430,3 @@ export function stripField(config: DocumentModelConfig, key: string): DocumentMo
     fields: cleaned.fields.filter((f) => f.key !== key),
   };
 }
-

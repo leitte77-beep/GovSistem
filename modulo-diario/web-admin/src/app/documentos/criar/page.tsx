@@ -17,6 +17,11 @@ import type {
 
 const TIPO_INFO: Record<string, { label: string; plural: string; desc: string }> = {
   edital: { label: "Edital", plural: "Editais", desc: "Convocação, licitação ou aviso público." },
+  licitacao: { label: "Licitação", plural: "Licitações", desc: "Avisos, pregões e atos de contratação." },
+  contrato: { label: "Contrato/Termo", plural: "Contratos e termos", desc: "Termos de fomento, contratos e republicações." },
+  relatorio: { label: "Relatório/Laudo", plural: "Relatórios e laudos", desc: "Laudos técnicos e análises." },
+  extrato: { label: "Extrato", plural: "Extratos", desc: "Extratos de termos e aditivos." },
+  audiencia: { label: "Audiência pública", plural: "Audiências públicas", desc: "Editais e convocações de audiência." },
   portaria: { label: "Portaria", plural: "Portarias", desc: "Ato interno (nomeação, férias etc.)." },
   lei: { label: "Lei", plural: "Leis", desc: "Norma sancionada." },
   oficio: { label: "Ofício", plural: "Ofícios", desc: "Comunicação oficial entre órgãos." },
@@ -32,6 +37,14 @@ const FINALIDADES: { key: string; label: string; keywords: string[] }[] = [
   { key: "gratificacao", label: "Gratificação", keywords: ["gratificac"] },
   { key: "outros", label: "Outros", keywords: [] },
 ];
+
+const ACT_TYPE_HINTS: Record<string, string[]> = {
+  licitacao: ["licitação", "processos de compra", "edital"],
+  contrato: ["contrato", "outros"],
+  relatorio: ["relatório contábil", "outros"],
+  extrato: ["outros", "contrato"],
+  audiencia: ["edital", "outros"],
+};
 
 interface FieldSpec {
   key: string;
@@ -101,10 +114,10 @@ function CriarDocumentoContent() {
       .listActTypes()
       .then((at) => {
         setActTypes(at);
-        const label = TIPO_INFO[tipo]?.label.toLowerCase() ?? tipo;
-        const match =
-          at.find((a) => a.name.toLowerCase() === label) ??
-          at.find((a) => a.name.toLowerCase().includes(label));
+        const labels = ACT_TYPE_HINTS[tipo] ?? [TIPO_INFO[tipo]?.label.toLowerCase() ?? tipo];
+        const match = labels
+          .map((label) => at.find((a) => a.name.toLowerCase() === label) ?? at.find((a) => a.name.toLowerCase().includes(label)))
+          .find(Boolean);
         if (match) setActTypeId(match.id);
       })
       .catch((err) => notifyError("criar.acttypes", err));
@@ -128,11 +141,23 @@ function CriarDocumentoContent() {
     return map;
   }, [models]);
 
+  const finalidadeOptions = useMemo(
+    () =>
+      tipo === "portaria"
+        ? FINALIDADES
+        : models.map((model) => ({ key: model.id, label: model.name, keywords: [] })),
+    [tipo, models]
+  );
+
   const selectFinalidade = (key: string) => {
     setFinalidade(key);
     setPreview(null);
     setExtracted(null);
     setValues({});
+    if (tipo !== "portaria") {
+      setModelId(key);
+      return;
+    }
     if (key === "outros") {
       setModelId("");
       return;
@@ -295,8 +320,8 @@ function CriarDocumentoContent() {
             </p>
           ) : (
             <div className="flex flex-wrap gap-2">
-              {FINALIDADES.map((f) => {
-                const hasModel = f.key === "outros" || modelByFinalidade[f.key] != null;
+              {finalidadeOptions.map((f) => {
+                const hasModel = tipo !== "portaria" || f.key === "outros" || modelByFinalidade[f.key] != null;
                 const active = finalidade === f.key;
                 return (
                   <button

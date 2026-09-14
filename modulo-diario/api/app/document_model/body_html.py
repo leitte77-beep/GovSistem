@@ -111,6 +111,23 @@ def signature_html(block) -> str:
     return f'<div class="doc-signature">{ "".join(entries) }</div>'
 
 
+def table_html(block) -> str:
+    """Render a validated semantic table without executing cell content."""
+    widths = list(getattr(block, "column_widths", []) or [])
+    colgroup = ""
+    if widths:
+        colgroup = "<colgroup>" + "".join(
+            f'<col style="width:{float(width):g}%">' for width in widths
+        ) + "</colgroup>"
+    head = ""
+    if block.headers:
+        head = "<thead><tr>" + "".join(f"<th>{esc(value)}</th>" for value in block.headers) + "</tr></thead>"
+    rows = []
+    for row in block.rows:
+        rows.append("<tr>" + "".join(f"<td>{esc(cell.content)}</td>" for cell in row) + "</tr>")
+    return f'<table class="doc-table">{colgroup}{head}<tbody>{"".join(rows)}</tbody></table>'
+
+
 def blocks_to_html(document) -> str:
     """HTML canônico determinístico do corpo (compartilhado preview/edição)."""
     out: list[str] = []
@@ -127,6 +144,8 @@ def blocks_to_html(document) -> str:
             out.append(f'<p class="doc-paragraph">{esc(block.content)}</p>')
         elif btype == "quote":
             out.append(f'<blockquote class="doc-quote">{esc(block.content)}</blockquote>')
+        elif btype == "table":
+            out.append(table_html(block))
         elif btype == "article":
             article_index += 1
             out.append(article_html(block, article_index))
@@ -150,6 +169,12 @@ DOCUMENT_BODY_CSS = """
 .doc-body .doc-preamble { text-align: justify; margin: 2mm 0; }
 .doc-body .doc-paragraph { text-align: justify; text-indent: 2em; margin: 2mm 0; }
 .doc-body .doc-quote { margin: 2mm 0 2mm 4mm; font-style: italic; }
+.doc-body .doc-table { width: 100%; border-collapse: collapse; margin: 3mm 0;
+  table-layout: fixed; page-break-inside: auto; break-inside: auto; }
+.doc-body .doc-table th, .doc-body .doc-table td { border: 0.5pt solid #000;
+  padding: 1.5mm; vertical-align: top; overflow-wrap: anywhere; }
+.doc-body .doc-table th { font-weight: bold; background: #f3f3f3; }
+.doc-body .doc-table tr { page-break-inside: avoid; break-inside: avoid; }
 .doc-body .doc-article { text-align: justify; margin: 2.5mm 0; }
 .doc-body .doc-article .art-num { font-weight: bold; }
 .doc-body .doc-paragraph-item { text-align: justify; margin: 1.5mm 0 1.5mm 2em; }

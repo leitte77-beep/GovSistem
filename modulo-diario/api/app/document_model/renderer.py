@@ -34,6 +34,8 @@ from app.semantic.schemas import (
     SemanticDocument,
     SignatureBlock,
     SignatureEntry,
+    TableBlock,
+    TableCell,
 )
 
 
@@ -94,6 +96,22 @@ def _build_section(
         text = _text_block_text(section, resolved)
         if text:
             blocks.append(QuoteBlock(content=text))
+        return
+
+    if kind == SectionKind.TABLE:
+        headers = [interpolate(value, resolved).strip() for value in section.table_headers]
+        rows = [
+            [TableCell(content=interpolate(value, resolved).strip()) for value in row]
+            for row in section.table_rows
+        ]
+        if headers or rows:
+            blocks.append(
+                TableBlock(
+                    headers=headers,
+                    rows=rows,
+                    column_widths=[float(width) for width in section.table_column_widths],
+                )
+            )
         return
 
     if kind == SectionKind.ARTICLE:

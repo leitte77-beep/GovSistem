@@ -72,6 +72,8 @@ def build_system_message() -> str:
         '"kind": str, "text": str, "alignment": str, "level": int, '
         '"number": str|null, "fixed_text": bool, "locked": bool, '
         '"ai_generated": bool, "when_field": str|null, "when_value": str|null, '
+        '"table_headers": [str], "table_rows": [[str]], '
+        '"table_column_widths": [number], '
         '"entries": [{"name": str, "role": str}]}]}\n'
         f"Kinds permitidos: {_KINDS}.\n"
         f"Tipos de campo permitidos: {_FIELD_TYPES}.\n"
@@ -83,6 +85,9 @@ def build_system_message() -> str:
         "- Use \"when_field\"/\"when_value\" para trechos condicionais.\n"
         "- Prefira kind \"article\" para dispositivos, \"signature_block\" para "
         "assinatura, \"command\" para RESOLVE/DECRETA.\n"
+        "- Para quadros/formulários, use kind \"table\" com table_headers, "
+        "table_rows e table_column_widths; preserve a ordem e use marcadores "
+        "{{campo}} nas células variáveis.\n"
         "- NÃO invente dados; apenas modele a estrutura observada.\n"
         "- Responda apenas o JSON."
     )
@@ -184,6 +189,27 @@ def _repair_config(data: dict, document_type: str) -> dict:
             out["entries"] = clean or [
                 {"name": "{{autoridade_nome}}", "role": "{{autoridade_cargo}}"}
             ]
+        if kind == "table":
+            headers = s.get("table_headers") if isinstance(s.get("table_headers"), list) else []
+            rows = s.get("table_rows") if isinstance(s.get("table_rows"), list) else []
+            clean_rows = [
+                [str(cell) for cell in row]
+                for row in rows
+                if isinstance(row, list)
+            ]
+            column_count = len(headers) or max((len(row) for row in clean_rows), default=0)
+            if column_count < 1 or any(len(row) != column_count for row in clean_rows):
+                return None
+            out["table_headers"] = [str(header) for header in headers]
+            out["table_rows"] = clean_rows
+            widths = s.get("table_column_widths") if isinstance(s.get("table_column_widths"), list) else []
+            if len(widths) == column_count:
+                try:
+                    parsed_widths = [float(width) for width in widths]
+                except (TypeError, ValueError):
+                    parsed_widths = []
+                if parsed_widths and all(width > 0 for width in parsed_widths):
+                    out["table_column_widths"] = parsed_widths
         children_raw = s.get("children") if isinstance(s.get("children"), list) else []
         if kind == "article" and children_raw:
             children = [norm_section(c) for c in children_raw]
@@ -201,6 +227,9 @@ def _repair_config(data: dict, document_type: str) -> dict:
         texts.append(str(s.get("text") or ""))
         for e in s.get("entries", []) or []:
             texts.extend([str(e.get("name") or ""), str(e.get("role") or "")])
+        texts.extend(str(header) for header in s.get("table_headers", []) or [])
+        for row in s.get("table_rows", []) or []:
+            texts.extend(str(cell) for cell in row)
     for value in texts:
         for marker in extract_markers(value):
             if marker not in seen_keys:

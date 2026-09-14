@@ -10,6 +10,11 @@ import type { DocumentMaterialRow } from "@/types/document_model";
 
 const TIPO_INFO: Record<string, { label: string; plural: string }> = {
   edital: { label: "Edital", plural: "Editais" },
+  licitacao: { label: "Licitação", plural: "Licitações" },
+  contrato: { label: "Contrato/Termo", plural: "Contratos e termos" },
+  relatorio: { label: "Relatório/Laudo", plural: "Relatórios e laudos" },
+  extrato: { label: "Extrato", plural: "Extratos" },
+  audiencia: { label: "Audiência pública", plural: "Audiências públicas" },
   portaria: { label: "Portaria", plural: "Portarias" },
   lei: { label: "Lei", plural: "Leis" },
   oficio: { label: "Ofício", plural: "Ofícios" },

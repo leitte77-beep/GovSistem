@@ -30,7 +30,7 @@ from app.document_model.schemas import (
     SectionSpec,
     SignatureEntrySpec,
 )
-from app.semantic.schemas import SemanticDocument
+from app.semantic.schemas import SemanticDocument, TableBlock
 
 
 def _base_fields() -> list[DocumentField]:
@@ -203,6 +203,31 @@ def test_conditional_section_only_when_matches():
     assert "situação especial" not in sem.canonical_text
     com = render(cfg, _values(motivo_especial="sim"))
     assert "situação especial" in com.canonical_text
+
+
+def test_render_table_section_interpolates_cells_without_losing_geometry():
+    cfg = DocumentModelConfig(
+        purpose="Aviso de licitação",
+        scope_document_type="edital",
+        document_title="AVISO DE LICITAÇÃO",
+        fields=[DocumentField(key="processo", label="Processo", type=FieldType.TEXT, required=True)],
+        sections=[
+            SectionSpec(
+                id="dados_gerais",
+                kind="table",
+                table_headers=["Campo", "Valor"],
+                table_rows=[["Nº PROCESSO", "{{processo}}"]],
+                table_column_widths=[30, 70],
+            )
+        ],
+    )
+
+    outcome = render(cfg, {"processo": "18/2026"})
+
+    table = next(block for block in outcome.document.blocks if block.type == "table")
+    assert isinstance(table, TableBlock)
+    assert [cell.content for cell in table.rows[0]] == ["Nº PROCESSO", "18/2026"]
+    assert table.column_widths == [30.0, 70.0]
 
 
 def test_config_rejects_unknown_marker():

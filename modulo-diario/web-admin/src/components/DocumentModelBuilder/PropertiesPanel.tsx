@@ -418,6 +418,7 @@ function SectionProperties({
   onDeleteSection: (id: string) => void;
 }) {
   const isSignature = section.kind === "signature_block";
+  const isTable = section.kind === "table";
   const isHeading = section.kind === "heading";
   return (
     <div className="space-y-4">
@@ -442,6 +443,8 @@ function SectionProperties({
           readOnly={readOnly}
           onUpdateSection={onUpdateSection}
         />
+      ) : isTable ? (
+        <TableProperties section={section} readOnly={readOnly} onUpdateSection={onUpdateSection} />
       ) : (
         <>
           <div>
@@ -545,6 +548,42 @@ function SectionProperties({
       />
     </div>
   );
+}
+
+function TableProperties({ section, readOnly, onUpdateSection }: {
+  section: DocumentSection;
+  readOnly?: boolean;
+  onUpdateSection: (id: string, patch: Partial<DocumentSection>) => void;
+}) {
+  const updateRows = (value: string) => {
+    try {
+      const rows = JSON.parse(value);
+      if (!Array.isArray(rows) || !rows.every((row) => Array.isArray(row) && row.every((cell) => typeof cell === "string"))) {
+        throw new Error("invalid");
+      }
+      onUpdateSection(section.id, { table_rows: rows });
+    } catch {
+      // Keep the last valid table; invalid JSON is only a local editing state.
+    }
+  };
+  return <>
+    <div>
+      <span className={labelCls}>Cabeçalhos (separados por |)</span>
+      <input className={inputCls} disabled={readOnly} value={(section.table_headers ?? []).join(" | ")}
+        onChange={(e) => onUpdateSection(section.id, { table_headers: e.target.value.split("|").map((x) => x.trim()).filter(Boolean) })} />
+    </div>
+    <div>
+      <span className={labelCls}>Linhas (JSON)</span>
+      <textarea className={`${inputCls} min-h-[150px] font-mono text-xs`} disabled={readOnly}
+        value={JSON.stringify(section.table_rows ?? [], null, 2)} onChange={(e) => updateRows(e.target.value)} />
+      <p className="mt-1 text-[11px] text-gray-400">Cada célula pode usar campos como {"{{processo}}"}.</p>
+    </div>
+    <div>
+      <span className={labelCls}>Larguras (%)</span>
+      <input className={inputCls} disabled={readOnly} value={(section.table_column_widths ?? []).join(", ")}
+        placeholder="Ex.: 30, 70" onChange={(e) => onUpdateSection(section.id, { table_column_widths: e.target.value.split(",").map(Number).filter((n) => Number.isFinite(n) && n > 0) })} />
+    </div>
+  </>;
 }
 
 function ModelProperties({

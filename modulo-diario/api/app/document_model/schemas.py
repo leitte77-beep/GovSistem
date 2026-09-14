@@ -36,6 +36,11 @@ SCOPE_DOCUMENT_TYPES = {
     "portaria",
     "lei",
     "edital",
+    "licitacao",
+    "contrato",
+    "relatorio",
+    "extrato",
+    "audiencia",
     "oficio",
     "resolucao",
     "outro",
@@ -65,6 +70,7 @@ class SectionKind(str, Enum):
     INCISO = "inciso"
     ALINEA = "alinea"
     QUOTE = "quote"
+    TABLE = "table"
     SIGNATURE_BLOCK = "signature_block"
     ATTACHMENT_REFERENCE = "attachment_reference"
 
@@ -186,6 +192,12 @@ class SectionSpec(BaseModel):
     locked: bool = False
     ai_generated: bool = False
     entries: list[SignatureEntrySpec] = Field(default_factory=list)
+    # Tabelas fazem parte de avisos, adjudicações e extratos. A estrutura é
+    # declarativa: cabeçalhos e células aceitam apenas texto/markers já
+    # validados pelo modelo; não há HTML nem fórmulas executáveis.
+    table_headers: list[str] = Field(default_factory=list)
+    table_rows: list[list[str]] = Field(default_factory=list)
+    table_column_widths: list[float] = Field(default_factory=list)
     children: list["SectionSpec"] = Field(default_factory=list)
 
     @field_validator("id")
@@ -201,6 +213,19 @@ class SectionSpec(BaseModel):
             raise ValueError("signature_block precisa de ao menos uma entrada.")
         if self.kind == SectionKind.HEADING and not (1 <= self.level <= 6):
             raise ValueError("level de heading deve estar entre 1 e 6.")
+        if self.kind == SectionKind.TABLE:
+            column_count = len(self.table_headers) or max(
+                (len(row) for row in self.table_rows), default=0
+            )
+            if column_count < 1:
+                raise ValueError("table precisa de ao menos uma coluna.")
+            if any(len(row) != column_count for row in self.table_rows):
+                raise ValueError("Todas as linhas da table devem ter o mesmo número de colunas.")
+            if self.table_column_widths:
+                if len(self.table_column_widths) != column_count:
+                    raise ValueError("table_column_widths deve ter uma largura por coluna.")
+                if any(width <= 0 for width in self.table_column_widths):
+                    raise ValueError("table_column_widths deve conter apenas valores positivos.")
         return self
 
 
@@ -238,6 +263,10 @@ class DocumentModelConfig(BaseModel):
                 for value in (s.text, s.number, s.suffix):
                     if value:
                         yield value
+                for value in s.table_headers:
+                    yield value
+                for row in s.table_rows:
+                    yield from row
                 if s.kind == SectionKind.SIGNATURE_BLOCK:
                     for e in s.entries:
                         for value in (e.name, e.role, e.organ, e.location, e.date):
