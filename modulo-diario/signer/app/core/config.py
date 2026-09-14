@@ -34,7 +34,12 @@ class Settings(BaseSettings):
     TSA_POLICY_OID: str = ""
 
     # PAdES signature policy OID to embed, when legally defined by the entity.
+    # Embedding also requires the SHA-256 of the official policy document and
+    # its URI (both published by ITI). Left empty => no policy is embedded and
+    # ``policy_oid`` is reported as empty (never claim a policy not applied).
     SIGNER_POLICY_OID: str = ""
+    SIGNER_POLICY_HASH: str = ""  # hex SHA-256 of the policy document
+    SIGNER_POLICY_URI: str = ""
 
     # A3 (token/HSM or remote PSC) provider configuration.
     SIGNER_A3_REMOTE_URL: str = ""

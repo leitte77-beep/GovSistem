@@ -243,4 +243,34 @@ grandes legíveis no PDF. Foco na cópia oficial `modulo-diario/`.
 - Edições já publicadas têm snapshot imutável: só novas edições ganham a
   diagramação automática (retroagir exige republicação/retificação controlada).
 
+### Runbook — ativar ACT (RFC 3161) e política PAdES
+
+Variáveis do serviço `signer` (defaults vazios = desligado; nada é presumido):
+
+| Variável | Efeito |
+|---|---|
+| `TSA_URL` | ACT RFC 3161 usada no PAdES (token embutido no CMS). |
+| `TSA_POLICY_OID` | Registrada na config; **não** é enviada pelo pyHanko 0.37 atual (limitação documentada). |
+| `SIGNER_POLICY_OID` | OID da política (ex.: `2.16.76.1.7.1.11.1.3` = AD-RB). |
+| `SIGNER_POLICY_HASH` | SHA-256 (hex) do documento oficial da política, publicado pelo ITI. |
+| `SIGNER_POLICY_URI` | URI qualificadora da política. |
+| `REVOCATION_MODE` | `off` \| `crl` \| `ocsp` \| `both`. |
+
+Passos:
+1. Obter o documento oficial da política PAdES (AD-RB) no repositório do ITI e
+   calcular `sha256sum` → `SIGNER_POLICY_HASH`.
+2. Definir `TSA_URL` (ACT credenciada), `SIGNER_POLICY_OID/_HASH/_URI` no `.env`
+   do módulo e recriar o signer: `docker compose up -d signer`.
+3. Assinar uma edição de homologação e conferir: `pdfsig arquivo.pdf` deve
+   mostrar a política e/ou o timestamp; validar também no VALIDAR ITI.
+4. `policy_oid` só é reportado quando a política é efetivamente embutida
+   (OID+hash+URI completos); nunca se declara política não aplicada.
+5. Revogação: ativar `REVOCATION_MODE` somente após confirmar acesso de rede do
+   signer aos endpoints CRL/OCSP das ACs; validar em homologação antes de
+   produção (uma fonte inacessível é reportada como "não verificada").
+
+`LEGAL_REVIEW_REQUIRED`: escolha da política (AD-RB/RT/RV/RC/RA), obrigatoriedade
+de página de validação adicional e janela de carimbo do tempo são decisões
+jurídicas do ente.
+
 

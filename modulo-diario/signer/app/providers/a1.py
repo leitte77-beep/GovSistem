@@ -187,6 +187,7 @@ class PfxA1SignerProvider(SignatureProvider):
             subfilter=SigSeedSubFilter.PADES,
             reason=reason or "Assinatura Digital - Diário Oficial Eletrônico",
             location=location or "",
+            cades_signed_attr_spec=self._policy_attr_spec(),
         )
         field_spec = None
         if visible:
@@ -325,11 +326,54 @@ class PfxA1SignerProvider(SignatureProvider):
             result["errors"].append(str(e))
         return result
 
+    def _policy_attr_spec(self):
+        """Build the CAdES signature-policy attribute, when fully configured.
+
+        A PAdES signature policy is only embedded when the OID, the SHA-256 of
+        the official policy document and its URI are all provided (from ITI).
+        Never invents a policy hash: incomplete config => no policy embedded.
+        """
+        oid = (settings.SIGNER_POLICY_OID or "").strip()
+        digest_hex = (settings.SIGNER_POLICY_HASH or "").strip()
+        uri = (settings.SIGNER_POLICY_URI or "").strip()
+        if not (oid and digest_hex and uri):
+            return None
+        try:
+            from pyhanko.sign.ades.api import CAdESSignedAttrSpec
+            from pyhanko.sign.ades.cades_asn1 import SignaturePolicyIdentifier
+
+            digest = bytes.fromhex(digest_hex)
+            sp = SignaturePolicyIdentifier({
+                "signature_policy_id": {
+                    "sig_policy_id": oid,
+                    "sig_policy_hash": {
+                        "digest_algorithm": {"algorithm": "sha256"},
+                        "digest": digest,
+                    },
+                    "sig_policy_qualifiers": [
+                        {
+                            "sig_policy_qualifier_id": "sp_uri",
+                            "sig_qualifier": uri,
+                        },
+                    ],
+                }
+            })
+            return CAdESSignedAttrSpec(signature_policy_identifier=sp)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("Failed to build PAdES signature policy: %s", e)
+            return None
+
+    def _effective_policy_oid(self) -> str:
+        """The policy OID actually embedded (empty when not fully configured)."""
+        if self._policy_attr_spec() is None:
+            return ""
+        return (settings.SIGNER_POLICY_OID or "").strip()
+
     def get_certificate_info(self) -> dict:
         return {
             "provider": "a1",
             "format": "PAdES-B-B",
-            "policy_oid": "",
+            "policy_oid": self._effective_policy_oid(),
             "subject": self._subject,
             "serial": self._serial,
             "issuer": self._cert.issuer.rfc4514_string(),

@@ -149,6 +149,12 @@ services:
       # reportada como não confiável (trusted=false).
       ICP_BRASIL_ROOTS_PATH: /certs/icp-brasil-roots.pem
       REVOCATION_MODE: ${REVOCATION_MODE:-off}
+      # ACT (RFC 3161) e política PAdES. Vazios = desligados.
+      TSA_URL: ${TSA_URL:-}
+      TSA_POLICY_OID: ${TSA_POLICY_OID:-}
+      SIGNER_POLICY_OID: ${SIGNER_POLICY_OID:-}
+      SIGNER_POLICY_HASH: ${SIGNER_POLICY_HASH:-}
+      SIGNER_POLICY_URI: ${SIGNER_POLICY_URI:-}
     volumes:
       - ./signer/certs:/certs:ro
     healthcheck:
