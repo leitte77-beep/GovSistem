@@ -12,7 +12,7 @@ class Settings(BaseSettings):
     DEBUG: bool = False
     LOG_LEVEL: str = "INFO"
 
-    ALEMBIC_EXPECTED_HEAD: str = "h5i6j7k8l9m0"
+    ALEMBIC_EXPECTED_HEAD: str = "k8l9m0n1o2p3"
 
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
     REDIS_DB: int = 0
+    # When True, closing an edition enqueues PDF generation to the Celery
+    # worker instead of doing it synchronously in the request. Default False
+    # keeps the proven synchronous path.
+    PDF_GENERATION_ASYNC: bool = False
 
     @property
     def REDIS_URL(self) -> str:
@@ -134,7 +138,10 @@ class Settings(BaseSettings):
     DEEPSEEK_API_BASE: str = "https://api.deepseek.com"
     DEEPSEEK_MODEL: str = "deepseek-v4-flash"
     AI_DEFAULT_TIMEOUT_SECONDS: int = 60
-    AI_MAX_TOKENS: int = 4096
+    # deepseek-v4-flash é um modelo de raciocínio: consome tokens em
+    # "reasoning" antes de produzir a resposta. Um teto baixo (ex.: 4096/8192)
+    # pode ser totalmente gasto no raciocínio e deixar o conteúdo vazio.
+    AI_MAX_TOKENS: int = 16384
     AI_MAX_CONCURRENCY: int = 4
     AI_MAX_RETRIES: int = 3
 

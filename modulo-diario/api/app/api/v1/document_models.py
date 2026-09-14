@@ -14,13 +14,18 @@ por IA valida a resposta e só devolve valores de campos declarados.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request, status
-from sqlalchemy import or_, select
+from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile, status
+from sqlalchemy import func, or_, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.database import get_db
+from app.core.file_validator import validate_upload
 from app.core.permissions import require_permission
+from app.core.storage import set_storage_tenant, storage
 from app.document_model import service as dm_service
 from app.document_model.errors import InvalidFieldValueError, UnknownFieldError
 from app.document_model.fill import validate_and_resolve
@@ -31,36 +36,88 @@ from app.document_model.generation import (
     pick_active_model,
 )
 from app.document_model.ingest import create_rendered_matter
+from app.document_model.layout import DocumentLayout, default_layout
+from app.document_model.learning import (
+    LEARN_PROMPT_VERSION,
+    analyze_documents,
+    extract_text,
+)
+from app.document_model.render_html import build_html, render_pdf
 from app.document_model.renderer import render
 from app.document_model.schemas import DocumentModelConfig
 from app.middleware.audit import capture_request_info, log_audit_event
 from app.models.act_type import ActType
-from app.models.document_model import DocumentModel, DocumentModelVersion
+from app.models.ai_execution import AiExecution
+from app.models.audit_event import AuditEvent
+from app.models.document_model import (
+    DocumentModel,
+    DocumentModelBlock,
+    DocumentModelTrainingFile,
+    DocumentModelVersion,
+)
 from app.models.edition import Edition
 from app.models.edition_item import EditionItem
-from app.models.enums import AuditAction
+from app.models.enums import AiExecutionKind, AiExecutionStatus, AuditAction
 from app.models.matter import Matter
+from app.models.organization import Organization
 from app.models.user import User
+from app.providers.antivirus import get_virus_scanner
 from app.schemas.document_model import (
     AiExtractIn,
     AiExtractOut,
+    DocumentModelBlockCreateIn,
+    DocumentModelBlockOut,
+    DocumentModelBlockUpdateIn,
     DocumentModelCreateIn,
     DocumentModelDetailOut,
+    DocumentModelDuplicateIn,
+    DocumentModelHistoryEntryOut,
     DocumentModelSummaryOut,
     DocumentModelVersionCreateIn,
+    DocumentModelVersionUpdateIn,
+    LearnProposalOut,
     MaterialFromModelIn,
     MaterialOut,
     NumberIssueIn,
     NumberIssueOut,
     PreviewOut,
     RenderPreviewIn,
+    TrainingFileOut,
+    TrainingFileUpdateIn,
     VersionDetailOut,
     VersionSummaryOut,
 )
 from app.services import document_numbering
 from app.services.ai import config_store
+from app.services.ai.errors import (
+    AiDisabledError,
+    AiNotConfiguredError,
+    DeepSeekError,
+)
+from app.services.pdf_utils import compute_hash
 
 router = APIRouter(tags=["document-models"])
+
+
+def _is_active_slug_conflict(exc: IntegrityError) -> bool:
+    """Identify only the active organization/slug uniqueness violation."""
+    current = exc.orig
+    seen: set[int] = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        constraint = getattr(getattr(current, "diag", None), "constraint_name", None)
+        constraint = constraint or getattr(current, "constraint_name", None)
+        if constraint == "uq_document_models_org_slug_active":
+            return True
+        current = getattr(current, "__cause__", None) or getattr(
+            current, "__context__", None
+        )
+    message = str(exc.orig)
+    return (
+        "uq_document_models_org_slug_active" in message
+        or "UNIQUE constraint failed: document_models.organization_id, document_models.slug"
+        in message
+    )
 
 _READ_PERMS = ("document_model.use", "document_model.manage", "document_model.approve")
 
@@ -74,7 +131,9 @@ def _org(user: User) -> uuid.UUID:
 async def _model_or_404(db: AsyncSession, org_id: uuid.UUID, model_id: uuid.UUID) -> DocumentModel:
     result = await db.execute(
         select(DocumentModel).where(
-            DocumentModel.id == model_id, DocumentModel.organization_id == org_id
+            DocumentModel.id == model_id,
+            DocumentModel.organization_id == org_id,
+            DocumentModel.deleted_at.is_(None),
         )
     )
     model = result.scalar_one_or_none()
@@ -90,7 +149,12 @@ def _version_or_404(model: DocumentModel, version: int) -> DocumentModelVersion:
     raise HTTPException(status.HTTP_404_NOT_FOUND, "Versão não encontrada.")
 
 
-def _summary(model: DocumentModel) -> DocumentModelSummaryOut:
+def _summary(
+    model: DocumentModel,
+    *,
+    usage_count: int = 0,
+    created_by_name: str | None = None,
+) -> DocumentModelSummaryOut:
     return DocumentModelSummaryOut(
         id=model.id,
         slug=model.slug,
@@ -100,8 +164,39 @@ def _summary(model: DocumentModel) -> DocumentModelSummaryOut:
         status=model.status,
         is_default=model.is_default,
         active_version=model.active_version,
+        parent_model_id=model.parent_model_id,
+        created_by=model.created_by,
+        created_by_name=created_by_name,
+        usage_count=usage_count,
+        created_at=model.created_at,
         updated_at=model.updated_at,
     )
+
+
+async def _usage_counts(
+    db: AsyncSession, org_id: uuid.UUID, model_ids: list[uuid.UUID]
+) -> dict[uuid.UUID, int]:
+    """Conta quantas minutas cada modelo já gerou (auditoria confiável)."""
+    if not model_ids:
+        return {}
+    rows = await db.execute(
+        select(AuditEvent.entity_id, func.count(AuditEvent.id))
+        .where(
+            AuditEvent.organization_id == org_id,
+            AuditEvent.entity_type == "document_model",
+            AuditEvent.action == AuditAction.DOCUMENT_MODEL_MATERIAL_CREATED,
+            AuditEvent.entity_id.in_(model_ids),
+        )
+        .group_by(AuditEvent.entity_id)
+    )
+    return {row[0]: row[1] for row in rows.all() if row[0] is not None}
+
+
+async def _user_names(db: AsyncSession, user_ids: list[uuid.UUID]) -> dict[uuid.UUID, str]:
+    if not user_ids:
+        return {}
+    rows = await db.execute(select(User.id, User.name).where(User.id.in_(user_ids)))
+    return {row[0]: row[1] for row in rows.all()}
 
 
 def _version_summary(v: DocumentModelVersion) -> VersionSummaryOut:
@@ -125,14 +220,22 @@ async def list_document_models(
     user: User = Depends(require_permission(*_READ_PERMS)),
 ):
     org_id = _org(user)
-    query = select(DocumentModel).where(DocumentModel.organization_id == org_id)
+    query = select(DocumentModel).where(
+        DocumentModel.organization_id == org_id, DocumentModel.deleted_at.is_(None)
+    )
     if document_type:
         query = query.where(DocumentModel.document_type == document_type)
     if status_filter:
         query = query.where(DocumentModel.status == status_filter)
     query = query.order_by(DocumentModel.document_type, DocumentModel.purpose)
     result = await db.execute(query)
-    return [_summary(m) for m in result.scalars().all()]
+    models = list(result.scalars().all())
+    usage = await _usage_counts(db, org_id, [m.id for m in models])
+    names = await _user_names(db, [m.created_by for m in models if m.created_by])
+    return [
+        _summary(m, usage_count=usage.get(m.id, 0), created_by_name=names.get(m.created_by))
+        for m in models
+    ]
 
 
 @router.get("/document-models/materials")
@@ -256,6 +359,7 @@ async def get_default_for_type(
             DocumentModel.document_type == document_type,
             DocumentModel.status == "active",
             DocumentModel.is_default.is_(True),
+            DocumentModel.deleted_at.is_(None),
         )
     )
     model = result.scalar_one_or_none()
@@ -272,8 +376,14 @@ async def get_document_model(
 ):
     org_id = _org(user)
     model = await _model_or_404(db, org_id, model_id)
+    usage = await _usage_counts(db, org_id, [model.id])
+    names = await _user_names(db, [model.created_by] if model.created_by else [])
     return DocumentModelDetailOut(
-        **_summary(model).model_dump(),
+        **_summary(
+            model,
+            usage_count=usage.get(model.id, 0),
+            created_by_name=names.get(model.created_by),
+        ).model_dump(),
         description=model.purpose,
         versions=[_version_summary(v) for v in model.versions or []],
     )
@@ -292,10 +402,23 @@ async def get_version(
     return VersionDetailOut(
         **_version_summary(v).model_dump(),
         config=v.config_json,
+        layout=v.layout_json,
     )
 
 
 # ── Criação / versão / ciclo de vida ───────────────────────────────────────
+
+
+def _validated_layout(layout: dict | None) -> dict | None:
+    """Valida o layout visual (modelo visual) quando informado."""
+    if layout is None:
+        return None
+    try:
+        return DocumentLayout.model_validate(layout).model_dump(mode="json")
+    except ValueError as exc:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, f"Layout inválido: {exc}"
+        ) from exc
 
 
 @router.post("/document-models", response_model=DocumentModelSummaryOut, status_code=201)
@@ -303,24 +426,40 @@ async def create_document_model(
     body: DocumentModelCreateIn,
     request: Request,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_permission("document_model.manage")),
+    user: User = Depends(require_permission("document_model.manage", "document_model.create")),
 ):
     org_id = _org(user)
     exists = await db.execute(
         select(DocumentModel.id).where(
-            DocumentModel.organization_id == org_id, DocumentModel.slug == body.slug
+            DocumentModel.organization_id == org_id,
+            DocumentModel.slug == body.slug,
+            DocumentModel.deleted_at.is_(None),
         )
     )
     if exists.scalar_one_or_none():
         raise HTTPException(status.HTTP_409_CONFLICT, "Slug já em uso nesta organização.")
-    model = await dm_service.create_model(
-        db,
-        organization_id=org_id,
-        slug=body.slug,
-        name=body.name,
-        config=body.config,
-        created_by=user.id,
-    )
+    if body.parent_model_id is not None:
+        await _model_or_404(db, org_id, body.parent_model_id)
+    try:
+        model = await dm_service.create_model(
+            db,
+            organization_id=org_id,
+            slug=body.slug,
+            name=body.name,
+            config=body.config,
+            layout=_validated_layout(body.layout),
+            parent_model_id=body.parent_model_id,
+            created_by=user.id,
+        )
+    except IntegrityError as exc:
+        # A consulta acima melhora a mensagem no caso normal; o índice parcial
+        # continua sendo a garantia contra duas criações concorrentes.
+        await db.rollback()
+        if _is_active_slug_conflict(exc):
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, "Slug já em uso nesta organização."
+            ) from exc
+        raise
     await _audit(
         db,
         request,
@@ -348,7 +487,12 @@ async def create_new_version(
     org_id = _org(user)
     model = await _model_or_404(db, org_id, model_id)
     v = await dm_service.create_new_version(
-        db, model.id, body.config, change_reason=body.change_reason, created_by=user.id
+        db,
+        model.id,
+        body.config,
+        layout=_validated_layout(body.layout),
+        change_reason=body.change_reason,
+        created_by=user.id,
     )
     await _audit(
         db,
@@ -368,6 +512,49 @@ async def create_new_version(
         change_reason=v.change_reason,
         created_at=v.created_at,
         config=v.config_json,
+        layout=v.layout_json,
+    )
+
+
+@router.patch(
+    "/document-models/{model_id}/versions/{version}", response_model=VersionDetailOut
+)
+async def update_draft_model_version(
+    model_id: uuid.UUID,
+    version: int,
+    body: DocumentModelVersionUpdateIn,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission("document_model.manage", "document_model.edit")),
+):
+    org_id = _org(user)
+    model = await _model_or_404(db, org_id, model_id)
+    try:
+        v = await dm_service.update_draft_version(
+            db,
+            model.id,
+            version,
+            config=body.config,
+            layout=_validated_layout(body.layout),
+            change_reason=body.change_reason,
+        )
+    except dm_service.ModelTransitionError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    await _audit(
+        db,
+        request,
+        user,
+        org_id,
+        AuditAction.DOCUMENT_MODEL_UPDATED,
+        f"Rascunho v{version} do modelo '{model.name}' atualizado.",
+        model.id,
+    )
+    await db.commit()
+    await db.refresh(v)
+    return VersionDetailOut(
+        **_version_summary(v).model_dump(),
+        config=v.config_json,
+        layout=v.layout_json,
     )
 
 
@@ -405,6 +592,7 @@ async def submit_version(
         change_reason=v.change_reason,
         created_at=v.created_at,
         config=v.config_json,
+        layout=v.layout_json,
     )
 
 
@@ -442,7 +630,11 @@ async def approve_version(
         change_reason=v.change_reason,
         created_at=v.created_at,
         config=v.config_json,
+        layout=v.layout_json,
     )
+
+
+# ── Ciclo de vida: arquivar / excluir ───────────────────────────────────────
 
 
 @router.post("/document-models/{model_id}/archive", response_model=DocumentModelSummaryOut)
@@ -467,6 +659,363 @@ async def archive_document_model(
     await db.commit()
     await db.refresh(model)
     return _summary(model)
+
+
+@router.post(
+    "/document-models/{model_id}/deactivate", response_model=DocumentModelSummaryOut
+)
+async def deactivate_document_model(
+    model_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission("document_model.manage", "document_model.activate")),
+):
+    org_id = _org(user)
+    model = await _model_or_404(db, org_id, model_id)
+    try:
+        await dm_service.deactivate_model(db, model.id)
+    except dm_service.ModelTransitionError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    await _audit(
+        db,
+        request,
+        user,
+        org_id,
+        AuditAction.DOCUMENT_MODEL_DEACTIVATED,
+        f"Modelo '{model.name}' desativado.",
+        model.id,
+    )
+    await db.commit()
+    await db.refresh(model)
+    return _summary(model)
+
+
+@router.post(
+    "/document-models/{model_id}/reactivate", response_model=DocumentModelSummaryOut
+)
+async def reactivate_document_model(
+    model_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission("document_model.manage", "document_model.activate")),
+):
+    org_id = _org(user)
+    model = await _model_or_404(db, org_id, model_id)
+    try:
+        await dm_service.reactivate_model(db, model.id)
+    except dm_service.ModelTransitionError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    await _audit(
+        db,
+        request,
+        user,
+        org_id,
+        AuditAction.DOCUMENT_MODEL_ACTIVATED,
+        f"Modelo '{model.name}' reativado.",
+        model.id,
+    )
+    await db.commit()
+    await db.refresh(model)
+    return _summary(model)
+
+
+async def _unique_slug(db: AsyncSession, org_id: uuid.UUID, base: str) -> str:
+    candidate = base
+    attempt = 1
+    while True:
+        exists = await db.execute(
+            select(DocumentModel.id).where(
+                DocumentModel.organization_id == org_id,
+                DocumentModel.slug == candidate,
+                DocumentModel.deleted_at.is_(None),
+            )
+        )
+        if exists.scalar_one_or_none() is None:
+            return candidate
+        attempt += 1
+        candidate = f"{base[:114]}-{attempt}"
+
+
+@router.post(
+    "/document-models/{model_id}/duplicate",
+    response_model=DocumentModelSummaryOut,
+    status_code=201,
+)
+async def duplicate_document_model(
+    model_id: uuid.UUID,
+    body: DocumentModelDuplicateIn,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission("document_model.manage", "document_model.create")),
+):
+    org_id = _org(user)
+    source = await _model_or_404(db, org_id, model_id)
+    name = (body.name or f"{source.name} (cópia)").strip()
+    base_slug = body.slug or f"{source.slug}-copia"
+    slug = await _unique_slug(db, org_id, base_slug)
+    try:
+        model = await dm_service.duplicate_model(
+            db,
+            source.id,
+            new_slug=slug,
+            new_name=name,
+            created_by=user.id,
+        )
+    except dm_service.ModelTransitionError as exc:
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except IntegrityError as exc:
+        await db.rollback()
+        if _is_active_slug_conflict(exc):
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "Outro modelo foi criado com este slug; tente duplicar novamente.",
+            ) from exc
+        raise
+    await _audit(
+        db,
+        request,
+        user,
+        org_id,
+        AuditAction.DOCUMENT_MODEL_CREATED,
+        f"Modelo '{name}' criado a partir de '{source.name}' (duplicado).",
+        model.id,
+    )
+    await db.commit()
+    await db.refresh(model)
+    return _summary(model)
+
+
+@router.get(
+    "/document-models/{model_id}/history",
+    response_model=list[DocumentModelHistoryEntryOut],
+)
+async def document_model_history(
+    model_id: uuid.UUID,
+    limit: int = 50,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission(*_READ_PERMS)),
+):
+    org_id = _org(user)
+    model = await _model_or_404(db, org_id, model_id)
+    result = await db.execute(
+        select(AuditEvent)
+        .where(
+            AuditEvent.organization_id == org_id,
+            AuditEvent.entity_type == "document_model",
+            AuditEvent.entity_id == model.id,
+        )
+        .order_by(AuditEvent.created_at.desc())
+        .limit(max(1, min(limit, 200)))
+    )
+    events = list(result.scalars().all())
+    names = await _user_names(db, [e.user_id for e in events if e.user_id])
+    return [
+        DocumentModelHistoryEntryOut(
+            id=e.id,
+            action=getattr(e.action, "value", str(e.action)),
+            description=e.description,
+            user_id=e.user_id,
+            user_name=names.get(e.user_id),
+            created_at=e.created_at,
+        )
+        for e in events
+    ]
+
+
+@router.delete("/document-models/{model_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_document_model(
+    model_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission("document_model.manage")),
+):
+    org_id = _org(user)
+    model = await _model_or_404(db, org_id, model_id)
+    if model.is_default:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Modelo padrão não pode ser excluído. Defina outro padrão ou arquive-o.",
+        )
+    used = await db.execute(
+        select(AuditEvent.id)
+        .where(
+            AuditEvent.organization_id == org_id,
+            AuditEvent.entity_type == "document_model",
+            AuditEvent.entity_id == model.id,
+            AuditEvent.action == AuditAction.DOCUMENT_MODEL_MATERIAL_CREATED,
+        )
+        .limit(1)
+    )
+    if used.scalar_one_or_none() is not None:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Modelo já gerou minutas e não pode ser excluído; arquive-o.",
+        )
+    name = model.name
+    await dm_service.soft_delete_model(db, model.id)
+    await _audit(
+        db,
+        request,
+        user,
+        org_id,
+        AuditAction.DOCUMENT_MODEL_DELETED,
+        f"Modelo documental '{name}' excluído (soft delete).",
+        model_id,
+    )
+    await db.commit()
+    return None
+
+
+# ── Biblioteca de blocos reutilizáveis ──────────────────────────────────────
+
+
+def _block_out(b: DocumentModelBlock) -> DocumentModelBlockOut:
+    return DocumentModelBlockOut(
+        id=b.id,
+        name=b.name,
+        kind=b.kind,
+        description=b.description,
+        content_json=b.content_json or {},
+        is_active=b.is_active,
+        created_at=b.created_at,
+        updated_at=b.updated_at,
+    )
+
+
+async def _block_or_404(
+    db: AsyncSession, org_id: uuid.UUID, block_id: uuid.UUID
+) -> DocumentModelBlock:
+    result = await db.execute(
+        select(DocumentModelBlock).where(
+            DocumentModelBlock.id == block_id,
+            DocumentModelBlock.organization_id == org_id,
+            DocumentModelBlock.deleted_at.is_(None),
+        )
+    )
+    block = result.scalar_one_or_none()
+    if block is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Bloco não encontrado.")
+    return block
+
+
+@router.get("/document-model-blocks", response_model=list[DocumentModelBlockOut])
+async def list_document_model_blocks(
+    include_inactive: bool = False,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission(*_READ_PERMS)),
+):
+    org_id = _org(user)
+    query = select(DocumentModelBlock).where(
+        DocumentModelBlock.organization_id == org_id,
+        DocumentModelBlock.deleted_at.is_(None),
+    )
+    if not include_inactive:
+        query = query.where(DocumentModelBlock.is_active.is_(True))
+    query = query.order_by(DocumentModelBlock.name)
+    result = await db.execute(query)
+    return [_block_out(b) for b in result.scalars().all()]
+
+
+@router.post("/document-model-blocks", response_model=DocumentModelBlockOut, status_code=201)
+async def create_document_model_block(
+    body: DocumentModelBlockCreateIn,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission("document_model.manage", "document_model.create")),
+):
+    org_id = _org(user)
+    duplicate = await db.execute(
+        select(DocumentModelBlock.id).where(
+            DocumentModelBlock.organization_id == org_id,
+            DocumentModelBlock.name == body.name,
+            DocumentModelBlock.deleted_at.is_(None),
+        )
+    )
+    if duplicate.scalar_one_or_none():
+        raise HTTPException(status.HTTP_409_CONFLICT, "Já existe um bloco com esse nome.")
+    block = DocumentModelBlock(
+        organization_id=org_id,
+        name=body.name,
+        kind=body.kind,
+        description=body.description,
+        content_json=body.content_json,
+        is_active=body.is_active,
+        created_by=user.id,
+    )
+    db.add(block)
+    await db.flush()
+    await _audit(
+        db,
+        request,
+        user,
+        org_id,
+        AuditAction.DOCUMENT_MODEL_BLOCK_CREATED,
+        f"Bloco reutilizável '{block.name}' criado.",
+        block.id,
+    )
+    await db.commit()
+    await db.refresh(block)
+    return _block_out(block)
+
+
+@router.patch("/document-model-blocks/{block_id}", response_model=DocumentModelBlockOut)
+async def update_document_model_block(
+    block_id: uuid.UUID,
+    body: DocumentModelBlockUpdateIn,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission("document_model.manage", "document_model.edit")),
+):
+    org_id = _org(user)
+    block = await _block_or_404(db, org_id, block_id)
+    data = body.model_dump(exclude_unset=True)
+    if "name" in data and data["name"] is not None:
+        block.name = data["name"]
+    if "kind" in data and data["kind"] is not None:
+        block.kind = data["kind"]
+    if "description" in data:
+        block.description = data["description"]
+    if "content_json" in data and data["content_json"] is not None:
+        block.content_json = data["content_json"]
+    if "is_active" in data and data["is_active"] is not None:
+        block.is_active = data["is_active"]
+    await db.flush()
+    await _audit(
+        db,
+        request,
+        user,
+        org_id,
+        AuditAction.DOCUMENT_MODEL_BLOCK_UPDATED,
+        f"Bloco reutilizável '{block.name}' atualizado.",
+        block.id,
+    )
+    await db.commit()
+    await db.refresh(block)
+    return _block_out(block)
+
+
+@router.delete("/document-model-blocks/{block_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_document_model_block(
+    block_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission("document_model.manage", "document_model.archive")),
+):
+    org_id = _org(user)
+    block = await _block_or_404(db, org_id, block_id)
+    block.deleted_at = datetime.now(timezone.utc)
+    await db.flush()
+    await _audit(
+        db,
+        request,
+        user,
+        org_id,
+        AuditAction.DOCUMENT_MODEL_BLOCK_DELETED,
+        f"Bloco reutilizável '{block.name}' excluído.",
+        block.id,
+    )
+    await db.commit()
+    return None
 
 
 # ── Preview determinístico ──────────────────────────────────────────────────
@@ -496,6 +1045,401 @@ async def preview_version(
         document=outcome.document.model_dump(),
         canonical_text=outcome.canonical_text,
         free_text=outcome.free_text,
+    )
+
+
+# ── Render HTML/PDF unificado (preview idêntico ao PDF) ─────────────────────
+
+
+async def _institution_dict(db: AsyncSession, org_id: uuid.UUID) -> dict | None:
+    org = (
+        await db.execute(select(Organization).where(Organization.id == org_id))
+    ).scalar_one_or_none()
+    if org is None:
+        return None
+    return {
+        "name": org.name,
+        "cnpj": org.cnpj,
+        "state": org.state,
+        "address_street": org.address_street,
+        "address_number": org.address_number,
+        "address_complement": org.address_complement,
+        "address_district": org.address_district,
+        "address_city": org.address_city,
+        "address_postal_code": org.address_postal_code,
+        "phone": org.phone,
+        "email": org.email,
+        "site": org.site,
+        "logo_url": org.logo_url,
+    }
+
+
+def _layout_of(v: DocumentModelVersion) -> DocumentLayout:
+    return DocumentLayout.model_validate(v.layout_json or default_layout())
+
+
+@router.post("/document-models/{model_id}/versions/{version}/render")
+async def render_version_html(
+    model_id: uuid.UUID,
+    version: int,
+    body: RenderPreviewIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission(*_READ_PERMS)),
+):
+    org_id = _org(user)
+    model = await _model_or_404(db, org_id, model_id)
+    v = _version_or_404(model, version)
+    config = DocumentModelConfig.model_validate(v.config_json)
+    institution = await _institution_dict(db, org_id)
+    try:
+        rendered = build_html(config, _layout_of(v), body.values, institution)
+    except UnknownFieldError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    except InvalidFieldValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    return {
+        "html": rendered.html,
+        "complete": rendered.outcome.complete,
+        "pending": [p.as_dict() for p in rendered.outcome.fill.pending],
+        "canonical_text": rendered.outcome.canonical_text,
+    }
+
+
+@router.post("/document-models/{model_id}/versions/{version}/render-pdf")
+async def render_version_pdf(
+    model_id: uuid.UUID,
+    version: int,
+    body: RenderPreviewIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission(*_READ_PERMS)),
+):
+    org_id = _org(user)
+    model = await _model_or_404(db, org_id, model_id)
+    v = _version_or_404(model, version)
+    config = DocumentModelConfig.model_validate(v.config_json)
+    institution = await _institution_dict(db, org_id)
+    try:
+        rendered = build_html(config, _layout_of(v), body.values, institution)
+    except UnknownFieldError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    except InvalidFieldValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    pdf = render_pdf(rendered.html)
+    filename = f"modelo-{model.slug}-v{version}.pdf"
+    return Response(
+        content=pdf,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{filename}"'},
+    )
+
+
+# ── Aprender com documentos (Fase 4) ────────────────────────────────────────
+
+_TRAINING_STATUSES = {"uploaded", "analyzed", "empty", "failed", "rejected"}
+
+
+def _training_out(tf: DocumentModelTrainingFile) -> TrainingFileOut:
+    return TrainingFileOut(
+        id=tf.id,
+        filename=tf.filename,
+        mime_type=tf.mime_type,
+        size_bytes=tf.size_bytes,
+        status=tf.status,
+        used_by_ai=tf.used_by_ai,
+        has_text=bool(tf.extracted_text and tf.extracted_text.strip()),
+        created_at=tf.created_at,
+    )
+
+
+async def _training_or_404(
+    db: AsyncSession, org_id: uuid.UUID, file_id: uuid.UUID
+) -> DocumentModelTrainingFile:
+    result = await db.execute(
+        select(DocumentModelTrainingFile).where(
+            DocumentModelTrainingFile.id == file_id,
+            DocumentModelTrainingFile.organization_id == org_id,
+            DocumentModelTrainingFile.deleted_at.is_(None),
+        )
+    )
+    tf = result.scalar_one_or_none()
+    if tf is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Documento de referência não encontrado.")
+    return tf
+
+
+def _ai_status_for(exc: DeepSeekError) -> str:
+    code = getattr(exc, "code", "ai_provider_error")
+    return {
+        "api_not_configured": "not_configured",
+        "ai_disabled": "disabled",
+        "authentication": "authentication",
+        "rate_limited": "rate_limited",
+        "timeout": "timeout",
+        "invalid_request": "invalid_request",
+        "invalid_response": "invalid_response",
+        "truncated": "truncated",
+        "provider_unavailable": "unavailable",
+    }.get(code, "error")
+
+
+def _ai_pt_msg(exc: DeepSeekError) -> str:
+    return {
+        "api_not_configured": "Nenhuma chave de IA cadastrada. Configure em Configurações → IA.",
+        "ai_disabled": "Os recursos de IA estão desativados para esta organização.",
+        "authentication": "Falha de autenticação com a IA. Verifique a chave.",
+        "rate_limited": "Limite de uso da IA atingido. Tente novamente.",
+        "timeout": "A IA não respondeu a tempo. Tente novamente.",
+        "invalid_request": "A IA recebeu uma requisição inválida.",
+        "invalid_response": "A IA retornou uma resposta inesperada. Tente novamente.",
+        "truncated": (
+            "A IA atingiu o limite de tamanho antes de concluir. Tente novamente "
+            "ou use um documento mais curto."
+        ),
+        "provider_unavailable": "O provedor de IA está indisponível no momento.",
+    }.get(getattr(exc, "code", ""), "Não foi possível analisar os documentos.")
+
+
+@router.get(
+    "/document-models/{model_id}/training-files", response_model=list[TrainingFileOut]
+)
+async def list_training_files(
+    model_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission(*_READ_PERMS)),
+):
+    org_id = _org(user)
+    model = await _model_or_404(db, org_id, model_id)
+    result = await db.execute(
+        select(DocumentModelTrainingFile)
+        .where(
+            DocumentModelTrainingFile.organization_id == org_id,
+            DocumentModelTrainingFile.document_model_id == model.id,
+            DocumentModelTrainingFile.deleted_at.is_(None),
+        )
+        .order_by(DocumentModelTrainingFile.created_at.desc())
+    )
+    return [_training_out(tf) for tf in result.scalars().all()]
+
+
+@router.post(
+    "/document-models/{model_id}/training-files",
+    response_model=TrainingFileOut,
+    status_code=201,
+)
+async def upload_training_file(
+    model_id: uuid.UUID,
+    request: Request,
+    file: UploadFile = File(...),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission("document_model.train_ai", "document_model.manage")),
+):
+    org_id = _org(user)
+    model = await _model_or_404(db, org_id, model_id)
+
+    try:
+        ext, content = await validate_upload(file)
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+    if ext not in (".pdf", ".docx"):
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Documentos de referência devem ser PDF ou DOCX.",
+        )
+
+    scanner = get_virus_scanner()
+    scan = await scanner.scan(content, file.filename or "documento")
+    if not scan.clean:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY, f"Arquivo rejeitado: {scan.message}"
+        )
+
+    try:
+        text = extract_text(file.filename or "", content)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)) from exc
+
+    org_slug = (
+        await db.execute(select(Organization.slug).where(Organization.id == org_id))
+    ).scalar_one_or_none()
+    if org_slug:
+        set_storage_tenant(org_slug)
+    path = f"document-models/{model.id}/{uuid.uuid4()}{ext}"
+    await storage.store(path, content)
+
+    tf = DocumentModelTrainingFile(
+        organization_id=org_id,
+        document_model_id=model.id,
+        filename=file.filename or "documento",
+        mime_type=file.content_type,
+        size_bytes=len(content),
+        storage_path=path,
+        sha256=compute_hash(content),
+        status="analyzed" if text.strip() else "empty",
+        extracted_text=text[:200_000],
+        used_by_ai=False,
+        created_by=user.id,
+    )
+    db.add(tf)
+    await db.flush()
+    await _audit(
+        db,
+        request,
+        user,
+        org_id,
+        AuditAction.DOCUMENT_MODEL_TRAINING_FILE_ADDED,
+        f"Documento de referência '{tf.filename}' adicionado ao modelo '{model.name}'.",
+        model.id,
+    )
+    await db.commit()
+    await db.refresh(tf)
+    return _training_out(tf)
+
+
+@router.patch(
+    "/document-models/{model_id}/training-files/{file_id}", response_model=TrainingFileOut
+)
+async def update_training_file(
+    model_id: uuid.UUID,
+    file_id: uuid.UUID,
+    body: TrainingFileUpdateIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission("document_model.train_ai", "document_model.manage")),
+):
+    org_id = _org(user)
+    await _model_or_404(db, org_id, model_id)
+    tf = await _training_or_404(db, org_id, file_id)
+    if body.used_by_ai is not None:
+        if body.used_by_ai and not (tf.extracted_text and tf.extracted_text.strip()):
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "Documento sem texto extraído não pode ser usado pela IA.",
+            )
+        tf.used_by_ai = body.used_by_ai
+    await db.flush()
+    await db.commit()
+    await db.refresh(tf)
+    return _training_out(tf)
+
+
+@router.delete(
+    "/document-models/{model_id}/training-files/{file_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_training_file(
+    model_id: uuid.UUID,
+    file_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission("document_model.train_ai", "document_model.manage")),
+):
+    org_id = _org(user)
+    model = await _model_or_404(db, org_id, model_id)
+    tf = await _training_or_404(db, org_id, file_id)
+    filename = tf.filename
+    tf.deleted_at = datetime.now(timezone.utc)
+    tf.used_by_ai = False
+    await db.flush()
+    await _audit(
+        db,
+        request,
+        user,
+        org_id,
+        AuditAction.DOCUMENT_MODEL_TRAINING_FILE_REMOVED,
+        f"Documento de referência '{filename}' removido do modelo '{model.name}'.",
+        model.id,
+    )
+    await db.commit()
+    return None
+
+
+@router.post(
+    "/document-models/{model_id}/training-files/propose", response_model=LearnProposalOut
+)
+async def propose_from_training_files(
+    model_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission("document_model.train_ai", "document_model.manage")),
+):
+    """Analisa os documentos de referência e devolve uma PROPOSTA de modelo.
+
+    Nunca aplica automaticamente: a proposta só vira rascunho quando o
+    administrador cria uma nova versão a partir dela.
+    """
+    org_id = _org(user)
+    model = await _model_or_404(db, org_id, model_id)
+    result = await db.execute(
+        select(DocumentModelTrainingFile).where(
+            DocumentModelTrainingFile.organization_id == org_id,
+            DocumentModelTrainingFile.document_model_id == model.id,
+            DocumentModelTrainingFile.deleted_at.is_(None),
+            DocumentModelTrainingFile.used_by_ai.is_(True),
+        )
+    )
+    files = result.scalars().all()
+    documents = [
+        (tf.filename, tf.extracted_text or "")
+        for tf in files
+        if tf.extracted_text and tf.extracted_text.strip()
+    ]
+    if not documents:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Marque ao menos um documento com texto como 'utilizado pela IA'.",
+        )
+
+    try:
+        api_key = await config_store.get_active_key(db, org_id)
+    except (AiNotConfiguredError, AiDisabledError) as exc:
+        return LearnProposalOut(
+            ok=False,
+            status=_ai_status_for(exc),
+            message=_ai_pt_msg(exc),
+            prompt_version=LEARN_PROMPT_VERSION,
+        )
+
+    try:
+        config, meta = await analyze_documents(model.document_type, documents, api_key)
+    except DeepSeekError as exc:
+        db.add(
+            AiExecution(
+                organization_id=org_id,
+                user_id=user.id,
+                kind=AiExecutionKind.PROPOSE_STRUCTURE,
+                status=AiExecutionStatus.FAILED,
+                model=settings.DEEPSEEK_MODEL,
+                prompt_version=LEARN_PROMPT_VERSION,
+                error=exc.as_dict(),
+            )
+        )
+        await db.commit()
+        return LearnProposalOut(
+            ok=False,
+            status=_ai_status_for(exc),
+            message=_ai_pt_msg(exc),
+            prompt_version=LEARN_PROMPT_VERSION,
+        )
+
+    db.add(
+        AiExecution(
+            organization_id=org_id,
+            user_id=user.id,
+            kind=AiExecutionKind.PROPOSE_STRUCTURE,
+            status=AiExecutionStatus.SUCCEEDED,
+            model=meta.get("model") or settings.DEEPSEEK_MODEL,
+            prompt_version=LEARN_PROMPT_VERSION,
+            usage=meta.get("usage") or None,
+            duration_ms=meta.get("latency_ms"),
+        )
+    )
+    await db.commit()
+    return LearnProposalOut(
+        ok=True,
+        status="ok",
+        prompt_version=LEARN_PROMPT_VERSION,
+        config=config.model_dump(mode="json"),
+        sources=[name for name, _ in documents],
     )
 
 

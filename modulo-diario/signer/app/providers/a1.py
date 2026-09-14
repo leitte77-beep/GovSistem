@@ -5,40 +5,26 @@ not claim ICP-Brasil AD-RB policy conformance unless a policy signed attribute
 is actually embedded and independently validated.
 """
 
-import base64
 import hashlib
 import io
 import logging
-import os
 import re
 import tempfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
+from importlib.util import find_spec
 from zoneinfo import ZoneInfo
 
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.serialization import pkcs7, pkcs12
-from pypdf import PdfReader, PdfWriter
-from pypdf.generic import (
-    ArrayObject,
-    ByteStringObject,
-    DictionaryObject,
-    NameObject,
-    NumberObject,
-    TextStringObject,
-    StreamObject,
-)
+from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.serialization import pkcs12
+from pypdf import PdfReader
 
 from app.core.config import settings
 from app.providers.base import SignatureProvider, SignedDocument
 
 BRASILIA_TZ = ZoneInfo("America/Sao_Paulo")
 
-try:
-    from fpdf import FPDF
-    FPDF_AVAILABLE = True
-except ImportError:
-    FPDF_AVAILABLE = False
+FPDF_AVAILABLE = find_spec("fpdf") is not None
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +102,7 @@ class PfxA1SignerProvider(SignatureProvider):
             algo = "UNKNOWN"
 
         try:
-            from cryptography.x509 import CertificatePolicies, ExtendedKeyUsage
+            from cryptography.x509 import CertificatePolicies
             policy_oids = []
             for ext in self._cert.extensions:
                 if isinstance(ext.value, CertificatePolicies):
@@ -156,8 +142,11 @@ class PfxA1SignerProvider(SignatureProvider):
                         for p in ext.value:
                             policy_oids.append(p.policy_identifier.dotted_string)
             except Exception:
-                logger.warning("Could not read certificate policies, defaulting to A1=true", exc_info=True)
-                return True  # Default to True if can't read policies
+                logger.warning(
+                    "Could not read certificate policies, defaulting to A1=true",
+                    exc_info=True,
+                )
+                return True  # Default to True if policies are unavailable
 
         for oid in policy_oids:
             if oid.startswith("2.16.76.1.2.1."):
@@ -182,7 +171,7 @@ class PfxA1SignerProvider(SignatureProvider):
 
         from pyhanko.pdf_utils.incremental_writer import IncrementalPdfFileWriter
         from pyhanko.sign.fields import SigFieldSpec, SigSeedSubFilter
-        from pyhanko.sign.signers import PdfSigner, PdfSignatureMetadata, SimpleSigner
+        from pyhanko.sign.signers import PdfSignatureMetadata, PdfSigner, SimpleSigner
 
         # SimpleSigner.load_pkcs12 expects a filesystem path.
         with tempfile.NamedTemporaryFile(suffix=".pfx", delete=True) as tmp:
@@ -208,14 +197,24 @@ class PfxA1SignerProvider(SignatureProvider):
             last = reader.pages[-1]
             mb = last.mediabox
             pw = float(mb.width)
-            ph = float(mb.height)
             box = (int(pw - 220), int(20), int(pw - 20), int(110))
             field_spec = SigFieldSpec(
                 sig_field_name=field_name,
                 on_page=len(reader.pages) - 1,
                 box=box,
             )
-        pdf_signer = PdfSigner(meta, signer, new_field_spec=field_spec)
+        # RFC 3161 timestamp (ACT): when configured, the TSA token is embedded
+        # in the CMS as an unsigned attribute, which is what makes a PAdES
+        # signature time-verifiable beyond the local clock.
+        timestamper = None
+        if settings.TSA_URL:
+            from pyhanko.sign.timestamps import HTTPTimeStamper
+
+            timestamper = HTTPTimeStamper(settings.TSA_URL)
+
+        pdf_signer = PdfSigner(
+            meta, signer, new_field_spec=field_spec, timestamper=timestamper
+        )
         w = IncrementalPdfFileWriter(BytesIO(pdf_bytes))
         out = pdf_signer.sign_pdf(w)
         out.seek(0)
@@ -229,6 +228,7 @@ class PfxA1SignerProvider(SignatureProvider):
             signature_time=now,
             signature_format="PAdES",
             verification_code=verification_code,
+            timestamped=bool(timestamper),
         )
 
     def verify(self, pdf_bytes: bytes) -> bool:

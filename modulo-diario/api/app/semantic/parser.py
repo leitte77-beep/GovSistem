@@ -21,14 +21,16 @@ from typing import Optional
 
 from .normalizer import normalize_input
 from .schemas import (
+    CLASSIFICATION_PENDING,
+    ORIGIN_DETERMINISTIC,
     AlineaBlock,
     ArticleBlock,
-    CLASSIFICATION_PENDING,
     CommandBlock,
+    ConsiderandoBlock,
     HeadingBlock,
+    ImageBlock,
     IncisoBlock,
     ListBlock,
-    ORIGIN_DETERMINISTIC,
     ParagraphBlock,
     ParagraphItemBlock,
     PreambleBlock,
@@ -41,17 +43,43 @@ from .schemas import (
 )
 
 _COMMAND_RE = re.compile(
-    r"^(DECRETA|RESOLVE|SANCIONA|TORNA\s+P[UÚ]BLICO|CONSIDERANDO|EXPEDE|"
+    r"^(DECRETA|RESOLVE|SANCIONA|TORNA\s+P[UÚ]BLICO|EXPEDE|"
     r"RESOLVE\s*[:.]|DETERMINA|DESIGNA|CONVOCA|INSTITUI|REVOGA)[:.\s]*$",
     re.IGNORECASE,
 )
-_ARTICLE_RE = re.compile(r"^Art\.?\s*([0-9IVXLCDM]+[ºªo\-A-Z0-9]*)?\s*(?:[:.-]\s*)?(.*)$", re.IGNORECASE)
+# CONSIDERANDO is a recital, not the enacting formula. Match a heading form
+# ('CONSIDERANDO:') and the inline form ('Considerando que ...').
+_CONSIDERANDO_RE = re.compile(r"^\s*CONSIDERANDO\b\s*:?\s*", re.IGNORECASE)
+# 'SÚMULA:' / 'EMENTA:' label preserved exactly as authored.
+_SUMMARY_LABEL_RE = re.compile(
+    r"^\s*(S[UÚ]MULA|EMENTA)\s*[:\-–]\s*(.*)$", re.IGNORECASE | re.DOTALL
+)
+_PREAMBLE_RE = re.compile(
+    r"NO\s+USO\s+DE\s+SUAS\s+ATRIBUI[ÇC][ÕO]ES|"
+    r"^(O|A)\s+(PREFEITO|PREFEITA|GOVERNADOR|GOVERNADORA|PRESIDENTE|"
+    r"SECRET[ÁA]RIO|SECRET[ÁA]RIA|DIRETOR|DIRETORA|REITOR|REITORA)\b",
+    re.IGNORECASE,
+)
+_ARTICLE_RE = re.compile(
+    r"^Art\.?\s*([0-9IVXLCDM]+[ºªo\-A-Z0-9]*)?\s*(?:[:.-]\s*)?(.*)$",
+    re.IGNORECASE,
+)
 _SOLE_PARAGRAPH_RE = re.compile(r"^P[AÁ]R[AÁ]GRAFO\s*[UÚ]NICO[:.\s]*(.*)$", re.IGNORECASE)
 _PARAGRAPH_RE = re.compile(r"^§\s*([0-9ºª]*)\.?\s*(.*)$")
 _INCISO_RE = re.compile(r"^\s*([IVXLCDM]+)\s*[-–:)\s]+(.*)$")
 _ALINEA_RE = re.compile(r"^\s*([a-z])\s*\)\s*(.*)$")
 _ITEM_RE = re.compile(r"^\s*([0-9]+)\s*\)\s*(.*)$")
 _LIST_ITEM_RE = re.compile(r"^\s*[-•*]\s+(.*)$")
+_ROLE_RE = re.compile(
+    r"^(PREFEIT[OA]|SECRET[ÁA]RI[OA]|DIRETOR(A)?|PRESIDENTE|GOVERNADOR(A)?|"
+    r"REITOR(A)?|VICE-PREFEIT[OA]|PROCURADOR(A)?)\b",
+    re.IGNORECASE,
+)
+_LOCATION_HINT_RE = re.compile(
+    r"(PA[ÇC]O|PAL[ÁA]CIO|PREFEITURA|C[ÂA]MARA|MUNIC[ÍI]PIO|GABINETE|"
+    r"\bDE\s+\d{4}\b|\b\d{4}\b)",
+    re.IGNORECASE,
+)
 _ALL_CAPS_HEADING_RE = re.compile(
     r"^(?=.{3,120}$)(?=.*[A-ZÀ-Ú])(?!.*[a-zà-ú])[A-Z0-9À-Ú/.,:;ºª()\[\]º\- ]+$"
 )
@@ -62,9 +90,9 @@ _SECTION_HEADING_RE = re.compile(
     re.IGNORECASE,
 )
 _LOCATION_DATE_RE = re.compile(
-    r"^(?P<city>[A-ZÀ-Ú][\wÀ-ú ]{2,}),\s+(?P<day>\d{1,2})\s+DE\s+"
+    r"^(?P<city>[A-ZÀ-Ú][\wÀ-ú .\"]{2,}),\s+(?P<day>\d{1,2})\s+DE\s+"
     r"(?P<month>JANEIRO|FEVEREIRO|MAR[ÇC]O|ABRIL|MAIO|JUNHO|JULHO|AGOSTO|"
-    r"SETEMBRO|OUTUBRO|NOVEMBRO|DEZEMBRO)\s+DE\s+(?P<year>\d{4})\s*$",
+    r"SETEMBRO|OUTUBRO|NOVEMBRO|DEZEMBRO)\s+DE\s+(?P<year>\d{4})\s*[.]?\s*$",
     re.IGNORECASE,
 )
 _SIGNATURE_RE = re.compile(
@@ -80,6 +108,115 @@ _CONFIRM_HIGH = 0.9
 
 def _norm(text: str) -> str:
     return re.sub(r"\s+", " ", text or "").strip()
+
+
+def extract_summary(text: str) -> tuple[str, Optional[str], str]:
+    """Pull an explicit SÚMULA:/EMENTA: out of the body, preserving the label.
+
+    Returns ``(body_without_summary, label, summary_text)``. The label is
+    returned exactly as authored (e.g. ``"SÚMULA"``, ``"Ementa"``) and the body
+    is returned without the extracted paragraph so the summary is rendered in
+    its canonical position (right below the act title) and never duplicated.
+    Works on paragraph boundaries to be safe with multi-line text.
+    """
+    if not text:
+        return text, None, ""
+    paragraphs = re.split(r"\n\s*\n", text)
+    for idx, paragraph in enumerate(paragraphs):
+        match = _SUMMARY_LABEL_RE.match(paragraph.strip())
+        if not match:
+            continue
+        label = match.group(1).strip()
+        content = match.group(2).strip()
+        rest = paragraphs[idx + 1:]
+        if not content and rest:
+            content = rest[0].strip()
+            rest = rest[1:]
+        body = "\n\n".join(paragraphs[:idx] + rest)
+        return body, label, content
+    return text, None, ""
+
+
+def _strip_html_text(value: str) -> str:
+    from .schemas import _strip_html
+
+    return _strip_html(value or "")
+
+
+def _drop_summary_block(blocks: list, label: str) -> list:
+    """Remove the body block that held the SÚMULA/EMENTA (now a field)."""
+    prefix = (label or "").strip().lower() + ":"
+    for idx, block in enumerate(blocks):
+        btype = getattr(block, "type", "")
+        if btype in ("paragraph", "preamble", "considerando", "command"):
+            candidate = _strip_html_text(
+                getattr(block, "content", None) or getattr(block, "text", "")
+            )
+            if candidate.lstrip().lower().startswith(prefix):
+                del blocks[idx]
+                return blocks
+    return blocks
+
+
+def _block_text(block) -> str:
+    btype = getattr(block, "type", "")
+    if btype in ("paragraph", "preamble", "considerando", "quote", "legacy_html"):
+        return _strip_html_text(getattr(block, "content", ""))
+    if btype in ("heading", "command"):
+        return getattr(block, "text", "") or ""
+    return ""
+
+
+_SIGNATURE_CONSUMABLE = {"paragraph", "preamble", "considerando", "command", "heading"}
+
+
+def _merge_trailing_signature(blocks: list) -> list:
+    """Fold a trailing name + role (+ location/date) into a signature block.
+
+    This is a heuristic, so the resulting block keeps the *lowest* confidence of
+    its parts and stays flagged for human confirmation. No text is dropped:
+    the location/date text is carried into the signature entry and is included
+    in ``plain_text()`` for integrity checks.
+    """
+    if len(blocks) < 2:
+        return blocks
+    last = blocks[-1]
+    if getattr(last, "type", "") not in _SIGNATURE_CONSUMABLE:
+        return blocks
+    role = _block_text(last).strip()
+    if not role or not _ROLE_RE.match(role):
+        return blocks
+
+    name_block = blocks[-2]
+    if getattr(name_block, "type", "") not in _SIGNATURE_CONSUMABLE:
+        return blocks
+    name = _block_text(name_block).strip()
+    words = name.split()
+    if not name or len(words) > 8 or _ROLE_RE.match(name):
+        return blocks
+
+    consumed = [name_block, last]
+    start = len(blocks) - 2
+
+    location = ""
+    if start - 1 >= 0 and getattr(blocks[start - 1], "type", "") in _SIGNATURE_CONSUMABLE:
+        prev = _block_text(blocks[start - 1]).strip()
+        prev_meta = getattr(blocks[start - 1], "metadata", {}) or {}
+        if (
+            prev_meta.get("kind") == "location_date"
+            or _LOCATION_DATE_RE.match(prev)
+            or _LOCATION_HINT_RE.search(prev)
+        ):
+            location = prev
+            consumed.insert(0, blocks[start - 1])
+            start -= 1
+
+    confidence = min(getattr(b, "confidence", 1.0) for b in consumed)
+    entry = SignatureEntry(name=name, role=role, location=location, date="")
+    signature = _block(
+        SignatureBlock, entries=[entry], alignment="center", confidence=confidence
+    )
+    return blocks[:start] + [signature]
 
 
 def _block(btype, **kw):
@@ -113,15 +250,24 @@ def parse_document(
     source_type = norm["source_type"]
     text = norm["text"]
 
+    # Detect an explicit SÚMULA:/EMENTA: label in the pasted body and preserve
+    # it exactly. The body no longer contains the summary paragraph.
+    body_text, found_label, found_summary = extract_summary(text)
+    summary_label = found_label
+    if not summary and found_summary:
+        summary = found_summary
+
     blocks = []
     if norm["tabs"]:
         blocks.append(_build_table_block(norm["tabs"]))
         text_for_parse = ""
     elif norm["html"]:
         blocks = _parse_html(norm["html"], fallback_text=text)
+        if found_label:
+            blocks = _drop_summary_block(blocks, found_label)
         text_for_parse = ""
     else:
-        text_for_parse = text
+        text_for_parse = body_text
 
     if not blocks and text_for_parse.strip():
         blocks = _parse_lines(text_for_parse)
@@ -133,6 +279,7 @@ def parse_document(
         document_type=document_type,
         title=title,
         summary=summary,
+        summary_label=summary_label,
         source_type=source_type,
         blocks=blocks,
         classification_status=CLASSIFICATION_PENDING,
@@ -140,7 +287,6 @@ def parse_document(
 
     # Integrity
     if norm["html"]:
-        from .integrity import compute_document_integrity
 
         source_rep = norm["text"]
     else:
@@ -162,16 +308,12 @@ def _split_html_blocks(html: str) -> list[dict]:
     Uses the stdlib ``html.parser`` so nested tags (e.g. <p><strong>DECRETA:</strong></p>)
     are captured correctly instead of being lost by a regex.
     """
-    import html as html_mod
     from html.parser import HTMLParser
 
-    TOP_LEVEL = {
+    top_level = {
         "p", "div", "section", "h1", "h2", "h3", "h4", "h5", "h6",
         "ul", "ol", "blockquote", "img", "hr", "table",
     }
-    TEXT_ONLY = {"strong", "em", "b", "i", "u", "s", "a", "span", "br",
-                 "sub", "sup", "code", "abbr", "li", "th", "td", "tr",
-                 "thead", "tbody", "caption", "font"}
 
     class _Splitter(HTMLParser):
         def __init__(self):
@@ -186,20 +328,22 @@ def _split_html_blocks(html: str) -> list[dict]:
 
         def handle_starttag(self, tag, attrs):
             if not self._stack:
-                if tag in TOP_LEVEL:
+                if tag in top_level:
                     self._stack.append((tag, True))
                     self._buf = []
                     self._raw = []
                     self._raw.append(self._tag_html())
                 else:
-                    self.top.append({"kind": "text", "inner": self.get_starttag_text(), "raw": self.get_starttag_text()})
+                    tag_html = self.get_starttag_text()
+                    self.top.append({"kind": "text", "inner": tag_html, "raw": tag_html})
             else:
                 self._stack.append((tag, False))
                 self._raw.append(self._tag_html())
 
         def handle_startendtag(self, tag, attrs):
             if not self._stack and tag == "img":
-                self.top.append({"kind": "img", "inner": self.get_starttag_text(), "raw": self.get_starttag_text()})
+                tag_html = self.get_starttag_text()
+                self.top.append({"kind": "img", "inner": tag_html, "raw": tag_html})
 
         def handle_endtag(self, tag):
             if not self._stack:
@@ -265,7 +409,7 @@ def _parse_html(html: str, fallback_text: str = "") -> list:
             blocks.append(_block(ImageBlock, src=raw, alt="", confidence=_CONFIRM_MED))
     if not blocks and fallback_text.strip():
         blocks = _parse_lines(fallback_text)
-    return blocks
+    return _merge_trailing_signature(blocks)
 
 
 def _inner_text(html: str) -> str:
@@ -279,6 +423,10 @@ def _classify_text_line(text: str, blocks: list) -> Optional[object]:
     stripped = text.strip()
     if not stripped:
         return None
+    if _CONSIDERANDO_RE.match(stripped):
+        return _block(ConsiderandoBlock, content=text, confidence=_CONFIRM_HIGH)
+    if _PREAMBLE_RE.search(stripped) and len(stripped.split()) >= 6:
+        return _block(PreambleBlock, content=text, confidence=_CONFIRM_MED)
     if _COMMAND_RE.match(stripped):
         return _block(CommandBlock, text=stripped, confidence=_CONFIRM_HIGH)
     art = _ARTICLE_RE.match(stripped)
@@ -320,6 +468,18 @@ def _parse_lines(text: str) -> list:
         if _LOCATION_DATE_RE.match(stripped):
             blocks.append(_block(ParagraphBlock, content=stripped,
                                  confidence=_CONFIRM_MED, metadata={"kind": "location_date"}))
+            i += 1
+            continue
+
+        if _CONSIDERANDO_RE.match(stripped):
+            blocks.append(_block(ConsiderandoBlock, content=stripped,
+                                 confidence=_CONFIRM_HIGH))
+            i += 1
+            continue
+
+        if _PREAMBLE_RE.search(stripped) and len(stripped.split()) >= 6:
+            blocks.append(_block(PreambleBlock, content=stripped,
+                                 confidence=_CONFIRM_MED))
             i += 1
             continue
 
@@ -439,7 +599,7 @@ def _parse_lines(text: str) -> list:
         blocks.append(_block(ParagraphBlock, content=stripped,
                              confidence=_CONFIRM_HIGH))
         i += 1
-    return blocks
+    return _merge_trailing_signature(blocks)
 
 
 _ROMAN = {
@@ -481,7 +641,6 @@ def _build_table_block(rows: list[list[str]]) -> TableBlock:
 
 
 def _build_table_from_html(table_html: str) -> TableBlock:
-    import html as html_mod
     import re
 
     rows: list[list[TableCell]] = []
@@ -546,7 +705,6 @@ def _strip_html_inner(value: str) -> str:
 
 
 def _build_list_from_html(list_html: str) -> ListBlock:
-    import html as html_mod
 
     items = []
     for m in re.finditer(r"<li[^>]*>(.*?)</li>", list_html, re.DOTALL | re.IGNORECASE):

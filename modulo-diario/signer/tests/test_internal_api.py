@@ -5,7 +5,6 @@ from httpx import ASGITransport, AsyncClient
 
 from app.main import app
 
-
 INTERNAL_KEY = "dev-internal-key-saas"
 
 
@@ -18,7 +17,7 @@ async def client():
 
 @pytest.fixture
 def auth_headers():
-    return {"X-Internal-Api-Key": INTERNAL_KEY}
+    return {"X-Internal-Key": INTERNAL_KEY}
 
 
 @pytest.mark.anyio
@@ -63,7 +62,7 @@ async def test_sign_pdf_auth_required_wrong_key(client):
     response = await client.post(
         "/internal/sign-pdf",
         json={},
-        headers={"X-Internal-Api-Key": "wrong-key-123"},
+        headers={"X-Internal-Key": "wrong-key-123"},
     )
     assert response.status_code == 403
 

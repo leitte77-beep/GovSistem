@@ -5,7 +5,10 @@
 - Gerenciadas por **Alembic** (`api/alembic/versions`). **Nunca** usar `create_all()` em produção.
 - `ALEMBIC_EXPECTED_HEAD` (config) faz verificação fail-closed no startup da API: se o banco não
   estiver no head esperado, o processo aborta.
-- Heads: **consolidados em um único head** `3e4a5b6c7d8e` (merge `9z9z9z9z9z9z`).
+- Heads: **consolidados em um único head**. Head atual: `j7k8l9m0n1o2`
+  (Fase 5C: `matters.workflow_status` — fluxo de criação/revisão do documento;
+  `down_revision = i6j7k8l9m0n1`, que trouxe as fundações do construtor visual
+  de modelos documentais). Ver `RELATORIO_MODELOS_DOCUMENTAIS_FASE1.md`.
 - Tabelas aditivas da fase de hardening são aplicadas via DDL idempotente
   `api/sql/hardening_timestamp_and_audit.sql` no passo de deploy (padrão da casa para fases aditivas,
   sem alterar o grafo do Alembic).

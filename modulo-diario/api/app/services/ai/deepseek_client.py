@@ -19,6 +19,7 @@ import asyncio
 import json
 import logging
 import random
+import re
 import time
 from typing import Any, Sequence
 
@@ -33,6 +34,7 @@ from app.services.ai.errors import (
     AiProviderUnavailableError,
     AiRateLimitError,
     AiTimeoutError,
+    AiTruncatedResponseError,
     DeepSeekError,
 )
 
@@ -43,6 +45,41 @@ logger = logging.getLogger(__name__)
 _CONCURRENCY_SEMAPHORE = asyncio.Semaphore(settings.AI_MAX_CONCURRENCY)
 
 _TRANSIENT_HTTP = {408, 429, 500, 502, 503, 504}
+
+_FENCE_RE = re.compile(r"^```[a-zA-Z0-9_-]*\s*(.*?)\s*```$", re.DOTALL)
+
+
+def _parse_json_object(content: str) -> dict:
+    """Extrai o objeto JSON de uma resposta de IA.
+
+    Aceita respostas embrulhadas em cercas de markdown (```json ... ```) ou com
+    texto antes/depois do objeto — casos comuns que NÃO devem virar erro
+    genérico. Nunca executa código; apenas recorta e valida JSON.
+    """
+    text = (content or "").strip()
+    if not text:
+        raise AiInvalidResponseError("DeepSeek returned an empty content")
+    fence = _FENCE_RE.match(text)
+    if fence:
+        text = fence.group(1).strip()
+    try:
+        data = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        start = text.find("{")
+        end = text.rfind("}")
+        if start == -1 or end <= start:
+            raise AiInvalidResponseError(
+                "DeepSeek did not return valid JSON that could be parsed"
+            ) from None
+        try:
+            data = json.loads(text[start : end + 1])
+        except (json.JSONDecodeError, TypeError) as exc:
+            raise AiInvalidResponseError(
+                "DeepSeek did not return valid JSON that could be parsed"
+            ) from exc
+    if not isinstance(data, dict):
+        raise AiInvalidResponseError("DeepSeek JSON payload is not an object")
+    return data
 
 
 def _jitter_backoff(base: float, attempt: int, cap: float = 6.0) -> float:
@@ -63,13 +100,21 @@ def _map_http_error(status: int, message: str) -> DeepSeekError:
 class DeepSeekResult:
     """Normalized outcome of a DeepSeek chat call."""
 
-    __slots__ = ("content", "usage", "latency_ms", "model")
+    __slots__ = ("content", "usage", "latency_ms", "model", "finish_reason")
 
-    def __init__(self, content: str, usage: dict | None, latency_ms: int, model: str):
+    def __init__(
+        self,
+        content: str,
+        usage: dict | None,
+        latency_ms: int,
+        model: str,
+        finish_reason: str | None = None,
+    ):
         self.content = content
         self.usage = usage or {}
         self.latency_ms = latency_ms
         self.model = model
+        self.finish_reason = finish_reason
 
 
 class DeepSeekClient:
@@ -179,11 +224,18 @@ class DeepSeekClient:
 
                 model_used = body.get("model") or self._model
                 try:
-                    content = body["choices"][0]["message"]["content"]
+                    choice = body["choices"][0]
+                    message = choice["message"]
                 except (KeyError, IndexError, TypeError) as exc:  # noqa: PERF203
                     raise AiInvalidResponseError(
                         "DeepSeek response is missing a content choice"
                     ) from exc
+                finish_reason = choice.get("finish_reason")
+                content = message.get("content")
+                if content is None:
+                    # Reasoning models may return only reasoning_content when the
+                    # budget is exhausted; surface as empty content + reason.
+                    content = ""
                 if not isinstance(content, str):
                     raise AiInvalidResponseError("DeepSeek content is not a string")
                 usage = body.get("usage")
@@ -192,6 +244,7 @@ class DeepSeekClient:
                     usage=_normalize_usage(usage),
                     latency_ms=latency,
                     model=model_used,
+                    finish_reason=finish_reason,
                 )
 
         raise last_error  # pragma: no cover
@@ -211,13 +264,15 @@ class DeepSeekClient:
         """
         result = await self._chat(messages, max_tokens=max_tokens, json_mode=True)
         try:
-            data = json.loads(result.content)
-        except (json.JSONDecodeError, TypeError) as exc:  # noqa: PERF203
-            raise AiInvalidResponseError(
-                "DeepSeek did not return valid JSON that could be parsed"
-            ) from exc
-        if not isinstance(data, dict):
-            raise AiInvalidResponseError("DeepSeek JSON payload is not an object")
+            data = _parse_json_object(result.content)
+        except AiInvalidResponseError as exc:
+            # Distingue "cortado por limite de tokens" de "resposta malformada":
+            # modelos de raciocínio podem gastar todo o orçamento em reasoning.
+            if result.finish_reason == "length":
+                raise AiTruncatedResponseError(
+                    "A IA atingiu o limite de tokens antes de concluir a resposta."
+                ) from exc
+            raise
 
         meta = {"usage": result.usage, "model": result.model, "latency_ms": result.latency_ms}
         if schema is not None:
@@ -230,24 +285,31 @@ class DeepSeekClient:
 
     async def minimal_ping(self) -> dict:
         """A tiny call used only to test connectivity/auth. Consumes tokens."""
+        result = await self._chat(
+            [
+                {
+                    "role": "system",
+                    "content": (
+                        "You are a connectivity probe. Reply only with the JSON "
+                        'object: {"ok": true}. Do not add anything else.'
+                    ),
+                },
+                {"role": "user", "content": "ping"},
+            ],
+            max_tokens=64,
+        )
+        # Validate the probe responded with parseable, non-empty JSON. A provider
+        # that answers 200 with empty/non-JSON content must map to a typed error
+        # (never an unhandled JSONDecodeError that surfaces as HTTP 500).
+        content = result.content.strip()
+        if not content:
+            raise AiInvalidResponseError("DeepSeek returned an empty connectivity probe response")
         try:
-            result = await self._chat(
-                [
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are a connectivity probe. Reply only with the JSON "
-                            'object: {"ok": true}. Do not add anything else.'
-                        ),
-                    },
-                    {"role": "user", "content": "ping"},
-                ],
-                max_tokens=16,
-            )
-        except DeepSeekError as exc:
-            raise exc
-        # Validate the probe responded with parseable JSON.
-        json.loads(result.content)
+            json.loads(content)
+        except (json.JSONDecodeError, TypeError) as exc:
+            raise AiInvalidResponseError(
+                "DeepSeek did not return valid JSON for the connectivity probe"
+            ) from exc
         return {
             "ok": True,
             "latency_ms": result.latency_ms,

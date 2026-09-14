@@ -91,11 +91,11 @@ export default function TipoDocumentsPage({ params }: { params: { tipo: string }
         description={`Atos do tipo ${TIPO_INFO[tipo].label} gerados a partir de modelos documentais. Estados derivados do fluxo real (a assinatura é da edição que contém o ato).`}
         actions={
           <Link
-            href="/documentos/criar"
+            href={`/documentos/criar?tipo=${tipo}`}
             className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
           >
-            <span className="material-symbols-outlined text-base">smart_toy</span>
-            Criar {TIPO_INFO[tipo].label} com IA
+            <span className="material-symbols-outlined text-base">note_add</span>
+            Nova {TIPO_INFO[tipo].label}
           </Link>
         }
       />
@@ -125,8 +125,8 @@ export default function TipoDocumentsPage({ params }: { params: { tipo: string }
         </p>
       ) : (
         <>
-          <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-            <table className="w-full text-left text-sm">
+          <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white shadow-sm">
+            <table className="min-w-[720px] w-full text-left text-sm">
               <thead className="border-b border-gray-200 bg-gray-50 text-xs uppercase text-gray-500">
                 <tr>
                   <th className="px-4 py-3">Número / Ano</th>
@@ -156,7 +156,7 @@ export default function TipoDocumentsPage({ params }: { params: { tipo: string }
                       {r.signature_status === "edition_signed" ? (
                         <span className="text-green-700">Assinado (na edição)</span>
                       ) : (
-                        <span className="text-gray-400">Não assinado</span>
+                        <span className="text-gray-500">Não assinado</span>
                       )}
                     </td>
                     <td className="px-4 py-3 text-gray-600">
@@ -174,7 +174,7 @@ export default function TipoDocumentsPage({ params }: { params: { tipo: string }
               </tbody>
             </table>
           </div>
-          <p className="mt-2 text-xs text-gray-400">{total} documento(s) neste filtro.</p>
+          <p className="mt-2 text-xs text-gray-500">{total} documento(s) neste filtro.</p>
         </>
       )}
     </div>

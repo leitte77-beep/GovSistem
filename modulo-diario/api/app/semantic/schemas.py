@@ -109,6 +109,16 @@ class CommandBlock(BlockBase):
     text: str = ""
 
 
+class ConsiderandoBlock(RichTextBlock):
+    """A 'CONSIDERANDO ...' recital, distinct from the enacting formula.
+
+    The visual template renders these with their own indentation/spacing so a
+    list of considerations is not confused with the command ('DECRETA:').
+    """
+
+    type: Literal["considerando"] = "considerando"
+
+
 class ParagraphBlock(RichTextBlock):
     type: Literal["paragraph"] = "paragraph"
 
@@ -185,6 +195,7 @@ class SignatureEntry(BaseModel):
     location: str = ""
     date: str = ""
     functional_id: Optional[str] = None
+    position: str = "center"
 
 
 class SignatureBlock(BlockBase):
@@ -238,6 +249,7 @@ SemanticBlock = Annotated[
         HeadingBlock,
         PreambleBlock,
         CommandBlock,
+        ConsiderandoBlock,
         ParagraphBlock,
         ParagraphItemBlock,
         IncisoBlock,
@@ -266,6 +278,10 @@ class SemanticDocument(BaseModel):
     document_type: str = DOCUMENT_TYPE_DEFAULT
     title: str = ""
     summary: str = ""
+    # Original label as written in the source ('SÚMULA', 'EMENTA'). Never
+    # rewritten by the engine: it is preserved so the published act keeps its
+    # legal heading exactly as authored.
+    summary_label: Optional[str] = None
     locale: str = "pt-BR"
     timezone: str = "America/Sao_Paulo"
     template_id: Optional[str] = None
@@ -299,17 +315,26 @@ class SemanticDocument(BaseModel):
 
     def plain_text(self) -> str:
         """Extract a normalized plain-text representation of all blocks."""
-        import re
 
         parts: list[str] = []
+        # The summary/ementa label and text are part of the legal content even
+        # though they live outside the block list; include them so text
+        # integrity never reports a false loss of the heading.
+        if self.summary_label:
+            parts.append(self.summary_label)
+        if self.summary:
+            parts.append(_strip_html(self.summary))
         for block in self.blocks:
             btype = block.type
             if btype == "heading":
                 parts.append(_strip_html(block.text))
             elif btype == "command":
                 parts.append(block.text)
+            elif btype == "considerando":
+                parts.append(_strip_html(block.content))
             elif btype == "article":
-                label = f"Art. {block.suffix or block.number}".strip() if (block.suffix or block.number) else "Art."
+                number = block.suffix or block.number
+                label = f"Art. {number}".strip() if number else "Art."
                 parts.append(label)
                 parts.append(_strip_html(block.caput))
                 for p in block.paragraphs:
@@ -347,6 +372,8 @@ class SemanticDocument(BaseModel):
                     parts.append(entry.name)
                     parts.append(entry.role)
                     parts.append(entry.organ)
+                    parts.append(entry.location)
+                    parts.append(entry.date)
             elif btype == "image":
                 parts.append(block.alt)
             elif btype == "attachment_reference":

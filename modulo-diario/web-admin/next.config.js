@@ -22,6 +22,10 @@ const nextConfig = {
               "img-src 'self' data: https:",
               "font-src 'self' https://fonts.gstatic.com",
               "connect-src 'self' https://*.govsistem.com.br",
+              // PDFs de pré-visualização são gerados como blob: no navegador.
+              "frame-src 'self' blob:",
+              "object-src 'self' blob:",
+              "worker-src 'self' blob:",
               "frame-ancestors 'none'",
               "form-action 'self'",
             ].join("; "),

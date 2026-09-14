@@ -62,6 +62,11 @@ class Matter(Base, TimestampMixin):
         nullable=False,
         index=True,
     )
+    workflow_status: Mapped[Optional[str]] = mapped_column(
+        String(30),
+        nullable=True,
+        comment="Fluxo de criação/revisão (MatterWorkflowStatus); nulo em matérias legadas.",
+    )
     version: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     author_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),

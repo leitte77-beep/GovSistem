@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <title>DOE {{ edition.year }}/{{ edition.number }}</title>
 <link rel="stylesheet" href="{{ css_path }}">
+<style>{{ extra_css | safe }}</style>
 </head>
 <body>
 {% set effective_verification_code = verification_code|default(preliminary_code|default(""), true) %}
@@ -57,7 +58,7 @@
         </a>
       </div>
       <a class="summary-dots" href="#{{ item.anchor }}"></a>
-      <strong><a href="#{{ item.anchor }}">{{ "%02d"|format(item.position) }}</a></strong>
+      <strong><a class="summary-page" href="#{{ item.anchor }}"></a></strong>
     </div>
     {% endfor %}
   </section>
@@ -74,7 +75,7 @@
           </a>
         </div>
         <a class="summary-dots" href="#matter-{{ matter.id }}"></a>
-        <strong><a href="#matter-{{ matter.id }}">{{ "%02d"|format(loop.index) }}</a></strong>
+        <strong><a class="summary-page" href="#matter-{{ matter.id }}"></a></strong>
       </div>
       {% endfor %}
     {% endfor %}
@@ -96,7 +97,7 @@
       <div class="matter-summary">{{ matter.summary }}</div>
       {% endif %}
 
-      <div class="matter-content">
+      <div class="matter-content doc-body">
         {{ matter.content_html | safe }}
       </div>
     </div>

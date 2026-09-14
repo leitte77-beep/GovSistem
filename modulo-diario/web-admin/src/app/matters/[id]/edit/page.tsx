@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
 import MatterForm from "@/components/Matter/MatterForm";
+import WorkflowStatusPanel from "@/components/Matter/WorkflowStatusPanel";
 import { api } from "@/lib/api";
 import type { Matter } from "@/types/matter";
 
@@ -52,6 +53,7 @@ export default function EditMatterPage() {
           Relacionar publicações →
         </Link>
       </div>
+      <WorkflowStatusPanel matterId={matter.id} workflowStatus={matter.workflow_status} />
       <MatterForm matter={matter} initialStep={initialStep} />
     </div>
   );

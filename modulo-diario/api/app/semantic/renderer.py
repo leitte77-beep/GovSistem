@@ -63,7 +63,9 @@ def _css_vars(config: Optional[TemplateConfig]) -> str:
     return "\n".join(props)
 
 
-def _media_css(media: str, config: Optional[TemplateConfig]) -> str:
+def _media_css(
+    media: str, config: Optional[TemplateConfig], include_page_rules: bool = True
+) -> str:
     base = """
 .doe-document { font-family: var(--doe-typography-body-family, 'Liberation Serif');
   font-size: var(--doe-typography-body-size, 11pt);
@@ -78,6 +80,11 @@ def _media_css(media: str, config: Optional[TemplateConfig]) -> str:
 .doe-block--command { text-align: var(--doe-blocks-command-alignment, center);
   font-weight: bold; margin: 0.8em 0; }
 .doe-block--preamble { text-align: var(--doe-blocks-preamble-alignment, justify); }
+.doe-block--considerando { text-align: var(--doe-blocks-considerando-alignment, justify);
+  margin-left: var(--doe-blocks-considerando-indent, 0);
+  text-indent: var(--doe-blocks-considerando-text-indent, 0); }
+.doe-summary { text-align: var(--doe-blocks-summary-alignment, center);
+  font-style: italic; margin: 0.4em 0 1em; break-inside: avoid; }
 .doe-block--paragraph { text-align: var(--doe-blocks-paragraph-alignment, justify);
   text-indent: var(--doe-blocks-paragraph-indent, 1.25cm); }
 .doe-block--article { margin: 0.6em 0; }
@@ -94,22 +101,32 @@ def _media_css(media: str, config: Optional[TemplateConfig]) -> str:
 .doe-table thead th { background: var(--doe-tables-header-background, #e8e8e8);
   font-weight: var(--doe-tables-header-weight, bold); }
 .doe-table .doe-total { font-weight: bold; background: #f4f4f4; }
-.doe-signature { margin: 2em 0 0; text-align: var(--doe-signature-alignment, center); }
+.doe-signature { margin: 2em 0 0; text-align: var(--doe-signature-alignment, center);
+  break-inside: avoid; page-break-inside: avoid; }
 .doe-signature .doe-sign-name { font-weight: var(--doe-signature-name-weight, bold); }
 .doe-signature .doe-sign-role { font-weight: var(--doe-signature-role-weight, normal); }
 .doe-page-break { page-break-before: always; }
 .doe-list ul, .doe-list ol { margin: 0.3em 0 0.3em 1.5em; }
 .doe-quote { font-style: italic; margin: 0.6em 1.5em; }
 .doe-image img { max-width: 100%; height: auto; }
+/* Editorial pagination: never orphan a title/summary or split a signature. */
+.doe-document p { orphans: 2; widows: 2; }
+.doe-block--heading, .doe-summary { break-after: avoid; page-break-after: avoid; }
+.doe-block--command { break-after: avoid; page-break-after: avoid; }
+.doe-table { break-inside: auto; }
+.doe-table tr { break-inside: avoid; page-break-inside: avoid; }
 """
     if media == "print":
         base += """
-@page { size: A4; margin: var(--doe-page-margin-top, 2cm)
-  var(--doe-page-margin-right, 2cm) var(--doe-page-margin-bottom, 2cm)
-  var(--doe-page-margin-left, 2.5cm); }
 .doe-document { -weasy-zoom: 1; }
 .doe-table thead { display: table-header-group; }
 .doe-page-break { page-break-before: always; }
+"""
+        if include_page_rules:
+            base += """
+@page { size: A4; margin: var(--doe-page-margin-top, 2cm)
+  var(--doe-page-margin-right, 2cm) var(--doe-page-margin-bottom, 2cm)
+  var(--doe-page-margin-left, 2.5cm); }
 """
     else:
         base += """
@@ -123,49 +140,68 @@ def render_document(
     doc: SemanticDocument,
     config: Optional[TemplateConfig] = None,
     media: str = "screen",
+    include_style: bool = True,
+    include_page_rules: bool = True,
 ) -> str:
     """Render a SemanticDocument to safe HTML.
 
     ``media`` is ``"screen"`` (responsive) or ``"print"`` (A4 + WeasyPrint).
+    ``include_page_rules=False`` omits the ``@page`` block so the fragment can
+    be embedded into the edition PDF, which owns the page geometry. The
+    ``.doe-*`` styles are still emitted so the embedded content keeps its
+    editorial formatting.
     """
     if media not in ("screen", "print"):
         media = "screen"
 
     css_vars = _css_vars(config)
-    media_css = _media_css(media, config)
+    media_css = _media_css(media, config, include_page_rules=include_page_rules)
 
     body_parts: list[str] = []
     for block in doc.blocks:
         body_parts.append(_render_block(block))
 
     body = "\n".join(body_parts)
-    return (
+    result = (
         '<div class="doe-document"'
         + (f' style="{css_vars}"' if css_vars else "")
         + '>\n'
         + _render_header(doc)
+        + _render_summary(doc)
         + body
         + _render_footer(doc)
-        + "\n</div>\n<style>" + media_css + "</style>"
+        + "\n</div>\n"
     )
+    if include_style:
+        result += "<style>" + media_css + "</style>"
+    return result
 
 
 def _render_header(doc: SemanticDocument) -> str:
     return f'<h1 class="doe-block doe-block--heading">{_esc(doc.title or doc.document_type)}</h1>\n'
 
 
+def _render_summary(doc: SemanticDocument) -> str:
+    """Render the summary/ementa right below the title, keeping its label.
+
+    The label is the one authored in the source ('SÚMULA'/'EMENTA'); it is
+    never rewritten. Only when the source had no explicit heading do we fall
+    back to 'SÚMULA' so the reader still knows what the paragraph is.
+    """
+    if not doc.summary:
+        return ""
+    label = (doc.summary_label or "SÚMULA").strip()
+    return (
+        f'<p class="doe-summary"><strong>{_esc(label)}:</strong> '
+        f"{_render_rich(doc.summary)}</p>\n"
+    )
+
+
 def _render_footer(doc: SemanticDocument) -> str:
-    parts = []
-    if doc.summary:
-        parts.append(
-            f'<p class="doe-summary"><strong>Súmula:</strong> {_esc(doc.summary)}</p>'
-        )
-    if doc.text_integrity_hash:
-        parts.append(
-            f'<p class="doe-integrity">Hash de integridade textual: '
-            f'{_esc(doc.text_integrity_hash)}</p>'
-        )
-    return "\n".join(parts) + "\n"
+    # No summary here (it belongs below the title) and no integrity hash in the
+    # public/printed body: hashes are surfaced on the verification page, not on
+    # the legal document itself.
+    return ""
 
 
 def _render_block(block) -> str:
@@ -177,7 +213,7 @@ def _render_block(block) -> str:
         inner = _esc(block.text)
         return f'<div class="{cls}"><{tag}>{inner}</{tag}></div>'
 
-    if btype in ("preamble", "paragraph", "quote"):
+    if btype in ("preamble", "paragraph", "quote", "considerando"):
         return (
             f'<div class="{cls}" id="{_safe_id(block.id)}">'
             f'{_render_rich(block.content)}</div>'
@@ -329,7 +365,14 @@ def _render_table(block, cls: str) -> str:
 def _render_signature(block, cls: str) -> str:
     parts = [f'<div class="{cls}">']
     for entry in block.entries:
-        loc = f"<p>{_esc(entry.location)}, {_esc(entry.date)}</p>" if (entry.location or entry.date) else ""
+        if entry.location and entry.date:
+            loc = f"<p>{_esc(entry.location)}, {_esc(entry.date)}</p>"
+        elif entry.location:
+            loc = f"<p>{_esc(entry.location)}</p>"
+        elif entry.date:
+            loc = f"<p>{_esc(entry.date)}</p>"
+        else:
+            loc = ""
         parts.append(
             '<div class="doe-signature">'
             f'<p class="doe-sign-name">{_esc(entry.name)}</p>'

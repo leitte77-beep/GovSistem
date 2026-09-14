@@ -27,6 +27,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 DM_STATUS_DRAFT = "draft"
 DM_STATUS_IN_APPROVAL = "in_approval"
 DM_STATUS_ACTIVE = "active"
+DM_STATUS_INACTIVE = "inactive"
 DM_STATUS_ARCHIVED = "archived"
 
 # Campo válido para escolha de tipo de ato/escopo.
@@ -131,7 +132,12 @@ class DocumentField(BaseModel):
 
 
 class SignatureEntrySpec(BaseModel):
-    """Uma entrada da área de assinatura (nome pode conter marcador)."""
+    """Uma entrada da área de assinatura (nome pode conter marcador).
+
+    ``authority_id``/``credential_id`` guardam a proveniência (registro de
+    autoridades e certificado de assinatura) sem alterar o snapshot de
+    nome/cargo. ``position`` define a posição visual da entrada.
+    """
 
     model_config = ConfigDict(extra="forbid")
 
@@ -140,6 +146,17 @@ class SignatureEntrySpec(BaseModel):
     organ: str = ""
     location: str = ""
     date: str = ""
+    authority_id: Optional[uuid.UUID] = None
+    credential_id: Optional[uuid.UUID] = None
+    position: str = "center"
+
+    @field_validator("position")
+    @classmethod
+    def _valid_position(cls, v: str) -> str:
+        v = (v or "center").lower()
+        if v not in {"left", "center", "right"}:
+            raise ValueError("position de assinatura deve ser left, center ou right.")
+        return v
 
 
 class SectionSpec(BaseModel):
@@ -161,6 +178,13 @@ class SectionSpec(BaseModel):
     alignment: str = "center"
     when_field: Optional[str] = None
     when_value: Optional[str] = None
+    # Classificação de conteúdo (proteção da padronização):
+    #   fixed_text: texto fixo — deve permanecer idêntico entre minutas.
+    #   locked: protegido — a IA não pode reescrever/alterar.
+    #   ai_generated: redação que a IA pode gerar/completar.
+    fixed_text: bool = False
+    locked: bool = False
+    ai_generated: bool = False
     entries: list[SignatureEntrySpec] = Field(default_factory=list)
     children: list["SectionSpec"] = Field(default_factory=list)
 

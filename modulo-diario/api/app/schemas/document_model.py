@@ -20,10 +20,21 @@ class DocumentModelCreateIn(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     slug: str = Field(min_length=1, max_length=120, pattern=r"^[a-z0-9_-]+$")
     config: DocumentModelConfig
+    layout: Optional[dict] = None
+    parent_model_id: Optional[uuid.UUID] = None
 
 
 class DocumentModelVersionCreateIn(BaseModel):
     config: DocumentModelConfig
+    layout: Optional[dict] = None
+    change_reason: Optional[str] = Field(default=None, max_length=1000)
+
+
+class DocumentModelVersionUpdateIn(BaseModel):
+    """Edição de uma versão em rascunho (autosave do construtor visual)."""
+
+    config: Optional[DocumentModelConfig] = None
+    layout: Optional[dict] = None
     change_reason: Optional[str] = Field(default=None, max_length=1000)
 
 
@@ -56,11 +67,33 @@ class DocumentModelSummaryOut(BaseModel):
     status: str
     is_default: bool
     active_version: Optional[int] = None
+    parent_model_id: Optional[uuid.UUID] = None
+    created_by: Optional[uuid.UUID] = None
+    created_by_name: Optional[str] = None
+    usage_count: int = 0
+    created_at: datetime | None = None
     updated_at: datetime | None = None
+
+
+class DocumentModelDuplicateIn(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    slug: Optional[str] = Field(
+        default=None, min_length=1, max_length=120, pattern=r"^[a-z0-9_-]+$"
+    )
+
+
+class DocumentModelHistoryEntryOut(BaseModel):
+    id: uuid.UUID
+    action: str
+    description: Optional[str] = None
+    user_id: Optional[uuid.UUID] = None
+    user_name: Optional[str] = None
+    created_at: datetime | None = None
 
 
 class VersionDetailOut(VersionSummaryOut):
     config: dict
+    layout: Optional[dict] = None
 
 
 class DocumentModelDetailOut(DocumentModelSummaryOut):
@@ -118,3 +151,58 @@ class NumberIssueOut(BaseModel):
     number: int
     year: int
     already_assigned: bool = False
+
+
+class DocumentModelBlockCreateIn(BaseModel):
+    """Bloco reutilizável (biblioteca de blocos)."""
+
+    name: str = Field(min_length=1, max_length=200)
+    kind: str = Field(default="text", min_length=1, max_length=30)
+    description: Optional[str] = Field(default=None, max_length=2000)
+    content_json: dict = Field(default_factory=dict)
+    is_active: bool = True
+
+
+class DocumentModelBlockUpdateIn(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=200)
+    kind: Optional[str] = Field(default=None, min_length=1, max_length=30)
+    description: Optional[str] = Field(default=None, max_length=2000)
+    content_json: Optional[dict] = None
+    is_active: Optional[bool] = None
+
+
+class DocumentModelBlockOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    kind: str
+    description: Optional[str] = None
+    content_json: dict
+    is_active: bool
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class TrainingFileOut(BaseModel):
+    id: uuid.UUID
+    filename: str
+    mime_type: Optional[str] = None
+    size_bytes: Optional[int] = None
+    status: str
+    used_by_ai: bool
+    has_text: bool = False
+    created_at: datetime | None = None
+
+
+class TrainingFileUpdateIn(BaseModel):
+    used_by_ai: Optional[bool] = None
+
+
+class LearnProposalOut(BaseModel):
+    """Proposta de modelo gerada pela IA a partir dos documentos de referência."""
+
+    ok: bool
+    status: str = "ok"
+    message: Optional[str] = None
+    prompt_version: str = ""
+    config: Optional[dict] = None
+    sources: list[str] = Field(default_factory=list)

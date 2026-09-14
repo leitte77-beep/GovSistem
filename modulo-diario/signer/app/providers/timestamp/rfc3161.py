@@ -74,7 +74,8 @@ class Rfc3161TimestampProvider(TimestampProvider):
         resp.raise_for_status()
 
         ts_resp = tsp.TimeStampResp.load(resp.content)
-        status = ts_resp["status"]["status"].dotted if hasattr(ts_resp["status"]["status"], "dotted") else str(ts_resp["status"]["status"])
+        raw_status = ts_resp["status"]["status"]
+        status = raw_status.dotted if hasattr(raw_status, "dotted") else str(raw_status)
 
         success = status in ("0", "granted", "granted_with_mods")
         if not success:

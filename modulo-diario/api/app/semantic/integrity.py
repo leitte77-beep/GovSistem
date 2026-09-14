@@ -17,7 +17,6 @@ from __future__ import annotations
 import hashlib
 import re
 from collections import Counter
-from typing import Optional
 
 _WORD_TOKEN_RE = re.compile(r"[A-Za-z0-9À-ÿ.ºª%$#/()-]+")
 

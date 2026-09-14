@@ -20,8 +20,9 @@ from app.core.html_sanitizer import extract_plain_text
 from app.core.versioning import current_etag, require_no_conflict
 from app.middleware.audit import capture_request_info, log_audit_event
 from app.models.act_type import ActType
+from app.models.audit_event import AuditEvent
 from app.models.authority import Authority
-from app.models.enums import AuditAction, MatterStatus
+from app.models.enums import AuditAction, MatterStatus, MatterWorkflowStatus
 from app.models.file import File
 from app.models.matter import Matter
 from app.models.matter_attachment import MatterAttachment
@@ -35,6 +36,8 @@ from app.schemas.matter import (
     MatterResponse,
     MatterReviewDecision,
     MatterUpdate,
+    MatterWorkflowHistoryOut,
+    MatterWorkflowUpdate,
     MessageResponse,
 )
 
@@ -312,6 +315,7 @@ async def create_matter(
         content_mode=body.content_mode or "rich_text",
         plain_text=plain_text,
         status=MatterStatus.DRAFT,
+        workflow_status=MatterWorkflowStatus.RASCUNHO.value,
         author_id=user.id,
         act_number=body.act_number.strip() if body.act_number else None,
         act_year=body.act_year,
@@ -395,6 +399,7 @@ async def list_matters(
             act_type_id=m.act_type_id,
             org_unit_id=m.org_unit_id,
             status=m.status,
+            workflow_status=m.workflow_status,
             version=m.version,
             author_id=m.author_id,
             reviewed_by=m.reviewed_by,
@@ -763,6 +768,113 @@ async def archive_matter(
     return await _matter_to_response(matter)
 
 
+@router.post(
+    "/matters/{matter_id}/workflow-status",
+    response_model=MatterResponse,
+)
+async def update_workflow_status(
+    matter_id: uuid.UUID,
+    body: MatterWorkflowUpdate,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_roles("AUTOR", "REVISOR", "ADMIN")),
+):
+    """Avança/retorna o estado do fluxo de criação do documento.
+
+    Não altera o ``status`` editorial (submit/approve/reject continuam no fluxo
+    próprio). Cada mudança é auditada e aparece no histórico do documento.
+    """
+    matter = await _get_matter_or_404(matter_id, db)
+    _own_matter_or_admin(matter, user)
+
+    try:
+        target = MatterWorkflowStatus(body.status)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Estado de fluxo inválido: {body.status}",
+        ) from exc
+
+    current_raw = matter.workflow_status
+    if current_raw:
+        try:
+            current = MatterWorkflowStatus(current_raw)
+        except ValueError:
+            current = MatterWorkflowStatus.RASCUNHO
+    else:
+        # Matérias legadas sem workflow começam em rascunho.
+        current = MatterWorkflowStatus.RASCUNHO
+
+    try:
+        current.assert_transition(target)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+    matter.workflow_status = target.value
+    await db.commit()
+    await db.refresh(matter)
+
+    info = await capture_request_info(request)
+    await log_audit_event(
+        db=db,
+        action=AuditAction.MATTER_WORKFLOW_STATUS_CHANGED,
+        user_id=user.id,
+        organization_id=user.organization_id,
+        entity_type="matter",
+        entity_id=matter.id,
+        description=body.note or f"Fluxo: {current.value} → {target.value}",
+        extra_metadata={"from": current.value, "to": target.value},
+        ip_address=info["ip_address"],
+    )
+    return await _matter_to_response(matter)
+
+
+@router.get(
+    "/matters/{matter_id}/workflow-history",
+    response_model=list[MatterWorkflowHistoryOut],
+)
+async def get_workflow_history(
+    matter_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    matter = await _get_matter_or_404(matter_id, db)
+    result = await db.execute(
+        select(AuditEvent)
+        .where(
+            AuditEvent.organization_id == user.organization_id,
+            AuditEvent.entity_type == "matter",
+            AuditEvent.entity_id == matter.id,
+            AuditEvent.action.in_(
+                [
+                    AuditAction.MATTER_WORKFLOW_STATUS_CHANGED,
+                    AuditAction.MATTER_STATUS_CHANGED,
+                    AuditAction.MATTER_CREATED,
+                ]
+            ),
+        )
+        .order_by(AuditEvent.created_at.desc())
+        .limit(200)
+    )
+    events = result.scalars().all()
+    out: list[MatterWorkflowHistoryOut] = []
+    for e in events:
+        meta = e.extra_metadata or {}
+        action = getattr(e.action, "value", str(e.action))
+        out.append(
+            MatterWorkflowHistoryOut(
+                id=e.id,
+                action=action,
+                description=e.description,
+                from_status=meta.get("from"),
+                to_status=meta.get("to"),
+                user_id=e.user_id,
+                created_at=e.created_at,
+            )
+        )
+    return out
+
+
 @router.delete("/matters/{matter_id}", status_code=204)
 async def delete_matter(
     matter_id: uuid.UUID,
@@ -1031,6 +1143,7 @@ async def _matter_to_response(matter: Matter) -> MatterResponse:
         content_mode=matter.content_mode,
         plain_text=matter.plain_text,
         status=matter.status,
+        workflow_status=matter.workflow_status,
         version=matter.version,
         author_id=matter.author_id,
         reviewed_by=matter.reviewed_by,

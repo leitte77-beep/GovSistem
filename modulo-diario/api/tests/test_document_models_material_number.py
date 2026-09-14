@@ -160,6 +160,11 @@ async def test_material_from_model_is_draft_without_number(api_client, ctx, db_s
     assert body["status"] == "draft"
     assert body["act_number"] is None  # rascunho sem número (usa id de rascunho)
 
+    # Fase 5C: minuta gerada por modelo entra no fluxo como "gerado pela IA".
+    got = await api_client(ctx.autor).get(f"/api/v1/matters/{body['id']}")
+    assert got.status_code == 200
+    assert got.json()["workflow_status"] == "gerado_pela_ia"
+
 
 async def test_material_blocked_on_pending(api_client, ctx, db_session):
     model_id = await _create_approved_model(api_client, ctx, db_session)

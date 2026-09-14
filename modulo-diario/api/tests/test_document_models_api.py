@@ -10,12 +10,16 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy.exc import IntegrityError
 
 from app.core.auth import get_current_user
 from app.core.database import get_db
 from app.main import app
+from app.models.audit_event import AuditEvent
+from app.models.enums import AuditAction
 from app.models.organization import Organization
 from app.models.user import User
 
@@ -205,6 +209,218 @@ async def test_archive(api_client, ctx):
     r = await client.post(f"/api/v1/document-models/{model_id}/archive")
     assert r.status_code == 200
     assert r.json()["status"] == "archived"
+
+
+async def test_deactivate_and_reactivate(api_client, ctx):
+    _, resp = await _create(api_client, ctx.admin)
+    model_id = resp.json()["id"]
+    client = api_client(ctx.admin)
+    await client.post(f"/api/v1/document-models/{model_id}/versions/1/submit")
+    await client.post(f"/api/v1/document-models/{model_id}/versions/1/approve")
+
+    off = await client.post(f"/api/v1/document-models/{model_id}/deactivate")
+    assert off.status_code == 200
+    assert off.json()["status"] == "inactive"
+    assert off.json()["is_default"] is False
+    # Modelo inativo não é escolhido para geração.
+    d = await client.get("/api/v1/document-models/default?document_type=portaria")
+    assert d.status_code == 404
+
+    on = await client.post(f"/api/v1/document-models/{model_id}/reactivate")
+    assert on.status_code == 200
+    assert on.json()["status"] == "active"
+
+
+async def test_deactivate_requires_active(api_client, ctx):
+    _, resp = await _create(api_client, ctx.admin)
+    model_id = resp.json()["id"]
+    client = api_client(ctx.admin)
+    r = await client.post(f"/api/v1/document-models/{model_id}/deactivate")
+    assert r.status_code == 409
+
+
+async def test_duplicate_model_copies_active_version(api_client, ctx):
+    _, resp = await _create(api_client, ctx.admin)
+    model_id = resp.json()["id"]
+    client = api_client(ctx.admin)
+    await client.post(f"/api/v1/document-models/{model_id}/versions/1/submit")
+    await client.post(f"/api/v1/document-models/{model_id}/versions/1/approve")
+
+    dup = await client.post(f"/api/v1/document-models/{model_id}/duplicate", json={})
+    assert dup.status_code == 201
+    body = dup.json()
+    assert body["id"] != model_id
+    assert body["parent_model_id"] == model_id
+    assert body["status"] == "draft"
+    assert body["slug"] == "portaria-ferias-copia"
+
+    detail = await client.get(f"/api/v1/document-models/{body['id']}/versions/1")
+    assert detail.status_code == 200
+    assert detail.json()["config"]["purpose"] == "Concessão de férias"
+
+    # Segunda duplicação gera slug único.
+    dup2 = await client.post(f"/api/v1/document-models/{model_id}/duplicate", json={})
+    assert dup2.status_code == 201
+    assert dup2.json()["slug"] == "portaria-ferias-copia-2"
+
+
+async def test_duplicate_slug_race_returns_409(api_client, ctx, monkeypatch):
+    _, created = await _create(api_client, ctx.admin)
+
+    class UniqueViolationError(Exception):
+        class Diag:
+            constraint_name = "uq_document_models_org_slug_active"
+
+        diag = Diag()
+
+    async def raise_unique_violation(*args, **kwargs):
+        raise IntegrityError("insert", {}, UniqueViolationError("unique violation"))
+
+    monkeypatch.setattr(
+        "app.api.v1.document_models.dm_service.duplicate_model",
+        raise_unique_violation,
+    )
+    client = api_client(ctx.admin)
+    response = await client.post(
+        f"/api/v1/document-models/{created.json()['id']}/duplicate", json={}
+    )
+
+    assert response.status_code == 409
+
+
+async def test_history_lists_events(api_client, ctx):
+    _, resp = await _create(api_client, ctx.admin)
+    model_id = resp.json()["id"]
+    client = api_client(ctx.admin)
+    await client.post(f"/api/v1/document-models/{model_id}/versions/1/submit")
+    await client.post(f"/api/v1/document-models/{model_id}/versions/1/approve")
+
+    hist = await client.get(f"/api/v1/document-models/{model_id}/history")
+    assert hist.status_code == 200
+    actions = [e["action"] for e in hist.json()]
+    assert "document_model.created" in actions
+    assert "document_model.approved" in actions
+
+
+async def test_listing_includes_usage_and_creator(api_client, ctx):
+    _, resp = await _create(api_client, ctx.admin)
+    assert resp.status_code == 201
+    client = api_client(ctx.admin)
+    listing = await client.get("/api/v1/document-models")
+    row = next(m for m in listing.json() if m["id"] == resp.json()["id"])
+    assert row["usage_count"] == 0
+    assert row["created_by"] is not None
+
+
+# ── Exclusão definitiva ─────────────────────────────────────────────────────
+
+
+async def test_delete_draft_model(api_client, ctx):
+    _, resp = await _create(api_client, ctx.admin)
+    model_id = resp.json()["id"]
+    client = api_client(ctx.admin)
+    r = await client.delete(f"/api/v1/document-models/{model_id}")
+    assert r.status_code == 204
+    r = await client.get(f"/api/v1/document-models/{model_id}")
+    assert r.status_code == 404
+
+
+async def test_recreate_model_with_same_slug_after_soft_delete(api_client, ctx):
+    client, created = await _create(api_client, ctx.admin)
+    assert created.status_code == 201
+
+    deleted = await client.delete(f"/api/v1/document-models/{created.json()['id']}")
+    assert deleted.status_code == 204
+
+    recreated = await client.post(
+        "/api/v1/document-models",
+        json={
+            "name": "Nova Portaria de Férias",
+            "slug": "portaria-ferias",
+            "config": _config_dict(),
+        },
+    )
+
+    assert recreated.status_code == 201
+    assert recreated.json()["id"] != created.json()["id"]
+
+
+async def test_concurrent_slug_conflict_returns_409(api_client, ctx, monkeypatch):
+    class UniqueViolationError(Exception):
+        class Diag:
+            constraint_name = "uq_document_models_org_slug_active"
+
+        diag = Diag()
+
+    async def raise_unique_violation(*args, **kwargs):
+        raise IntegrityError("insert", {}, UniqueViolationError("unique violation"))
+
+    monkeypatch.setattr(
+        "app.api.v1.document_models.dm_service.create_model", raise_unique_violation
+    )
+    _, response = await _create(api_client, ctx.admin)
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Slug já em uso nesta organização."
+
+
+async def test_non_slug_integrity_error_is_not_misreported_as_409(
+    api_client, ctx, monkeypatch
+):
+    class ForeignKeyViolationError(Exception):
+        class Diag:
+            constraint_name = "fk_document_models_parent_model_id"
+
+        diag = Diag()
+
+    error = IntegrityError("insert", {}, ForeignKeyViolationError("foreign key violation"))
+
+    async def raise_foreign_key_violation(*args, **kwargs):
+        raise error
+
+    monkeypatch.setattr(
+        "app.api.v1.document_models.dm_service.create_model",
+        raise_foreign_key_violation,
+    )
+
+    with pytest.raises(IntegrityError) as raised:
+        await _create(api_client, ctx.admin)
+
+    assert raised.value is error
+
+
+async def test_delete_default_model_conflicts(api_client, ctx):
+    _, resp = await _create(api_client, ctx.admin)
+    model_id = resp.json()["id"]
+    client = api_client(ctx.admin)
+    await client.post(f"/api/v1/document-models/{model_id}/versions/1/submit")
+    await client.post(f"/api/v1/document-models/{model_id}/versions/1/approve")
+    r = await client.delete(f"/api/v1/document-models/{model_id}")
+    assert r.status_code == 409
+
+
+async def test_delete_model_with_generated_material_conflicts(api_client, ctx, db_session):
+    _, resp = await _create(api_client, ctx.admin)
+    model_id = resp.json()["id"]
+    db_session.add(
+        AuditEvent(
+            organization_id=ctx.org_id,
+            entity_type="document_model",
+            entity_id=uuid.UUID(model_id),
+            action=AuditAction.DOCUMENT_MODEL_MATERIAL_CREATED,
+            description="Minuta gerada do modelo.",
+        )
+    )
+    await db_session.flush()
+    client = api_client(ctx.admin)
+    r = await client.delete(f"/api/v1/document-models/{model_id}")
+    assert r.status_code == 409
+
+
+async def test_consultation_cannot_delete(api_client):
+    client = api_client(_consulta_proxy())
+    r = await client.delete(f"/api/v1/document-models/{uuid.uuid4()}")
+    assert r.status_code == 403
 
 
 # ── Preview determinístico ──────────────────────────────────────────────────

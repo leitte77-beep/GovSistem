@@ -36,6 +36,8 @@ export function blockToHtml(block: SemanticBlock): string {
       return `<p class="sem-block sem-command"><strong>${esc(block.text)}</strong></p>`;
     case "preamble":
       return `<p class="sem-block sem-preamble">${esc(block.content)}</p>`;
+    case "considerando":
+      return `<p class="sem-block sem-considerando" style="padding-left:1rem">${esc(block.content)}</p>`;
     case "paragraph":
       return `<p class="sem-block sem-paragraph">${esc(block.content)}</p>`;
     case "paragraph_item":
@@ -127,7 +129,17 @@ export function blockToHtml(block: SemanticBlock): string {
 }
 
 export function documentToHtml(doc: SemanticDocument): string {
-  return doc.blocks.map((b) => blockToHtml(b)).join("\n");
+  const parts: string[] = [];
+  // Summary/ementa is rendered right below the title, with its original label
+  // preserved (mirrors the backend renderer).
+  if (doc.summary) {
+    const label = (doc.summary_label || "SÚMULA").trim();
+    parts.push(
+      `<p class="sem-block sem-summary"><strong>${esc(label)}:</strong> ${esc(doc.summary)}</p>`
+    );
+  }
+  parts.push(...doc.blocks.map((b) => blockToHtml(b)));
+  return parts.join("\n");
 }
 
 export function stripHtml(value: string): string {
@@ -161,6 +173,7 @@ export function blockLabel(block: SemanticBlock): string {
       return `${block.number})`;
     case "paragraph":
     case "preamble":
+    case "considerando":
     case "quote":
     case "legacy_html":
       return stripHtml(block.content).slice(0, 80) || "…";

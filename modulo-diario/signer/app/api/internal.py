@@ -10,6 +10,7 @@ Implements a PAdES-B-B signing flow:
 import asyncio
 import base64
 import hashlib
+import hmac
 import logging
 import uuid
 from datetime import datetime, timezone
@@ -35,15 +36,9 @@ def _verify_internal_api_key(x_internal_key: str = Header(...)) -> None:
     expected = settings.INTERNAL_API_KEY.get_secret_value()
     if not expected:
         raise HTTPException(status_code=503, detail="Internal API key not configured")
-    if x_internal_key != expected:
+    # Constant-time comparison avoids leaking the key through timing.
+    if not hmac.compare_digest(x_internal_key, expected):
         raise HTTPException(status_code=403, detail="Forbidden: invalid internal API key")
-
-
-def _sanitize_log(record: dict) -> dict:
-    safe = {k: v for k, v in record.items() if k not in ("pfx_password", "pfx_base64")}
-    if "pfx_base64" in safe:
-        safe["pfx_base64"] = f"<{len(safe['pfx_base64'])} bytes>"
-    return safe
 
 
 # ── Schemas ───────────────────────────────────────────────────────────────────
@@ -76,6 +71,9 @@ class SignResponse(BaseModel):
     signed_at: str
     validation_status: str
     verification_code: str = ""
+    # RFC 3161 timestamp (ACT) status, when a TSA is configured.
+    timestamp_status: str = "not_present"
+    timestamp_serial: str = ""
 
 
 class InspectResponse(BaseModel):
@@ -90,6 +88,9 @@ class InspectResponse(BaseModel):
     public_key_algorithm: str
     key_size: int
     policy_oids: list[str]
+    # Result of the ICP-Brasil profile/A1 validation. Exposed so the caller can
+    # show whether the certificate is actually an ICP-Brasil A1 credential.
+    icp_brasil: dict | None = None
 
 
 class VerifyRequest(BaseModel):
@@ -152,6 +153,7 @@ async def inspect_certificate(
         public_key_algorithm=info.public_key_algorithm,
         key_size=info.key_size,
         policy_oids=info.policy_oids,
+        icp_brasil=icp,
     )
 
 
@@ -186,7 +188,10 @@ async def sign_pdf(
     # Validate certificate
     insp = provider.inspect()
     if insp.days_remaining < 0:
-        raise HTTPException(status_code=422, detail=f"Certificado vencido há {abs(insp.days_remaining)} dias")
+        raise HTTPException(
+            status_code=422,
+            detail=f"Certificado vencido há {abs(insp.days_remaining)} dias",
+        )
 
     try:
         # pyHanko usa asyncio.run() internamente; executar em thread separada
@@ -247,6 +252,8 @@ async def sign_pdf(
         signed_at=now,
         validation_status=val_status,
         verification_code=result.verification_code,
+        timestamp_status="present" if result.timestamped else "not_present",
+        timestamp_serial=result.timestamp_serial,
     )
 
 
@@ -264,7 +271,10 @@ async def verify_pdf_signature(
     try:
         from app.providers.a1 import PfxA1SignerProvider
         dummy = PfxA1SignerProvider.__new__(PfxA1SignerProvider)
-        result = dummy.verify_detailed(pdf_bytes)
+        # pyHanko's validator uses an async bridge internally; running it inside
+        # the request event loop breaks the certvalidator registry and silently
+        # yields intact=False. Execute it in a worker thread instead.
+        result = await asyncio.to_thread(dummy.verify_detailed, pdf_bytes)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Verification failed: {e}")
 

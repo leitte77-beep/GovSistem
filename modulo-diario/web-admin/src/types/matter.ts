@@ -6,6 +6,26 @@ export type MatterStatus =
   | "archived"
   | "rejected";
 
+export type MatterWorkflowStatus =
+  | "rascunho"
+  | "gerado_pela_ia"
+  | "em_revisao"
+  | "aprovado"
+  | "aguardando_assinatura"
+  | "assinado"
+  | "publicado"
+  | "cancelado";
+
+export interface MatterWorkflowHistoryEntry {
+  id: string;
+  action: string;
+  description: string | null;
+  from_status: string | null;
+  to_status: string | null;
+  user_id: string | null;
+  created_at: string;
+}
+
 export interface MatterListItem {
   id: string;
   title: string;
@@ -13,6 +33,7 @@ export interface MatterListItem {
   act_type_id: string;
   org_unit_id: string | null;
   status: MatterStatus;
+  workflow_status?: MatterWorkflowStatus | null;
   version: number;
   author_id: string;
   reviewed_by: string | null;
@@ -40,6 +61,7 @@ export interface Matter {
   content_mode: "rich_text" | "pdf" | "semantic" | "legacy_html" | "original_pdf";
   plain_text: string;
   status: MatterStatus;
+  workflow_status?: MatterWorkflowStatus | null;
   version: number;
   author_id: string;
   reviewed_by: string | null;

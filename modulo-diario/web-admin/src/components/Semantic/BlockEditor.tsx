@@ -48,6 +48,7 @@ export default function BlockEditor({ block, onChange }: Props) {
       );
 
     case "preamble":
+    case "considerando":
     case "paragraph":
     case "quote":
     case "legacy_html":

@@ -2,9 +2,6 @@
 
 from __future__ import annotations
 
-import re
-from typing import Optional
-
 from .schemas import (
     CLASSIFICATION_CONFIRMED,
     CLASSIFICATION_PENDING,
@@ -71,7 +68,11 @@ def _validate_table(table) -> list[str]:
     if not table.headers and not table.rows:
         issues.append("tabela sem cabeçalho nem linhas.")
         return issues
-    expected_cols = len(table.headers) if table.headers else (len(table.rows[0]) if table.rows else 0)
+    expected_cols = (
+        len(table.headers)
+        if table.headers
+        else (len(table.rows[0]) if table.rows else 0)
+    )
     for idx, row in enumerate(table.rows):
         width = sum(c.colspan for c in row)
         if expected_cols and width != expected_cols:

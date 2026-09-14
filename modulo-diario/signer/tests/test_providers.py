@@ -1,8 +1,8 @@
 """Signer provider tests."""
 
 import base64
-import hashlib
 import io
+from datetime import datetime, timezone
 
 import pytest
 from cryptography import x509
@@ -10,8 +10,12 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives.serialization import pkcs12
 from httpx import ASGITransport, AsyncClient
+from pypdf import PdfWriter
 
 from app.main import app
+
+INTERNAL_KEY = "dev-internal-key-saas"
+AUTH_HEADERS = {"X-Internal-Key": INTERNAL_KEY}
 
 
 @pytest.fixture(scope="session")
@@ -26,8 +30,8 @@ def test_key_cert():
         .issuer_name(issuer)
         .public_key(key.public_key())
         .serial_number(x509.random_serial_number())
-        .not_valid_before(x509.datetime(2024, 1, 1))
-        .not_valid_after(x509.datetime(2030, 12, 31))
+        .not_valid_before(datetime(2024, 1, 1, tzinfo=timezone.utc))
+        .not_valid_after(datetime(2030, 12, 31, tzinfo=timezone.utc))
         .sign(key, hashes.SHA256())
     )
     return key, cert
@@ -47,9 +51,22 @@ def test_pfx(test_key_cert):
 
 
 @pytest.fixture
+def minimal_pdf() -> bytes:
+    writer = PdfWriter()
+    writer.add_blank_page(595, 842)
+    buf = io.BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
+
+
+@pytest.fixture
 async def client():
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers=AUTH_HEADERS,
+    ) as ac:
         yield ac
 
 
@@ -65,10 +82,10 @@ async def test_health_check(client):
 async def test_inspect_certificate(client, test_pfx):
     pfx_b64 = base64.b64encode(test_pfx).decode()
     response = await client.post(
-        "/internal/inspect",
-        json={"pfx_base64": pfx_b64, "pfx_password": "test123"},
+        "/internal/certificates/inspect",
+        data={"pfx_base64": pfx_b64, "password": "test123"},
     )
-    assert response.status_code == 200
+    assert response.status_code == 200, response.text
     data = response.json()
     assert "subject" in data
     assert "serial_number" in data
@@ -81,37 +98,47 @@ def test_create_unknown_provider():
         create_provider("hsm")
 
 
-def test_valid_provider():
-    from app.providers import create_provider, PfxA1SignerProvider
-    provider = create_provider("a1")
+def test_valid_provider(test_pfx):
+    from app.providers import PfxA1SignerProvider, create_provider
+    provider = create_provider("a1", pfx_bytes=test_pfx, password="test123")
     assert isinstance(provider, PfxA1SignerProvider)
 
 
 @pytest.mark.anyio
-async def test_verify_endpoint(client, test_pfx):
+async def test_verify_endpoint(client, test_pfx, minimal_pdf):
     pfx_b64 = base64.b64encode(test_pfx).decode()
-    # Sign a minimal PDF first
     sign_response = await client.post(
         "/internal/sign-pdf",
         json={
             "edition_id": "test-edition",
-            "unsigned_pdf_base64": base64.b64encode(b"%PDF-1.4 test").decode(),
+            "unsigned_pdf_base64": base64.b64encode(minimal_pdf).decode(),
             "pfx_base64": pfx_b64,
             "pfx_password": "test123",
             "reason": "Test signing",
         },
     )
-    assert sign_response.status_code == 200
+    assert sign_response.status_code == 200, sign_response.text
     signed_b64 = sign_response.json().get("signed_pdf_base64", "")
+    assert signed_b64
 
-    # Verify the signed PDF
     verify_response = await client.post(
         "/internal/verify-pdf",
         json={"signed_pdf_base64": signed_b64},
     )
     assert verify_response.status_code == 200
     data = verify_response.json()
-    assert data["valid"] is True
+    signatures = data.get("signatures") or []
+    assert signatures, "the signed PDF must expose its signature"
+    # The CMS digest over /ByteRange must be intact and the profile must be
+    # PAdES. The certificate is self-signed, so the chain is NOT trusted and
+    # the document is correctly reported as not fully "valid" — we must never
+    # claim a trusted signature without an ICP-Brasil trust store.
+    assert signatures[0]["intact"] is True
+    assert signatures[0]["subfilter"] == "/ETSI.CAdES.detached"
+    assert signatures[0]["byte_range"]
+    # Integrity is valid, but the self-signed certificate has no ICP-Brasil
+    # chain, so it must not be reported as trusted.
+    assert signatures[0]["trusted"] is False
 
 
 @pytest.mark.anyio

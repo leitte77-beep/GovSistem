@@ -15,6 +15,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.config import settings
 from app.core.database import get_sync_db
+from app.document_model.body_html import DOCUMENT_BODY_CSS
 from app.models.enums import EditionStatus
 from app.semantic.snapshot import verify_snapshot
 from app.services.pdf_utils import compute_hash, format_date
@@ -46,13 +47,11 @@ def _path_is_within(path: Path, root: Path) -> bool:
         return False
 
 
-def _restricted_url_fetcher(url: str):
+def _check_allowed_url(url: str) -> None:
     """Allow embedded data and trusted local PDF assets; deny network fetches."""
-    from weasyprint import default_url_fetcher
-
     parsed = urlsplit(url)
     if parsed.scheme == "data":
-        return default_url_fetcher(url)
+        return
     if parsed.scheme != "file":
         raise ValueError(f"External resource blocked while rendering PDF: {parsed.scheme}")
 
@@ -63,7 +62,32 @@ def _restricted_url_fetcher(url: str):
     )
     if not any(_path_is_within(requested, root) for root in allowed_roots):
         raise ValueError("Local resource outside trusted PDF directories")
-    return default_url_fetcher(url)
+
+
+try:  # WeasyPrint >= 68 exposes the URLFetcher class (default_url_fetcher removed in 70).
+    from weasyprint.urls import URLFetcher as _WeasyPrintURLFetcher
+except ImportError:  # pragma: no cover - older WeasyPrint (< 68)
+    _WeasyPrintURLFetcher = None
+
+
+if _WeasyPrintURLFetcher is not None:
+
+    class _RestrictedURLFetcher(_WeasyPrintURLFetcher):
+        """Restrict WeasyPrint resource loading to trusted local assets."""
+
+        def fetch(self, url, headers=None):
+            _check_allowed_url(url)
+            return super().fetch(url, headers=headers)
+
+    _restricted_url_fetcher = _RestrictedURLFetcher()
+
+else:  # pragma: no cover - older WeasyPrint (< 68) used a plain callable.
+
+    def _restricted_url_fetcher(url):  # type: ignore[misc]
+        from weasyprint import default_url_fetcher  # type: ignore[attr-defined]
+
+        _check_allowed_url(url)
+        return default_url_fetcher(url)
 
 
 def _localize_matter_images(content_html: str) -> str:
@@ -99,9 +123,52 @@ def _summary_metadata(title: str, act_type: str, org_unit: str, section_title: s
     return " • ".join(metadata_parts)
 
 
-def _save_to_storage(filename: str, content: bytes) -> str:
-    os.makedirs(str(OUTPUT_DIR), exist_ok=True)
-    path = str(OUTPUT_DIR / filename)
+def _render_semantic_content(item: dict) -> str | None:
+    """Render a frozen semantic document with the SAME renderer used publicly.
+
+    When a snapshot item carries a canonical ``semantic`` document, the PDF must
+    derive from it — not from a separately stored ``content_html`` — so the
+    official PDF and the public HTML can never diverge. Returns ``None`` when
+    there is no semantic document (legacy matters fall back to ``content_html``).
+    """
+    semantic = item.get("semantic")
+    if not semantic:
+        return None
+    try:
+        from app.semantic.renderer import render_document
+        from app.semantic.schemas import SemanticDocument
+        from app.semantic.templates import default_config_for
+
+        doc = SemanticDocument.model_validate(semantic)
+        try:
+            config = default_config_for(doc.document_type or "outros")
+        except Exception:  # noqa: BLE001 - unknown type: render with defaults
+            config = None
+        return render_document(
+            doc,
+            config,
+            media="print",
+            include_style=True,
+            include_page_rules=False,
+        )
+    except Exception:  # noqa: BLE001 - never fail the edition on render
+        return None
+
+
+def _save_to_storage(
+    filename: str, content: bytes, tenant_slug: str | None = None
+) -> str:
+    """Persist the unsigned PDF, tenant-isolated when configured.
+
+    ``read_public_file`` resolves ``base/{tenant}/pdf/{filename}``, so writing
+    there keeps the download working while preventing cross-tenant reads of the
+    raw (pre-signature) file.
+    """
+    target_dir = OUTPUT_DIR
+    if settings.STORAGE_TENANT_ISOLATION and tenant_slug:
+        target_dir = OUTPUT_DIR / tenant_slug / "pdf"
+    os.makedirs(str(target_dir), exist_ok=True)
+    path = str(target_dir / filename)
     with open(path, "wb") as f:
         f.write(content)
     return filename
@@ -187,7 +254,13 @@ def generate_edition_pdf_sync(
             section_key = item.get("section_title") or "Geral"
             if section_key not in sections_map:
                 sections_map[section_key] = []
-            content_html = item.get("content_html") or ""
+            # Prefer the canonical semantic document (same source as the public
+            # page). Fall back to the frozen legacy HTML only for old matters.
+            semantic_html = _render_semantic_content(item)
+            if semantic_html is not None:
+                content_html = semantic_html
+            else:
+                content_html = item.get("content_html") or ""
             # Convert HTTP image URLs to local file:// URIs for weasyprint
             content_html = _localize_matter_images(content_html)
             sections_map[section_key].append({
@@ -252,6 +325,7 @@ def generate_edition_pdf_sync(
                 summary_items=summary_items,
                 sections=sections,
                 css_path=css_path,
+                extra_css=DOCUMENT_BODY_CSS,
                 total_pages=total_pages,
                 total_matters=len(summary_items),
                 qr_code_uri=_qr_data_uri(verification_target),
@@ -296,7 +370,8 @@ def generate_edition_pdf_sync(
 
         pdf_hash = compute_hash(pdf_bytes)
         filename = f"edition_{edition.year}_{edition.number}_{uuid.uuid4().hex[:8]}.pdf"
-        _save_to_storage(filename, pdf_bytes)
+        tenant_slug = getattr(edition.organization, "slug", None)
+        _save_to_storage(filename, pdf_bytes, tenant_slug=tenant_slug)
 
         edition.pdf_path = filename
         edition.pdf_hash = pdf_hash

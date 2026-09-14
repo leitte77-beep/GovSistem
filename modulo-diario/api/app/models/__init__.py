@@ -4,7 +4,12 @@ from app.models.ai_execution import AiExecution
 from app.models.audit_event import AuditEvent
 from app.models.authority import Authority
 from app.models.base import Base, SoftDeleteMixin, TimestampMixin
-from app.models.document_model import DocumentModel, DocumentModelVersion
+from app.models.document_model import (
+    DocumentModel,
+    DocumentModelBlock,
+    DocumentModelTrainingFile,
+    DocumentModelVersion,
+)
 from app.models.edition import Edition
 from app.models.edition_item import EditionItem
 from app.models.edition_publication_snapshot import EditionPublicationSnapshot
@@ -69,6 +74,8 @@ __all__ = [
     "AuditEvent",
     "DocumentModel",
     "DocumentModelVersion",
+    "DocumentModelBlock",
+    "DocumentModelTrainingFile",
     "ActNumberSeries",
     "Authority",
     "RefreshToken",

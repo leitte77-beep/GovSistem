@@ -7,6 +7,7 @@
 <meta name="keywords" content="Diário Oficial, Prefeitura de Farol, Edição {{ edition.number }}">
 <title>Diário Oficial Eletrônico - Prefeitura de Farol - Edição nº {{ edition.number }}</title>
 <link rel="stylesheet" href="{{ css_path }}">
+<style>{{ extra_css | safe }}</style>
 </head>
 <body>
 {% set effective_verification_code = verification_code|default(preliminary_code|default(""), true) %}
@@ -104,7 +105,7 @@
       <div class="matter-summary">{{ matter.summary }}</div>
       {% endif %}
 
-      <div class="matter-content">
+      <div class="matter-content doc-body">
         {{ matter.content_html | safe }}
       </div>
     </section>

@@ -321,10 +321,10 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
     }, 3000);
     return () => { if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matterId, isNew, title, summary, actTypeId, actNumber, actYear, actDate, responsibleName, responsibleRole, publicationType, referencesMatterId, orgUnitId]);
+  }, [matterId, isNew, isEditable, title, summary, actTypeId, actNumber, actYear, actDate, responsibleName, responsibleRole, publicationType, referencesMatterId, orgUnitId]);
 
   const retrySave = useCallback(async () => {
-    if (!matterId) return;
+    if (!matterId || !isEditable) return;
     setSaveState("saving");
     try {
       await api.updateMatter(matterId, metadataPayload());
@@ -336,7 +336,7 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
       setSaveState("error");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [matterId, title, summary, actTypeId, actNumber, actYear, actDate, responsibleName, responsibleRole, publicationType, referencesMatterId, orgUnitId]);
+  }, [matterId, isEditable, title, summary, actTypeId, actNumber, actYear, actDate, responsibleName, responsibleRole, publicationType, referencesMatterId, orgUnitId]);
 
   // ── Title suggestion ─────────────────────────────────────────────────────
   const applySuggestedTitle = (next: string) => {
@@ -406,6 +406,7 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
 
   const handleApprove = async () => {
     if (!matterId) return;
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     setSaving(true);
     try {
       const result = await api.approve(matterId);
@@ -420,6 +421,7 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
 
   const handleReject = async () => {
     if (!matterId) return;
+    if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     setSaving(true);
     try {
       const result = await api.reject(matterId);

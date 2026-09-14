@@ -1,6 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "react-hot-toast";
 import { api } from "@/lib/api";
 import { notifyError } from "@/lib/error-handler";
@@ -9,8 +11,6 @@ import type { ActType } from "@/types/matter";
 import type {
   AiExtractResult,
   DocumentModelSummary,
-  MaterialCreated,
-  NumberIssue,
   PreviewResult,
   VersionDetail,
 } from "@/types/document_model";
@@ -24,6 +24,15 @@ const TIPO_INFO: Record<string, { label: string; plural: string; desc: string }>
   resolucao: { label: "Resolução", plural: "Resoluções", desc: "Decisão de conselho/colegiado." },
 };
 
+const FINALIDADES: { key: string; label: string; keywords: string[] }[] = [
+  { key: "exoneracao", label: "Exoneração", keywords: ["exonerac"] },
+  { key: "nomeacao", label: "Nomeação", keywords: ["nomeac"] },
+  { key: "ferias", label: "Férias", keywords: ["ferias"] },
+  { key: "designacao", label: "Designação", keywords: ["designac"] },
+  { key: "gratificacao", label: "Gratificação", keywords: ["gratificac"] },
+  { key: "outros", label: "Outros", keywords: [] },
+];
+
 interface FieldSpec {
   key: string;
   label: string;
@@ -33,8 +42,30 @@ interface FieldSpec {
   help?: string;
 }
 
+function normalize(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
 export default function CriarDocumentoPage() {
-  const [tipo, setTipo] = useState("portaria");
+  return (
+    <Suspense
+      fallback={<p className="p-gutter text-center text-sm text-gray-500">Carregando…</p>}
+    >
+      <CriarDocumentoContent />
+    </Suspense>
+  );
+}
+
+function CriarDocumentoContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialTipo = searchParams.get("tipo") ?? "portaria";
+
+  const [tipo, setTipo] = useState(TIPO_INFO[initialTipo] ? initialTipo : "portaria");
+  const [finalidade, setFinalidade] = useState("");
   const [prompt, setPrompt] = useState("");
   const [models, setModels] = useState<DocumentModelSummary[]>([]);
   const [modelId, setModelId] = useState("");
@@ -46,8 +77,6 @@ export default function CriarDocumentoPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [extracted, setExtracted] = useState<AiExtractResult | null>(null);
   const [preview, setPreview] = useState<PreviewResult | null>(null);
-  const [material, setMaterial] = useState<MaterialCreated | null>(null);
-  const [number, setNumber] = useState<NumberIssue | null>(null);
   const [busy, setBusy] = useState(false);
 
   const info = TIPO_INFO[tipo];
@@ -57,17 +86,14 @@ export default function CriarDocumentoPage() {
     setModelId("");
     setVersion(null);
     setFields([]);
-    setMaterial(null);
-    setNumber(null);
     setPreview(null);
     setExtracted(null);
     setValues({});
+    setFinalidade("");
     const active = (await api.listDocumentModels({ document_type: tipo, status: "active" })).filter(
       (m) => m.active_version
     );
     setModels(active);
-    const chosen = active.find((m) => m.is_default) ?? (active.length === 1 ? active[0] : null);
-    if (chosen) setModelId(chosen.id);
   }, [tipo]);
 
   useEffect(() => {
@@ -87,6 +113,33 @@ export default function CriarDocumentoPage() {
   useEffect(() => {
     if (tipo) loadModels().catch((err) => notifyError("criar.models", err));
   }, [tipo, loadModels]);
+
+  // Resolve, para cada finalidade, o modelo ativo correspondente.
+  const modelByFinalidade = useMemo(() => {
+    const map: Record<string, DocumentModelSummary | null> = {};
+    for (const f of FINALIDADES) {
+      if (f.key === "outros") {
+        map[f.key] = null;
+        continue;
+      }
+      map[f.key] =
+        models.find((m) => f.keywords.some((k) => normalize(m.purpose).includes(k))) ?? null;
+    }
+    return map;
+  }, [models]);
+
+  const selectFinalidade = (key: string) => {
+    setFinalidade(key);
+    setPreview(null);
+    setExtracted(null);
+    setValues({});
+    if (key === "outros") {
+      setModelId("");
+      return;
+    }
+    const model = modelByFinalidade[key];
+    setModelId(model?.id ?? "");
+  };
 
   // Carrega os campos da versão ativa quando um modelo é selecionado.
   useEffect(() => {
@@ -113,8 +166,7 @@ export default function CriarDocumentoPage() {
     [actTypes, actTypeId]
   );
 
-  const setField = (key: string, value: string) =>
-    setValues((v) => ({ ...v, [key]: value }));
+  const setField = (key: string, value: string) => setValues((v) => ({ ...v, [key]: value }));
 
   const analyze = async () => {
     if (!prompt.trim()) {
@@ -122,7 +174,7 @@ export default function CriarDocumentoPage() {
       return;
     }
     if (!modelId) {
-      toast.error("Nenhum modelo aprovado para este tipo. Cadastre/aprove um modelo antes.");
+      toast.error("Escolha a finalidade (com modelo aprovado) antes de usar a IA.");
       return;
     }
     setAnalyzing(true);
@@ -136,8 +188,6 @@ export default function CriarDocumentoPage() {
         return;
       }
       if (r.matched_model) {
-        // Preenche o formulário: extraído prevalece; preserva só o que o
-        // usuário já digitou e que a IA não retornou.
         setValues((prev) => {
           const merged: Record<string, string> = { ...r.values };
           for (const [k, v] of Object.entries(prev)) {
@@ -171,7 +221,7 @@ export default function CriarDocumentoPage() {
 
   const generate = async () => {
     if (!modelId || version == null || !actTypeId) {
-      toast.error("Selecione o tipo de ato (e o modelo) para gerar.");
+      toast.error("Selecione a finalidade (e o tipo de ato) para gerar.");
       return;
     }
     setBusy(true);
@@ -180,8 +230,8 @@ export default function CriarDocumentoPage() {
         act_type_id: actTypeId,
         values,
       });
-      setMaterial(m);
-      toast.success("Minuta gerada e salva como matéria (rascunho, sem número).");
+      toast.success("Documento gerado. Abrindo o editor para revisão…");
+      router.push(`/matters/${m.id}/edit`);
     } catch (err) {
       notifyError("criar.generate", err);
     } finally {
@@ -189,43 +239,95 @@ export default function CriarDocumentoPage() {
     }
   };
 
-  const emitNumber = async () => {
-    if (!material) return;
-    setBusy(true);
-    try {
-      const n = await api.issueNumber({ matter_id: material.id });
-      setNumber(n);
-      toast.success(`Número ${n.number}/${n.year} atribuído.`);
-    } catch (err) {
-      notifyError("criar.number", err);
-    } finally {
-      setBusy(false);
-    }
-  };
+  const canGenerate = Boolean(activeModel && version != null && actTypeId);
 
   return (
     <div className="p-gutter max-w-4xl">
+      <nav className="mb-3 flex items-center gap-1 text-xs text-gray-500" aria-label="Trilha de navegação">
+        <Link href="/documentos" className="hover:text-blue-700">
+          Documentos oficiais
+        </Link>
+        <span className="material-symbols-outlined text-[14px]">chevron_right</span>
+        <Link href={`/documentos/tipos/${tipo}`} className="hover:text-blue-700">
+          {info.plural}
+        </Link>
+        <span className="material-symbols-outlined text-[14px]">chevron_right</span>
+        <span className="font-medium text-gray-700">Nova {info.label}</span>
+      </nav>
+
       <PageHeader
-        title="Criar documento com IA"
-        description="Gera uma minuta fiel ao modelo documental aprovado do tipo escolhido, usando exclusivamente o DeepSeek V4 Flash cadastrado."
+        title={`Nova ${info.label}`}
+        description={`Gere um documento fiel ao modelo aprovado de ${info.label.toLowerCase()}, usando a IA apenas para preencher os campos variáveis.`}
       />
 
-      {/* Passo 1 — tipo e modelo */}
+      {/* Passo 1 — tipo e finalidade */}
       <section className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-        <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">1 · Tipo e modelo</h3>
+        <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+          1 · Tipo e finalidade
+        </h3>
         <div className="mt-3 grid gap-3 sm:grid-cols-2">
           <label className="block text-sm">
             <span className="mb-1 block font-medium text-gray-700">Tipo de documento</span>
-            <select value={tipo} onChange={(e) => setTipo(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            <select
+              value={tipo}
+              onChange={(e) => setTipo(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            >
               {Object.entries(TIPO_INFO).map(([k, v]) => (
-                <option key={k} value={k}>{v.plural}</option>
+                <option key={k} value={k}>
+                  {v.plural}
+                </option>
               ))}
             </select>
-            {info && <span className="mt-1 block text-xs text-gray-400">{info.desc}</span>}
+            {info && <span className="mt-1 block text-xs text-gray-500">{info.desc}</span>}
           </label>
-          <label className="block text-sm">
+        </div>
+
+        <div className="mt-4">
+          <span className="mb-2 block text-sm font-medium text-gray-700">Finalidade</span>
+          {models.length === 0 ? (
+            <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-700">
+              Não há modelo aprovado para {info.plural}. Cadastre e aprove um em{" "}
+              <Link href="/documentos/modelos" className="underline">
+                Modelos documentais
+              </Link>
+              .
+            </p>
+          ) : (
+            <div className="flex flex-wrap gap-2">
+              {FINALIDADES.map((f) => {
+                const hasModel = f.key === "outros" || modelByFinalidade[f.key] != null;
+                const active = finalidade === f.key;
+                return (
+                  <button
+                    key={f.key}
+                    type="button"
+                    disabled={!hasModel}
+                    aria-pressed={active}
+                    onClick={() => selectFinalidade(f.key)}
+                    title={hasModel ? undefined : "Sem modelo aprovado para esta finalidade"}
+                    className={`rounded-full px-3.5 py-1.5 text-sm transition disabled:cursor-not-allowed disabled:opacity-40 ${
+                      active
+                        ? "bg-blue-600 text-white"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {(finalidade === "outros" || (activeModel && finalidade !== "outros")) && models.length > 0 && (
+          <label className="mt-4 block text-sm">
             <span className="mb-1 block font-medium text-gray-700">Modelo aprovado</span>
-            <select value={modelId} onChange={(e) => setModelId(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            <select
+              value={modelId}
+              onChange={(e) => setModelId(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            >
               <option value="">Selecione…</option>
               {models.map((m) => (
                 <option key={m.id} value={m.id}>
@@ -233,13 +335,8 @@ export default function CriarDocumentoPage() {
                 </option>
               ))}
             </select>
-            {models.length === 0 && (
-              <span className="mt-1 block text-xs text-amber-600">
-                Sem modelo aprovado para este tipo — cadastre/aprove um em “Modelos documentais”.
-              </span>
-            )}
           </label>
-        </div>
+        )}
 
         {activeModel && (
           <div className="mt-3 text-sm text-gray-600">
@@ -248,16 +345,19 @@ export default function CriarDocumentoPage() {
         )}
       </section>
 
-      {/* Passo 2 — pedido */}
+      {/* Passo 2 — IA / preenchimento */}
       {activeModel && version != null && (
         <section className="mt-4 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
-            2 · Descreva o documento
+            2 · Preencher os dados
           </h3>
+          <p className="mt-1 text-xs text-gray-500">
+            Descreva o pedido e use a IA, ou preencha os campos manualmente abaixo.
+          </p>
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            rows={4}
+            rows={3}
             placeholder='Ex.: "Conceder 30 dias de férias ao servidor João, a partir de 1º de outubro de 2026."'
             className="mt-3 w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
           />
@@ -268,46 +368,58 @@ export default function CriarDocumentoPage() {
               className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:opacity-50"
             >
               <span className="material-symbols-outlined text-base">smart_toy</span>
-              {analyzing ? "Analisando…" : "Identificar campos com IA"}
+              {analyzing ? "Gerando…" : "Gerar com IA"}
             </button>
-            <span className="text-xs text-gray-400">
-              Se não houver chave cadastrada, preencha os campos manualmente abaixo.
+            <span className="text-xs text-gray-500">
+              Sem chave de IA cadastrada, preencha manualmente.
             </span>
           </div>
           {extracted && extracted.note && !extracted.matched_model && (
-            <p className="mt-2 rounded bg-amber-50 px-3 py-2 text-sm text-amber-700">{extracted.note}</p>
+            <p className="mt-2 rounded bg-amber-50 px-3 py-2 text-sm text-amber-700">
+              {extracted.note}
+            </p>
+          )}
+
+          {fields.length > 0 && (
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {fields.map((f) => (
+                <label key={f.key} className="block text-sm">
+                  <span className="mb-1 block font-medium text-gray-700">
+                    {f.label} {f.required ? <span className="text-red-500">*</span> : null}
+                  </span>
+                  <FieldInput field={f} value={values[f.key] ?? ""} onChange={(v) => setField(f.key, v)} />
+                  {f.help && <span className="mt-1 block text-xs text-gray-500">{f.help}</span>}
+                </label>
+              ))}
+            </div>
           )}
         </section>
       )}
 
-      {/* Passo 3 — dados */}
-      {activeModel && version != null && fields.length > 0 && (
+      {/* Passo 3 — revisão e geração */}
+      {activeModel && version != null && (
         <section className="mt-4 rounded-xl border border-gray-200 bg-white p-5 shadow-sm">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">3 · Dados do documento</h3>
-          <div className="mt-3 grid gap-3 sm:grid-cols-2">
-            {fields.map((f) => (
-              <label key={f.key} className="block text-sm">
-                <span className="mb-1 block font-medium text-gray-700">
-                  {f.label} {f.required ? <span className="text-red-500">*</span> : null}
-                </span>
-                <FieldInput field={f} value={values[f.key] ?? ""} onChange={(v) => setField(f.key, v)} />
-                {f.help && <span className="mt-1 block text-xs text-gray-400">{f.help}</span>}
-              </label>
-            ))}
-          </div>
+          <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+            3 · Revisar e gerar
+          </h3>
 
-          {/* Tipo de ato (matéria) */}
-          <label className="mt-4 block text-sm">
+          <label className="mt-3 block text-sm">
             <span className="mb-1 block font-medium text-gray-700">Tipo de ato (matéria)</span>
-            <select value={actTypeId} onChange={(e) => setActTypeId(e.target.value)} className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm">
+            <select
+              value={actTypeId}
+              onChange={(e) => setActTypeId(e.target.value)}
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm"
+            >
               <option value="">Selecione…</option>
               {actTypes.map((a) => (
-                <option key={a.id} value={a.id}>{a.name}</option>
+                <option key={a.id} value={a.id}>
+                  {a.name}
+                </option>
               ))}
             </select>
             {!tipoActType && (
               <span className="mt-1 block text-xs text-amber-600">
-                Nenhum tipo de ato compatível encontrado. Crie em “Tipos de Ato” (ex.: {info?.label}).
+                Nenhum tipo de ato compatível encontrado. Crie em “Tipos de Ato” (ex.: {info.label}).
               </span>
             )}
           </label>
@@ -316,24 +428,27 @@ export default function CriarDocumentoPage() {
             <button
               onClick={doPreview}
               disabled={busy}
-              className="inline-flex items-center gap-2 rounded-lg bg-gray-800 px-4 py-2 text-sm font-medium text-white hover:bg-gray-900 disabled:opacity-50"
+              className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
             >
               <span className="material-symbols-outlined text-base">preview</span>
-              Pré-visualizar minuta
+              Pré-visualizar
             </button>
             <button
               onClick={generate}
-              disabled={busy || !preview?.complete}
+              disabled={busy || !canGenerate}
               className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-40"
-              title={preview && !preview.complete ? "Resolva as pendências da pré-visualização" : ""}
             >
-              <span className="material-symbols-outlined text-base">description</span>
-              Gerar minuta (matéria)
+              <span className="material-symbols-outlined text-base">edit_document</span>
+              Gerar e abrir no editor
             </button>
           </div>
 
           {preview && (
-            <div className={`mt-4 rounded-lg border p-3 text-sm ${preview.complete ? "border-green-200 bg-green-50" : "border-amber-200 bg-amber-50"}`}>
+            <div
+              className={`mt-4 rounded-lg border p-3 text-sm ${
+                preview.complete ? "border-green-200 bg-green-50" : "border-amber-200 bg-amber-50"
+              }`}
+            >
               <div className="font-medium text-gray-800">
                 Pré-visualização: {preview.complete ? "pronta" : "com pendências"}
               </div>
@@ -349,42 +464,26 @@ export default function CriarDocumentoPage() {
               )}
             </div>
           )}
-        </section>
-      )}
 
-      {/* Passo 4 — resultado e número */}
-      {material && (
-        <section className="mt-4 rounded-xl border border-green-200 bg-green-50 p-5">
-          <h3 className="text-sm font-semibold uppercase tracking-wide text-green-700">4 · Minuta gerada</h3>
-          <p className="mt-2 text-sm text-gray-800">
-            Matéria <strong>{material.title}</strong> ({material.id}) — estado <strong>{material.status}</strong>,
-            sem número definitivo até a emissão abaixo.
+          <p className="mt-3 text-xs text-gray-500">
+            Ao gerar, o documento é salvo como matéria (rascunho) e aberto no editor para
+            revisão, numeração e envio ao fluxo de aprovação/assinatura/publicação.
           </p>
-          {number ? (
-            <p className="mt-2 text-sm font-medium text-gray-900">
-              Número atribuído: {number.number}/{number.year}
-            </p>
-          ) : (
-            <button
-              onClick={emitNumber}
-              disabled={busy}
-              className="mt-3 inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-medium text-white hover:bg-green-700 disabled:opacity-50"
-            >
-              <span className="material-symbols-outlined text-base">tag</span>
-              Emitir número
-            </button>
-          )}
-          <div className="mt-2 text-xs text-gray-500">
-            A minuta está listada em {info?.plural}. A revisão, a aprovação e o
-            encaminhamento à edição (assinatura/publicação) seguem o fluxo de matérias.
-          </div>
         </section>
       )}
     </div>
   );
 }
 
-function FieldInput({ field, value, onChange }: { field: FieldSpec; value: string; onChange: (v: string) => void }) {
+function FieldInput({
+  field,
+  value,
+  onChange,
+}: {
+  field: FieldSpec;
+  value: string;
+  onChange: (v: string) => void;
+}) {
   const base = "w-full rounded-lg border border-gray-300 px-3 py-2 text-sm";
   switch (field.type) {
     case "date":
@@ -392,13 +491,23 @@ function FieldInput({ field, value, onChange }: { field: FieldSpec; value: strin
     case "integer":
     case "decimal":
     case "money":
-      return <input type="number" step={field.type === "integer" ? "1" : "any"} value={value} onChange={(e) => onChange(e.target.value)} className={base} />;
+      return (
+        <input
+          type="number"
+          step={field.type === "integer" ? "1" : "any"}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={base}
+        />
+      );
     case "select":
       return (
         <select value={value} onChange={(e) => onChange(e.target.value)} className={base}>
           <option value="">Selecione…</option>
           {(field.options ?? []).map((o) => (
-            <option key={o} value={o}>{o}</option>
+            <option key={o} value={o}>
+              {o}
+            </option>
           ))}
         </select>
       );

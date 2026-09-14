@@ -276,6 +276,11 @@ body {
   text-decoration: none;
 }
 
+/* Real printed page number, resolved by WeasyPrint during pagination. */
+.summary-page::after {
+  content: target-counter(attr(href), page, decimal-leading-zero);
+}
+
 .summary-row > strong {
   width: 18pt;
   text-align: right;
@@ -416,4 +421,15 @@ body {
   color: #000;
   font-size: 7.5pt;
   font-family: monospace;
+}
+
+/* Editorial pagination: never orphan a matter title/summary. */
+.matter-title,
+.matter-summary {
+  break-after: avoid;
+  page-break-after: avoid;
+}
+.matter {
+  break-inside: auto;
+  page-break-inside: auto;
 }

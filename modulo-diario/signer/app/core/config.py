@@ -23,6 +23,23 @@ class Settings(BaseSettings):
     SIGNER_A1_PFX_PATH: str = "/certs/cert.pfx"
     SIGNER_A1_PASSWORD: SecretStr = SecretStr("")
 
+    # ICP-Brasil trust store and revocation.
+    ICP_BRASIL_ROOTS_PATH: str = "/certs/icp-brasil-roots.pem"
+    # off | crl | ocsp | both — "off" reports revocation as not checked.
+    REVOCATION_MODE: str = "off"
+    REVOCATION_TIMEOUT: float = 10.0
+
+    # RFC 3161 timestamp authority (ACT). Empty disables timestamping.
+    TSA_URL: str = ""
+    TSA_POLICY_OID: str = ""
+
+    # PAdES signature policy OID to embed, when legally defined by the entity.
+    SIGNER_POLICY_OID: str = ""
+
+    # A3 (token/HSM or remote PSC) provider configuration.
+    SIGNER_A3_REMOTE_URL: str = ""
+    SIGNER_A3_REMOTE_TOKEN: SecretStr = SecretStr("")
+
     VERIFICATION_BASE_URL: str = Field(
         default="https://farol.govsistem.com.br/verificar",
         description="Base URL for verification links embedded in signed PDFs",

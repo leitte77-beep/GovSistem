@@ -16,10 +16,9 @@ from __future__ import annotations
 
 import hashlib
 import re
-import uuid
-from typing import Any, Optional
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 TEMPLATE_STATUS_DRAFT = "draft"
 TEMPLATE_STATUS_ACTIVE = "active"

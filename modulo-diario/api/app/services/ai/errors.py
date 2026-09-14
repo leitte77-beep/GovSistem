@@ -87,6 +87,17 @@ class AiUsageLimitExceededError(DeepSeekError):
     code = "usage_limit_exceeded"
 
 
+class AiTruncatedResponseError(DeepSeekError):
+    """The model hit the token ceiling before finishing the response.
+
+    Comum em modelos de raciocínio: o orçamento é consumido em ``reasoning`` e
+    a resposta é cortada. Diferente de uma resposta malformada — o usuário deve
+    tentar de novo (ou com documento menor).
+    """
+
+    code = "truncated"
+
+
 __all__ = [
     "DeepSeekError",
     "AiNotConfiguredError",
@@ -99,4 +110,5 @@ __all__ = [
     "AiTimeoutError",
     "AiInvalidResponseError",
     "AiUsageLimitExceededError",
+    "AiTruncatedResponseError",
 ]

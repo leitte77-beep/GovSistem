@@ -53,7 +53,7 @@ def looks_like_pdf_extraction(text: str) -> bool:
         return False
     hard_breaks = 0
     for ln in lines:
-        if not ln[-1:] in ".!?:" and not re.match(r"^(\d+|Art\.|§|\w\)|\[IVXLCDM]+\b)", ln):
+        if ln[-1:] not in ".!?:" and not re.match(r"^(\d+|Art\.|§|\w\)|\[IVXLCDM]+\b)", ln):
             hard_breaks += 1
     return (hard_breaks / len(lines)) > 0.55
 

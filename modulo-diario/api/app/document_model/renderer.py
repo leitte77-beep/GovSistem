@@ -137,6 +137,7 @@ def _build_section(
                     organ=interpolate(e.organ, resolved).strip(),
                     location=interpolate(e.location, resolved).strip(),
                     date=interpolate(e.date, resolved).strip(),
+                    position=getattr(e, "position", "center") or "center",
                 )
             )
         if entries:
@@ -161,7 +162,12 @@ def render(config: DocumentModelConfig, raw_values: dict[str, object]) -> Render
     for section in config.sections:
         before = len(blocks)
         _build_section(section, resolved, blocks)
-        if len(blocks) > before and section.kind in FREE_TEXT_KINDS:
+        if (
+            len(blocks) > before
+            and section.kind in FREE_TEXT_KINDS
+            and not section.fixed_text
+            and not section.locked
+        ):
             free_text.append(section.id)
 
     title = interpolate(config.document_title, resolved).strip()

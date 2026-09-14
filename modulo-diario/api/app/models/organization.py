@@ -34,6 +34,22 @@ class Organization(Base, TimestampMixin, SoftDeleteMixin):
     cnpj: Mapped[Optional[str]] = mapped_column(String(18), unique=True, nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     logo_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # Institutional identity used to compose official documents (header/footer).
+    state: Mapped[Optional[str]] = mapped_column(String(2), nullable=True, comment="UF (ex.: CE)")
+    address_street: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    address_number: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    address_complement: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    address_district: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    address_city: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    address_postal_code: Mapped[Optional[str]] = mapped_column(String(10), nullable=True)
+    phone: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
+    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    site: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    institutional_layout: Mapped[Optional[dict]] = mapped_column(
+        JSON,
+        nullable=True,
+        comment="Default DocumentLayout (fonts, margins, header, footer, brasão).",
+    )
     theme_config: Mapped[Optional[dict]] = mapped_column(
         JSON,
         nullable=True,

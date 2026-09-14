@@ -430,3 +430,14 @@ body {
   color: #536170;
   font-size: 8pt;
 }
+
+/* Editorial pagination: never orphan a matter title/summary. */
+.matter-title,
+.matter-summary {
+  break-after: avoid;
+  page-break-after: avoid;
+}
+.matter {
+  break-inside: auto;
+  page-break-inside: auto;
+}

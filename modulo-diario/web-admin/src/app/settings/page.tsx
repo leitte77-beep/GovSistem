@@ -202,6 +202,16 @@ export default function SettingsPage() {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <a
+            href="/settings/institution"
+            className="flex items-center gap-3 p-4 rounded-lg border border-outline-variant hover:bg-surface-container-low transition-colors"
+          >
+            <span className="material-symbols-outlined text-primary text-2xl">account_balance</span>
+            <div>
+              <p className="text-label-md font-semibold text-on-surface">Identidade institucional</p>
+              <p className="text-body-sm text-on-surface-variant">Brasão, endereço, contato e padrão visual</p>
+            </div>
+          </a>
+          <a
             href="/settings/certificates"
             className="flex items-center gap-3 p-4 rounded-lg border border-outline-variant hover:bg-surface-container-low transition-colors"
           >

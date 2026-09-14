@@ -8,6 +8,7 @@ export type SemanticBlockType =
   | "heading"
   | "preamble"
   | "command"
+  | "considerando"
   | "paragraph"
   | "article"
   | "paragraph_item"
@@ -49,6 +50,13 @@ export interface PreambleBlock extends BlockBase {
 export interface CommandBlock extends BlockBase {
   type: "command";
   text: string;
+}
+
+/** A 'CONSIDERANDO ...' recital — distinct from the enacting formula. */
+export interface ConsiderandoBlock extends BlockBase {
+  type: "considerando";
+  content: string;
+  rich?: boolean;
 }
 
 export interface ParagraphBlock extends BlockBase {
@@ -177,6 +185,7 @@ export type SemanticBlock =
   | HeadingBlock
   | PreambleBlock
   | CommandBlock
+  | ConsiderandoBlock
   | ParagraphBlock
   | ParagraphItemBlock
   | IncisoBlock
@@ -198,6 +207,8 @@ export interface SemanticDocument {
   document_type: string;
   title: string;
   summary: string;
+  /** Original label as authored ('SÚMULA', 'EMENTA'); never rewritten. */
+  summary_label?: string | null;
   locale: string;
   timezone: string;
   template_id?: string | null;
@@ -295,6 +306,7 @@ export const SEMANTIC_BLOCK_LABELS: Record<SemanticBlockType, string> = {
   heading: "Título",
   preamble: "Preâmbulo",
   command: "Comando (DECRETA/RESOLVE)",
+  considerando: "Considerando",
   paragraph: "Parágrafo",
   article: "Artigo",
   paragraph_item: "Parágrafo de artigo (§)",
@@ -314,6 +326,7 @@ export const SEMANTIC_BLOCK_LABELS: Record<SemanticBlockType, string> = {
 export const SEMANTIC_BLOCK_ORDER: SemanticBlockType[] = [
   "heading",
   "preamble",
+  "considerando",
   "command",
   "paragraph",
   "article",

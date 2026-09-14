@@ -38,6 +38,7 @@ from app.services.ai.errors import (
     AiProviderUnavailableError,
     AiRateLimitError,
     AiTimeoutError,
+    AiTruncatedResponseError,
 )
 
 
@@ -279,6 +280,102 @@ def test_client_rejects_schema_violation():
 
 
 @pytest.mark.parametrize(
+    "content",
+    [
+        '```json\n{"assunto": "ferias", "quantidade": 30}\n```',
+        '```\n{"assunto": "ferias", "quantidade": 30}\n```',
+        'Claro! Segue o JSON:\n{"assunto": "ferias", "quantidade": 30}\nEspero ter ajudado.',
+    ],
+)
+def test_client_parses_json_wrapped_or_with_surrounding_text(content):
+    transport = MockTransport(
+        lambda req: Response(200, json={"choices": [{"message": {"content": content}}]})
+    )
+    import asyncio
+
+    client = DeepSeekClient("sk-test", transport=transport)
+
+    async def run():
+        return await client.complete_json(
+            [
+                {"role": "system", "content": "Output JSON."},
+                {"role": "user", "content": "ok"},
+            ],
+            schema=_Echo,
+        )
+
+    data, _meta = asyncio.run(run())
+    assert data.assunto == "ferias"
+    assert data.quantidade == 30
+
+
+def test_client_reports_truncated_response_as_typed_error():
+    transport = MockTransport(
+        lambda req: Response(
+            200,
+            json={
+                "choices": [
+                    {"message": {"content": ""}, "finish_reason": "length"}
+                ],
+                "usage": {"completion_tokens": 8192},
+            },
+        )
+    )
+    import asyncio
+
+    client = DeepSeekClient("sk-test", transport=transport)
+
+    async def run():
+        await client.complete_json(
+            [{"role": "system", "content": "Output JSON."}, {"role": "user", "content": "ok"}]
+        )
+
+    with pytest.raises(AiTruncatedResponseError):
+        asyncio.run(run())
+
+
+def test_client_reports_truncated_partial_json_as_typed_error():
+    transport = MockTransport(
+        lambda req: Response(
+            200,
+            json={
+                "choices": [
+                    {"message": {"content": '{"a": 1, "b":'}, "finish_reason": "length"}
+                ]
+            },
+        )
+    )
+    import asyncio
+
+    client = DeepSeekClient("sk-test", transport=transport)
+
+    async def run():
+        await client.complete_json(
+            [{"role": "system", "content": "Output JSON."}, {"role": "user", "content": "ok"}]
+        )
+
+    with pytest.raises(AiTruncatedResponseError):
+        asyncio.run(run())
+
+
+def test_client_rejects_non_json_content():
+    transport = MockTransport(
+        lambda req: Response(200, json={"choices": [{"message": {"content": "sem json aqui"}}]})
+    )
+    import asyncio
+
+    client = DeepSeekClient("sk-test", transport=transport)
+
+    async def run():
+        await client.complete_json(
+            [{"role": "system", "content": "Output JSON."}, {"role": "user", "content": "ok"}]
+        )
+
+    with pytest.raises(AiInvalidResponseError):
+        asyncio.run(run())
+
+
+@pytest.mark.parametrize(
     "status,expected",
     [
         (401, AiAuthError),
@@ -297,6 +394,36 @@ def test_client_maps_http_errors(status, expected):
         await client.minimal_ping()
 
     with pytest.raises(expected):
+        asyncio.run(run())
+
+
+def test_minimal_ping_rejects_empty_content_as_typed_error():
+    transport = MockTransport(
+        lambda req: Response(200, json={"choices": [{"message": {"content": ""}}]})
+    )
+    import asyncio
+
+    client = DeepSeekClient("sk-test", transport=transport, max_retries=0)
+
+    async def run():
+        await client.minimal_ping()
+
+    with pytest.raises(AiInvalidResponseError):
+        asyncio.run(run())
+
+
+def test_minimal_ping_rejects_non_json_content_as_typed_error():
+    transport = MockTransport(
+        lambda req: Response(200, json={"choices": [{"message": {"content": "pong"}}]})
+    )
+    import asyncio
+
+    client = DeepSeekClient("sk-test", transport=transport, max_retries=0)
+
+    async def run():
+        await client.minimal_ping()
+
+    with pytest.raises(AiInvalidResponseError):
         asyncio.run(run())
 
 

@@ -579,24 +579,31 @@ async def close_edition(
         await create_edition_snapshot(db, edition_meta, user_id=user.id)
         await db.commit()
 
-    # Auto-generate PDF after closing (uses its own sync session)
-    from app.models.organization import Organization
-    from app.services.edition_pdf import generate_edition_pdf_sync
-    org_result = await db.execute(
-        select(Organization).where(Organization.id == edition_meta["organization_id"])
-    )
-    organization = org_result.scalar_one_or_none()
-    organ_name = organization.name if organization else None
-    pdf_layout = organization.pdf_layout if organization else "classico"
-    try:
-        generate_edition_pdf_sync(
-            edition_id=str(edition_id),
-            organ_name=organ_name,
-            layout=pdf_layout,
+    # Auto-generate PDF after closing.
+    # Preferred: enqueue to the Celery worker (non-blocking). If the broker is
+    # unavailable or async mode is disabled, generate synchronously so the
+    # edition is never left without a PDF by accident.
+    from app.core.celery_client import enqueue_generate_edition_pdf
+
+    enqueued = enqueue_generate_edition_pdf(str(edition_id))
+    if not enqueued:
+        from app.models.organization import Organization
+        from app.services.edition_pdf import generate_edition_pdf_sync
+        org_result = await db.execute(
+            select(Organization).where(Organization.id == edition_meta["organization_id"])
         )
-    except Exception as e:
-        import logging
-        logging.getLogger("doe").warning(f"Auto PDF generation failed for edition {edition_id}: {e}")
+        organization = org_result.scalar_one_or_none()
+        organ_name = organization.name if organization else None
+        pdf_layout = organization.pdf_layout if organization else "classico"
+        try:
+            generate_edition_pdf_sync(
+                edition_id=str(edition_id),
+                organ_name=organ_name,
+                layout=pdf_layout,
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger("doe").warning(f"Auto PDF generation failed for edition {edition_id}: {e}")
 
     # Refresh from DB to pick up pdf_path/pdf_hash set by the sync session
     await db.refresh(edition, attribute_names=["pdf_path", "pdf_hash", "status", "updated_at"])

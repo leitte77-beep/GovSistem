@@ -1,6 +1,5 @@
 """Test configuration settings and defaults."""
 
-import pytest
 
 from app.core.config import Settings
 
@@ -31,7 +30,7 @@ class TestSettingsDefaults:
 
     def test_verification_base_url_default(self):
         s = Settings()
-        assert s.VERIFICATION_BASE_URL == "https://govsistem.com.br/verificar"
+        assert s.VERIFICATION_BASE_URL == "https://farol.govsistem.com.br/verificar"
 
     def test_signer_a1_pfx_path_default(self):
         s = Settings()

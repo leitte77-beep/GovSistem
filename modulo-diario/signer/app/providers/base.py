@@ -9,6 +9,9 @@ class SignedDocument:
     signature_time: str
     signature_format: str = "PAdES"
     verification_code: str = ""
+    # RFC 3161 timestamp (ACT) metadata, when a TSA is configured.
+    timestamped: bool = False
+    timestamp_serial: str = ""
 
 
 class SignatureProvider(ABC):

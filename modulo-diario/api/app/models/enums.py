@@ -38,6 +38,48 @@ class MatterStatus(str, Enum):
         return status in (cls.DRAFT, cls.REVIEW, cls.REJECTED)
 
 
+class MatterWorkflowStatus(str, Enum):
+    """Estados do fluxo de criação/revisão de um documento oficial.
+
+    Complementa (não substitui) o ``MatterStatus`` editorial. Captura a jornada
+    desde a geração por IA até a publicação, inclusive as etapas de assinatura
+    que, no sistema, ocorrem no nível da edição.
+    """
+
+    RASCUNHO = "rascunho"
+    GERADO_PELA_IA = "gerado_pela_ia"
+    EM_REVISAO = "em_revisao"
+    APROVADO = "aprovado"
+    AGUARDANDO_ASSINATURA = "aguardando_assinatura"
+    ASSINADO = "assinado"
+    PUBLICADO = "publicado"
+    CANCELADO = "cancelado"
+
+    @classmethod
+    def valid_transitions(cls) -> dict["MatterWorkflowStatus", list["MatterWorkflowStatus"]]:
+        return {
+            cls.RASCUNHO: [cls.GERADO_PELA_IA, cls.EM_REVISAO, cls.CANCELADO],
+            cls.GERADO_PELA_IA: [cls.RASCUNHO, cls.EM_REVISAO, cls.CANCELADO],
+            cls.EM_REVISAO: [cls.APROVADO, cls.RASCUNHO, cls.CANCELADO],
+            cls.APROVADO: [cls.AGUARDANDO_ASSINATURA, cls.EM_REVISAO, cls.CANCELADO],
+            cls.AGUARDANDO_ASSINATURA: [cls.ASSINADO, cls.CANCELADO],
+            cls.ASSINADO: [cls.PUBLICADO, cls.CANCELADO],
+            cls.PUBLICADO: [],
+            cls.CANCELADO: [],
+        }
+
+    def can_transition_to(self, target: "MatterWorkflowStatus") -> bool:
+        if self == target:
+            return True
+        return target in self.valid_transitions().get(self, [])
+
+    def assert_transition(self, target: "MatterWorkflowStatus") -> None:
+        if not self.can_transition_to(target):
+            raise ValueError(
+                f"Workflow transition from '{self.value}' to '{target.value}' is not allowed"
+            )
+
+
 class EditionType(str, Enum):
     NORMAL = "normal"
     EXTRA = "extra"
@@ -214,6 +256,7 @@ class AuditAction(str, Enum):
     MATTER_CREATED = "matter.created"
     MATTER_UPDATED = "matter.updated"
     MATTER_STATUS_CHANGED = "matter.status_changed"
+    MATTER_WORKFLOW_STATUS_CHANGED = "matter.workflow_status_changed"
     MATTER_PUBLISHED = "matter.published"
     MATTER_RELATION_CREATED = "matter.relation.created"
     MATTER_RELATION_DELETED = "matter.relation.deleted"
@@ -245,5 +288,14 @@ class AuditAction(str, Enum):
     DOCUMENT_MODEL_SUBMITTED = "document_model.submitted"
     DOCUMENT_MODEL_APPROVED = "document_model.approved"
     DOCUMENT_MODEL_ARCHIVED = "document_model.archived"
+    DOCUMENT_MODEL_DELETED = "document_model.deleted"
+    DOCUMENT_MODEL_ACTIVATED = "document_model.activated"
+    DOCUMENT_MODEL_DEACTIVATED = "document_model.deactivated"
+    DOCUMENT_MODEL_BLOCK_CREATED = "document_model.block.created"
+    DOCUMENT_MODEL_BLOCK_UPDATED = "document_model.block.updated"
+    DOCUMENT_MODEL_BLOCK_DELETED = "document_model.block.deleted"
+    DOCUMENT_MODEL_TRAINING_FILE_ADDED = "document_model.training_file.added"
+    DOCUMENT_MODEL_TRAINING_FILE_REMOVED = "document_model.training_file.removed"
     DOCUMENT_MODEL_MATERIAL_CREATED = "document_model.material.created"
+    INSTITUTIONAL_PROFILE_UPDATED = "organization.institutional_updated"
     ACT_NUMBER_ISSUED = "act.number.issued"

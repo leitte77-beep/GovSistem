@@ -16,6 +16,7 @@ import type {
   Authority,
   Matter,
   MatterListItem,
+  MatterWorkflowHistoryEntry,
   OrgUnit,
 } from "@/types/matter";
 import type { User, UserCreateRequest, UserUpdateRequest } from "@/types/user";
@@ -24,12 +25,20 @@ import type {
   AiConfigMetadata,
   AiExtractResult,
   AiTestResult,
+  DocumentModelBlock,
+  DocumentModelBlockContent,
+  DocumentModelConfig,
   DocumentModelDetail,
+  DocumentModelHistoryEntry,
   DocumentModelSummary,
+  DocumentLayout,
+  InstitutionalProfile,
+  LearnProposal,
   MaterialCreated,
   MaterialsResult,
   NumberIssue,
   PreviewResult,
+  TrainingFile,
   VersionDetail,
   VersionSummary,
 } from "@/types/document_model";
@@ -137,6 +146,21 @@ async function tryRefreshToken(): Promise<boolean> {
   return refreshPromise;
 }
 
+function formatApiError(err: unknown, status: number): string {
+  const detail = (err as { detail?: unknown } | null)?.detail;
+  if (Array.isArray(detail)) {
+    const parts = detail.map((item) => {
+      const d = item as { loc?: unknown[]; msg?: unknown };
+      const loc = Array.isArray(d.loc) ? d.loc.filter((p) => p !== "body").join(".") : "";
+      const msg = typeof d.msg === "string" ? d.msg : "valor inválido";
+      return loc ? `${loc}: ${msg}` : msg;
+    });
+    if (parts.length) return parts.join("; ");
+  }
+  if (typeof detail === "string" && detail) return detail;
+  return `HTTP ${status}`;
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -158,10 +182,34 @@ async function request<T>(
   if (!res.ok) {
     const err: ApiError & { status?: number } = await res.json().catch(() => ({ detail: "Unknown error" }));
     err.status = res.status;
-    throw new Error(err.detail || `HTTP ${res.status}`);
+    const error = new Error(formatApiError(err, res.status)) as Error & { status?: number };
+    error.status = res.status;
+    throw error;
   }
   if (res.status === 204) return null as T;
   return res.json();
+}
+
+async function requestBlob(path: string, options: RequestInit = {}, retry = true): Promise<Blob> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    ...options,
+    headers: { ...getHeaders(false), ...mergeHeaders({}, options.headers) },
+  });
+  if (res.status === 401 && retry) {
+    const refreshed = await tryRefreshToken();
+    if (refreshed) return requestBlob(path, options, false);
+    throw new AuthError();
+  }
+  if (!res.ok) {
+    const err: ApiError & { status?: number } = await res
+      .json()
+      .catch(() => ({ detail: "Unknown error" }));
+    err.status = res.status;
+    const error = new Error(formatApiError(err, res.status)) as Error & { status?: number };
+    error.status = res.status;
+    throw error;
+  }
+  return res.blob();
 }
 
 export interface BackupFile {
@@ -241,6 +289,17 @@ export const api = {
 
   getMatter(id: string) {
     return request<Matter>(`/matters/${id}`);
+  },
+
+  updateMatterWorkflow(id: string, status: string, note?: string) {
+    return request<Matter>(`/matters/${id}/workflow-status`, {
+      method: "POST",
+      body: JSON.stringify({ status, note }),
+    });
+  },
+
+  getMatterWorkflowHistory(id: string) {
+    return request<MatterWorkflowHistoryEntry[]>(`/matters/${id}/workflow-history`);
   },
 
   archiveMatter(id: string) {
@@ -732,15 +791,40 @@ export const api = {
   getVersion(modelId: string, version: number) {
     return request<VersionDetail>(`/document-models/${modelId}/versions/${version}`);
   },
-  createDocumentModel(data: { name: string; slug: string; config: Record<string, unknown> }) {
+  createDocumentModel(data: {
+    name: string;
+    slug: string;
+    config: DocumentModelConfig;
+    layout?: DocumentLayout;
+    parent_model_id?: string | null;
+  }) {
     return request<DocumentModelSummary>("/document-models", {
       method: "POST",
       body: JSON.stringify(data),
     });
   },
-  createModelVersion(modelId: string, data: { config: Record<string, unknown>; change_reason?: string }) {
+  getInstitution() {
+    return request<InstitutionalProfile>("/settings/institution");
+  },
+  updateInstitution(data: Partial<InstitutionalProfile>) {
+    return request<InstitutionalProfile>("/settings/institution", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+  createModelVersion(modelId: string, data: { config: DocumentModelConfig; layout?: DocumentLayout; change_reason?: string }) {
     return request<VersionDetail>(`/document-models/${modelId}/versions`, {
       method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  updateModelVersion(
+    modelId: string,
+    version: number,
+    data: { config?: DocumentModelConfig; layout?: DocumentLayout; change_reason?: string }
+  ) {
+    return request<VersionDetail>(`/document-models/${modelId}/versions/${version}`, {
+      method: "PATCH",
       body: JSON.stringify(data),
     });
   },
@@ -759,10 +843,113 @@ export const api = {
       method: "POST",
     });
   },
+  deactivateDocumentModel(modelId: string) {
+    return request<DocumentModelSummary>(`/document-models/${modelId}/deactivate`, {
+      method: "POST",
+    });
+  },
+  reactivateDocumentModel(modelId: string) {
+    return request<DocumentModelSummary>(`/document-models/${modelId}/reactivate`, {
+      method: "POST",
+    });
+  },
+  duplicateDocumentModel(modelId: string, data?: { name?: string; slug?: string }) {
+    return request<DocumentModelSummary>(`/document-models/${modelId}/duplicate`, {
+      method: "POST",
+      body: JSON.stringify(data ?? {}),
+    });
+  },
+  getDocumentModelHistory(modelId: string) {
+    return request<DocumentModelHistoryEntry[]>(`/document-models/${modelId}/history`);
+  },
+  listDocumentModelBlocks(includeInactive = false) {
+    return request<DocumentModelBlock[]>(
+      `/document-model-blocks${includeInactive ? "?include_inactive=true" : ""}`
+    );
+  },
+  createDocumentModelBlock(data: {
+    name: string;
+    kind: string;
+    description?: string;
+    content_json: DocumentModelBlockContent;
+    is_active?: boolean;
+  }) {
+    return request<DocumentModelBlock>("/document-model-blocks", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  updateDocumentModelBlock(
+    blockId: string,
+    data: Partial<{
+      name: string;
+      kind: string;
+      description: string | null;
+      content_json: DocumentModelBlockContent;
+      is_active: boolean;
+    }>
+  ) {
+    return request<DocumentModelBlock>(`/document-model-blocks/${blockId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+  deleteDocumentModelBlock(blockId: string) {
+    return request<void>(`/document-model-blocks/${blockId}`, { method: "DELETE" });
+  },
+  deleteDocumentModel(modelId: string) {
+    return request<void>(`/document-models/${modelId}`, {
+      method: "DELETE",
+    });
+  },
   previewVersion(modelId: string, version: number, values: Record<string, string>) {
     return request<PreviewResult>(`/document-models/${modelId}/versions/${version}/preview`, {
       method: "POST",
       body: JSON.stringify({ values }),
+    });
+  },
+  renderVersionHtml(modelId: string, version: number, values: Record<string, string>) {
+    return request<{
+      html: string;
+      complete: boolean;
+      pending: { code: string; message: string; field?: string | null }[];
+      canonical_text: string;
+    }>(`/document-models/${modelId}/versions/${version}/render`, {
+      method: "POST",
+      body: JSON.stringify({ values }),
+    });
+  },
+  renderVersionPdf(modelId: string, version: number, values: Record<string, string>) {
+    return requestBlob(`/document-models/${modelId}/versions/${version}/render-pdf`, {
+      method: "POST",
+      body: JSON.stringify({ values }),
+    });
+  },
+  listTrainingFiles(modelId: string) {
+    return request<TrainingFile[]>(`/document-models/${modelId}/training-files`);
+  },
+  uploadTrainingFile(modelId: string, file: File) {
+    const form = new FormData();
+    form.append("file", file);
+    return request<TrainingFile>(`/document-models/${modelId}/training-files`, {
+      method: "POST",
+      body: form,
+    });
+  },
+  updateTrainingFile(modelId: string, fileId: string, data: { used_by_ai: boolean }) {
+    return request<TrainingFile>(`/document-models/${modelId}/training-files/${fileId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+  deleteTrainingFile(modelId: string, fileId: string) {
+    return request<void>(`/document-models/${modelId}/training-files/${fileId}`, {
+      method: "DELETE",
+    });
+  },
+  proposeFromTrainingFiles(modelId: string) {
+    return request<LearnProposal>(`/document-models/${modelId}/training-files/propose`, {
+      method: "POST",
     });
   },
   aiExtract(data: { prompt: string; document_type?: string | null; model_id?: string | null }) {

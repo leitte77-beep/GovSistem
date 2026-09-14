@@ -81,6 +81,7 @@ export function createEmptyBlock(type: SemanticBlockType, order: number): Semant
     case "quote":
       return { ...b, type, content: "", rich: true } as SemanticBlock;
     case "preamble":
+    case "considerando":
     case "paragraph":
     case "legacy_html":
       return { ...b, type, content: "", rich: true } as SemanticBlock;

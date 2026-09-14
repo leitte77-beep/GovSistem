@@ -10,6 +10,7 @@ escopo quando não há outro já definido (nada é sobrescrito silenciosamente).
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +20,7 @@ from app.document_model.schemas import (
     DM_STATUS_ARCHIVED,
     DM_STATUS_DRAFT,
     DM_STATUS_IN_APPROVAL,
+    DM_STATUS_INACTIVE,
     DocumentModelConfig,
 )
 from app.models.document_model import DocumentModel, DocumentModelVersion
@@ -44,6 +46,8 @@ async def create_model(
     slug: str,
     name: str,
     config: DocumentModelConfig,
+    layout: dict | None = None,
+    parent_model_id: uuid.UUID | None = None,
     created_by: uuid.UUID | None = None,
 ) -> DocumentModel:
     model = DocumentModel(
@@ -53,6 +57,7 @@ async def create_model(
         purpose=config.purpose,
         document_type=config.scope_document_type,
         status=DM_STATUS_DRAFT,
+        parent_model_id=parent_model_id,
         created_by=created_by,
     )
     await _commit_flush(db, model)
@@ -61,6 +66,7 @@ async def create_model(
         version_number=1,
         status=DM_STATUS_DRAFT,
         config_json=config.model_dump(mode="json"),
+        layout_json=layout,
         config_hash=config.canonical_hash(),
         created_by=created_by,
     )
@@ -74,6 +80,7 @@ async def create_new_version(
     model_id: uuid.UUID,
     config: DocumentModelConfig,
     *,
+    layout: dict | None = None,
     change_reason: str | None = None,
     created_by: uuid.UUID | None = None,
 ) -> DocumentModelVersion:
@@ -85,12 +92,42 @@ async def create_new_version(
         version_number=_next_ver(model.versions),
         status=DM_STATUS_DRAFT,
         config_json=config.model_dump(mode="json"),
+        layout_json=layout,
         config_hash=config.canonical_hash(),
         change_reason=change_reason,
         created_by=created_by,
     )
     await _commit_flush(db, version)
     await db.refresh(version)
+    return version
+
+
+async def update_draft_version(
+    db: AsyncSession,
+    model_id: uuid.UUID,
+    version_number: int,
+    *,
+    config: DocumentModelConfig | None = None,
+    layout: dict | None = None,
+    change_reason: str | None = None,
+) -> DocumentModelVersion:
+    """Edita uma versão em rascunho (autosave). Versões ativas são imutáveis."""
+    model = await _get_model(db, model_id)
+    version = _get_version(model, version_number)
+    if version.status != DM_STATUS_DRAFT:
+        raise ModelTransitionError(
+            f"Só rascunhos podem ser editados (versão {version_number} está {version.status})."
+        )
+    if config is not None:
+        version.config_json = config.model_dump(mode="json")
+        version.config_hash = config.canonical_hash()
+        model.purpose = config.purpose
+        model.document_type = config.scope_document_type
+    if layout is not None:
+        version.layout_json = layout
+    if change_reason is not None:
+        version.change_reason = change_reason
+    await db.flush()
     return version
 
 
@@ -145,6 +182,88 @@ async def archive_model(db: AsyncSession, model_id: uuid.UUID) -> DocumentModel:
     return model
 
 
+async def deactivate_model(db: AsyncSession, model_id: uuid.UUID) -> DocumentModel:
+    """Desativa um modelo ativo: sai do rodízio de geração, mas mantém a versão
+    ativa e o histórico. Pode ser reativado depois."""
+    model = await _get_model(db, model_id)
+    if model.status != DM_STATUS_ACTIVE:
+        raise ModelTransitionError("Só modelos ativos podem ser desativados.")
+    model.status = DM_STATUS_INACTIVE
+    model.is_default = False
+    await db.flush()
+    return model
+
+
+async def reactivate_model(db: AsyncSession, model_id: uuid.UUID) -> DocumentModel:
+    """Reativa um modelo inativo (volta ao status ``active``)."""
+    model = await _get_model(db, model_id)
+    if model.status != DM_STATUS_INACTIVE:
+        raise ModelTransitionError("Só modelos inativos podem ser reativados.")
+    if model.active_version is None:
+        raise ModelTransitionError("Modelo sem versão ativa não pode ser reativado.")
+    model.status = DM_STATUS_ACTIVE
+    if not model.is_default:
+        other_default = await _default_active_for_scope(
+            db, model.organization_id, model.document_type, exclude_model_id=model.id
+        )
+        if other_default is None:
+            model.is_default = True
+    await db.flush()
+    return model
+
+
+async def duplicate_model(
+    db: AsyncSession,
+    model_id: uuid.UUID,
+    *,
+    new_slug: str,
+    new_name: str | None = None,
+    created_by: uuid.UUID | None = None,
+) -> DocumentModel:
+    """Duplica um modelo como novo rascunho (v1), herdando config/layout da
+    versão ativa (ou da última versão existente) e apontando para o original
+    como ``parent_model_id``."""
+    source = await _get_model(db, model_id)
+    version: DocumentModelVersion | None = None
+    if source.active_version is not None:
+        version = next(
+            (v for v in source.versions or [] if v.version_number == source.active_version),
+            None,
+        )
+    if version is None:
+        version = max(source.versions or [], key=lambda v: v.version_number, default=None)
+    if version is None:
+        raise ModelTransitionError("Modelo de origem não possui versões para duplicar.")
+    config = DocumentModelConfig.model_validate(version.config_json)
+    return await create_model(
+        db,
+        organization_id=source.organization_id,
+        slug=new_slug,
+        name=new_name or f"{source.name} (cópia)",
+        config=config,
+        layout=version.layout_json,
+        parent_model_id=source.id,
+        created_by=created_by,
+    )
+
+
+async def delete_model(db: AsyncSession, model_id: uuid.UUID) -> None:
+    """Hard-delete a model and its versions (cascade). Reserved for purge of
+    never-used drafts; the API uses ``soft_delete_model`` by default."""
+    model = await _get_model(db, model_id)
+    await db.delete(model)
+    await db.flush()
+
+
+async def soft_delete_model(db: AsyncSession, model_id: uuid.UUID) -> DocumentModel:
+    """Soft-delete a model (kept for audit/history). Hides it from listings."""
+    model = await _get_model(db, model_id)
+    model.deleted_at = datetime.now(timezone.utc)
+    model.is_default = False
+    await db.flush()
+    return model
+
+
 async def _default_active_for_scope(
     db: AsyncSession,
     organization_id: uuid.UUID,
@@ -165,7 +284,11 @@ async def _default_active_for_scope(
 
 
 async def _get_model(db: AsyncSession, model_id: uuid.UUID) -> DocumentModel:
-    result = await db.execute(select(DocumentModel).where(DocumentModel.id == model_id))
+    result = await db.execute(
+        select(DocumentModel).where(
+            DocumentModel.id == model_id, DocumentModel.deleted_at.is_(None)
+        )
+    )
     model = result.scalar_one_or_none()
     if model is None:
         raise ModelTransitionError("Modelo documental não encontrado.")
@@ -195,9 +318,15 @@ def config_of_active(model: DocumentModel) -> DocumentModelConfig | None:
 __all__ = [
     "create_model",
     "create_new_version",
+    "update_draft_version",
     "submit_for_approval",
     "approve_version",
     "archive_model",
+    "deactivate_model",
+    "reactivate_model",
+    "duplicate_model",
+    "delete_model",
+    "soft_delete_model",
     "config_of_version",
     "config_of_active",
     "ModelTransitionError",

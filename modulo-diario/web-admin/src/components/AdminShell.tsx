@@ -27,6 +27,7 @@ const NAV_ITEMS: {
   { label: "Operações", href: "/operacoes", icon: "settings_suggest" },
   { label: "Usuários", href: "/users", icon: "group" },
   { label: "Configurações", href: "/settings", icon: "tune", adminOnly: true },
+  { label: "Identidade institucional", href: "/settings/institution", icon: "account_balance", adminOnly: true },
   { label: "Inteligência artificial", href: "/settings/ai", icon: "smart_toy", adminOnly: true },
   { label: "Certificados", href: "/settings/certificates", icon: "verified_user", adminOnly: true },
   { label: "Verificar PDF", href: "/verify", icon: "picture_as_pdf" },
@@ -267,7 +268,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       </aside>
 
       {/* Main content */}
-      <div className="lg:ml-64 min-h-screen flex flex-col">
+      <div className="lg:ml-64 h-screen flex flex-col overflow-hidden">
         {/* Top bar */}
         <header className="flex justify-between items-center px-gutter w-full h-16 bg-surface border-b border-outline-variant sticky top-0 z-40">
           <div className="flex items-center gap-4">
@@ -306,7 +307,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         </header>
 
         {/* Page content */}
-        <main className="flex-1">
+        <main className="flex-1 min-h-0 overflow-y-auto">
           {children}
         </main>
 

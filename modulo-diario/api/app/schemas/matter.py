@@ -103,6 +103,7 @@ class MatterResponse(BaseModel):
     content_mode: str
     plain_text: str
     status: MatterStatus
+    workflow_status: str | None = None
     version: int
     author_id: uuid.UUID
     reviewed_by: uuid.UUID | None
@@ -132,6 +133,7 @@ class MatterListResponse(BaseModel):
     act_type_id: uuid.UUID
     org_unit_id: uuid.UUID | None
     status: MatterStatus
+    workflow_status: str | None = None
     version: int
     author_id: uuid.UUID
     reviewed_by: uuid.UUID | None
@@ -142,6 +144,24 @@ class MatterListResponse(BaseModel):
     attachment_count: int = 0
 
     model_config = {"from_attributes": True}
+
+
+class MatterWorkflowUpdate(BaseModel):
+    """Avança/retorna o fluxo de criação do documento (não altera o status
+    editorial)."""
+
+    status: str
+    note: str | None = None
+
+
+class MatterWorkflowHistoryOut(BaseModel):
+    id: uuid.UUID
+    action: str
+    description: str | None = None
+    from_status: str | None = None
+    to_status: str | None = None
+    user_id: uuid.UUID | None = None
+    created_at: datetime
 
 
 class MatterNextTitleResponse(BaseModel):

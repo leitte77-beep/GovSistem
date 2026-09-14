@@ -14,47 +14,20 @@ import uuid
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models.enums import MatterStatus
+from app.document_model.body_html import blocks_to_html
+from app.models.enums import MatterStatus, MatterWorkflowStatus
 from app.models.matter import Matter
 from app.semantic.schemas import SCHEMA_VERSION
 
 
 def semantic_to_html(document) -> str:
-    """HTML canônico determinístico dos blocos (para content_html/prévia)."""
+    """HTML canônico determinístico do corpo.
 
-    def esc(value: str | None) -> str:
-        return html_mod.escape((value or ""), quote=False)
-
-    parts: list[str] = []
-    for b in document.blocks:
-        t = b.type
-        if t == "heading":
-            parts.append(f"<h{b.level}>{esc(b.text)}</h{b.level}>")
-        elif t == "command":
-            parts.append(f'<p style="text-align:center"><strong>{esc(b.text)}</strong></p>')
-        elif t in ("paragraph", "preamble", "quote", "inciso", "alinea", "paragraph_item"):
-            parts.append(f"<p>{esc(b.content or b.text)}</p>")
-        elif t == "article":
-            label = f"Art. {b.suffix or b.number or ''}".strip() + " "
-            parts.append(f"<p><strong>{esc(label)}</strong>{esc(b.caput)}</p>")
-            for p in b.paragraphs:
-                num = f"§ {p.number}" if p.number else "Parágrafo único"
-                parts.append(f"<p>{esc(num)} — {esc(p.content)}</p>")
-            for i in b.incisos:
-                parts.append(f"<p>{esc(i.number)} — {esc(i.content)}</p>")
-            for a in b.alineas:
-                parts.append(f"<p>{esc(a.number)} — {esc(a.content)}</p>")
-        elif t == "signature_block":
-            for e in b.entries:
-                parts.append(
-                    f'<p style="text-align:{esc(b.alignment)}">{esc(e.name)}'
-                    + (f"<br/>{esc(e.role)}" if e.role else "")
-                    + (f"<br/>{esc(e.location)}" if e.location else "")
-                    + "</p>"
-                )
-        elif t == "attachment_reference":
-            parts.append(f"<p>{esc(b.title)}</p>")
-    return "\n".join(parts)
+    Unificado com o preview/PDF dos modelos (``render_html``): a matéria gerada
+    guarda exatamente o mesmo HTML que o preview apresenta, consumido depois
+    pelo PDF de edições.
+    """
+    return blocks_to_html(document)
 
 
 async def create_rendered_matter(
@@ -86,6 +59,7 @@ async def create_rendered_matter(
         content_mode="semantic",
         plain_text=plain,
         status=MatterStatus.DRAFT,
+        workflow_status=MatterWorkflowStatus.GERADO_PELA_IA.value,
         version=1,
         author_id=author_id,
         document_type=document.document_type or None,

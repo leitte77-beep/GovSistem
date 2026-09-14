@@ -9,15 +9,14 @@ from datetime import datetime, timedelta, timezone
 import pytest
 from cryptography import x509
 from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.serialization import pkcs12
 from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives.serialization import pkcs12
 from cryptography.x509.oid import NameOID
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 from pypdf import PdfReader, PdfWriter
 
 from app.main import app
 from app.providers import create_provider
-
 
 # ── Fixtures: generate test PFX and test PDF ────────────────────────────────
 
@@ -75,7 +74,11 @@ def test_pdf():
 @pytest.fixture
 async def client():
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        headers={"X-Internal-Key": "dev-internal-key-saas"},
+    ) as ac:
         yield ac
 
 
@@ -119,7 +122,7 @@ class TestPfxA1Provider:
         provider = create_provider("a1", pfx_bytes=pfx_bytes, password=TEST_PFX_PASSWORD)
         info = provider.get_certificate_info()
         assert info["provider"] == "a1"
-        assert info["format"] == "PAdES"
+        assert info["format"] == "PAdES-B-B"
         assert "Teste Assinatura A1" in info["subject"]
         assert len(info["thumbprint"]) == 40  # SHA-1 hex
 
