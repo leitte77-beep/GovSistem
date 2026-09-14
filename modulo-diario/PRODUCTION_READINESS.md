@@ -256,10 +256,15 @@ Variáveis do serviço `signer` (defaults vazios = desligado; nada é presumido)
 | `SIGNER_POLICY_URI` | URI qualificadora da política. |
 | `REVOCATION_MODE` | `off` \| `crl` \| `ocsp` \| `both`. |
 
+> Raízes ICP-Brasil (já configuradas): baixadas do repositório oficial
+> `https://acraiz.icpbrasil.gov.br/credenciadas/RAIZ/` (arquivos `ICP-Brasil*.crt`
+> e `Certificado_AC_Raiz.crt`), convertidas para PEM e concatenadas em
+> `signer/certs/icp-brasil-roots.pem` (não versionado; montado em `/certs:ro`).
+> Reprocessar quando o ITI publicar novas raízes.
+
 Passos:
 1. Obter o documento oficial da política PAdES (AD-RB) no repositório do ITI e
-   calcular `sha256sum` → `SIGNER_POLICY_HASH`.
-2. Definir `TSA_URL` (ACT credenciada), `SIGNER_POLICY_OID/_HASH/_URI` no `.env`
+   calcular `sha256sum` → `SIGNER_POLICY_HASH`.2. Definir `TSA_URL` (ACT credenciada), `SIGNER_POLICY_OID/_HASH/_URI` no `.env`
    do módulo e recriar o signer: `docker compose up -d signer`.
 3. Assinar uma edição de homologação e conferir: `pdfsig arquivo.pdf` deve
    mostrar a política e/ou o timestamp; validar também no VALIDAR ITI.
