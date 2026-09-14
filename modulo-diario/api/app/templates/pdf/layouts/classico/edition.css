@@ -263,6 +263,15 @@ body {
   text-indent: 1.25cm;
 }
 
+/* Preserve the alignment authored in the matter, including table cells and
+   signatures, when this layout is converted to PDF. */
+.matter-content :is(p, td, th)[align="center"],
+.matter-content :is(p, td, th)[style*="text-align:center"],
+.matter-content :is(p, td, th)[style*="text-align: center"] { text-align: center !important; }
+.matter-content :is(p, td, th)[align="right"],
+.matter-content :is(p, td, th)[style*="text-align:right"],
+.matter-content :is(p, td, th)[style*="text-align: right"] { text-align: right !important; }
+
 .matter-content strong,
 .matter-content b {
   font-weight: 700;

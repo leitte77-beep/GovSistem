@@ -9,7 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.semantic.parser import parse_document
+from app.semantic.parser import _compute_column_widths, parse_document
 from app.semantic.renderer import render_document
 from app.semantic.snapshot import derive_semantic_from_matter, matter_snapshot
 from app.semantic.templates import default_config_for
@@ -69,6 +69,24 @@ def test_column_widths_computed_and_sum_to_100():
     assert abs(sum(widths) - 100.0) < 0.5
     # the long description column must be the widest
     assert widths[1] == max(widths)
+
+
+def test_checkbox_form_reserves_only_a_marker_column():
+    """Procurement forms use a tiny checkmark gutter, not a data column."""
+    rows = [
+        ["DADOS GERAIS DO PROCESSO"],
+        ["☑", "N° PROCESSO", "125/2026"],
+        ["☑", "MODALIDADE", "dispensa por limite (art. 75, II)"],
+        ["☑", "OBJETO", "Locação, montagem e desmontagem de pavilhão móvel"],
+    ]
+
+    widths = _compute_column_widths(rows)
+
+    assert len(widths) == 3
+    assert abs(sum(widths) - 100.0) < 0.5
+    assert widths[0] <= 3.0
+    assert 15.0 <= widths[1] <= 25.0
+    assert widths[2] >= 70.0
 
 
 def test_html_table_without_th_keeps_all_rows_and_no_headers():

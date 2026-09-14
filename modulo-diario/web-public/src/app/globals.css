@@ -172,6 +172,20 @@ section[id], [id^="materia-"] {
 .matter-body .assinatura,
 .matter-body p[align="center"] { text-align: center !important; }
 
+/* The editor preserves alignment in either ``align`` or inline styles.  The
+   base reading/print rules must not turn an authored signature or centered
+   notice back into left/justified text after publication. */
+.matter-body :is(p, td, th)[align="center"],
+.matter-body :is(p, td, th)[style*="text-align:center"],
+.matter-body :is(p, td, th)[style*="text-align: center"] {
+  text-align: center !important;
+}
+.matter-body :is(p, td, th)[align="right"],
+.matter-body :is(p, td, th)[style*="text-align:right"],
+.matter-body :is(p, td, th)[style*="text-align: right"] {
+  text-align: right !important;
+}
+
 /* ========== Official newspaper layout (modelo.pdf) ==========
    Faithful reproduction of the printed Diário Oficial: centered masthead,
    3-column metadata row, green signature banner, navy rule, grey SUMÁRIO
@@ -703,6 +717,16 @@ html.a11y-stop-animations *::after {
   .matter-body p {
     text-align: justify !important;
     margin: 0 0 0.9em !important;
+  }
+  .matter-body :is(p, td, th)[align="center"],
+  .matter-body :is(p, td, th)[style*="text-align:center"],
+  .matter-body :is(p, td, th)[style*="text-align: center"] {
+    text-align: center !important;
+  }
+  .matter-body :is(p, td, th)[align="right"],
+  .matter-body :is(p, td, th)[style*="text-align:right"],
+  .matter-body :is(p, td, th)[style*="text-align: right"] {
+    text-align: right !important;
   }
   .matter-body .table-scroll {
     overflow: visible !important;

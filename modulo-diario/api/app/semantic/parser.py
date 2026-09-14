@@ -1130,6 +1130,29 @@ def _compute_column_widths(
     ncols = max((len(r) for r in rows), default=0)
     if ncols == 0:
         return []
+
+    # Procurement forms frequently start each data row with a checkbox.  It
+    # is a visual marker, not a data column: sizing it from its text length
+    # made it consume as much as a quarter of the document and compressed the
+    # label/value fields after publication.  Keep the original form geometry
+    # (marker + field label + field value) whenever that pattern is clear.
+    checkbox_markers = {"☐", "☑", "✓", "✔", "✕", "✖"}
+    # Rows spanning the whole table are headings/notes, not field rows.  They
+    # must not disqualify the checkbox-form pattern.
+    first_column = [
+        str(row[0]).strip()
+        for row in rows
+        if len(row) == ncols and row
+    ]
+    marker_rows = [value for value in first_column if value]
+    if (
+        ncols == 3
+        and marker_rows
+        and len(marker_rows) >= 2
+        and all(value in checkbox_markers for value in marker_rows)
+    ):
+        return [2.5, 19.0, 78.5]
+
     weights: list[float] = []
     for col in range(ncols):
         longest = 0
