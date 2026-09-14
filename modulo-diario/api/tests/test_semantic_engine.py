@@ -241,6 +241,25 @@ def test_render_screen_and_print_deterministic():
     assert render_document(doc, config, media="screen") == screen
 
 
+def test_signature_children_keep_the_template_alignment_over_layout_defaults():
+    """The edition layout sets ``p { text-align: start }`` for legacy HTML.
+
+    Semantic signature children must explicitly inherit their container's
+    configured alignment, otherwise a centered name and role render left.
+    """
+    doc = SemanticDocument(
+        title="PORTARIA Nº 214/2026",
+        blocks=[
+            SignatureBlock(
+                entries=[SignatureEntry(name="JOÃO DA SILVA", role="Prefeito Municipal")],
+                alignment="center",
+            )
+        ],
+    )
+    html = render_document(doc, default_config_for("portaria"), media="print")
+    assert ".doe-document .doe-signature p { text-align: inherit; }" in html
+
+
 def test_render_article_nested():
     doc = parse_document(plain=DECRETO, title="x")
     html = render_document(doc, default_config_for("decreto"), media="screen")

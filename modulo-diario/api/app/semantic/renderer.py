@@ -130,6 +130,10 @@ def _media_css(
   margin: 0 0 0.2em; }
 .doe-signature { margin: 2em 0 0; text-align: var(--doe-signature-alignment, center);
   break-inside: avoid; page-break-inside: avoid; }
+/* The edition shell has a legacy ``.matter-content p { text-align: start }``
+   rule. Alignment does not inherit through a child that owns that property,
+   so make every signature paragraph explicitly follow its semantic block. */
+.doe-document .doe-signature p { text-align: inherit; }
 .doe-signature .doe-sign-name { font-weight: var(--doe-signature-name-weight, bold); }
 .doe-signature .doe-sign-role { font-weight: var(--doe-signature-role-weight, normal); }
 /* Closing (place + date) sits between the body and the signature. */
