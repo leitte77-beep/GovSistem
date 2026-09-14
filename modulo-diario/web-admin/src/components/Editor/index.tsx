@@ -230,10 +230,13 @@ export default function Editor({
       onChange(result.content_html);
       onChangeJson?.(editor.getJSON());
       onAiCompose?.(result);
+      const validationNotice = result.matched_model.status !== "active"
+        ? " Modelo ainda em validação: revise a minuta e aprove o modelo antes de publicar."
+        : "";
       onCleanWarnings?.([
-        result.pending.length
+        (result.pending.length
           ? `Modelo ${result.matched_model.name} aplicado. Revise ${result.pending.length} campo(s) pendente(s).`
-          : `Modelo ${result.matched_model.name} aplicado. Revise a minuta antes de salvar.`,
+          : `Modelo ${result.matched_model.name} aplicado. Revise a minuta antes de salvar.`) + validationNotice,
       ]);
     } catch (err) {
       onCleanWarnings?.([

@@ -315,6 +315,19 @@ def config_of_active(model: DocumentModel) -> DocumentModelConfig | None:
     return None
 
 
+def config_for_editor_composition(model: DocumentModel) -> DocumentModelConfig | None:
+    """Obtém a versão utilizável no editor, inclusive quando está em revisão.
+
+    Esta função não altera o ciclo de vida: versões não ativas só podem montar
+    uma prévia no editor. Materialização, numeração e publicação continuam
+    exigindo a versão aprovada pelos fluxos próprios.
+    """
+    if model.active_version:
+        return config_of_active(model)
+    version = max(model.versions or [], key=lambda item: item.version_number, default=None)
+    return config_of_version(version) if version is not None else None
+
+
 __all__ = [
     "create_model",
     "create_new_version",
@@ -329,5 +342,6 @@ __all__ = [
     "soft_delete_model",
     "config_of_version",
     "config_of_active",
+    "config_for_editor_composition",
     "ModelTransitionError",
 ]

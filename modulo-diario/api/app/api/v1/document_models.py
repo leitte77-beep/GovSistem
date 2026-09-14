@@ -32,7 +32,7 @@ from app.document_model.fill import validate_and_resolve
 from app.document_model.generation import (
     PROMPT_VERSION,
     ModelSelectionError,
-    active_models_for_composition,
+    models_for_editor_composition,
     choose_model_for_prompt,
     extract_values,
     pick_active_model,
@@ -1508,7 +1508,7 @@ async def ai_compose_for_editor(
 ):
     """Monta uma minuta para o editor a partir de um pedido livre.
 
-    A IA escolhe exclusivamente entre modelos aprovados e devolve valores de
+    A IA escolhe entre modelos ativos ou em validação e devolve valores de
     campos. Título, súmula e HTML resultam da renderização determinística do
     modelo; esta rota não cria matéria, não emite número e não publica nada.
     """
@@ -1518,11 +1518,11 @@ async def ai_compose_for_editor(
     except (AiNotConfiguredError, AiDisabledError) as exc:
         raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
 
-    models = await active_models_for_composition(db, org_id, body.document_type)
+    models = await models_for_editor_composition(db, org_id, body.document_type)
     if not models:
         raise HTTPException(
             status.HTTP_409_CONFLICT,
-            "Não há modelo aprovado para montar esta matéria. Revise e aprove um modelo primeiro.",
+            "Não há modelo cadastrado para montar esta matéria.",
         )
     try:
         model = await choose_model_for_prompt(models, body.prompt, api_key)
@@ -1531,12 +1531,12 @@ async def ai_compose_for_editor(
     if model is None:
         raise HTTPException(
             status.HTTP_422_UNPROCESSABLE_ENTITY,
-            "Não identifiquei um modelo aprovado compatível com o pedido.",
+            "Não identifiquei um modelo compatível com o pedido.",
         )
 
-    cfg = dm_service.config_of_active(model)
+    cfg = dm_service.config_for_editor_composition(model)
     if cfg is None:  # defesa contra estado inconsistente
-        raise HTTPException(status.HTTP_409_CONFLICT, "Modelo aprovado sem versão ativa.")
+        raise HTTPException(status.HTTP_409_CONFLICT, "Modelo sem versão configurada.")
     try:
         values = await extract_values(cfg, body.prompt, api_key)
         outcome = render(cfg, values)
