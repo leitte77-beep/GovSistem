@@ -118,6 +118,7 @@ export function cleanPastedHtml(html: string): PastedHtml {
   };
 
   walkTree(body);
+  normalizeWhitespaceArtifacts(body, doc);
 
   // Normalize tables so ProseMirror/TipTap parse them cleanly.
   let preservedTables = false;
@@ -127,6 +128,65 @@ export function cleanPastedHtml(html: string): PastedHtml {
 
   // Rebuild from the sanitized body.
   return { html: body.innerHTML, warnings, preservedTables };
+}
+
+const BLOCK_TAGS = new Set(["p", "div", "section", "li", "blockquote", "td", "th"]);
+
+/**
+ * Normalize paste artifacts that would otherwise leak into the legal document:
+ * - non-breaking spaces (`&nbsp;`) become ordinary spaces so text reflows and
+ *   justified paragraphs behave;
+ * - leading/trailing `<br>` inside a block (a Word/Google Docs artifact) are
+ *   dropped;
+ * - runs of 3+ `<br>` collapse to a single empty line;
+ * - empty inline wrappers (`<span>`, `<font>`, `<o:p>`) are removed.
+ * No wording, number or meaningful line break is altered.
+ */
+function normalizeWhitespaceArtifacts(body: Element, doc: Document): void {
+  const walker = doc.createTreeWalker(body, NodeFilter.SHOW_TEXT);
+  const textNodes: Text[] = [];
+  while (walker.nextNode()) textNodes.push(walker.currentNode as Text);
+  for (const node of textNodes) {
+    const value = node.nodeValue;
+    if (value && value.includes("\u00a0")) {
+      node.nodeValue = value.replace(/\u00a0/g, " ");
+    }
+  }
+
+  for (const el of Array.from(body.querySelectorAll("*"))) {
+    const tag = el.tagName.toLowerCase();
+    if ((tag === "span" || tag === "font") && !el.textContent?.trim() && !el.querySelector("img, br")) {
+      el.remove();
+      continue;
+    }
+    if (!BLOCK_TAGS.has(tag)) continue;
+
+    const children = Array.from(el.childNodes);
+    // Strip leading/trailing <br>.
+    while (children.length && isBr(children[0])) {
+      children.shift()!.remove();
+    }
+    while (children.length && isBr(children[children.length - 1])) {
+      children.pop()!.remove();
+    }
+    // Collapse runs of 3+ <br> (ignoring whitespace-only text nodes).
+    let brRun = 0;
+    for (const child of Array.from(el.childNodes)) {
+      if (isBr(child)) {
+        brRun += 1;
+        if (brRun > 2) child.remove();
+        continue;
+      }
+      if (child.nodeType === Node.TEXT_NODE && !(child.nodeValue || "").trim()) {
+        continue;
+      }
+      brRun = 0;
+    }
+  }
+}
+
+function isBr(node: Node): boolean {
+  return node.nodeType === Node.ELEMENT_NODE && (node as Element).tagName.toLowerCase() === "br";
 }
 
 function cleanAttributes(el: Element): void {

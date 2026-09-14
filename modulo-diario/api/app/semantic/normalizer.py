@@ -31,7 +31,10 @@ def normalize_plain_text(text: str) -> str:
     # Collapse runs of blank lines to a single blank line.
     text = re.sub(r"[ \t]+$", "", text, flags=re.M)
     text = re.sub(r"\n{3,}", "\n\n", text)
-    text = re.sub(r"[ \t]+", " ", text)
+    # Collapse runs of *spaces* only — tabs are meaningful column separators
+    # and must survive so a pasted spreadsheet table can be reconstructed.
+    text = re.sub(r" {2,}", " ", text)
+    text = re.sub(r"[ \t]*\t[ \t]*", "\t", text)
     return text.strip()
 
 

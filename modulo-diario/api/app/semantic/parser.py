@@ -67,12 +67,17 @@ _ARTICLE_RE = re.compile(
 _SOLE_PARAGRAPH_RE = re.compile(r"^P[AÁ]R[AÁ]GRAFO\s*[UÚ]NICO[:.\s]*(.*)$", re.IGNORECASE)
 _PARAGRAPH_RE = re.compile(r"^§\s*([0-9ºª]*)\.?\s*(.*)$")
 _INCISO_RE = re.compile(r"^\s*([IVXLCDM]+)\s*[-–:)\s]+(.*)$")
-_ALINEA_RE = re.compile(r"^\s*([a-z])\s*\)\s*(.*)$")
+_ALINEA_RE = re.compile(r"^\s*([a-z]{1,2})\s*\)\s*(.*)$")
 _ITEM_RE = re.compile(r"^\s*([0-9]+)\s*\)\s*(.*)$")
 _LIST_ITEM_RE = re.compile(r"^\s*[-•*]\s+(.*)$")
 _ROLE_RE = re.compile(
-    r"^(PREFEIT[OA]|SECRET[ÁA]RI[OA]|DIRETOR(A)?|PRESIDENTE|GOVERNADOR(A)?|"
-    r"REITOR(A)?|VICE-PREFEIT[OA]|PROCURADOR(A)?)\b",
+    r"^(PREFEIT[OA]|VICE-?PREFEIT[OA]|SECRET[ÁA]RI[OA]|SUBSECRET[ÁA]RI[OA]|"
+    r"DIRETOR(A)?|PRESIDENTE|VICE-?PRESIDENTE|GOVERNADOR(A)?|VICE-?GOVERNADOR(A)?|"
+    r"REITOR(A)?|VICE-?REITOR(A)?|PROCURADOR(A)?|PROCURADOR[A]?-GERAL|"
+    r"CONTROLADOR(A)?|CHEFE|COORDENADOR(A)?|SUPERINTENDENTE|GERENTE|"
+    r"ASSESSOR(A)?|TITULAR|RESPONS[ÁA]VEL|ORDENADOR(A)?|GESTOR(A)?|"
+    r"MINISTR[OA]|DEPUTAD[OA]|VEREADOR(A)?|PRESIDENTE\s+DA\s+C[ÂA]MARA)"
+    r"\b",
     re.IGNORECASE,
 )
 _LOCATION_HINT_RE = re.compile(
@@ -134,6 +139,22 @@ def extract_summary(text: str) -> tuple[str, Optional[str], str]:
             rest = rest[1:]
         body = "\n\n".join(paragraphs[:idx] + rest)
         return body, label, content
+    # Fallback: the label sits on its own line with only a single line break
+    # before the surrounding text (common in pasted/PDF text, where the blank
+    # line was lost). Preserve order and drop only the label line.
+    lines = text.split("\n")
+    for idx, line in enumerate(lines):
+        match = _SUMMARY_LABEL_RE.match(line.strip())
+        if not match:
+            continue
+        label = match.group(1).strip()
+        content = match.group(2).strip()
+        if not content and idx + 1 < len(lines):
+            content = lines[idx + 1].strip()
+            rest_lines = lines[:idx] + lines[idx + 2:]
+        else:
+            rest_lines = lines[:idx] + lines[idx + 1:]
+        return "\n".join(rest_lines), label, content
     return text, None, ""
 
 
@@ -258,15 +279,15 @@ def parse_document(
         summary = found_summary
 
     blocks = []
-    if norm["tabs"]:
-        blocks.append(_build_table_block(norm["tabs"]))
-        text_for_parse = ""
-    elif norm["html"]:
+    if norm["html"]:
         blocks = _parse_html(norm["html"], fallback_text=text)
         if found_label:
             blocks = _drop_summary_block(blocks, found_label)
         text_for_parse = ""
     else:
+        # Plain text (with or without tab-separated table rows). Tabs are
+        # preserved by the normalizer, so a spreadsheet paste is reconstructed
+        # as a real table inside the same document as the surrounding text.
         text_for_parse = body_text
 
     if not blocks and text_for_parse.strip():
@@ -465,6 +486,14 @@ def _parse_lines(text: str) -> list:
             i += 1
             continue
 
+        if _is_tab_row(stripped):
+            rows: list[list[str]] = []
+            while i < len(lines) and _is_tab_row(lines[i].strip()):
+                rows.append([cell.strip() for cell in lines[i].strip().split("\t")])
+                i += 1
+            blocks.append(_build_table_block(rows))
+            continue
+
         if _LOCATION_DATE_RE.match(stripped):
             blocks.append(_block(ParagraphBlock, content=stripped,
                                  confidence=_CONFIRM_MED, metadata={"kind": "location_date"}))
@@ -537,7 +566,7 @@ def _parse_lines(text: str) -> list:
                     i += 1
                     continue
                 alinea = _ALINEA_RE.match(nxt)
-                if alinea and len(alinea.group(1)) == 1:
+                if alinea and len(alinea.group(1)) <= 2:
                     blocks[-1].alineas.append(_block(
                         AlineaBlock, number=alinea.group(1),
                         content=alinea.group(2).strip() or nxt, text=nxt,
@@ -602,10 +631,20 @@ def _parse_lines(text: str) -> list:
     return _merge_trailing_signature(blocks)
 
 
-_ROMAN = {
-    "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X",
-    "XI", "XII", "XIII", "XIV", "XV", "XVI", "XVII", "XVIII", "XIX", "XX",
-}
+def _roman_numeral(value: int) -> str:
+    numerals = (
+        (100, "C"), (90, "XC"), (50, "L"), (40, "XL"),
+        (10, "X"), (9, "IX"), (5, "V"), (4, "IV"), (1, "I"),
+    )
+    out = []
+    for amount, symbol in numerals:
+        while value >= amount:
+            out.append(symbol)
+            value -= amount
+    return "".join(out)
+
+
+_ROMAN = {_roman_numeral(i) for i in range(1, 101)}
 
 
 def _looks_like_heading(text: str) -> bool:
@@ -616,66 +655,215 @@ def _looks_like_heading(text: str) -> bool:
 
 
 def _looks_like_signature(text: str) -> bool:
-    if re.match(r"^(Prefeito|Secret[áa]rio|Diretor|Governador)[\wÀ-ú ]*$", text, re.IGNORECASE):
-        return True
-    return False
+    return bool(_ROLE_RE.match(text))
 
 
 # ── Table builders ───────────────────────────────────────────────────────────
 
 
+_NUMERIC_CELL_RE = re.compile(r"^[R$\s]*[-+]?\d[\d.,\s/%()ºª°-]*$")
+
+
+def _is_tab_row(line: str) -> bool:
+    if "\t" not in line:
+        return False
+    return len([cell for cell in line.split("\t") if cell.strip()]) >= 2
+
+
+def _cell_is_numeric(value: str) -> bool:
+    value = (value or "").strip()
+    if not value:
+        return False
+    return bool(_NUMERIC_CELL_RE.match(value))
+
+
+def _looks_like_header_row(first: list[str], rest: list[list[str]]) -> bool:
+    """A first row is a header only when it reads like labels, not data."""
+    if not first:
+        return False
+    cells = [str(c).strip() for c in first]
+    non_empty = [c for c in cells if c]
+    if not non_empty:
+        return False
+    if any(_cell_is_numeric(c) for c in non_empty):
+        return False
+    return any(re.search(r"[A-Za-zÀ-ÿ]", c) for c in non_empty)
+
+
+def _compute_column_widths(
+    rows: list[list[str]], min_pct: float = 4.0, max_pct: float = 45.0
+) -> list[float]:
+    """Relative column widths from the longest content per column.
+
+    Returns percentages that sum to 100 so the PDF can emit a ``<colgroup>``
+    and stop blind equal-width columns from shredding numbers and words.
+    """
+    if not rows:
+        return []
+    ncols = max((len(r) for r in rows), default=0)
+    if ncols == 0:
+        return []
+    weights: list[float] = []
+    for col in range(ncols):
+        longest = 0
+        numeric_col = True
+        for row in rows:
+            value = str(row[col]).strip() if col < len(row) else ""
+            longest = max(longest, len(value))
+            if value and not _cell_is_numeric(value):
+                numeric_col = False
+        weight = max(float(longest), min_pct)
+        if numeric_col and longest <= 12:
+            weight = min(weight, 12.0)
+        weights.append(weight)
+    total = sum(weights) or 1.0
+    pcts = [w / total * 100.0 for w in weights]
+    pcts = [min(max(p, min_pct), max_pct) for p in pcts]
+    total2 = sum(pcts) or 1.0
+    return [round(p / total2 * 100.0, 2) for p in pcts]
+
+
 def _build_table_block(rows: list[list[str]]) -> TableBlock:
-    headers = rows[0] if rows else []
-    body = rows[1:] if rows else []
+    rows = [list(r) for r in rows if any((c or "").strip() for c in r)]
+    if not rows:
+        return _block(TableBlock, confidence=_CONFIRM_MED)
+    has_header = _looks_like_header_row(rows[0], rows[1:])
+    headers = [str(c).strip() for c in rows[0]] if has_header else []
+    body_rows = rows[1:] if has_header else rows
     table_rows = [
-        [TableCell(content=cell, header=False) for cell in row]
-        for row in body
+        [TableCell(content=str(cell).strip(), header=False) for cell in row]
+        for row in body_rows
     ]
     return _block(
         TableBlock,
         headers=headers,
         rows=table_rows,
+        column_widths=_compute_column_widths(rows),
         original_data=rows,
         confidence=_CONFIRM_MED,
     )
 
 
-def _build_table_from_html(table_html: str) -> TableBlock:
-    import re
+class _TableHTMLParser:
+    """Robust table extractor (thead/tbody/th/td, colspan, rowspan, <br>)."""
 
-    rows: list[list[TableCell]] = []
+    def __init__(self) -> None:
+        from html.parser import HTMLParser
+
+        parser_self = self
+
+        class _Parser(HTMLParser):
+            def __init__(self) -> None:
+                super().__init__(convert_charrefs=True)
+                self.rows: list[list[dict]] = []
+                self.has_th = False
+                self._depth = 0
+                self._row: Optional[list[dict]] = None
+                self._cell: Optional[dict] = None
+                self._buf: list[str] = []
+
+            def handle_starttag(self, tag, attrs):
+                t = tag.lower()
+                if t == "table":
+                    self._depth += 1
+                    return
+                if self._depth != 1:
+                    return
+                if t == "tr":
+                    self._row = []
+                elif t in ("td", "th"):
+                    if self._row is None:
+                        self._row = []
+                    attrs_d = {k.lower(): (v or "") for k, v in attrs}
+                    self._cell = {
+                        "text": "",
+                        "colspan": _int_attr_str(attrs_d.get("colspan"), 1),
+                        "rowspan": _int_attr_str(attrs_d.get("rowspan"), 1),
+                        "header": t == "th",
+                        "align": attrs_d.get("align")
+                        or _css_attr(attrs_d.get("style", ""), "text-align") or "",
+                    }
+                    self._buf = []
+                    if t == "th":
+                        self.has_th = True
+                elif t == "br" and self._cell is not None:
+                    self._buf.append("\n")
+
+            def handle_data(self, data):
+                if self._cell is not None:
+                    self._buf.append(data)
+
+            def handle_endtag(self, tag):
+                t = tag.lower()
+                if t == "table":
+                    self._depth = max(0, self._depth - 1)
+                    return
+                if self._depth != 1:
+                    return
+                if t in ("td", "th") and self._cell is not None:
+                    self._cell["text"] = re.sub(
+                        r"[ \t]+", " ", "".join(self._buf)
+                    ).strip()
+                    if self._row is not None:
+                        self._row.append(self._cell)
+                    self._cell = None
+                    self._buf = []
+                elif t == "tr" and self._row is not None:
+                    if self._row:
+                        self.rows.append(self._row)
+                    self._row = None
+
+        parser_self._parser = _Parser()
+
+
+# ``_TableHTMLParser`` is a thin wrapper so existing call sites stay simple.
+def _parse_table_rows(table_html: str) -> tuple[list[list[dict]], bool]:
+    wrapper = _TableHTMLParser()
+    p = wrapper._parser
+    try:
+        p.feed(table_html or "")
+        p.close()
+    except Exception:  # noqa: BLE001 - never crash on malformed HTML
+        return [], False
+    return p.rows, p.has_th
+
+
+def _build_table_from_html(table_html: str) -> TableBlock:
+    rows_html, has_th = _parse_table_rows(table_html)
+    if not rows_html:
+        return _block(TableBlock, confidence=_CONFIRM_MED)
+
     headers: list[str] = []
+    if has_th:
+        idx = 0
+        while idx < len(rows_html) and any(c["header"] for c in rows_html[idx]):
+            headers.extend(c["text"] for c in rows_html[idx] if c["header"])
+            idx += 1
+
+    # Keep every row (including header rows) so colspan/rowspan structure and
+    # text integrity are preserved; the renderer lifts header rows into <thead>.
+    rows: list[list[TableCell]] = []
     original: list[list[str]] = []
-    # crude but deterministic: parse rows and cells
-    row_iter = re.finditer(r"<tr[^>]*>(.*?)</tr>", table_html, re.DOTALL | re.IGNORECASE)
-    for rm in row_iter:
-        row_cells: list[TableCell] = []
-        row_plain: list[str] = []
-        for cm in re.finditer(
-            r"<(th|td)([^>]*)>(.*?)</\1>", rm.group(1), re.DOTALL | re.IGNORECASE
-        ):
-            tag, attrs, inner = cm.group(1), cm.group(2), cm.group(3)
-            text = _strip_html_inner(inner)
-            rowspan = _int_attr(attrs, "rowspan", 1)
-            colspan = _int_attr(attrs, "colspan", 1)
-            align = _str_attr(attrs, "align") or _css_attr(attrs, "text-align")
-            header = tag.lower() == "th"
-            cell = TableCell(
-                content=text, rowspan=rowspan, colspan=colspan,
-                header=header, align=align,
+    for row in rows_html:
+        cells = [
+            TableCell(
+                content=c["text"],
+                colspan=c["colspan"],
+                rowspan=c["rowspan"],
+                header=c["header"],
+                align=c["align"] or None,
             )
-            if header:
-                headers.append(text)
-            row_cells.append(cell)
-            row_plain.append(text)
-        if not row_cells:
-            continue
-        rows.append(row_cells)
-        original.append(row_plain)
+            for c in row
+        ]
+        rows.append(cells)
+        original.append([c["text"] for c in row])
+
+    plain_rows = [[c["text"] for c in row] for row in rows_html]
     return _block(
         TableBlock,
         headers=headers,
         rows=rows,
+        column_widths=_compute_column_widths(plain_rows),
         original_data=original,
         confidence=_CONFIRM_MED,
     )
@@ -683,6 +871,13 @@ def _build_table_from_html(table_html: str) -> TableBlock:
 
 def _int_attr(attrs: str, name: str, default: int) -> int:
     m = re.search(rf'{name}\s*=\s*["\']?(\d+)["\']?', attrs, re.IGNORECASE)
+    return int(m.group(1)) if m else default
+
+
+def _int_attr_str(value: Optional[str], default: int) -> int:
+    if not value:
+        return default
+    m = re.search(r"(\d+)", str(value))
     return int(m.group(1)) if m else default
 
 

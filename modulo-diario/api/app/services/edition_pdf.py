@@ -2,6 +2,7 @@
 
 import base64
 import io
+import logging
 import os
 import re
 import uuid
@@ -37,6 +38,8 @@ MATTER_IMAGE_URL_RE = re.compile(
     r'([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})/'
     r'(page_[0-9]+\.(?:png|jpg|jpeg))"'
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _path_is_within(path: Path, root: Path) -> bool:
@@ -102,6 +105,84 @@ def _localize_matter_images(content_html: str) -> str:
     return MATTER_IMAGE_URL_RE.sub(replace, content_html)
 
 
+def _institution_context(organization) -> dict:
+    """Institutional identity for the per-page header/footer.
+
+    The legal act must carry the municipality's identity on every page, so the
+    address/CNPJ/phone are rendered together with (not instead of) the
+    authenticity/verification block. Fields that are not configured are simply
+    omitted; nothing is invented.
+    """
+    if organization is None:
+        return {"name": "", "address": "", "cnpj": "", "contact": ""}
+
+    address_parts = [
+        organization.address_street,
+        organization.address_number,
+        organization.address_district,
+        organization.address_city,
+        organization.state,
+    ]
+    address = ", ".join(str(p).strip() for p in address_parts if p and str(p).strip())
+    postal = (organization.address_postal_code or "").strip()
+    if postal:
+        address = f"{address} — CEP {postal}" if address else f"CEP {postal}"
+
+    contact_parts = []
+    if organization.phone:
+        contact_parts.append(f"Tel: {organization.phone}")
+    if organization.email:
+        contact_parts.append(str(organization.email))
+    if organization.site:
+        contact_parts.append(str(organization.site))
+
+    return {
+        "name": organization.name or "",
+        "address": address,
+        "cnpj": organization.cnpj or "",
+        "contact": " · ".join(contact_parts),
+    }
+
+
+def _resolve_logo_uri(organization, template_dir: Path) -> str:
+    """Per-tenant coat of arms, falling back to the bundled brasão.
+
+    Accepts only safe sources: ``data:image/*`` and local files inside the
+    uploads directory. External URLs are ignored (the PDF fetcher blocks
+    network access), so a misconfigured tenant never breaks PDF generation.
+    """
+    fallback = (template_dir / "brasao.png").as_uri()
+    if organization is None:
+        return fallback
+    layout = getattr(organization, "institutional_layout", None) or {}
+    candidate = None
+    if isinstance(layout, dict):
+        candidate = layout.get("coat_of_arms_url") or layout.get("logo_url")
+    candidate = candidate or getattr(organization, "logo_url", None)
+    if not candidate:
+        return fallback
+    candidate = str(candidate).strip()
+    if candidate.startswith("data:image/"):
+        return candidate
+    if candidate.startswith("file://"):
+        return candidate
+    try:
+        parsed = urlsplit(candidate)
+        path = parsed.path if parsed.scheme else candidate
+        if not path:
+            return fallback
+        local = Path(unquote(path))
+        if not local.is_absolute():
+            local = Path(settings.UPLOAD_DIR) / local
+        resolved = local.resolve()
+        uploads = Path(settings.UPLOAD_DIR).resolve()
+        if _path_is_within(resolved, uploads) and resolved.exists():
+            return resolved.as_uri()
+    except Exception:  # noqa: BLE001 - never fail the edition over a logo
+        return fallback
+    return fallback
+
+
 def _normalize_for_summary(value: str) -> str:
     return re.sub(r"\s+", " ", value or "").strip().casefold()
 
@@ -152,6 +233,11 @@ def _render_semantic_content(item: dict) -> str | None:
             include_page_rules=False,
         )
     except Exception:  # noqa: BLE001 - never fail the edition on render
+        logger.warning(
+            "Semantic render failed for snapshot item %s; falling back to legacy content_html",
+            item.get("id"),
+            exc_info=True,
+        )
         return None
 
 
@@ -298,11 +384,13 @@ def generate_edition_pdf_sync(
                 })
 
         type_labels = {"normal": "Normal", "extra": "Extra", "suplementar": "Suplementar"}
+        institution = _institution_context(edition.organization)
 
         env = Environment(loader=FileSystemLoader(str(template_dir)))
         template = env.get_template("edition.html")
 
         css_path = str(template_dir / "edition.css")
+        logo_uri = _resolve_logo_uri(edition.organization, template_dir)
 
         def _render_html(total_pages: str = "") -> str:
             verification_target = f"{verification_base_url.rstrip('/')}/{verification_code}"
@@ -318,7 +406,7 @@ def generate_edition_pdf_sync(
                     f"{edition.publication_date.year}"
                 ),
                 edition_year_label=f"ANO: {edition.year}",
-                logo_path=(template_dir / "brasao.png").as_uri(),
+                logo_path=logo_uri,
                 verification_code=verification_code,
                 is_preliminary=False,
                 verification_url=verification_base_url,
@@ -329,6 +417,7 @@ def generate_edition_pdf_sync(
                 total_pages=total_pages,
                 total_matters=len(summary_items),
                 qr_code_uri=_qr_data_uri(verification_target),
+                institution=institution,
                 # Stable SHA-256 of the canonical publication content. This is
                 # distinct from the final PDF hash protected by PAdES.
                 content_manifest_hash=verified_manifest_hash,

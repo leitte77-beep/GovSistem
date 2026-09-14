@@ -1,21 +1,19 @@
 import hashlib
 import hmac
 import logging
-import os
 import re
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.auth import get_current_user, require_roles
 from app.core.config import settings
-from app.core.config import settings as api_settings
 from app.core.database import get_db
 from app.middleware.audit import capture_request_info, log_audit_event
 from app.models.edition import Edition
@@ -635,6 +633,28 @@ async def reopen_edition(
     if edition.signatures:
         raise HTTPException(422, "Cannot reopen an edition that has already been signed")
 
+    # Reopening invalidates the frozen edition: the unsigned PDF and the
+    # canonical snapshot must not survive into the next close, otherwise the
+    # next generated/signed PDF would be based on stale content (and the stale
+    # PDF would make the edition look signable while still in DRAFT).
+    from app.models.edition_publication_snapshot import EditionPublicationSnapshot
+
+    await db.execute(
+        update(EditionPublicationSnapshot)
+        .where(
+            EditionPublicationSnapshot.edition_id == edition.id,
+            EditionPublicationSnapshot.is_valid.is_(True),
+        )
+        .values(is_valid=False)
+    )
+
+    edition.pdf_path = None
+    edition.pdf_hash = None
+    edition.source_pdf_hash = None
+    edition.content_manifest_hash = None
+    edition.renderer_version = None
+    edition.layout_version = None
+
     edition.change_status(EditionStatus.DRAFT)
     await db.commit()
     await db.refresh(edition, attribute_names=["updated_at"])
@@ -780,16 +800,20 @@ async def sign_edition(
     organ_name = organization.name if organization else None
     pdf_layout = organization.pdf_layout if organization else "classico"
 
-    pdf_full_path = os.path.join(api_settings.UPLOAD_DIR, edition.pdf_path)
+    # O PDF é gravado sob o prefixo do tenant (UPLOAD_DIR/<slug>/pdf/<arquivo>)
+    # quando STORAGE_TENANT_ISOLATION está ativo. Resolver pelo mesmo helper do
+    # download/publish evita o falso "arquivo ausente" na assinatura.
+    from app.core.public_utils import read_public_file
 
-    if not os.path.exists(pdf_full_path):
+    pdf_bytes, _pdf_mime = read_public_file(
+        edition.pdf_path,
+        organization.slug if organization else None,
+    )
+    if pdf_bytes is None:
         # Fase 3: a assinatura NÃO re-gera o PDF. O PDF da pré-visualização
         # (imutável, não assinado) deve existir no storage; caso contrário a
         # operação falha claramente e a edição permanece sem status SIGNED.
         raise HTTPException(422, "PDF não assinado não encontrado no storage. Gere o PDF novamente antes de assinar.")
-
-    with open(pdf_full_path, "rb") as f:
-        pdf_bytes = f.read()
 
     source_pdf_hash = hashlib.sha256(pdf_bytes).hexdigest()
     expected_source_hash = edition.source_pdf_hash or edition.pdf_hash
@@ -996,12 +1020,18 @@ async def validate_edition_signature(
     actual_signed_hash = None
     signed_path = edition.signed_pdf_path
     if signed_path:
-        import os as _os
-        pdf_full_path = _os.path.join(api_settings.UPLOAD_DIR, signed_path)
-        if _os.path.exists(pdf_full_path):
+        from app.core.public_utils import read_public_file
+        from app.models.organization import Organization as _Organization
+
+        _org_result = await db.execute(
+            select(_Organization).where(_Organization.id == edition.organization_id)
+        )
+        _org = _org_result.scalar_one_or_none()
+        signed_bytes, _mime = read_public_file(
+            signed_path, _org.slug if _org else None
+        )
+        if signed_bytes is not None:
             try:
-                with open(pdf_full_path, "rb") as f:
-                    signed_bytes = f.read()
                 actual_signed_hash = _hl.sha256(signed_bytes).hexdigest()
                 import httpx
                 resp = await httpx.AsyncClient().post(
@@ -1033,10 +1063,20 @@ async def validate_edition_signature(
         timestamp_status=timestamp_status,
     )
 
-    normalized_status = result.status
     if not valid:
         issues.append("Stored integrity hashes inconsistent")
-    final_status = "valid" if (valid and result.integrity and no_hard_errors(result.errors)) else "invalid"
+    if not chain_trusted:
+        issues.append(
+            "Cadeia de confiança ICP-Brasil não verificada "
+            "(configure as raízes ICP_BRASIL_ROOTS_PATH no signer)"
+        )
+    hard_ok = valid and result.integrity and no_hard_errors(result.errors)
+    if not hard_ok:
+        final_status = "invalid"
+    elif chain_trusted:
+        final_status = "valid"
+    else:
+        final_status = "indeterminate"
 
     # Persist the validation outcome.
     edition.signature_validation_status = final_status
@@ -1047,7 +1087,10 @@ async def validate_edition_signature(
         db=db, action=AuditAction.EDITION_SIGNED,
         user_id=user.id, organization_id=user.organization_id,
         entity_type="edition", entity_id=edition.id,
-        description=f"Signature re-validated for edition {edition.year}/{edition.number} -> {final_status}",
+        description=(
+            "Signature re-validated for edition "
+            f"{edition.year}/{edition.number} -> {final_status}"
+        ),
         ip_address=info["ip_address"],
     )
     await db.commit()
@@ -1060,8 +1103,15 @@ async def validate_edition_signature(
         certificate_serial=cert_info.get("serial", ""),
         certificate_thumbprint=cert_info.get("thumbprint", ""),
         verification_code=edition.verification_code or "",
+        chain_trusted=chain_trusted,
         issues=issues,
-        recommendation="OK" if final_status == "valid" else "Re-sign required",
+        recommendation=(
+            "OK"
+            if final_status == "valid"
+            else "Chain not verified — configure ICP-Brasil roots"
+            if final_status == "indeterminate"
+            else "Re-sign required"
+        ),
     )
 
 

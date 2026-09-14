@@ -153,6 +153,7 @@ def _build_authenticity(edition: Edition, snapshot: Optional[dict]) -> dict:
             "signature_format": ci.get("signature_format", "PAdES"),
             "validation_status": ci.get("validation_status", ""),
             "sha256_signed": ci.get("sha256_signed", ""),
+            "chain_trusted": bool(ci.get("chain_trusted")),
             "verified_at": ci.get("validated_at") or ci.get("verified_at"),
             "timestamp": ci.get("timestamp"),
             "verification_code": ci.get("verification_code") or edition.verification_code or "",
@@ -165,7 +166,13 @@ def _build_authenticity(edition: Edition, snapshot: Optional[dict]) -> dict:
 
     validation_checked_at = None
     intact = bool(edition.signature_validation_status)
-    trusted = edition.signature_validation_status in ("valid", "ok")
+    # "Trusted" requires the ICP-Brasil chain to have been actually validated,
+    # not merely an intact CMS. Without configured roots this stays False and
+    # the public page never claims a trusted signature.
+    chain_trusted = bool(signatures and signatures[0].get("chain_trusted"))
+    trusted = bool(
+        edition.signature_validation_status in ("valid", "ok") and chain_trusted
+    )
     # Derive independent sub-states from the last signature's certificate info
     # (only when a signature exists). None = não verificado / indisponível.
     certificate_valid = None
@@ -191,7 +198,7 @@ def _build_authenticity(edition: Edition, snapshot: Optional[dict]) -> dict:
             "intact": intact,
             "trusted": trusted,
             "certificate_valid": certificate_valid,
-            "chain_trusted": trusted,  # requires real ICP-Brasil roots
+            "chain_trusted": chain_trusted,  # requires real ICP-Brasil roots
             "revocation_checked": revocation_checked,
             "timestamped": timestamped,
             "snapshot_intact": snapshot_ok,

@@ -25,6 +25,39 @@ def _iso(dt: Optional[datetime]) -> Optional[str]:
     return dt.isoformat()
 
 
+def derive_semantic_from_matter(matter) -> Optional[SemanticDocument]:
+    """Best-effort semantic document derived from a legacy matter's HTML.
+
+    Used at snapshot time so matters authored in the rich-text editor are
+    published with automatic diagramming (preamble, súmula, articles, incisos,
+    tables, signature) without requiring the operator to redo the content.
+    Returns ``None`` when deriving would be unsafe or produce nothing.
+    """
+    mode = str(getattr(matter, "content_mode", "") or "").lower()
+    if mode in ("pdf", "original_pdf"):
+        return None
+    html = getattr(matter, "content_html", "") or ""
+    if not html.strip():
+        return None
+    # A matter whose body is an uploaded/original PDF rendered as page images
+    # must keep the legacy path: the semantic renderer blocks network assets.
+    if "matter-content" in html and "<img" in html.lower():
+        return None
+    try:
+        from .parser import parse_document
+
+        document = parse_document(
+            html=html,
+            title=getattr(matter, "title", "") or "",
+            summary=getattr(matter, "summary", "") or "",
+        )
+    except Exception:  # noqa: BLE001 - never fail the snapshot over parsing
+        return None
+    if not document.blocks and not document.summary:
+        return None
+    return document
+
+
 def matter_snapshot(
     matter,
     *,
@@ -44,6 +77,12 @@ def matter_snapshot(
             semantic = SemanticDocument.model_validate(raw)
         except Exception:
             semantic = None
+    if semantic is None:
+        # Legacy matter: derive the canonical semantic document from its HTML
+        # at freeze time so the published PDF/HTML are always auto-diagrammed,
+        # without mutating the stored matter. Non-derivable content (uploaded
+        # original PDFs, page images) keeps the legacy rendering path.
+        semantic = derive_semantic_from_matter(matter)
 
     if attachments_override is not None:
         attachments = attachments_override

@@ -43,6 +43,31 @@ describe("cleanPastedHtml (rich paste)", () => {
     const { html: out } = cleanPastedHtml(html);
     expect(out).not.toContain("javascript:");
   });
+
+  it("converte espaços não separáveis (&nbsp;) em espaços comuns", () => {
+    const { html: out } = cleanPastedHtml("<p>Art.&nbsp;1º&nbsp;—&nbsp;texto</p>");
+    expect(out).not.toContain("&nbsp;");
+    expect(out).toContain("Art. 1º — texto");
+  });
+
+  it("remove <br> nas bordas de parágrafos (artefato do Word)", () => {
+    const { html: out } = cleanPastedHtml("<p><br>Considerando o pedido;<br></p>");
+    expect(out).toMatch(/^<p>Considerando o pedido;<\/p>$/);
+  });
+
+  it("colapsa sequências de 3+ <br> mas preserva quebras simples", () => {
+    const { html: out } = cleanPastedHtml("<p>linha1<br>linha2<br><br><br><br>linha3</p>");
+    expect(out).toContain("linha1<br>linha2");
+    expect(out).toContain("linha3");
+    expect((out.match(/<br>/g) || []).length).toBe(3);
+    expect(out).toContain("linha2<br><br>linha3");
+  });
+
+  it("remove spans/inline wrappers vazios do Office", () => {
+    const { html: out } = cleanPastedHtml('<p><span style="font-size:11pt"></span>Texto</p>');
+    expect(out).not.toContain("<span");
+    expect(out).toContain("Texto");
+  });
 });
 
 describe("plain text → structured (no silent tables)", () => {

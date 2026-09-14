@@ -130,6 +130,7 @@ class ValidateSignatureResponse(BaseModel):
     certificate_serial: str
     certificate_thumbprint: str
     verification_code: str
+    chain_trusted: bool = False
     issues: list[str] = []
     recommendation: str = "OK"
 

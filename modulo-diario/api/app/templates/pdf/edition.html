@@ -7,6 +7,7 @@
 </head>
 <body>
 {% set effective_verification_code = verification_code|default(preliminary_code|default(""), true) %}
+{% set institution = institution|default({}, true) %}
 
 <article class="document">
   <div class="template-metadata">{{ organ_name }} {{ edition.title }} {{ edition_type_label }} {{ publication_date }}</div>
@@ -15,7 +16,7 @@
   <header class="cover">
     <img class="coat-of-arms" src="{{ logo_path }}" alt="Brasão do Município">
     <h1>DIÁRIO OFICIAL ELETRÔNICO</h1>
-    <h2>MUNICÍPIO DE FAROL</h2>
+    <h2>{{ institution.name or organ_name }}</h2>
 
     <div class="edition-strip">
       <div>EDIÇÃO Nº: {{ edition.number }}</div>
@@ -28,7 +29,7 @@
     {% endif %}
 
     <div class="signature-banner">
-      Assinado digitalmente por <strong>MUNICÍPIO DE FAROL | {{ effective_verification_code }}</strong>
+      Assinado digitalmente por <strong>{{ institution.name or organ_name }} | {{ effective_verification_code }}</strong>
     </div>
   </header>
 

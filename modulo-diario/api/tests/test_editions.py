@@ -420,7 +420,7 @@ async def test_close_edition(mock_capture, mock_audit, client, override_db_and_a
 @pytest.mark.anyio
 async def test_reopen_edition(mock_capture, mock_audit, client, override_db_and_auth):
     mock_db = override_db_and_auth
-    edition = _make_edition(status=EditionStatus.CLOSED)
+    edition = _make_edition(status=EditionStatus.CLOSED, pdf_path="x.pdf", pdf_hash="deadbeef")
     edition.signatures = []
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = edition
@@ -428,6 +428,11 @@ async def test_reopen_edition(mock_capture, mock_audit, client, override_db_and_
 
     response = await client.post(f"/api/v1/editions/{edition.id}/reopen")
     assert response.status_code == 200
+    # Reopening must drop the unsigned PDF/snapshot so the next close re-freezes.
+    assert edition.pdf_path is None
+    assert edition.pdf_hash is None
+    assert edition.source_pdf_hash is None
+    assert edition.content_manifest_hash is None
 
 
 @pytest.mark.anyio
@@ -505,15 +510,14 @@ async def test_generate_pdf_already_generated(client, override_db_and_auth):
 @patch("app.api.v1.editions.log_audit_event", new_callable=AsyncMock)
 @patch("app.api.v1.editions.capture_request_info", return_value={"ip_address": "127.0.0.1", "user_agent": ""})
 @pytest.mark.anyio
-@patch("builtins.open")
-@patch("os.path.exists", return_value=True)
-@patch("os.path.join", return_value="/tmp/mock.pdf")
+@patch("app.core.public_utils.read_public_file",
+       return_value=(b"fake-pdf-bytes", "application/pdf"))
 @patch("app.core.storage.storage")
 @patch("httpx.AsyncClient")
 @pytest.mark.anyio
 async def test_sign_edition(
-    mock_http, mock_storage, mock_join, mock_exists, mock_open,
-    mock_capture, mock_audit, client, override_db_and_auth, tmp_path,
+    mock_http, mock_storage, mock_read_pdf,
+    mock_capture, mock_audit, client, override_db_and_auth,
 ):
     mock_db = override_db_and_auth
     source_hash = __import__("hashlib").sha256(b"fake-pdf-bytes").hexdigest()
@@ -527,10 +531,6 @@ async def test_sign_edition(
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = edition
     mock_db.execute.return_value = mock_result
-
-    mock_file = MagicMock()
-    mock_file.read.return_value = b"fake-pdf-bytes"
-    mock_open.return_value.__enter__.return_value = mock_file
 
     mock_resp = MagicMock()
     mock_resp.status_code = 200
@@ -562,13 +562,12 @@ async def test_sign_edition(
     assert "verification_code" in data
 
 
-@patch("builtins.open")
-@patch("os.path.exists", return_value=True)
-@patch("os.path.join", return_value="/tmp/mock.pdf")
+@patch("app.core.public_utils.read_public_file",
+       return_value=(b"adulterado", "application/pdf"))
 @patch("httpx.AsyncClient")
 @pytest.mark.anyio
 async def test_sign_edition_rejects_pdf_changed_after_generation(
-    mock_http, mock_join, mock_exists, mock_open, client, override_db_and_auth,
+    mock_http, mock_read_pdf, client, override_db_and_auth,
 ):
     mock_db = override_db_and_auth
     edition = _make_edition(
@@ -579,7 +578,6 @@ async def test_sign_edition_rejects_pdf_changed_after_generation(
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = edition
     mock_db.execute.return_value = mock_result
-    mock_open.return_value.__enter__.return_value.read.return_value = b"adulterado"
 
     response = await client.post(f"/api/v1/editions/{edition.id}/sign", json={})
 

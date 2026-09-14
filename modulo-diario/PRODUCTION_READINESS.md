@@ -168,3 +168,61 @@ assinado, isolamento de tenant nas entidades centrais, testes verdes.
 **Bloqueios externos/decisão:** certificado ICP-Brasil real + raízes, ACT real
 configurado e validado, política PAdES (revisão jurídica), integração com o
 PSC/HSM real, backup/restore executado e observabilidade.
+
+---
+
+## Rodada 3 — Automação de diagramação e tabelas (2026-09-14)
+
+Objetivo: "colar e o sistema diagrama sozinho", com tabelas contábeis/compras
+grandes legíveis no PDF. Foco na cópia oficial `modulo-diario/`.
+
+### Entregue
+
+- **Derivação semântica automática no fechamento** (`app/semantic/snapshot.py`
+  → `derive_semantic_from_matter`): matérias legadas (`content_mode=rich_text`)
+  passam a virar `SemanticDocument` no snapshot, sem mutar a matéria. PDF e
+  página pública passam a sair diagramados. PDFs originais (`original_pdf`) e
+  matérias de imagem são preservados.
+- **Parser de tabela reescrito** (`app/semantic/parser.py`): extração via
+  `html.parser` (thead/tbody/th/td, `colspan/rowspan`, `<br>`, células vazias),
+  cabeçalho só quando é cabeçalho, conteúdo misto texto + tabela, larguras de
+  coluna por conteúdo (`column_widths`).
+- **Reconhecimento de ato**: SÚMULA/EMENTA em quebra simples, preâmbulo,
+  incisos romanos até 100, alíneas de 2 letras, assinatura com muito mais
+  cargos.
+- **Layout de tabela no PDF** (`app/semantic/renderer.py` + CSS dos 3 layouts):
+  `colgroup` com larguras proporcionais, células numéricas em `nowrap`
+  alinhadas à direita, fonte adaptativa por nº de colunas, cabeçalho repetido;
+  `table-layout: auto` no caminho legado. Fim da quebra de números
+  (`35,4000` → `35,4000` + `0`) e de palavras (`PLASTILIT` → `PLASTIL/IT`).
+- **Paginação editorial**: removida a quebra forçada `.matter + .matter
+  { page-break-before: always }` nos 3 layouts — os atos não "pulam página".
+- **Multi-tenant no PDF**: removido "PREFEITURA DE FAROL" fixo; usa o nome do
+  órgão. Logo por tenant (`institutional_layout`/`logo_url` local ou `data:`),
+  com fallback seguro ao brasão do template.
+- **Editor**: colagem de texto puro usa o formatador de ato oficial
+  (`formatOfficialAct`).
+- **Assinatura honesta** (`services/signature_validation.py`,
+  `public_v1/semantic.py`, `editions.py`): assinatura íntegra sem cadeia
+  ICP-Brasil validada deixa de ser reportada como "válida" — passa a
+  `indeterminate` (raízes ausentes), com `chain_trusted` explícito. A UI pública
+  já exibe "Assinada digitalmente pelo órgão emissor" nesse caso.
+- **Evidência**: matéria real LICITAÇÃO 03/2026 (9 colunas) gera PDF com
+  `35,4000`, `1.289,7000`, `110,0000`, `PLASTILIT` e `BARBOZA` íntegros.
+- **Testes**: `tests/test_table_diagramming.py` (10),
+  `tests/test_signature_validation_honesty.py` (5). API **654 passed / 4
+  failed** (as 4 falhas são pré-existentes: `test_editions` x2, `test_public_v1`,
+  `test_signing_credentials_api`); web-admin **100 passed**; `tsc` limpo.
+
+### Ainda bloqueado (decisão/credencial externa)
+
+- Raízes **ICP-Brasil** reais → `chain_trusted=True`; ACT/RFC 3161 real;
+  política PAdES (AD-RB/RT/RV/RC/RA) — `LEGAL_REVIEW_REQUIRED`.
+- A3/HSM: integração com o PSC/HSM do ente.
+- RLS/rate limiting/cofre de segredos, backup/restore executado, observabilidade
+  e PDF/UA.
+- Consolidação da cópia duplicada `apps/*` (serve govsistem/govtask/govfrota) —
+  planejar sem derrubar domínios vivos.
+- Edições já publicadas têm snapshot imutável: só novas edições ganham a
+  diagramação automática (retroagir exige republicação/retificação controlada).
+

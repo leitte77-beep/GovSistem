@@ -73,17 +73,24 @@ class SignatureValidationService:
         if timestamp_status is not None:
             result.timestamp_status = timestamp_status
 
-        # Determine status.
+        # Determine status. A cryptographically intact signature is NOT the
+        # same as a trusted one: when the ICP-Brasil chain could not be
+        # validated (missing roots, unreachable LCR/OCSP) the outcome is
+        # "indeterminate", never "valid".
         if signer_report.get("errors") and not result.integrity:
             result.status = ValidationStatus.INVALID.value
         elif not sigs:
             result.status = ValidationStatus.INDETERMINATE.value
-        elif result.integrity and not result.chain_trusted:
-            # Integrity intact but chain not trusted (e.g. self-signed test cert).
-            result.status = ValidationStatus.VALID.value
-        elif result.integrity and result.chain_trusted:
+        elif not result.integrity:
+            result.status = ValidationStatus.INVALID.value
+        elif result.certificate_valid is False:
+            result.status = ValidationStatus.INVALID.value
+        elif result.chain_trusted:
             result.status = ValidationStatus.VALID.value
         else:
-            result.status = ValidationStatus.INVALID.value
+            # Integrity intact but the chain was not validated: not "valid",
+            # and deliberately not pushed into ``errors`` (it is not an
+            # integrity failure). Callers surface this as a warning/issue.
+            result.status = ValidationStatus.INDETERMINATE.value
 
         return result

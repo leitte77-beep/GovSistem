@@ -96,17 +96,20 @@ export default function Editor({
           return true;
         }
 
-        // 2) No HTML — only plain text. Detect PDF-extracted text.
-        if (text) {
-          const detected = detectPdfExtractedText(text);
-          if (detected.likely) {
-            setPendingPdfText(text);
-            setPdfReasons(detected.reasons);
-            return true; // ask the user before touching legal content
+          // 2) No HTML — only plain text. Detect PDF-extracted text.
+          if (text) {
+            const detected = detectPdfExtractedText(text);
+            if (detected.likely) {
+              setPendingPdfText(text);
+              setPdfReasons(detected.reasons);
+              return true; // ask the user before touching legal content
+            }
+            // Official-act formatter recognizes preamble, SÚMULA/EMENTA,
+            // DECRETA/RESOLVE, articles, incisos, CONSIDERANDO, place/date and
+            // signature, and rebuilds tab-separated tables as real tables.
+            insertHtml(view, formatOfficialAct(text));
+            return true;
           }
-          insertHtml(view, plainTextToStructuredHtml(text));
-          return true;
-        }
 
         return false;
       },

@@ -1,11 +1,37 @@
 @page {
   size: A4;
-  margin: 1.4cm 1.7cm 3.2cm 1.7cm;
+  margin: 2.6cm 1.7cm 3.2cm 1.7cm;
+  @top-center {
+    content: element(institutional-header);
+    width: 100%;
+  }
   @bottom-center {
     content: element(authenticity-seal);
     width: 100%;
   }
 }
+
+@page :first {
+  @top-center { content: none; }
+}
+
+.page-institutional-header {
+  position: running(institutional-header);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6pt;
+  width: 100%;
+  padding: 2pt 0 4pt;
+  border-bottom: .8pt solid #b6c0cc;
+  color: #001b3f;
+  font: 8pt/1.15 "Liberation Sans", Arial, sans-serif;
+  text-align: left;
+}
+
+.page-institutional-header img { width: 22pt; height: 22pt; object-fit: contain; }
+.page-institutional-copy strong { display: block; font-size: 8pt; text-transform: uppercase; }
+.page-institutional-copy span { display: block; font-size: 6.5pt; }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -147,9 +173,12 @@ body {
   page-break-inside: auto;
 }
 
+/* Fluxo contínuo: a matéria só quebra de página quando o conteúdo não cabe,
+   em vez de forçar cada ato a começar numa nova página (desperdício de papel e
+   "atos pulando página"). */
 .matter + .matter {
-  page-break-before: always;
-  break-before: page;
+  break-before: auto;
+  page-break-before: auto;
 }
 
 .matter-title {
@@ -220,6 +249,16 @@ body {
 
 .matter-content p:empty::before {
   content: "\00a0";
+}
+
+/* Corpo de ato oficial no modo legado (HTML colado): garante o recuo de
+   primeira linha e o alinhamento justificado do modelo jurídico. Parágrafos
+   centralizados (assinaturas, "RESOLVE:", fecho) e conteúdo tabular/lista
+   permanecem intactos. O estilo inline continua tendo precedência sobre
+   text-align, então nada que já foi centralizado é deslocado. */
+.matter-content > p:not([style*="center"]):not(:empty) {
+  text-align: justify;
+  text-indent: 1.25cm;
 }
 
 .matter-content strong,
@@ -345,7 +384,7 @@ body {
 .matter-content table {
   width: 100% !important;
   max-width: 100% !important;
-  table-layout: fixed;
+  table-layout: auto;
   border-collapse: collapse;
   border-spacing: 0;
   margin: 8pt 0;
@@ -362,9 +401,13 @@ body {
   border: 0.8pt solid #333;
   padding: 3pt 5pt;
   vertical-align: top;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  overflow-wrap: break-word;
+  word-break: normal;
 }
+
+/* Células curtas/numéricas nunca quebram (evita "35,4000" virar "35,4000 0"). */
+.matter-content td p,
+.matter-content th p { overflow-wrap: inherit; word-break: inherit; }
 
 .matter-content img { display: block; max-width: 100% !important; max-height: 225mm; width: auto !important; height: auto !important; object-fit: contain; page-break-inside: avoid; break-inside: avoid; }
 
