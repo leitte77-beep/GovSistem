@@ -185,7 +185,6 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
   const errors: Record<string, string> = {};
   if (touched.title && !title.trim()) errors.title = "O título é obrigatório";
   if (touched.actType && !actTypeId) errors.actType = "Selecione o tipo do ato";
-  if (touched.summary && !summary.trim()) errors.summary = "A súmula é obrigatória";
   // A saved semantic document also counts as content even when the rich-text
   // HTML is empty (the semantic document is the canonical source).
   const hasContent = Boolean((contentHtml && contentHtml !== "<p></p>") || hasSemantic);
@@ -208,7 +207,6 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
     if (s === 1) {
       if (!title.trim()) { toast.error("Digite o título da matéria"); return false; }
       if (!actTypeId) { toast.error("Selecione o tipo do ato"); return false; }
-      if (!summary.trim()) { toast.error("Escreva a súmula da matéria"); return false; }
       if (typeCfg.number_required && !actNumber.trim()) { toast.error("Informe o número do ato"); return false; }
       if (needsReference && !referencesMatterId) { toast.error("Selecione a publicação original"); return false; }
       return true;
@@ -269,7 +267,6 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
 
       if (!title.trim()) { toast.error("Digite o título da matéria"); return; }
       if (!actTypeId) { toast.error("Selecione o tipo do ato"); return; }
-      if (!summary.trim()) { toast.error("Escreva a súmula da matéria"); return; }
       if (!hasContent) { toast.error("Escreva o conteúdo da matéria"); return; }
       if (needsReference && !referencesMatterId) { toast.error("Selecione a publicação original"); return; }
 
@@ -675,14 +672,14 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
                   <div>
                     <div className="flex items-center justify-between mb-2">
                       <label htmlFor="matter-summary" className="block text-label-md font-label-md text-on-surface-variant">
-                        SÚMULA <span className="text-error">*</span>
+                        SÚMULA <span className="text-on-surface-variant font-normal">(opcional)</span>
                       </label>
                     </div>
                     <textarea
                       id="matter-summary"
                       aria-describedby="matter-summary-count"
                       className="w-full h-32 bg-surface-container-lowest border border-outline-variant rounded-xl p-4 focus:ring-2 focus:ring-primary focus:border-primary transition-all outline-none text-body-md resize-none"
-                      placeholder="Breve descrição do conteúdo do ato. Ex.: Exonera a servidora Neide Gomes Caviquioni."
+                      placeholder="Breve descrição do conteúdo do ato, quando aplicável."
                       value={summary}
                       onChange={(e) => setSummary(e.target.value)}
                       disabled={!isEditable} maxLength={500} />
