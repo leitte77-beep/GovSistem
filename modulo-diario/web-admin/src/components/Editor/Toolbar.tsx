@@ -333,7 +333,7 @@ export default function Toolbar({ editor, onPreview, onAutoFormat, onOfficialFor
         <Button onClick={onOfficialFormat} title="Formatar como ato oficial">
           <span className="material-symbols-outlined text-[17px]">gavel</span>
         </Button>
-        <Button onClick={onAiFormat} title="Autoformatar com IA" disabled={aiBusy}>
+        <Button onClick={onAiFormat} title="Montar matéria com IA a partir do texto do editor" disabled={aiBusy}>
           <span className="material-symbols-outlined text-[17px]">{aiBusy ? "progress_activity" : "smart_toy"}</span>
         </Button>
       </div>

@@ -12,6 +12,7 @@ import { autoformatHtml, plainTextToStructuredHtml } from "@/lib/contentAutoform
 import { formatOfficialAct } from "@/lib/officialActFormat";
 import { cleanPastedHtml, detectPdfExtractedText, htmlLacksFormatting } from "@/lib/clipboard";
 import { api } from "@/lib/api";
+import type { AiComposeResult } from "@/types/document_model";
 import HtmlPreview from "../Matter/HtmlPreview";
 import "@/app/editor-content.css";
 
@@ -32,6 +33,7 @@ interface EditorProps {
     title?: string;
     summary?: string;
   };
+  onAiCompose?: (result: AiComposeResult) => void;
 }
 
 /**
@@ -72,6 +74,7 @@ export default function Editor({
   onCleanWarnings,
   onPasteSource,
   aiContext,
+  onAiCompose,
 }: EditorProps) {
   const [showPreview, setShowPreview] = useState(false);
   const [viewMode, setViewMode] = useState<"edit" | "a4">("edit");
@@ -217,16 +220,25 @@ export default function Editor({
   const handleAiFormat = async () => {
     setAiBusy(true);
     try {
-      const result = await api.formatContentWithAI({
-        content: editor.getHTML(),
-        act_type: aiContext?.actType,
-        title: aiContext?.title,
-        summary: aiContext?.summary,
-      });
-      editor.commands.setContent(result.structured_html, false);
-      onChange(result.structured_html);
+      const prompt = editor.getText({ blockSeparator: "\n" }).trim();
+      if (!prompt) {
+        onCleanWarnings?.(["Descreva a matéria no editor antes de usar o robô."]);
+        return;
+      }
+      const result = await api.aiCompose({ prompt });
+      editor.commands.setContent(result.content_html, false);
+      onChange(result.content_html);
       onChangeJson?.(editor.getJSON());
-      if (result.notes.length > 0) onCleanWarnings?.(result.notes);
+      onAiCompose?.(result);
+      onCleanWarnings?.([
+        result.pending.length
+          ? `Modelo ${result.matched_model.name} aplicado. Revise ${result.pending.length} campo(s) pendente(s).`
+          : `Modelo ${result.matched_model.name} aplicado. Revise a minuta antes de salvar.`,
+      ]);
+    } catch (err) {
+      onCleanWarnings?.([
+        err instanceof Error ? err.message : "Não foi possível montar a matéria com IA.",
+      ]);
     } finally {
       setAiBusy(false);
     }

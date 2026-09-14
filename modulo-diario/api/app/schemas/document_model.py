@@ -121,6 +121,27 @@ class AiExtractOut(BaseModel):
     note: str | None = None
 
 
+class AiComposeIn(BaseModel):
+    """Pedido livre vindo do botão do robô no editor."""
+
+    prompt: str = Field(min_length=3, max_length=8000)
+    document_type: str | None = Field(default=None, pattern=r"^[a-z_]+$")
+
+
+class AiComposeOut(BaseModel):
+    """Minuta determinística montada para revisão no editor, nunca publicada."""
+
+    matched_model: DocumentModelSummaryOut
+    title: str = ""
+    summary: str = ""
+    content_html: str
+    values: dict[str, str] = Field(default_factory=dict)
+    pending: list[dict] = Field(default_factory=list)
+    complete: bool = False
+    document_type: str
+    prompt_version: str
+
+
 class MaterialFromModelIn(BaseModel):
     """Cria uma matéria (rascunho) a partir de uma versão de modelo preenchida.
 

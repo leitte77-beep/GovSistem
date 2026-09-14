@@ -32,10 +32,12 @@ from app.document_model.fill import validate_and_resolve
 from app.document_model.generation import (
     PROMPT_VERSION,
     ModelSelectionError,
+    active_models_for_composition,
+    choose_model_for_prompt,
     extract_values,
     pick_active_model,
 )
-from app.document_model.ingest import create_rendered_matter
+from app.document_model.ingest import create_rendered_matter, semantic_to_html
 from app.document_model.layout import DocumentLayout, default_layout
 from app.document_model.learning import (
     LEARN_PROMPT_VERSION,
@@ -63,6 +65,8 @@ from app.models.organization import Organization
 from app.models.user import User
 from app.providers.antivirus import get_virus_scanner
 from app.schemas.document_model import (
+    AiComposeIn,
+    AiComposeOut,
     AiExtractIn,
     AiExtractOut,
     DocumentModelBlockCreateIn,
@@ -1492,6 +1496,62 @@ async def ai_extract(
         values=result.resolved,
         pending=[p.as_dict() for p in result.pending],
         complete=result.complete,
+        prompt_version=PROMPT_VERSION,
+    )
+
+
+@router.post("/document-models/ai/compose", response_model=AiComposeOut)
+async def ai_compose_for_editor(
+    body: AiComposeIn,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission("document_model.use")),
+):
+    """Monta uma minuta para o editor a partir de um pedido livre.
+
+    A IA escolhe exclusivamente entre modelos aprovados e devolve valores de
+    campos. Título, súmula e HTML resultam da renderização determinística do
+    modelo; esta rota não cria matéria, não emite número e não publica nada.
+    """
+    org_id = _org(user)
+    try:
+        api_key = await config_store.get_active_key(db, org_id)
+    except (AiNotConfiguredError, AiDisabledError) as exc:
+        raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(exc)) from exc
+
+    models = await active_models_for_composition(db, org_id, body.document_type)
+    if not models:
+        raise HTTPException(
+            status.HTTP_409_CONFLICT,
+            "Não há modelo aprovado para montar esta matéria. Revise e aprove um modelo primeiro.",
+        )
+    try:
+        model = await choose_model_for_prompt(models, body.prompt, api_key)
+    except DeepSeekError as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, _ai_pt_msg(exc)) from exc
+    if model is None:
+        raise HTTPException(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            "Não identifiquei um modelo aprovado compatível com o pedido.",
+        )
+
+    cfg = dm_service.config_of_active(model)
+    if cfg is None:  # defesa contra estado inconsistente
+        raise HTTPException(status.HTTP_409_CONFLICT, "Modelo aprovado sem versão ativa.")
+    try:
+        values = await extract_values(cfg, body.prompt, api_key)
+        outcome = render(cfg, values)
+    except (DeepSeekError, UnknownFieldError, InvalidFieldValueError) as exc:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, _ai_pt_msg(exc) if isinstance(exc, DeepSeekError) else str(exc)) from exc
+
+    return AiComposeOut(
+        matched_model=_summary(model),
+        title=outcome.document.title,
+        summary=outcome.document.summary,
+        content_html=semantic_to_html(outcome.document),
+        values=outcome.fill.resolved,
+        pending=[item.as_dict() for item in outcome.fill.pending],
+        complete=outcome.complete,
+        document_type=model.document_type,
         prompt_version=PROMPT_VERSION,
     )
 

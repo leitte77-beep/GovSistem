@@ -8,12 +8,16 @@ necessário.
 
 from __future__ import annotations
 
+import uuid
+from types import SimpleNamespace
+
 from httpx import MockTransport, Response
 
 from app.document_model.generation import (
     PROMPT_VERSION,
     build_system_message,
     extract_values,
+    selected_model_id,
 )
 from app.document_model.schemas import (
     DocumentField,
@@ -42,7 +46,7 @@ def _cfg() -> DocumentModelConfig:
 
 def test_prompt_is_versioned_and_scoped():
     msg = build_system_message(_cfg())
-    assert PROMPT_VERSION == "dm-extract-v1"
+    assert PROMPT_VERSION == "dm-extract-v2"
     assert "servidor" in msg and "dias" in msg
     # Não envia segredos nem pede qualquer chave.
     assert "api_key" not in msg.lower()
@@ -75,6 +79,12 @@ def test_extract_discards_invalid_value_but_keeps_others():
     values = _run(run())
     assert "dias" not in values  # inválido descartado
     assert values.get("servidor") == "João"
+
+
+def test_model_selector_rejects_ids_not_offered_to_ai():
+    allowed = SimpleNamespace(id=uuid.uuid4())
+    assert selected_model_id({"model_id": str(allowed.id)}, [allowed]) == allowed.id
+    assert selected_model_id({"model_id": str(uuid.uuid4())}, [allowed]) is None
 
 
 def _run(coro):

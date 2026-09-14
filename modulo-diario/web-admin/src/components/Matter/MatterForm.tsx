@@ -1066,7 +1066,17 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
                   onChangeJson={(json) => setContentJson(json)}
                   onCleanWarnings={setCleanWarnings}
                   onPasteSource={handlePasteSource}
-                  aiContext={{ actType: selectedActType?.name, title, summary }} />
+                  aiContext={{ actType: selectedActType?.name, title, summary }}
+                  onAiCompose={(result) => {
+                    if (result.title) setTitle(result.title);
+                    if (result.summary) setSummary(result.summary);
+                    const modelType = result.document_type.toLocaleLowerCase("pt-BR");
+                    const matchingType = actTypes.find((actType) =>
+                      actType.name.toLocaleLowerCase("pt-BR").includes(modelType)
+                    );
+                    if (matchingType) setActTypeId(matchingType.id);
+                    setTouched((previous) => ({ ...previous, title: true, content: true }));
+                  }} />
                 {errors.content && <p className="text-xs text-error px-5 pb-3 flex items-center gap-1" role="alert"><span className="material-symbols-outlined text-xs">warning</span> {errors.content}</p>}
               </div>
               </div>

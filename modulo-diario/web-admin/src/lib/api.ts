@@ -958,6 +958,12 @@ export const api = {
       body: JSON.stringify(data),
     });
   },
+  aiCompose(data: { prompt: string; document_type?: string | null }) {
+    return request<import("@/types/document_model").AiComposeResult>("/document-models/ai/compose", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
   createMaterialFromModel(modelId: string, version: number, data: { act_type_id: string; values: Record<string, string>; title_override?: string }) {
     return request<MaterialCreated>(`/document-models/${modelId}/versions/${version}/material`, {
       method: "POST",

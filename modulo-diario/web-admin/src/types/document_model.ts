@@ -255,6 +255,18 @@ export interface AiExtractResult {
   note?: string | null;
 }
 
+export interface AiComposeResult {
+  matched_model: DocumentModelSummary;
+  title: string;
+  summary: string;
+  content_html: string;
+  values: Record<string, string>;
+  pending: { code: string; message: string; field?: string | null }[];
+  complete: boolean;
+  document_type: string;
+  prompt_version: string;
+}
+
 export interface MaterialCreated {
   id: string;
   title: string;
