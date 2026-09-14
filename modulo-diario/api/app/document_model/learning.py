@@ -270,9 +270,14 @@ async def analyze_documents(
         {"role": "system", "content": build_system_message()},
         {"role": "user", "content": build_user_message(document_type, documents)},
     ]
-    # Teto alto o suficiente para o raciocínio + o JSON de saída (modelo de
-    # raciocínio consome o orçamento antes de responder).
-    data, meta = await client.complete_json(messages, max_tokens=16384)
+    # A tarefa é extração determinística, não redação. Sem raciocínio estendido
+    # o modelo devolve a proposta JSON de modo previsível, sem consumir o
+    # orçamento que seria necessário ao próprio esquema.
+    data, meta = await client.complete_json(
+        messages,
+        max_tokens=8192,
+        disable_thinking=True,
+    )
     repaired = _repair_config(data, document_type)
     try:
         config = DocumentModelConfig.model_validate(repaired)

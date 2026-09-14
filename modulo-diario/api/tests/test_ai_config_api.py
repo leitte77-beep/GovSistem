@@ -13,6 +13,7 @@ Per-org persistence is exercised through the real in-memory schema via HTTP.
 
 from __future__ import annotations
 
+import json
 import uuid
 
 import pytest
@@ -253,6 +254,28 @@ def test_client_parses_valid_json():
     assert data.assunto == "ferias"
     assert data.quantidade == 30
     assert meta["usage"]["total_tokens"] == 8
+
+
+def test_client_can_disable_thinking_for_structured_extraction():
+    seen: dict = {}
+
+    def handler(req):
+        seen.update(json.loads(req.content))
+        return Response(200, json={"choices": [{"message": {"content": '{"ok": true}'}}]})
+
+    transport = MockTransport(handler)
+    import asyncio
+
+    client = DeepSeekClient("sk-test", transport=transport)
+
+    asyncio.run(
+        client.complete_json(
+            [{"role": "system", "content": "Retorne JSON."}],
+            disable_thinking=True,
+        )
+    )
+
+    assert seen["thinking"] == {"type": "disabled"}
 
 
 def test_client_rejects_schema_violation():

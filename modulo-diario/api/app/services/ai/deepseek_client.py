@@ -153,6 +153,7 @@ class DeepSeekClient:
         *,
         max_tokens: int | None = None,
         json_mode: bool = False,
+        disable_thinking: bool = False,
     ) -> DeepSeekResult:
         payload: dict[str, Any] = {
             "model": self._model,
@@ -164,6 +165,11 @@ class DeepSeekClient:
             # DeepSeek requires the word "json" to appear in the messages for
             # json_object mode; callers must embed it in the system prompt.
             payload["response_format"] = {"type": "json_object"}
+        if disable_thinking:
+            # A extração estrutural é uma tarefa determinística. Desabilitar o
+            # raciocínio estendido deixa orçamento suficiente para o JSON e
+            # evita que modelos V4 consumam o limite antes de responder.
+            payload["thinking"] = {"type": "disabled"}
 
         # Transient failures only: 408/429/5xx and transport/timeout errors are
         # retried with capped exponential backoff. Auth/invalid-request are NOT.
@@ -255,6 +261,7 @@ class DeepSeekClient:
         *,
         schema: type[BaseModel] | None = None,
         max_tokens: int | None = None,
+        disable_thinking: bool = False,
     ) -> tuple[BaseModel | dict, dict]:
         """Run a chat and return validated JSON.
 
@@ -262,7 +269,12 @@ class DeepSeekClient:
         ``schema`` is a Pydantic model used to reject unexpected keys, wrong
         field types and out-of-scope content before anything is consumed.
         """
-        result = await self._chat(messages, max_tokens=max_tokens, json_mode=True)
+        result = await self._chat(
+            messages,
+            max_tokens=max_tokens,
+            json_mode=True,
+            disable_thinking=disable_thinking,
+        )
         try:
             data = _parse_json_object(result.content)
         except AiInvalidResponseError as exc:
