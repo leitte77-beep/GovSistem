@@ -77,9 +77,16 @@ _ROLE_RE = re.compile(
     r"REITOR(A)?|VICE-?REITOR(A)?|PROCURADOR(A)?|PROCURADOR[A]?-GERAL|"
     r"CONTROLADOR(A)?|CHEFE|COORDENADOR(A)?|SUPERINTENDENTE|GERENTE|"
     r"ASSESSOR(A)?|TITULAR|RESPONS[ÁA]VEL|ORDENADOR(A)?|GESTOR(A)?|"
-    r"MINISTR[OA]|DEPUTAD[OA]|VEREADOR(A)?|PRESIDENTE\s+DA\s+C[ÂA]MARA)"
+    r"MINISTR[OA]|DEPUTAD[OA]|VEREADOR(A)?|PRESIDENTE\s+DA\s+C[ÂA]MARA|"
+    r"CONTRATANTE|CONTRATAD[OA]|CONTRATADA|TESTEMUNHA|REPRESENTANTE|"
+    r"INTERVENIENTE|LOCADOR(A)?|LOCAT[ÁA]RI[OA]|OUTORGANTE|OUTORGAD[OA]|"
+    r"GESTOR[A]?|FISCAL)"
     r"\b",
     re.IGNORECASE,
+)
+# A compact 'Label: value' field (contracts/extracts), e.g. 'Objeto: ...'.
+_FIELD_RE = re.compile(
+    r"^\s*[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9ºª°./()\s\-]{1,40}:\s+\S"
 )
 _LOCATION_HINT_RE = re.compile(
     r"(PA[ÇC]O|PAL[ÁA]CIO|PREFEITURA|C[ÂA]MARA|MUNIC[ÍI]PIO|GABINETE|"
@@ -193,33 +200,46 @@ _SIGNATURE_CONSUMABLE = {"paragraph", "preamble", "considerando", "command", "he
 
 
 def _merge_trailing_signature(blocks: list) -> list:
-    """Fold a trailing name + role (+ location/date) into a signature block.
+    """Fold trailing name + role pairs (+ location/date) into a signature block.
 
-    This is a heuristic, so the resulting block keeps the *lowest* confidence of
-    its parts and stays flagged for human confirmation. No text is dropped:
-    the location/date text is carried into the signature entry and is included
-    in ``plain_text()`` for integrity checks.
+    Supports multiple signatories (e.g. contratante/contratada, two secretaries)
+    by walking backwards over consecutive (name, role) pairs. This is a
+    heuristic, so the resulting block keeps the *lowest* confidence of its parts
+    and stays flagged for human confirmation. No text is dropped: the
+    location/date text is carried into the first entry and is included in
+    ``plain_text()`` for integrity checks.
     """
     if len(blocks) < 2:
         return blocks
-    last = blocks[-1]
-    if getattr(last, "type", "") not in _SIGNATURE_CONSUMABLE:
-        return blocks
-    role = _block_text(last).strip()
-    if not role or not _ROLE_RE.match(role):
+
+    entries: list[SignatureEntry] = []
+    idx = len(blocks) - 1
+    while idx >= 1:
+        role_block = blocks[idx]
+        role = _block_text(role_block).strip()
+        if (
+            getattr(role_block, "type", "") not in _SIGNATURE_CONSUMABLE
+            or not role
+            or not _ROLE_RE.match(role)
+        ):
+            break
+        name_block = blocks[idx - 1]
+        name = _block_text(name_block).strip()
+        words = name.split()
+        if (
+            getattr(name_block, "type", "") not in _SIGNATURE_CONSUMABLE
+            or not name
+            or len(words) > 8
+            or _ROLE_RE.match(name)
+        ):
+            break
+        entries.insert(0, SignatureEntry(name=name, role=role, location="", date=""))
+        idx -= 2
+
+    if not entries:
         return blocks
 
-    name_block = blocks[-2]
-    if getattr(name_block, "type", "") not in _SIGNATURE_CONSUMABLE:
-        return blocks
-    name = _block_text(name_block).strip()
-    words = name.split()
-    if not name or len(words) > 8 or _ROLE_RE.match(name):
-        return blocks
-
-    consumed = [name_block, last]
-    start = len(blocks) - 2
-
+    start = len(blocks) - 2 * len(entries)
     location = ""
     if start - 1 >= 0 and getattr(blocks[start - 1], "type", "") in _SIGNATURE_CONSUMABLE:
         prev = _block_text(blocks[start - 1]).strip()
@@ -230,13 +250,13 @@ def _merge_trailing_signature(blocks: list) -> list:
             or _LOCATION_HINT_RE.search(prev)
         ):
             location = prev
-            consumed.insert(0, blocks[start - 1])
             start -= 1
+    if location:
+        entries[0].location = location
 
-    confidence = min(getattr(b, "confidence", 1.0) for b in consumed)
-    entry = SignatureEntry(name=name, role=role, location=location, date="")
+    confidence = min(getattr(b, "confidence", 1.0) for b in blocks[start:])
     signature = _block(
-        SignatureBlock, entries=[entry], alignment="center", confidence=confidence
+        SignatureBlock, entries=entries, alignment="center", confidence=confidence
     )
     return blocks[:start] + [signature]
 
@@ -470,6 +490,9 @@ def _classify_text_line(text: str, blocks: list) -> Optional[object]:
                       number=(para.group(1) or "").strip() or None,
                       content=para.group(2).strip() or stripped, text=stripped,
                       confidence=_CONFIRM_HIGH)
+    if _FIELD_RE.match(stripped):
+        return _block(ParagraphBlock, content=text, confidence=_CONFIRM_HIGH,
+                      metadata={"kind": "field"})
     return _block(ParagraphBlock, content=text, confidence=_CONFIRM_HIGH)
 
 
@@ -616,6 +639,13 @@ def _parse_lines(text: str) -> list:
             blocks.append(_block(ListBlock, ordered=False,
                                  items=[list_item.group(1).strip()],
                                  confidence=_CONFIRM_MED))
+            i += 1
+            continue
+
+        if _FIELD_RE.match(stripped) and not _ARTICLE_RE.match(stripped):
+            blocks.append(_block(ParagraphBlock, content=stripped,
+                                 confidence=_CONFIRM_HIGH,
+                                 metadata={"kind": "field"}))
             i += 1
             continue
 

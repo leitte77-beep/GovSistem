@@ -7,6 +7,8 @@ This is the regression net for auto-diagramming across act types.
 
 from app.semantic.integrity import compute_text_integrity
 from app.semantic.parser import parse_document
+from app.semantic.renderer import render_document
+from app.semantic.templates import default_config_for
 
 LEI = """LEI Nº 1.234/2026
 
@@ -135,6 +137,46 @@ def test_extrato_contrato_preserves_fields_and_signature():
     text = doc.plain_text()
     for token in ["95.640.124/0001-48", "12.345.678/0001-90", "45.500,00", "14.133/2021"]:
         assert token in text
+    # 'Label: value' lines are marked as fields (rendered without first-line indent)
+    assert any(
+        (b.metadata or {}).get("kind") == "field"
+        for b in doc.blocks
+        if b.type == "paragraph"
+    )
+
+
+def test_contract_fields_render_left_aligned():
+    doc = parse_document(plain=EXTRATO_CONTRATO, title="EXTRATO DE CONTRATO Nº 045/2026")
+    html = render_document(doc, default_config_for("contrato"), media="print")
+    assert "doe-field" in html
+    assert ".doe-field" in html  # style rule present
+
+
+TERMO_COOP = """TERMO DE COOPERAÇÃO Nº 01/2026
+
+Contratante: PREFEITURA MUNICIPAL DE FAROL
+Contratada: EMPRESA XYZ LTDA
+Objeto: Prestação de serviços de manutenção
+
+Farol, 15 de julho de 2026.
+
+José da Silva
+Prefeito Municipal
+
+Maria Souza
+Secretária de Administração
+"""
+
+
+def test_multiple_signatories_are_folded_into_one_block():
+    doc = parse_document(plain=TERMO_COOP, title="TERMO DE COOPERAÇÃO Nº 01/2026")
+    signatures = [b for b in doc.blocks if b.type == "signature_block"]
+    assert len(signatures) == 1
+    entries = signatures[0].entries
+    assert [e.name for e in entries] == ["José da Silva", "Maria Souza"]
+    assert "Prefeito" in entries[0].role
+    assert "Secretária" in entries[1].role
+    assert "15 de julho de 2026" in entries[0].location
 
 
 def test_large_tab_table_has_header_and_widths():

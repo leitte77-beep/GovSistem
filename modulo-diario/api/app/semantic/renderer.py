@@ -87,6 +87,9 @@ def _media_css(
   font-style: italic; margin: 0.4em 0 1em; break-inside: avoid; }
 .doe-block--paragraph { text-align: var(--doe-blocks-paragraph-alignment, justify);
   text-indent: var(--doe-blocks-paragraph-indent, 1.25cm); }
+/* Compact 'Label: value' fields (contracts/extracts): no indent, left aligned. */
+.doe-document .doe-field, .doe-document .doe-field p { text-indent: 0;
+  text-align: left; margin-left: 0; }
 .doe-block--article { margin: 0.6em 0; }
 .doe-block--article .doe-caput { text-align: justify;
   text-indent: var(--doe-blocks-article-indent, 1.25cm); }
@@ -230,8 +233,11 @@ def _render_block(block) -> str:
         return f'<div class="{cls}"><{tag}>{inner}</{tag}></div>'
 
     if btype in ("preamble", "paragraph", "quote", "considerando"):
+        extra = ""
+        if (getattr(block, "metadata", {}) or {}).get("kind") == "field":
+            extra = " doe-field"
         return (
-            f'<div class="{cls}" id="{_safe_id(block.id)}">'
+            f'<div class="{cls}{extra}" id="{_safe_id(block.id)}">'
             f'{_render_rich(block.content)}</div>'
         )
 
