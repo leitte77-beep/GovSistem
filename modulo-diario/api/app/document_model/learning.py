@@ -88,6 +88,10 @@ def build_system_message() -> str:
         "- Para quadros/formulários, use kind \"table\" com table_headers, "
         "table_rows e table_column_widths; preserve a ordem e use marcadores "
         "{{campo}} nas células variáveis.\n"
+        "- Modele a FORMA, não transcreva todas as ocorrências: em tabelas ou "
+        "listas repetidas, mantenha cabeçalhos e no máximo duas linhas "
+        "representativas com marcadores. Não replique dados repetidos do "
+        "documento de referência.\n"
         "- NÃO invente dados; apenas modele a estrutura observada.\n"
         "- Responda apenas o JSON."
     )
@@ -275,7 +279,7 @@ async def analyze_documents(
     # orçamento que seria necessário ao próprio esquema.
     data, meta = await client.complete_json(
         messages,
-        max_tokens=8192,
+        max_tokens=16384,
         disable_thinking=True,
     )
     repaired = _repair_config(data, document_type)

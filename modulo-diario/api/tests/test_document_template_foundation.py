@@ -20,7 +20,7 @@ from app.core.auth import get_current_user
 from app.core.database import get_db
 from app.document_model.body_html import blocks_to_html
 from app.document_model.layout import DocumentLayout, default_layout
-from app.document_model.learning import analyze_documents
+from app.document_model.learning import analyze_documents, build_system_message
 from app.main import app
 from app.models.organization import Organization
 from app.models.user import User
@@ -545,6 +545,11 @@ def test_analyze_documents_drops_root_subblocks():
         analyze_documents("portaria", [("p.docx", "texto")], "sk-test", transport=transport)
     )
     assert [s.kind.value for s in config.sections] == ["article"]
+
+
+def test_learning_prompt_limits_repeated_table_rows():
+    prompt = build_system_message()
+    assert "no máximo duas linhas representativas" in prompt
 
 
 # ── Soft delete ─────────────────────────────────────────────────────────────
