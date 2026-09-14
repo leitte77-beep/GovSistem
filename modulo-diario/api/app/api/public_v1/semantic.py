@@ -133,6 +133,9 @@ def _render_snapshot_matters(snapshot: dict, template_slug: str | None = None) -
             "title": item.get("title"),
             "summary": item.get("summary"),
             "content_html": html,
+            # The semantic renderer owns title/summary placement. Consumers
+            # use this to avoid a second presentation-layer summary.
+            "has_semantic_content": bool(semantic),
             "attachments": item.get("attachments", []),
             "semantic_hash": item.get("semantic_hash"),
         })

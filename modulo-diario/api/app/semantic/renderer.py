@@ -112,9 +112,12 @@ def _media_css(
 .doe-table th, .doe-table td { border: var(--doe-tables-border-width, 0.75pt)
   solid var(--doe-tables-border-color, #000);
   padding: var(--doe-tables-cell-padding, 4pt); vertical-align: top;
-  overflow-wrap: break-word; word-break: normal; hyphens: none; }
-.doe-table .doe-cell--nowrap { white-space: nowrap; }
-.doe-table .doe-cell--num { white-space: nowrap; text-align: right;
+  overflow-wrap: anywhere; word-break: break-word; hyphens: none; }
+/* Fixed-width PDF columns must never paint text over an adjacent cell.
+   Numeric content may wrap only when the computed column is genuinely too
+   narrow; that is preferable to corrupting the visual/legal table grid. */
+.doe-table .doe-cell--nowrap { white-space: normal; }
+.doe-table .doe-cell--num { white-space: normal; text-align: right;
   font-variant-numeric: tabular-nums; }
 .doe-table--wide th, .doe-table--wide td { padding: 2pt 3pt; }
 .doe-table thead th { background: var(--doe-tables-header-background, #e8e8e8);
@@ -371,7 +374,7 @@ def _table_font_size(ncols: int) -> str:
     if ncols >= 11:
         return "7pt"
     if ncols >= 9:
-        return "7.5pt"
+        return "6.5pt"
     if ncols >= 7:
         return "8pt"
     return ""

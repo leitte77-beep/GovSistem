@@ -112,7 +112,7 @@
     <section class="matter{% if matter.is_pdf_image_content %} matter-image-content{% endif %}" id="matter-{{ matter.id }}">
       <h2 class="matter-title">{{ matter.title }}</h2>
 
-      {% if matter.summary %}
+      {% if matter.summary and not matter.has_semantic_content %}
       <div class="matter-summary">{{ matter.summary }}</div>
       {% endif %}
 

@@ -70,7 +70,7 @@ export default function MatterDocument({
         <h2 className="text-[15px] font-extrabold uppercase leading-none">{matter.title}</h2>
       </div>
 
-      {matter.summary && (
+      {!matter.has_semantic_content && matter.summary && (
         <p className="doe-matter-title">{matter.summary}</p>
       )}
 

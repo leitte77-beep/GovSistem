@@ -74,6 +74,28 @@ class TestTemplateRendering:
         assert "Atos do Executivo" in html
 
     @pytest.mark.parametrize("layout", LAYOUTS)
+    def test_semantic_matter_summary_is_rendered_only_by_its_document(self, layout):
+        template_dir = LAYOUTS_DIR / layout
+        template = Environment(loader=FileSystemLoader(str(template_dir))).get_template(
+            "edition.html"
+        )
+        html = template.render(
+            organ_name="Prefeitura Teste",
+            edition=type("obj", (), {"year": 2026, "number": 1, "title": "Edição", "subtitle": None, "type": "normal"}),
+            edition_type_label="Normal", publication_date="14 de setembro de 2026",
+            verification_code="TESTE", verification_url="http://localhost/verificar",
+            qr_code_uri="", content_manifest_hash="a" * 64, total_matters=1,
+            summary_items=[], sections=[{"title": None, "matters": [{
+                "id": "m1", "title": "PORTARIA Nº 1/2026",
+                "summary": "SÚMULA ÚNICA", "has_semantic_content": True,
+                "content_html": "<p class='doe-summary'>SÚMULA ÚNICA</p>",
+                "act_type": "Portaria", "org_unit": "", "author": "",
+                "is_pdf_image_content": False,
+            }]}],
+        )
+        assert html.count("SÚMULA ÚNICA") == 1
+
+    @pytest.mark.parametrize("layout", LAYOUTS)
     def test_wide_content_never_selects_landscape_page(self, layout):
         template_dir = LAYOUTS_DIR / layout
         template = Environment(loader=FileSystemLoader(str(template_dir))).get_template(

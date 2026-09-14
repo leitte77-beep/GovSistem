@@ -352,7 +352,9 @@ def generate_edition_pdf_sync(
             sections_map[section_key].append({
                 "id": item["id"],
                 "title": item.get("title") or "Matéria",
-                "summary": item.get("summary"),
+                # Semantic HTML renders its own summary directly below its
+                # canonical title. The edition shell must not render it again.
+                "summary": None if semantic_html is not None else item.get("summary"),
                 "content_html": content_html,
                 "act_type": (item.get("metadata") or {}).get("act_type_name", ""),
                 "org_unit": (item.get("metadata") or {}).get("org_unit_name", ""),

@@ -72,6 +72,7 @@ export interface SnapshotMatter {
   title: string;
   summary: string | null;
   content_html: string;
+  has_semantic_content?: boolean;
   attachments: Array<{
     id?: string;
     title?: string;

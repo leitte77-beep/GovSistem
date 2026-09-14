@@ -97,7 +97,7 @@ def test_html_table_with_th_and_br_is_parsed():
     assert "32x25mm" in table.rows[1][1].content
 
 
-def test_print_render_emits_colgroup_and_nowrap_for_numbers():
+def test_print_render_emits_colgroup_without_cell_overflow():
     text = (
         "Item\tDescrição\tQuantidade\tValor\n"
         "1\tBucha de Redução\t30.000\t1,1800\n"
@@ -107,6 +107,8 @@ def test_print_render_emits_colgroup_and_nowrap_for_numbers():
     assert "<colgroup>" in html
     assert "table-layout:fixed" in html
     assert "doe-cell--num" in html
+    assert "overflow-wrap: anywhere" in html
+    assert ".doe-table .doe-cell--num { white-space: normal" in html
 
 
 def test_summary_detected_with_single_line_break():
