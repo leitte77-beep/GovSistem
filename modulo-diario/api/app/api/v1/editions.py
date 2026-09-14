@@ -901,6 +901,7 @@ async def sign_edition(
     await store_backend.store(sig_filename, signed_bytes)
 
     signed_at = datetime.now(timezone.utc)
+    chain_trusted = bool(result.get("chain_trusted", False))
     # Metadados completos (não truncados); o PDF assinado íntegro fica no storage.
     sig_record = Signature(
         edition_id=edition.id,
@@ -921,6 +922,7 @@ async def sign_edition(
             "sha256_signed": signed_pdf_hash,
             "verification_code": result.get("verification_code") or edition.verification_code or "",
             "validation_status": result.get("validation_status", ""),
+            "chain_trusted": chain_trusted,
         },
         is_valid=True,
     )
@@ -931,13 +933,13 @@ async def sign_edition(
     edition.signed_pdf_hash = signed_pdf_hash
     edition.pdf_hash = signed_pdf_hash  # legado
     edition.immutability_hash = edition.compute_immutability_hash()
-    edition.signature_validation_status = "valid"
+    edition.signature_validation_status = "valid" if chain_trusted else "indeterminate"
     edition.signature_validation_details = {
         "integrity": True,
         "signature_valid": True,
-        "chain_trusted": False,
+        "chain_trusted": chain_trusted,
         "revocation_status": "not_checked",
-        "timestamp_status": "not_present",
+        "timestamp_status": result.get("timestamp_status", "not_present"),
         "pades_profile": "PAdES-B-B / ICP-Brasil AD-RB",
     }
     edition.change_status(EditionStatus.SIGNED)
@@ -1049,8 +1051,14 @@ async def validate_edition_signature(
             except Exception as e:  # noqa: BLE001
                 issues.append(f"Signer verify unavailable: {e}")
 
-    # Chain/cert trust is only asserted via the recorded validation metadata.
-    chain_trusted = bool(cert_info.get("chain_trusted"))
+    # Chain/cert trust is asserted from the recorded metadata, or freshly from
+    # the signer report (so editions signed before roots were configured can be
+    # re-validated honestly).
+    report_trusted = bool(
+        stored_report.get("signatures")
+        and stored_report["signatures"][0].get("trusted")
+    )
+    chain_trusted = bool(cert_info.get("chain_trusted")) or report_trusted
     certificate_valid = bool(edition.signature_validation_status == "valid")
     timestamp_status = edition.signature_validation_status or "pending_validation"
 

@@ -145,6 +145,12 @@ services:
       SIGNER_PROVIDER: ${SIGNER_PROVIDER:-a1}
       VERIFICATION_BASE_URL: https://farol.govsistem.com.br/verificar
       INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-in-dev}
+      # Raízes oficiais ICP-Brasil (AC-Raiz). Sem elas a cadeia é honestamente
+      # reportada como não confiável (trusted=false).
+      ICP_BRASIL_ROOTS_PATH: /certs/icp-brasil-roots.pem
+      REVOCATION_MODE: ${REVOCATION_MODE:-off}
+    volumes:
+      - ./signer/certs:/certs:ro
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8100/api/v1/health"]
       interval: 30s

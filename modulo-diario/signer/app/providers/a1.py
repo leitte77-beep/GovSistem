@@ -269,6 +269,20 @@ class PfxA1SignerProvider(SignatureProvider):
                 roots = get_icp_validator()._trust_roots or []
             except Exception:  # noqa: BLE001
                 roots = []
+            # pyhanko-certvalidator 0.32 expects asn1crypto certificates in the
+            # trust store (cryptography's Name has no ``.hashable``); convert so
+            # chain validation against the ICP-Brasil roots actually runs.
+            try:
+                import asn1crypto.x509 as _asn1_x509
+
+                roots = [
+                    _asn1_x509.Certificate.load(
+                        r.public_bytes(serialization.Encoding.DER)
+                    )
+                    for r in roots
+                ]
+            except Exception:  # noqa: BLE001 - never break integrity check
+                pass
             reader = PdfFileReader(io.BytesIO(pdf_bytes))
             vc = ValidationContext(trust_roots=roots)
             emb_sigs = list(reader.embedded_signatures)

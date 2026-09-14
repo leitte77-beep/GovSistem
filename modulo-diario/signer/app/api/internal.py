@@ -70,6 +70,7 @@ class SignResponse(BaseModel):
     signature_format: str
     signed_at: str
     validation_status: str
+    chain_trusted: bool = False
     verification_code: str = ""
     # RFC 3161 timestamp (ACT) status, when a TSA is configured.
     timestamp_status: str = "not_present"
@@ -213,10 +214,20 @@ async def sign_pdf(
     now = datetime.now(timezone.utc).isoformat()
     ci = result.certificate_info
 
-    # Local verification (pyHanko usa asyncio.run -> rodar em thread)
+    # Local verification + ICP-Brasil chain trust (pyHanko usa asyncio.run ->
+    # rodar em thread). ``trusted`` is True only when the chain validates
+    # against the configured roots; otherwise it stays honest (False).
+    chain_trusted = False
     try:
-        ver = await asyncio.to_thread(provider.verify, result.content)
-        val_status = "ok" if ver else "verification_failed"
+        det = await asyncio.to_thread(provider.verify_detailed, result.content)
+        sigs = det.get("signatures") or []
+        verified = bool(
+            det.get("valid")
+            and sigs
+            and all(s.get("intact") and s.get("valid") for s in sigs)
+        )
+        val_status = "ok" if verified else "verification_failed"
+        chain_trusted = bool(sigs and sigs[0].get("trusted"))
     except Exception:
         val_status = "verification_error"
 
@@ -230,6 +241,7 @@ async def sign_pdf(
         "certificate_serial": ci["serial"],
         "signed_at": now,
         "validation_status": val_status,
+        "chain_trusted": chain_trusted,
     }
     _audit_log.append(audit_entry)
     logger.info(
@@ -251,6 +263,7 @@ async def sign_pdf(
         signature_format=result.signature_format,
         signed_at=now,
         validation_status=val_status,
+        chain_trusted=chain_trusted,
         verification_code=result.verification_code,
         timestamp_status="present" if result.timestamped else "not_present",
         timestamp_serial=result.timestamp_serial,

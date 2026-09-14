@@ -167,9 +167,14 @@ def _build_authenticity(edition: Edition, snapshot: Optional[dict]) -> dict:
     validation_checked_at = None
     intact = bool(edition.signature_validation_status)
     # "Trusted" requires the ICP-Brasil chain to have been actually validated,
-    # not merely an intact CMS. Without configured roots this stays False and
-    # the public page never claims a trusted signature.
-    chain_trusted = bool(signatures and signatures[0].get("chain_trusted"))
+    # not merely an intact CMS. Falls back to the persisted re-validation
+    # result so editions signed before roots were configured can be shown
+    # honestly as trusted once re-validated.
+    details = edition.signature_validation_details or {}
+    chain_trusted = bool(
+        (signatures and signatures[0].get("chain_trusted"))
+        or details.get("chain_trusted")
+    )
     trusted = bool(
         edition.signature_validation_status in ("valid", "ok") and chain_trusted
     )

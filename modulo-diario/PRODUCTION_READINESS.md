@@ -100,7 +100,7 @@ Bloqueio: existe `BACKUP_RESTORE.md` no módulo; falta **executar** e anexar evi
 - [x] CRL corrigida: `load_der_x509_crl`/`load_pem_x509_crl`, TLS verificado, serial conferido de fato; revogado falha a validação; fonte inacessível é reportada como "não verificada".
 - [x] OCSP implementado (RFC 6960): request DER, status REVOKED/GOOD/UNKNOWN, cache; revogado falha.
 - [x] Integridade/ByteRange validados e reportados de forma honesta.
-- [ ] Revisar exibição pública para nunca sugerir confiança quando `chain_trusted=False` (backend já separa `chain_trusted`).
+- [x] Exibição pública nunca sugere confiança quando `chain_trusted=false`; `trusted` só é verdadeiro com a cadeia ICP-Brasil validada (ver Rodada 4).
 
 ## Auditoria
 
@@ -214,10 +214,27 @@ grandes legíveis no PDF. Foco na cópia oficial `modulo-diario/`.
   failed** (as 4 falhas são pré-existentes: `test_editions` x2, `test_public_v1`,
   `test_signing_credentials_api`); web-admin **100 passed**; `tsc` limpo.
 
+### Rodada 4 — Cadeia ICP-Brasil (2026-09-14)
+
+- **Raízes oficiais ICP-Brasil** (11 AC-Raiz do repositório ITI/AC-Raiz) em
+  `signer/certs/icp-brasil-roots.pem` (não versionado; montado em `/certs:ro`
+  no compose). `get_icp_validator()` carrega e loga a quantidade.
+- **Correção de bug real**: `verify_detailed` passava raízes `cryptography` ao
+  `ValidationContext`, que quebra (`'Name' has no attribute 'hashable'`). Agora
+  converte para `asn1crypto` → a validação de cadeia roda de verdade.
+- **`chain_trusted` real do início ao fim**: `/internal/sign-pdf` retorna
+  `chain_trusted`; a API persiste em `certificate_info`/`signature_validation
+  _details` e o status vira `valid` só com cadeia confiável.
+- **Revalidação honesta**: edições antigas reavaliadas; edição 30 (e-CNPJ real)
+  → `trusted=true`; edições 20/21 (certificado de teste) → `trusted=false`.
+- **Evidência**: `pdfsig` de antes: "issuer isn't Trusted"; depois da
+  configuração: `intact/valid/trusted = true` no PDF da edição 30.
+
 ### Ainda bloqueado (decisão/credencial externa)
 
-- Raízes **ICP-Brasil** reais → `chain_trusted=True`; ACT/RFC 3161 real;
-  política PAdES (AD-RB/RT/RV/RC/RA) — `LEGAL_REVIEW_REQUIRED`.
+- **ACT/RFC 3161 real** (TSA) e política PAdES (AD-RB/RT/RV/RC/RA) —
+  `LEGAL_REVIEW_REQUIRED`; a revogação (CRL/OCSP) fica desligada por padrão
+  (`REVOCATION_MODE=off`) e deve ser ativada/validada em homologação.
 - A3/HSM: integração com o PSC/HSM do ente.
 - RLS/rate limiting/cofre de segredos, backup/restore executado, observabilidade
   e PDF/UA.
@@ -225,4 +242,5 @@ grandes legíveis no PDF. Foco na cópia oficial `modulo-diario/`.
   planejar sem derrubar domínios vivos.
 - Edições já publicadas têm snapshot imutável: só novas edições ganham a
   diagramação automática (retroagir exige republicação/retificação controlada).
+
 
