@@ -7,9 +7,10 @@ const API_BASE =
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { path: string[] } }
+  { params }: { params: Promise<{ path: string[] }> }
 ) {
-  const filePath = params.path.map(encodeURIComponent).join("/");
+  const { path } = await params;
+  const filePath = path.map(encodeURIComponent).join("/");
   const query = request.nextUrl.searchParams.toString();
   const response = await fetch(`${API_BASE}/public/download/${filePath}${query ? `?${query}` : ""}`, {
     cache: "no-store",

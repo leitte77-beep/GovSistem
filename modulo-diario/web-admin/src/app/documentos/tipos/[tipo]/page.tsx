@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { notifyError } from "@/lib/error-handler";
 import PageHeader from "@/components/PageHeader";
@@ -52,8 +53,9 @@ function queryForTab(tab: TabId) {
   }
 }
 
-export default function TipoDocumentsPage({ params }: { params: { tipo: string } }) {
-  const tipo = TIPO_INFO[params.tipo] ? params.tipo : "";
+export default function TipoDocumentsPage() {
+  const routeParams = useParams<{ tipo: string }>();
+  const tipo = routeParams?.tipo && TIPO_INFO[routeParams.tipo] ? routeParams.tipo : "";
   const [tab, setTab] = useState<TabId>("all");
   const [rows, setRows] = useState<DocumentMaterialRow[]>([]);
   const [total, setTotal] = useState(0);

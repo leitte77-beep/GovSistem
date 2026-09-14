@@ -261,10 +261,167 @@ def _merge_trailing_signature(blocks: list) -> list:
     return blocks[:start] + [signature]
 
 
+_SUMMARY_ANY_LABEL_RE = re.compile(r"^\s*(S[UÚ]MULA|EMENTA)\s*[:\-–]\s*", re.IGNORECASE)
+
+
+def _block_plain_text(block) -> str:
+    """Plain text for any block type (used by structural comparisons)."""
+    btype = getattr(block, "type", "")
+    if btype in ("heading", "command"):
+        return getattr(block, "text", "") or ""
+    if btype == "article":
+        return getattr(block, "caput", "") or ""
+    if btype == "signature_block":
+        return " ".join(
+            f"{e.name} {e.role} {e.location} {e.date}" for e in block.entries
+        )
+    return _strip_html_text(getattr(block, "content", "") or "")
+
+
+def _norm_key(value: str) -> str:
+    value = _strip_html_text(value or "").lower()
+    value = re.sub(r"[^a-z0-9]+", " ", value)
+    return re.sub(r"\s+", " ", value).strip()
+
+
+def _similar(a: str, b: str) -> bool:
+    """Token-set similarity, tolerant of labels/punctuation variations."""
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    if a in b or b in a:
+        return min(len(a), len(b)) >= 8
+    ta, tb = set(a.split()), set(b.split())
+    inter = len(ta & tb)
+    return inter > 0 and inter / len(ta | tb) >= 0.7
+
+
+def _strip_summary_label(text: str) -> str:
+    return _SUMMARY_ANY_LABEL_RE.sub("", (text or "").strip())
+
+
+def _dedupe_structured(blocks: list, *, title: str = "", summary: str = ""):
+    """Drop body blocks that repeat the structured title/summary fields.
+
+    The form fields are the single source of truth for the heading/summary, so
+    a pasted Word/HTML header or 'SÚMULA: ...' line must not be duplicated in
+    the body. Similarity (not bare equality) covers 'SÚMULA: X' vs 'X'.
+    Returns ``(blocks, adjustments)`` and never mutates text silently — every
+    removal is reported in ``adjustments``.
+    """
+    adjustments: list[dict] = []
+    title_key = _norm_key(title)
+    summary_key = _norm_key(summary)
+    kept: list = []
+    for block in blocks:
+        btype = getattr(block, "type", "")
+        if btype in ("signature_block", "table", "image", "page_break"):
+            kept.append(block)
+            continue
+        raw = _block_plain_text(block)
+        key = _norm_key(raw)
+        if not key:
+            kept.append(block)
+            continue
+        if title_key and _similar(key, title_key):
+            adjustments.append({
+                "action": "removed_duplicate_title",
+                "block_type": btype,
+                "text": _strip_html_text(raw)[:160],
+            })
+            continue
+        if summary_key:
+            core = _norm_key(_strip_summary_label(raw))
+            if core and _similar(core, summary_key):
+                adjustments.append({
+                    "action": "removed_duplicate_summary",
+                    "block_type": btype,
+                    "text": _strip_html_text(raw)[:160],
+                })
+                continue
+        kept.append(block)
+    return kept, adjustments
+
+
+def _is_location_like(block, text: str) -> bool:
+    meta = getattr(block, "metadata", {}) or {}
+    if meta.get("kind") == "location_date":
+        return True
+    if len(text) > 160:
+        return False
+    if _LOCATION_DATE_RE.match(text):
+        return True
+    return bool(_LOCATION_HINT_RE.search(text))
+
+
+def _normalize_closing(blocks: list):
+    """Make the closing an atomic unit, always before the signature.
+
+    Collects contiguous location/date/place blocks sitting immediately before
+    the signature block, folds them into the signature's first entry and emits
+    a single fecho (place + date) rendered right before the name/role. The
+    signature is forced to be the last block. Returns ``(blocks, adjustments)``.
+    """
+    adjustments: list[dict] = []
+    sig = next(
+        (b for b in reversed(blocks) if getattr(b, "type", "") == "signature_block"),
+        None,
+    )
+    if sig is None or not sig.entries:
+        return blocks, adjustments
+
+    idx = blocks.index(sig)
+    collected: list = []
+    j = idx - 1
+    while j >= 0:
+        block = blocks[j]
+        text = _block_plain_text(block).strip()
+        if not text:
+            j -= 1
+            continue
+        if (
+            getattr(block, "type", "") in ("paragraph", "heading", "quote", "legacy_html")
+            and _is_location_like(block, text)
+        ):
+            collected.insert(0, block)
+            j -= 1
+            continue
+        break
+
+    entry = sig.entries[0]
+    if collected:
+        parts = [_strip_html_text(_block_plain_text(b)) for b in collected]
+        if entry.location:
+            parts.append(entry.location)
+        if entry.date:
+            parts.append(entry.date)
+        entry.location = "\n".join(p for p in parts if p.strip())
+        entry.date = ""
+        for block in collected:
+            blocks.remove(block)
+        adjustments.append({
+            "action": "merged_closing",
+            "text": entry.location[:200].replace("\n", " / "),
+        })
+
+    if blocks and blocks[-1] is not sig:
+        adjustments.append({"action": "moved_signature_to_end"})
+    return [b for b in blocks if b is not sig] + [sig], adjustments
+
+
 def _block(btype, **kw):
-    """Factory that forces deterministic origin + a base confidence."""
+    """Factory that forces deterministic origin + a base confidence.
+
+    A block classified with high confidence is auto-confirmed so a standard
+    act (paste → publish) never stalls waiting on a human to tick every
+    paragraph. Only genuinely ambiguous blocks (tables, freeform lists,
+    heuristic signature merges — anything below ``_CONFIRM_HIGH``) still
+    require explicit human confirmation before approval.
+    """
     kw.setdefault("id", stable_id())
     kw.setdefault("origin", ORIGIN_DETERMINISTIC)
+    kw.setdefault("confirmed", kw.get("confidence", 1.0) >= _CONFIRM_HIGH)
     return btype(**kw)
 
 
@@ -317,6 +474,16 @@ def parse_document(
     if title and not blocks:
         blocks.append(_block(HeadingBlock, level=1, text=title))
 
+    # Deterministic structuring: keep a single source of truth for the heading
+    # (structured field) and make the closing (place + date) an atomic block
+    # that always precedes the signature. Every change is reported, never
+    # silent.
+    blocks, dedupe_adjustments = _dedupe_structured(
+        blocks, title=title, summary=summary
+    )
+    blocks, closing_adjustments = _normalize_closing(blocks)
+    auto_adjustments = dedupe_adjustments + closing_adjustments
+
     doc = SemanticDocument(
         document_type=document_type,
         title=title,
@@ -325,6 +492,7 @@ def parse_document(
         source_type=source_type,
         blocks=blocks,
         classification_status=CLASSIFICATION_PENDING,
+        auto_adjustments=auto_adjustments,
     )
 
     # Integrity
@@ -423,6 +591,131 @@ def _split_html_blocks(html: str) -> list[dict]:
     return p.top
 
 
+_BR_SPLIT_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
+_SENTENCE_END_RE = re.compile(r'[.:;]["”\']?\s*$')
+
+
+def _split_by_br(raw_html: str) -> list[str]:
+    """Split a raw HTML chunk on <br> into candidate logical lines.
+
+    Not every real-world source produces one <p> per line: text typed with
+    Shift+Enter, or plain multi-line text the browser wraps into a single
+    paragraph on paste, arrives as ONE paragraph with <br> as the only line
+    separator. Without this, the whole act (preamble through signature) gets
+    classified as a single line — usually swallowed whole into one preamble
+    block — instead of one block per Art./§/inciso/assinatura. The raw split
+    is over-eager (it also cuts a sentence that merely wraps for
+    readability), so callers must run it through ``_regroup_br_segments``.
+    """
+    if not raw_html or not _BR_SPLIT_RE.search(raw_html):
+        return [raw_html]
+    return _BR_SPLIT_RE.split(raw_html)
+
+
+def _starts_new_unit(stripped: str) -> bool:
+    """True when a line of text opens a new structural unit.
+
+    Used to tell a genuine line break (new Art./§/inciso/command/heading/
+    signature/location+date) apart from a <br> that only wraps one sentence
+    for on-screen readability.
+    """
+    if not stripped:
+        return True
+    if _COMMAND_RE.match(stripped) or _CONSIDERANDO_RE.match(stripped):
+        return True
+    art = _ARTICLE_RE.match(stripped)
+    if art and art.group(2) is not None:
+        return True
+    if _SOLE_PARAGRAPH_RE.match(stripped) or _PARAGRAPH_RE.match(stripped):
+        return True
+    inciso = _INCISO_RE.match(stripped)
+    if inciso and inciso.group(1) in _ROMAN:
+        return True
+    alinea = _ALINEA_RE.match(stripped)
+    if alinea and len(alinea.group(1)) <= 2:
+        return True
+    if _LIST_ITEM_RE.match(stripped) or _LOCATION_DATE_RE.match(stripped):
+        return True
+    if _ROLE_RE.match(stripped) or _FIELD_RE.match(stripped):
+        return True
+    if _is_tab_row(stripped):
+        return True
+    # Deliberately NOT using the ALL-CAPS-heading heuristic here: a short
+    # all-caps trailing fragment (e.g. "SERVIDORES PÚBLICOS,") is often just
+    # the tail of a preamble/considerando sentence, not a real heading — and
+    # a false positive here would wrongly cut a legal sentence in half.
+    return False
+
+
+def _regroup_lines(lines: list[str]) -> list[str]:
+    """Merge consecutive plain-text lines that are one sentence wrapped.
+
+    Some sources (Office/PDF clipboard payloads especially) hand over the
+    whole act as literal newline-separated text with no paragraph markup at
+    all, so a single sentence that merely wraps for on-screen width would
+    otherwise become one block per line. Mirrors ``_regroup_br_segments``.
+    """
+    if len(lines) <= 1:
+        return lines
+    merged: list[str] = []
+    buf: Optional[str] = None
+    buf_stripped = ""
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            if buf is not None:
+                merged.append(buf)
+                buf = None
+                buf_stripped = ""
+            merged.append(line)
+            continue
+        if (
+            buf is None
+            or _SENTENCE_END_RE.search(buf_stripped)
+            or _starts_new_unit(stripped)
+            or _is_tab_row(buf_stripped)
+        ):
+            if buf is not None:
+                merged.append(buf)
+            buf = line
+            buf_stripped = stripped
+        else:
+            buf = f"{buf.rstrip()} {stripped}"
+            buf_stripped = f"{buf_stripped} {stripped}"
+    if buf is not None:
+        merged.append(buf)
+    return merged
+
+
+def _regroup_br_segments(segments: list[str]) -> list[str]:
+    """Merge <br>-split fragments that are just a soft-wrap of one sentence.
+
+    A <br> only starts a new logical line when the fragment after it opens a
+    recognizable structural unit (see ``_starts_new_unit``) or the fragment
+    before it already ended a sentence/clause ('.', ':', ';'). Otherwise the
+    two fragments are the same sentence wrapped for readability and must
+    stay in a single block — merging keeps rich (HTML) content intact.
+    """
+    if len(segments) <= 1:
+        return segments
+    merged: list[str] = []
+    buf = segments[0]
+    buf_plain = _inner_text(buf).strip()
+    for seg in segments[1:]:
+        seg_plain = _inner_text(seg).strip()
+        if not seg_plain:
+            continue
+        if not buf_plain or _SENTENCE_END_RE.search(buf_plain) or _starts_new_unit(seg_plain):
+            merged.append(buf)
+            buf = seg
+            buf_plain = seg_plain
+        else:
+            buf = buf.rstrip() + " " + seg.lstrip()
+            buf_plain = f"{buf_plain} {seg_plain}"
+    merged.append(buf)
+    return merged
+
+
 def _parse_html(html: str, fallback_text: str = "") -> list:
     """Best-effort HTML parse producing blocks; falls back to line parsing."""
     tokens = _split_html_blocks(html)
@@ -433,10 +726,17 @@ def _parse_html(html: str, fallback_text: str = "") -> list:
         if kind == "table":
             blocks.append(_build_table_from_html(raw))
         elif kind in ("p", "div", "section"):
-            inner = _inner_text(tok.get("inner", ""))
-            classified = _classify_text_line(inner, blocks)
-            if classified is not None:
-                blocks.append(classified)
+            # ``raw`` keeps nested inline tags (bold/italic); ``inner`` is the
+            # already-stripped text used for classification. A <br>-joined
+            # paragraph is split into one segment per line first (see
+            # _split_by_br) so each line is classified on its own.
+            raw_html = tok.get("raw") or tok.get("inner", "")
+            for segment in _regroup_br_segments(_split_by_br(raw_html)):
+                inner = _inner_text(segment)
+                rich = _inline_html(segment)
+                classified = _classify_text_line(inner, blocks, rich=rich)
+                if classified is not None:
+                    blocks.append(classified)
         elif kind in ("h1", "h2", "h3", "h4", "h5", "h6"):
             level = int(kind[1])
             blocks.append(_block(HeadingBlock, level=level,
@@ -445,7 +745,7 @@ def _parse_html(html: str, fallback_text: str = "") -> list:
             blocks.append(_build_list_from_html(raw))
         elif kind == "blockquote":
             blocks.append(_block(ParagraphBlock,
-                                 content=_inner_text(tok.get("inner", "")),
+                                 content=_inline_html(tok.get("inner", "")),
                                  confidence=_CONFIRM_MED))
         elif kind == "img":
             blocks.append(_block(ImageBlock, src=raw, alt="", confidence=_CONFIRM_MED))
@@ -460,15 +760,76 @@ def _inner_text(html: str) -> str:
     return _strip_html(html)
 
 
-def _classify_text_line(text: str, blocks: list) -> Optional[object]:
-    """Classify a single line (from HTML paragraph) into a typed block."""
+_INLINE_KEEP = "strong|b|em|i|u|s|sub|sup|a|br|span|code|del|ins|cite|abbr|mark"
+_INLINE_UNWRAP_RE = re.compile(
+    r"</?(?:p|div|section|article|header|footer|main|aside|li|ul|ol|dl|dt|dd|"
+    r"h[1-6]|blockquote|pre|figure|figcaption|table|thead|tbody|tfoot|tr|td|th|"
+    r"caption|colgroup|col|hr)\b[^>]*>",
+    re.IGNORECASE,
+)
+
+
+def _inline_html(html: str) -> str:
+    """Sanitize pasted HTML but KEEP intentional inline formatting.
+
+    Bold/italic that the author applied (Word or editor) must survive the
+    pipeline; only block wrappers and presentation attributes (Word classes,
+    inline styles) are removed. Executable markup is stripped by the shared
+    sanitizer first, so this never weakens security.
+    """
+    from app.core.html_sanitizer import sanitize_html
+
+    if not html:
+        return ""
+    safe = sanitize_html(html)
+    # Unwrap block-level wrappers, keeping their children/text.
+    safe = _INLINE_UNWRAP_RE.sub("", safe)
+
+    def _strip_attrs(match: "re.Match[str]") -> str:
+        tag = match.group(1).lower()
+        if tag not in _INLINE_KEEP.split("|"):
+            return ""  # unknown inline tag: drop the tag (keep inner text)
+        if tag == "a":
+            href = re.search(r'href\s*=\s*(["\'])(.*?)\1', match.group(0), re.I)
+            if href:
+                return f'<a href="{href.group(2)}">'
+        if tag == "br":
+            return "<br/>"
+        return f"<{tag}>"
+
+    safe = re.sub(r"<([a-zA-Z][a-zA-Z0-9]*)(?:\s[^>]*)?/?>", _strip_attrs, safe)
+    return re.sub(r"\s+", " ", safe).strip()
+
+
+def _strip_rich_prefix(rich: str, prefix: str) -> str:
+    """Remove a leading numbering prefix from inline HTML, keeping formatting."""
+    if not rich:
+        return rich
+    stripped_rich = rich.lstrip()
+    leading_ws = rich[: len(rich) - len(stripped_rich)]
+    if prefix and stripped_rich.startswith(prefix):
+        return (leading_ws + stripped_rich[len(prefix):]).strip()
+    # Fall back to the plain remainder when the prefix cannot be located, so
+    # the renderer never shows a doubled number (bold may be lost only here).
+    return ""
+
+
+def _classify_text_line(text: str, blocks: list, rich: str | None = None) -> Optional[object]:
+    """Classify a single line (from HTML paragraph) into a typed block.
+
+    ``rich`` is the inline-preserving HTML of the same paragraph (bold/italic
+    kept); when present it is stored as the block content so the renderer can
+    reproduce the author's formatting. Enumerations keep only the content
+    (numbering is re-emitted by the renderer), preserving inline formatting.
+    """
     stripped = text.strip()
     if not stripped:
         return None
+    content = rich or text
     if _CONSIDERANDO_RE.match(stripped):
-        return _block(ConsiderandoBlock, content=text, confidence=_CONFIRM_HIGH)
+        return _block(ConsiderandoBlock, content=content, confidence=_CONFIRM_HIGH)
     if _PREAMBLE_RE.search(stripped) and len(stripped.split()) >= 6:
-        return _block(PreambleBlock, content=text, confidence=_CONFIRM_MED)
+        return _block(PreambleBlock, content=content, confidence=_CONFIRM_MED)
     if _COMMAND_RE.match(stripped):
         return _block(CommandBlock, text=stripped, confidence=_CONFIRM_HIGH)
     art = _ARTICLE_RE.match(stripped)
@@ -479,21 +840,56 @@ def _classify_text_line(text: str, blocks: list) -> Optional[object]:
             m = re.match(r"^(\d+)[ºª]([-A-Z])?$", num)
             if m:
                 suffix = m.group(2)
+        caput_plain = art.group(2).strip()
+        prefix = stripped[: len(stripped) - len(caput_plain)]
+        caput = _strip_rich_prefix(rich, prefix) if rich else caput_plain
         return _block(ArticleBlock, number=num or None, suffix=suffix,
-                      caput=art.group(2).strip(), confidence=_CONFIRM_HIGH)
-    if _SOLE_PARAGRAPH_RE.match(stripped):
-        return _block(ParagraphItemBlock, number=None, content=stripped,
+                      caput=caput or caput_plain, confidence=_CONFIRM_HIGH)
+    sole = _SOLE_PARAGRAPH_RE.match(stripped)
+    if sole:
+        body = sole.group(1).strip()
+        prefix = stripped[: len(stripped) - len(body)] if body else ""
+        inner = _strip_rich_prefix(rich, prefix) if rich else body
+        return _block(ParagraphItemBlock, number=None, content=inner or body,
                       text=stripped, confidence=_CONFIRM_HIGH)
-    if _PARAGRAPH_RE.match(stripped):
-        para = _PARAGRAPH_RE.match(stripped)
+    para = _PARAGRAPH_RE.match(stripped)
+    if para:
+        body = (para.group(2).strip() or stripped)
+        para_body = para.group(2).strip()
+        prefix = stripped[: len(stripped) - len(para_body)] if para_body else ""
+        inner = _strip_rich_prefix(rich, prefix) if rich else body
         return _block(ParagraphItemBlock,
                       number=(para.group(1) or "").strip() or None,
-                      content=para.group(2).strip() or stripped, text=stripped,
+                      content=inner or body, text=stripped,
                       confidence=_CONFIRM_HIGH)
+    if _LOCATION_DATE_RE.match(stripped):
+        return _block(ParagraphBlock, content=content, confidence=_CONFIRM_MED,
+                      metadata={"kind": "location_date"})
+    inciso = _INCISO_RE.match(stripped)
+    if inciso and inciso.group(1) in _ROMAN and not _ARTICLE_RE.match(stripped):
+        body = inciso.group(2).strip()
+        prefix = stripped[: len(stripped) - len(body)] if body else stripped
+        inner = _strip_rich_prefix(rich, prefix) if rich else body
+        return _block(IncisoBlock, number=inciso.group(1),
+                      content=inner or body, text=stripped, confidence=_CONFIRM_HIGH)
+    alinea = _ALINEA_RE.match(stripped)
+    if alinea and len(alinea.group(1)) <= 2:
+        body = alinea.group(2).strip()
+        prefix = stripped[: len(stripped) - len(body)] if body else stripped
+        inner = _strip_rich_prefix(rich, prefix) if rich else body
+        return _block(AlineaBlock, number=alinea.group(1),
+                      content=inner or body, text=stripped, confidence=_CONFIRM_HIGH)
+    list_item = _LIST_ITEM_RE.match(stripped)
+    if list_item:
+        return _block(ListBlock, ordered=False, items=[list_item.group(1).strip()],
+                      confidence=_CONFIRM_MED)
     if _FIELD_RE.match(stripped):
-        return _block(ParagraphBlock, content=text, confidence=_CONFIRM_HIGH,
+        return _block(ParagraphBlock, content=content, confidence=_CONFIRM_HIGH,
                       metadata={"kind": "field"})
-    return _block(ParagraphBlock, content=text, confidence=_CONFIRM_HIGH)
+    if _looks_like_signature(stripped):
+        return _block(ParagraphBlock, content=text, confidence=_CONFIRM_LOW,
+                      metadata={"kind": "signature"})
+    return _block(ParagraphBlock, content=content, confidence=_CONFIRM_HIGH)
 
 
 # ── Plain-text pass ──────────────────────────────────────────────────────────
@@ -501,7 +897,7 @@ def _classify_text_line(text: str, blocks: list) -> Optional[object]:
 
 def _parse_lines(text: str) -> list:
     blocks: list = []
-    lines = text.split("\n")
+    lines = _regroup_lines(text.split("\n"))
     i = 0
     while i < len(lines):
         raw = lines[i]

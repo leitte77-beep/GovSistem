@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import clsx from "clsx";
 
@@ -31,6 +31,14 @@ interface Props {
   documentType?: string;
   html?: string;
   plain?: string;
+  /**
+   * Incrementing token that requests an automatic analysis of the current
+   * source. The wizard bumps it whenever the user pastes content, so a paste
+   * from Word/Excel/browser is sent to the semantic engine without extra clicks.
+   */
+  analyzeToken?: number;
+  /** Called once the automatic analysis for a token has been dispatched. */
+  onAutoAnalyze?: () => void;
   onSaved?: (doc: SemanticDocument) => void;
   /** Reports semantic analysis state so the wizard can show a clear status. */
   onStatusChange?: (status: {
@@ -45,6 +53,21 @@ interface Props {
 const sourceCls =
   "w-full rounded-xl border border-outline-variant bg-surface-container-lowest px-4 py-3 text-body-sm font-mono focus:ring-2 focus:ring-primary outline-none min-h-[160px]";
 
+function _adjustmentLabel(action: string): string {
+  switch (action) {
+    case "removed_duplicate_title":
+      return "Cabeçalho repetido removido do corpo (o campo Título é a fonte única).";
+    case "removed_duplicate_summary":
+      return "Súmula repetida removida do corpo (o campo Súmula é a fonte única).";
+    case "merged_closing":
+      return "Fecho (local + data) agrupado como um único bloco.";
+    case "moved_signature_to_end":
+      return "Assinatura reposicionada para depois do fecho.";
+    default:
+      return action;
+  }
+}
+
 export default function SemanticEditor({
   matterId,
   title = "",
@@ -52,6 +75,8 @@ export default function SemanticEditor({
   documentType = "ato_oficial",
   html,
   plain,
+  analyzeToken,
+  onAutoAnalyze,
   onSaved,
   onStatusChange,
 }: Props) {
@@ -67,11 +92,16 @@ export default function SemanticEditor({
   const [currentVersion, setCurrentVersion] = useState<number | undefined>(undefined);
   const [conflict, setConflict] = useState(false);
 
+  // Set while a paste-driven automatic analysis is in flight, so a late
+  // response from loadExisting cannot overwrite the freshly analyzed document.
+  const autoRequestedRef = useRef(false);
+
   const loadExisting = useCallback(async () => {
     if (!matterId) return;
     setLoadingSaved(true);
     try {
       const res = await semanticApi.get(matterId);
+      if (autoRequestedRef.current) return; // paste analysis takes precedence
       setDoc(res.document);
       if (res.version) setCurrentVersion(res.version);
       toast.success("Documento semântico carregado");
@@ -86,39 +116,74 @@ export default function SemanticEditor({
     loadExisting();
   }, [loadExisting]);
 
-  const handleAnalyze = async () => {
-    if (!matterId) {
-      toast.error("Salve a matéria antes de analisar");
-      return;
-    }
-    if (!sourceHtml.trim() && !sourcePlain.trim()) {
-      toast.error("Cole ou digite o conteúdo para analisar");
-      return;
-    }
-    setAnalyzing(true);
-    try {
-      const res: SemanticAnalyzeResponse = await semanticApi.analyze(matterId, {
-        html: sourceHtml || null,
-        plain: sourcePlain || null,
-        title,
-        summary,
-        document_type: documentType,
-      });
-      setDoc(res.document);
-      setIntegrity(res.integrity);
-      setValidation(res.validation);
-      const pending = res.document.blocks.filter((b) => !b.confirmed).length;
-      if (pending > 0) {
-        toast(`${pending} bloco(s) aguardando confirmação`, { icon: "⚠️" });
-      } else {
-        toast.success("Documento analisado e organizado");
+  const handleAnalyze = useCallback(
+    async (overrides?: { html?: string | null; plain?: string | null }) => {
+      if (!matterId) {
+        toast.error("Salve a matéria antes de analisar");
+        return;
       }
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao analisar");
-    } finally {
-      setAnalyzing(false);
+      const htmlValue = overrides?.html ?? sourceHtml;
+      const plainValue = overrides?.plain ?? sourcePlain;
+      if (!htmlValue.trim() && !plainValue.trim()) {
+        toast.error("Cole ou digite o conteúdo para analisar");
+        return;
+      }
+      setAnalyzing(true);
+      try {
+        const res: SemanticAnalyzeResponse = await semanticApi.analyze(matterId, {
+          html: htmlValue || null,
+          plain: plainValue || null,
+          title,
+          summary,
+          document_type: documentType,
+        });
+        setDoc(res.document);
+        setIntegrity(res.integrity);
+        setValidation(res.validation);
+        const pending = res.document.blocks.filter((b) => !b.confirmed).length;
+        if (pending > 0) {
+          toast(`${pending} bloco(s) aguardando confirmação`, { icon: "⚠️" });
+        } else {
+          toast.success("Documento analisado e organizado");
+        }
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Erro ao analisar");
+      } finally {
+        setAnalyzing(false);
+      }
+    },
+    [matterId, sourceHtml, sourcePlain, title, summary, documentType]
+  );
+
+  // Keep the source textareas in sync when the wizard supplies a new paste
+  // (without clobbering edits the user made directly in the semantic editor).
+  const prevHtml = useRef(html);
+  const prevPlain = useRef(plain);
+  useEffect(() => {
+    if ((html ?? "") !== (prevHtml.current ?? "")) {
+      setSourceHtml(html ?? "");
+      prevHtml.current = html;
     }
-  };
+    if ((plain ?? "") !== (prevPlain.current ?? "")) {
+      setSourcePlain(plain ?? "");
+      prevPlain.current = plain;
+    }
+  }, [html, plain]);
+
+  // A new paste token means "classify this now" — automatic analysis of the
+  // content that just arrived, using the incoming source directly so we never
+  // analyze a stale textarea value.
+  const lastAnalyzeToken = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (analyzeToken === undefined || analyzeToken === null) return;
+    if (analyzeToken === lastAnalyzeToken.current) return;
+    lastAnalyzeToken.current = analyzeToken;
+    autoRequestedRef.current = true;
+    onAutoAnalyze?.();
+    void handleAnalyze({ html, plain }).finally(() => {
+      autoRequestedRef.current = false;
+    });
+  }, [analyzeToken, html, plain, handleAnalyze, onAutoAnalyze]);
 
   const confirmBlock = (id: string, confirmed: boolean) => {
     setDoc((d) => (d ? updateBlock(d, id, { confirmed }) : d));
@@ -203,7 +268,7 @@ export default function SemanticEditor({
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={handleAnalyze}
+              onClick={() => handleAnalyze()}
               disabled={analyzing || !matterId}
               className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-sm font-semibold bg-primary text-on-primary shadow hover:opacity-90 disabled:opacity-50"
             >
@@ -235,6 +300,20 @@ export default function SemanticEditor({
               ))}
             </div>
           </div>
+
+          {doc.auto_adjustments && doc.auto_adjustments.length > 0 && (
+            <div className="rounded-xl border border-warning/40 bg-warning-container/20 p-3 text-sm flex items-start gap-2 text-on-surface">
+              <span className="material-symbols-outlined text-[18px] shrink-0 text-warning">auto_fix_high</span>
+              <div>
+                <strong>Ajustes automáticos aplicados ({doc.auto_adjustments.length})</strong>
+                <ul className="list-disc pl-4 mt-1 text-xs">
+                  {doc.auto_adjustments.map((a, i) => (
+                    <li key={i}>{_adjustmentLabel(a.action)}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
 
           {integrity && (
             <div className={clsx("rounded-xl border p-3 text-sm flex items-start gap-2",

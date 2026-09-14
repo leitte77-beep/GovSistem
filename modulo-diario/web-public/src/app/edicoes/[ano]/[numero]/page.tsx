@@ -24,7 +24,7 @@ import EditionPager from "@/components/edition/EditionPager";
 
 export const dynamic = "force-dynamic";
 
-type PageProps = { params: { ano: string; numero: string } };
+type PageProps = { params: Promise<{ ano: string; numero: string }> };
 
 function formatCnpj(value?: string | null): string | null {
   const digits = (value || "").replace(/\D/g, "");
@@ -177,8 +177,9 @@ async function getPageData(year: number, number: number) {
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  const year = Number(params.ano);
-  const number = Number(params.numero);
+  const { ano, numero } = await params;
+  const year = Number(ano);
+  const number = Number(numero);
   const data = await getPageData(year, number);
   const orgName = data.org?.name || data.content?.editionMeta.organization || "";
   const date = data.content?.editionMeta.publication_date;
@@ -211,8 +212,9 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 export default async function EditionDetailPage({ params }: PageProps) {
-  const year = Number(params.ano);
-  const number = Number(params.numero);
+  const { ano, numero } = await params;
+  const year = Number(ano);
+  const number = Number(numero);
   const data = await getPageData(year, number);
 
   if (!data.content) {

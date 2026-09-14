@@ -635,18 +635,24 @@ async def test_validate_signature_no_signatures(client, override_db_and_auth):
 # ── Publish ───────────────────────────────────────────────────────────────────
 
 
+@patch("app.core.public_utils.read_public_file")
 @patch("app.api.v1.editions.log_audit_event", new_callable=AsyncMock)
 @patch("app.api.v1.editions.capture_request_info", return_value={"ip_address": "127.0.0.1", "user_agent": ""})
 @patch("app.services.search_indexer.get_search_provider")
 @pytest.mark.anyio
-async def test_publish_edition(mock_search, mock_capture, mock_audit, client, override_db_and_auth):
+async def test_publish_edition(mock_search, mock_capture, mock_audit, mock_read_pdf, client, override_db_and_auth):
     mock_db = override_db_and_auth
+    signed_hash = __import__("hashlib").sha256(b"signed-pdf-bytes").hexdigest()
     edition = _make_edition(status=EditionStatus.SIGNED, pdf_hash="hash123")
+    edition.signed_pdf_path = "signed.pdf"
+    edition.signed_pdf_hash = signed_hash
+    edition.signature_validation_status = "valid"
     sig = _make_signature(edition.id)
     edition.signatures = [sig]
     mock_result = MagicMock()
     mock_result.scalar_one_or_none.return_value = edition
     mock_db.execute.return_value = mock_result
+    mock_read_pdf.return_value = (b"signed-pdf-bytes", "application/pdf")
 
     mock_indexer = MagicMock()
     mock_indexer.index_matter = AsyncMock()

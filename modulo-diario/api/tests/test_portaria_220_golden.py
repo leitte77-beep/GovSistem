@@ -54,11 +54,16 @@ def test_summary_label_preserved_exactly():
     assert doc.summary == "EXONERA A SERVIDORA ISABELE DIAS DUTRA."
 
 
-def test_act_title_recognised():
+def test_act_title_is_not_duplicated_in_body():
     doc = _doc()
-    heading = next((b for b in doc.blocks if b.type == "heading"), None)
-    assert heading is not None
-    assert "PORTARIA Nº 220/2026" in heading.text
+    # The structured title field is the single source of truth: a header pasted
+    # inside the body must be removed, never rendered twice.
+    assert not any(
+        b.type == "heading" and "PORTARIA Nº 220/2026" in (b.text or "")
+        for b in doc.blocks
+    )
+    html = render_document(doc, default_config_for("portaria"), media="print")
+    assert html.count("PORTARIA Nº 220/2026") == 1
 
 
 def test_preamble_recognised():

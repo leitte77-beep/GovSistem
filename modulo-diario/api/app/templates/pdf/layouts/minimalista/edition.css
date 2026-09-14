@@ -48,6 +48,8 @@ body {
   font-size: 11pt;
   line-height: 1.45;
   color: #000;
+  orphans: 2;
+  widows: 2;
 }
 
 .document {

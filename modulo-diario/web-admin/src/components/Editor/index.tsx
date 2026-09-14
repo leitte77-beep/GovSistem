@@ -10,7 +10,7 @@ import Toolbar from "./Toolbar";
 import { stripWordMso } from "@/lib/sanitize";
 import { autoformatHtml, plainTextToStructuredHtml } from "@/lib/contentAutoformat";
 import { formatOfficialAct } from "@/lib/officialActFormat";
-import { cleanPastedHtml, detectPdfExtractedText } from "@/lib/clipboard";
+import { cleanPastedHtml, detectPdfExtractedText, htmlLacksFormatting } from "@/lib/clipboard";
 import { api } from "@/lib/api";
 import HtmlPreview from "../Matter/HtmlPreview";
 import "@/app/editor-content.css";
@@ -21,11 +21,37 @@ interface EditorProps {
   onChange: (html: string) => void;
   onChangeJson?: (json: Record<string, unknown>) => void;
   onCleanWarnings?: (warnings: string[]) => void;
+  /**
+   * Reports the raw clipboard source (HTML and/or plain text) for EVERY paste,
+   * including Word/Excel/browser HTML. This is what lets the canonical semantic
+   * engine classify rich content instead of only plain text.
+   */
+  onPasteSource?: (source: { html: string; plain: string; isOffice: boolean }) => void;
   aiContext?: {
     actType?: string;
     title?: string;
     summary?: string;
   };
+}
+
+/**
+ * Pure extraction of a paste payload. Kept separate from the TipTap handler so
+ * the "rich HTML must reach the semantic engine" behavior is unit-testable.
+ * Returns null when the clipboard carries neither HTML nor text.
+ */
+export function extractPasteSource(getData: (type: string) => string): {
+  html: string;
+  plain: string;
+  isOffice: boolean;
+} | null {
+  const html = getData("text/html") || "";
+  const plain = getData("text/plain") || "";
+  if (!html && !plain) return null;
+  const isOffice = !!html && (
+    /mso-|Mso|class="[^"]*Mso/i.test(html)
+    || /<table[^>]*(?:xmlns|x:)/i.test(html)
+  );
+  return { html, plain, isOffice };
 }
 
 function insertHtml(view: EditorView, html: string) {
@@ -44,6 +70,7 @@ export default function Editor({
   onChange,
   onChangeJson,
   onCleanWarnings,
+  onPasteSource,
   aiContext,
 }: EditorProps) {
   const [showPreview, setShowPreview] = useState(false);
@@ -70,16 +97,34 @@ export default function Editor({
         const clipboard = event.clipboardData;
         if (!clipboard) return false;
 
-        const html = clipboard.getData("text/html");
-        const text = clipboard.getData("text/plain");
-
-        if (!html && !text) return false;
+        const paste = extractPasteSource((type) => clipboard.getData(type));
+        if (!paste) return false;
         event.preventDefault();
+
+        const { html, plain: text, isOffice: isOfficeHtml } = paste;
+
+        // PDF viewers (Adobe Acrobat, browser PDF preview) put text/html on
+        // the clipboard alongside text/plain, but that HTML has no real
+        // formatting — treat it like a plain-text paste so PDF-detection /
+        // official-act formatting still runs, instead of falling into the
+        // "rich HTML" branch below and leaving the pasted text unformatted.
+        if (html && !isOfficeHtml && text.trim() && htmlLacksFormatting(html)) {
+          onPasteSource?.({ html: "", plain: text, isOffice: false });
+          const detected = detectPdfExtractedText(text);
+          if (detected.likely) {
+            setPendingPdfText(text);
+            setPdfReasons(detected.reasons);
+            return true;
+          }
+          insertHtml(view, formatOfficialAct(text));
+          return true;
+        }
 
         // 1) Prefer rich HTML when available — never flatten it to plain text.
         if (html) {
-          const isOfficeHtml = /mso-|Mso|class="[^"]*Mso/i.test(html)
-            || /<table[^>]*(?:xmlns|x:)/i.test(html);
+          // Rich HTML (Word/Excel/browser) is reported so the canonical semantic
+          // engine can classify it — the old flow only did this for plain text.
+          onPasteSource?.({ html, plain: text, isOffice: isOfficeHtml });
           const source = isOfficeHtml ? stripWordMso(html) : html;
           const { html: clean, warnings, preservedTables } = cleanPastedHtml(source);
           const contentToInsert = clean && /<(p|table|div|h[1-6]|ul|ol|blockquote|img)[\s>]/i.test(clean)
@@ -104,6 +149,10 @@ export default function Editor({
               setPdfReasons(detected.reasons);
               return true; // ask the user before touching legal content
             }
+            // Plain legal text also goes to the semantic engine (its parser is
+            // richer than the local formatter); it is still inserted so the rich
+            // editor keeps a visible fallback.
+            onPasteSource?.({ html: "", plain: text, isOffice: false });
             // Official-act formatter recognizes preamble, SÚMULA/EMENTA,
             // DECRETA/RESOLVE, articles, incisos, CONSIDERANDO, place/date and
             // signature, and rebuilds tab-separated tables as real tables.

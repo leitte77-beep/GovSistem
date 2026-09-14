@@ -13,6 +13,63 @@ from datetime import datetime, timezone
 
 from app.models.enums import ValidationStatus
 
+# Only these values prove that a revocation source was actually consulted.
+# Anything else ("not_checked", "pending_validation", ...) must never be
+# surfaced as "revocation verified".
+REVOCATION_CHECKED_VALUES = {"valid", "revoked", "good", "checked", "ok"}
+
+# Only these values prove the presence of a real RFC 3161 token. The ordinary
+# signing date (``signed_at``) is NOT a timestamp.
+TIMESTAMP_PRESENT_VALUES = {"valid", "present", "granted", "ok"}
+
+
+def _parse_dt(value):
+    if not value:
+        return None
+    if isinstance(value, datetime):
+        return value
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return None
+
+
+def certificate_valid_at(valid_from, valid_to, at=None) -> bool | None:
+    """Whether the certificate was within its validity window at ``at``.
+
+    Returns ``None`` (não verificado) when the validity end is unknown, so the
+    UI can distinguish "unknown" from a genuine "not valid".
+    """
+    end = _parse_dt(valid_to)
+    if end is None:
+        return None
+    if end.tzinfo is None:
+        end = end.replace(tzinfo=timezone.utc)
+    moment = _parse_dt(at) or datetime.now(timezone.utc)
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    start = _parse_dt(valid_from)
+    if start is not None and start.tzinfo is None:
+        start = start.replace(tzinfo=timezone.utc)
+    if start is not None and moment < start:
+        return False
+    return moment <= end
+
+
+def pades_profile_from_report(report: dict | None) -> str:
+    """Honest PAdES profile label.
+
+    The ICP-Brasil AD-RB policy is only claimed when the signer actually
+    reported a policy OID; otherwise a plain PAdES-B-B (or lower) is reported.
+    """
+    report = report or {}
+    policy_oid = str(report.get("policy_oid") or "").strip()
+    timestamp_status = str(report.get("timestamp_status") or "").strip().lower()
+    profile = "PAdES-B-B / ICP-Brasil AD-RB" if policy_oid else "PAdES-B-B"
+    if timestamp_status in TIMESTAMP_PRESENT_VALUES:
+        profile += " + RFC3161"
+    return profile
+
 
 @dataclass
 class SignatureValidationResult:

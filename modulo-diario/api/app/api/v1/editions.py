@@ -38,6 +38,10 @@ from app.schemas.edition import (
     SignResponse,
     ValidateSignatureResponse,
 )
+from app.services.signature_validation import (
+    certificate_valid_at,
+    pades_profile_from_report,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -721,8 +725,8 @@ async def generate_edition_pdf(
             422,
             f"Edition must be CLOSED or PDF_GENERATED to generate PDF, current: {_status_value(edition.status)}",
         )
-    if edition.status == EditionStatus.SIGNED:
-        raise HTTPException(409, "Cannot regenerate PDF for a signed edition")
+    if edition.pdf_path:
+        raise HTTPException(409, "PDF already generated for this edition")
 
     from app.models.organization import Organization
     from app.services.edition_pdf import generate_edition_pdf_sync
@@ -774,10 +778,13 @@ async def sign_edition(
     pfx_pass = body.pfx_password or ""
     if body.signing_credential_id:
         import base64
+        # Multitenancy: a credential may only be used by its own organization.
         cred_result = await db.execute(
             select(SigningCredential).where(
                 SigningCredential.id == body.signing_credential_id,
+                SigningCredential.organization_id == edition.organization_id,
                 SigningCredential.is_active,
+                SigningCredential.deleted_at.is_(None),
             )
         )
         credential = cred_result.scalar_one_or_none()
@@ -933,14 +940,23 @@ async def sign_edition(
     edition.signed_pdf_hash = signed_pdf_hash
     edition.pdf_hash = signed_pdf_hash  # legado
     edition.immutability_hash = edition.compute_immutability_hash()
+    # Estado global: nunca "valid" sem cadeia realmente validada. Os sub-estados
+    # (integridade, validade temporal, revogação, carimbo de tempo) permanecem
+    # independentes e só ficam positivos quando há evidência correspondente.
     edition.signature_validation_status = "valid" if chain_trusted else "indeterminate"
     edition.signature_validation_details = {
         "integrity": True,
         "signature_valid": True,
         "chain_trusted": chain_trusted,
+        "certificate_valid": certificate_valid_at(
+            result.get("valid_from"), result.get("valid_to"), signed_at
+        ),
+        # O signer não consulta OCSP/CRL nesta etapa: não afirmar revogação.
         "revocation_status": "not_checked",
         "timestamp_status": result.get("timestamp_status", "not_present"),
-        "pades_profile": "PAdES-B-B / ICP-Brasil AD-RB",
+        # O rótulo AD-RB só quando o OID de política foi efetivamente reportado.
+        "pades_profile": pades_profile_from_report(result),
+        "validated_at": signed_at.isoformat(),
     }
     edition.change_status(EditionStatus.SIGNED)
     await db.commit()
@@ -1051,16 +1067,25 @@ async def validate_edition_signature(
             except Exception as e:  # noqa: BLE001
                 issues.append(f"Signer verify unavailable: {e}")
 
-    # Chain/cert trust is asserted from the recorded metadata, or freshly from
-    # the signer report (so editions signed before roots were configured can be
-    # re-validated honestly).
-    report_trusted = bool(
-        stored_report.get("signatures")
-        and stored_report["signatures"][0].get("trusted")
+    # Fresh signer report wins when available; the recorded metadata is only a
+    # fallback (so editions signed before roots were configured can be
+    # re-validated honestly without a stale value overriding the new result).
+    report_sigs = stored_report.get("signatures") or []
+    if report_sigs:
+        chain_trusted = bool(report_sigs[0].get("trusted"))
+    else:
+        chain_trusted = bool(cert_info.get("chain_trusted"))
+
+    # Independent states: certificate validity is a temporal fact, never a
+    # restatement of the overall status.
+    certificate_valid = certificate_valid_at(
+        cert_info.get("valid_from"), cert_info.get("valid_to"), sig.signed_at
     )
-    chain_trusted = bool(cert_info.get("chain_trusted")) or report_trusted
-    certificate_valid = bool(edition.signature_validation_status == "valid")
-    timestamp_status = edition.signature_validation_status or "pending_validation"
+    # A timestamp is only "present" when an actual RFC 3161 token/record exists.
+    prior_timestamp = (edition.signature_validation_details or {}).get(
+        "timestamp_status"
+    )
+    timestamp_status = prior_timestamp or "not_present"
 
     result = svc.normalize(
         stored_report,

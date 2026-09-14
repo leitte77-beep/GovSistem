@@ -135,7 +135,12 @@ def test_integrity_tolerates_whitespace_only_change():
 def test_parser_recognizes_official_act_structure():
     doc = parse_document(plain=DECRETO, title="DECRETO Nº 001/2026")
     types = [b.type for b in doc.blocks]
-    assert types[0] == "heading"
+    # The structured title is the single source of truth: the pasted header is
+    # removed from the body instead of being rendered twice.
+    assert not any(
+        b.type == "heading" and "DECRETO Nº 001/2026" in (b.text or "")
+        for b in doc.blocks
+    )
     assert "command" in types
     assert types.count("article") == 2
     art = next(b for b in doc.blocks if b.type == "article")

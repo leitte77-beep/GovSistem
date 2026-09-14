@@ -55,8 +55,21 @@ async def _require_engine(db: AsyncSession, user: User) -> None:
         raise HTTPException(403, "Motor semântico desabilitado")
 
 
-async def _get_matter_or_404(matter_id: uuid.UUID, db: AsyncSession) -> Matter:
-    result = await db.execute(select(Matter).where(Matter.id == matter_id))
+async def _get_matter_or_404(
+    matter_id: uuid.UUID, organization_id: uuid.UUID, db: AsyncSession
+) -> Matter:
+    """Load a matter only inside the authenticated user's organization.
+
+    UUIDs are identifiers, not authorization. Keeping the tenant predicate in
+    this shared lookup prevents every semantic endpoint from becoming an IDOR
+    when an administrator from a different municipality knows a matter ID.
+    """
+    result = await db.execute(
+        select(Matter).where(
+            Matter.id == matter_id,
+            Matter.organization_id == organization_id,
+        )
+    )
     matter = result.scalar_one_or_none()
     if matter is None:
         raise HTTPException(404, "Matter not found")
@@ -85,7 +98,7 @@ async def analyze_matter_semantics(
     user: User = Depends(require_roles("AUTOR", "ADMIN")),
 ):
     await _require_engine(db, user)
-    matter = await _get_matter_or_404(matter_id, db)
+    matter = await _get_matter_or_404(matter_id, user.organization_id, db)
     _own_matter_or_admin(matter, user)
 
     document = parser.parse_document(
@@ -116,7 +129,7 @@ async def save_matter_semantics(
     user: User = Depends(require_roles("AUTOR", "ADMIN")),
 ):
     await _require_engine(db, user)
-    matter = await _get_matter_or_404(matter_id, db)
+    matter = await _get_matter_or_404(matter_id, user.organization_id, db)
     _own_matter_or_admin(matter, user)
     if not matter.can_edit():
         raise HTTPException(422, "Matéria não editável neste status")
@@ -145,6 +158,9 @@ async def save_matter_semantics(
     # Fase 2 — o modo canônico passa a ser SEMÂNTICO (fonte única).
     matter.content_mode = MODE_SEMANTIC
     await db.commit()
+    # commit() expires the instance; version/updated_at are read below (etag)
+    # and a bare sync attribute access after expiration raises MissingGreenlet.
+    await db.refresh(matter, attribute_names=["version", "updated_at"])
 
     info = await capture_request_info(request)
     await log_audit_event(
@@ -173,7 +189,7 @@ async def get_matter_semantics(
     user: User = Depends(get_current_user),
 ):
     await _require_engine(db, user)
-    matter = await _get_matter_or_404(matter_id, db)
+    matter = await _get_matter_or_404(matter_id, user.organization_id, db)
     _own_matter_or_admin(matter, user)
     if not matter.semantic_content:
         raise HTTPException(404, "Matéria sem conteúdo semântico")

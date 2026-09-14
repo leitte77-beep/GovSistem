@@ -291,6 +291,10 @@ class SemanticDocument(BaseModel):
     text_integrity_hash: Optional[str] = None
     classification_status: str = CLASSIFICATION_PENDING
     blocks: list[SemanticBlock] = Field(default_factory=list)
+    # Deterministic, non-silent adjustments made by the structuring pass
+    # (duplicate header/summary removed, closing reordered). Surfaced to the
+    # reviewer so nothing is changed without visibility. Additive field.
+    auto_adjustments: list[dict] = Field(default_factory=list)
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 

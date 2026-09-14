@@ -10,7 +10,7 @@ import { formatBrasiliaDateTime, formatLongDatePT } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
-type PageProps = { params: { id: string } };
+type PageProps = { params: Promise<{ id: string }> };
 
 function demoteHeadings(html: string): string {
   return html.replace(/<h1([^>]*)>/gi, "<h2$1>").replace(/<\/h1>/gi, "</h2>");
@@ -26,7 +26,7 @@ async function loadMatter(id: string) {
 }
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  const id = params.id;
+  const { id } = await params;
   const { matter, org, origin } = await loadMatter(id);
   if (!matter) {
     return { title: "Matéria não encontrada — Diário Oficial Eletrônico" };
@@ -52,7 +52,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 }
 
 export default async function MatterDetailPage({ params }: PageProps) {
-  const id = params.id;
+  const { id } = await params;
   const { matter, org, origin } = await loadMatter(id);
   if (!matter) notFound();
 

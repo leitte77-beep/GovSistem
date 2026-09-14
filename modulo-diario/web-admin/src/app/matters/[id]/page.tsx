@@ -1,5 +1,10 @@
 import { redirect } from "next/navigation";
 
-export default function MatterDetailPage({ params }: { params: { id: string } }) {
-  redirect(`/matters/${params.id}/edit`);
+export default async function MatterDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { id } = await params;
+  redirect(`/matters/${id}/edit`);
 }

@@ -88,6 +88,13 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
   const [cleanWarnings, setCleanWarnings] = useState<string[]>([]);
   const [semanticMode, setSemanticMode] = useState(matter?.content_mode === "semantic");
   const [hasSemantic, setHasSemantic] = useState(matter?.content_mode === "semantic");
+  // Raw clipboard source from the rich editor. Seeded into the semantic editor
+  // and used to trigger automatic analysis on paste (Word/Excel/browser HTML).
+  const [semanticSource, setSemanticSource] = useState<{
+    html: string;
+    plain: string;
+    token?: number;
+  } | null>(null);
   const [semanticStatus, setSemanticStatus] = useState<MatterSidePanelProps["semantic"]["status"]>(null);
   const [reviewState, setReviewState] = useState<{ loaded: boolean; confirmed: boolean; valid: boolean }>({
     loaded: false, confirmed: false, valid: true,
@@ -179,7 +186,9 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
   if (touched.title && !title.trim()) errors.title = "O título é obrigatório";
   if (touched.actType && !actTypeId) errors.actType = "Selecione o tipo do ato";
   if (touched.summary && !summary.trim()) errors.summary = "A súmula é obrigatória";
-  const hasContent = contentHtml && contentHtml !== "<p></p>";
+  // A saved semantic document also counts as content even when the rich-text
+  // HTML is empty (the semantic document is the canonical source).
+  const hasContent = Boolean((contentHtml && contentHtml !== "<p></p>") || hasSemantic);
   if (touched.content && !hasContent) errors.content = "O conteúdo é obrigatório";
   const needsReference = publicationType === "rectification" || publicationType === "republication";
   if (touched.reference && needsReference && !referencesMatterId) errors.reference = "Selecione a publicação original";
@@ -226,6 +235,34 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
     references_matter_id: needsReference && referencesMatterId ? referencesMatterId : undefined,
   });
 
+  // ── Paste → semantic pipeline ─────────────────────────────────────────────
+  // The rich-text editor is, and stays, the only surface the user writes in.
+  // Pasting here does NOT create a draft, does NOT call the semantic API, and
+  // does NOT switch to the block-by-block "Editor semântico" — that UI reads
+  // as a pile of disconnected fragments to someone who just wants to paste an
+  // act and move on, and a client-side auto-save would also silently turn
+  // content_mode into "semantic", which stops future edits to this same
+  // rich-text box from being persisted (the server then expects the semantic
+  // document as canonical). Automatic diagramming instead happens server-side
+  // and read-only, at edition-publish time: `derive_semantic_from_matter`
+  // (app/semantic/snapshot.py) re-parses the matter's current content_html
+  // into the same structured document when building the publication
+  // snapshot, so the PDF/public page come out auto-formatted (bold, indents,
+  // articles, tables) without the operator ever touching a block editor.
+  // `semanticSource` below only feeds the toggle for the rare manual review.
+  const handlePasteSource = useCallback(
+    (source: { html: string; plain: string }) => {
+      setSemanticSource({ html: source.html, plain: source.plain, token: Date.now() });
+    },
+    []
+  );
+
+  // Consume the paste token so re-entering the semantic editor later loads the
+  // saved document instead of re-running the last automatic analysis.
+  const handleAutoAnalyzeConsumed = useCallback(() => {
+    setSemanticSource((s) => (s && s.token !== undefined ? { ...s, token: undefined } : s));
+  }, []);
+
   const save = useCallback(
     async (action: "draft" | "review") => {
       setTouched({ title: true, actType: true, content: true, reference: true });
@@ -253,17 +290,26 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
       setSaving(true);
       setSaveState("saving");
       try {
+        // When the canonical source is the semantic document, never resend the
+        // legacy HTML body — the server rejects it (409) and it could clobber
+        // the canonical content. Metadata-only update is enough.
+        const isSemantic = contentMode === "semantic";
         const payload = {
           ...metadataPayload(),
-          content_html: clean,
-          content_json: contentMode === "rich_text" ? (contentJson ?? undefined) : undefined,
           content_mode: contentMode,
+          ...(isSemantic
+            ? {}
+            : {
+                content_html: clean,
+                content_json: contentMode === "rich_text" ? (contentJson ?? undefined) : undefined,
+              }),
         };
 
         let result: Matter;
         if (isNew && !matterId) {
-          // First save of a brand-new matter — creates the record.
-          result = await api.createMatter(payload);
+          // A brand-new matter always needs an HTML body; the semantic document
+          // is saved separately through the semantic endpoint afterwards.
+          result = await api.createMatter({ ...payload, content_html: clean });
         } else if (matterId) {
           // Subsequent saves update the existing matter (even in the same
           // session, after the first draft save replaced the URL).
@@ -960,26 +1006,30 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
                     </span>
                   </button>
                   <span className="text-[10px] text-on-surface-variant ml-auto flex items-center gap-1">
+                    {/* Reflects the background analysis regardless of whether the
+                        block editor is open — pasting runs it silently now. */}
                     <span
                       className={
                         clsx(
                           "inline-block w-2 h-2 rounded-full",
-                          semanticMode && semanticStatus?.analyzed
-                            ? semanticStatus.errors > 0 ? "bg-error" : semanticStatus.pendingBlocks > 0 ? "bg-amber-500" : "bg-secondary"
-                            : "bg-outline-variant"
+                          semanticStatus?.loading
+                            ? "bg-amber-500 animate-pulse"
+                            : semanticStatus?.analyzed
+                              ? semanticStatus.errors > 0 ? "bg-error" : semanticStatus.pendingBlocks > 0 ? "bg-amber-500" : "bg-secondary"
+                              : "bg-outline-variant"
                         )
                       }
                       aria-hidden="true"
                     />
-                    {semanticMode
-                      ? semanticStatus?.analyzed
+                    {semanticStatus?.loading
+                      ? "Analisando…"
+                      : semanticStatus?.analyzed
                         ? semanticStatus.errors > 0
                           ? "Análise com problemas"
                           : semanticStatus.pendingBlocks > 0
-                            ? "Analisado — blocos a confirmar"
+                            ? "Estrutura analisada — revisar blocos"
                             : "Estrutura analisada"
-                        : "Análise pendente"
-                      : "Análise pendente"}
+                        : "Análise pendente"}
                   </span>
                 </div>
                 {semanticMode ? (
@@ -990,7 +1040,16 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
                         title={title}
                         summary={summary}
                         documentType={selectedActType?.name || undefined}
-                        onSaved={() => setHasSemantic(true)}
+                        html={semanticSource?.html ?? contentHtml}
+                        plain={semanticSource?.plain ?? ""}
+                        analyzeToken={semanticSource?.token}
+                        onAutoAnalyze={handleAutoAnalyzeConsumed}
+                        onSaved={() => {
+                          // The server switches the canonical mode to semantic;
+                          // mirror it locally so later saves never resend HTML.
+                          setHasSemantic(true);
+                          setContentMode("semantic");
+                        }}
                         onStatusChange={setSemanticStatus}
                       />
                     </div>
@@ -1009,6 +1068,7 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
                   onChange={(html) => { setContentHtml(html); setTouched((p) => ({ ...p, content: true })); }}
                   onChangeJson={(json) => setContentJson(json)}
                   onCleanWarnings={setCleanWarnings}
+                  onPasteSource={handlePasteSource}
                   aiContext={{ actType: selectedActType?.name, title, summary }} />
                 {errors.content && <p className="text-xs text-error px-5 pb-3 flex items-center gap-1" role="alert"><span className="material-symbols-outlined text-xs">warning</span> {errors.content}</p>}
               </div>
@@ -1195,8 +1255,8 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
                       Rejeitar
                     </button>
                     <button type="button" onClick={handleApprove}
-                      disabled={saving || !hasContent || (hasSemantic && (!reviewState.loaded || !reviewState.confirmed || !reviewState.valid))}
-                      title={!hasContent ? "Não é possível aprovar sem conteúdo" : hasSemantic && !reviewState.loaded ? "Aguardando carregamento da revisão" : hasSemantic && !reviewState.confirmed ? "Confirme todos os blocos antes de aprovar" : undefined}
+                      disabled={saving || !hasContent || (semanticMode && !hasSemantic) || (hasSemantic && (!reviewState.loaded || !reviewState.confirmed || !reviewState.valid))}
+                      title={!hasContent ? "Não é possível aprovar sem conteúdo" : semanticMode && !hasSemantic ? "Conclua a análise semântica e salve o documento estruturado antes de aprovar" : hasSemantic && !reviewState.loaded ? "Aguardando carregamento da revisão" : hasSemantic && !reviewState.confirmed ? "Confirme todos os blocos antes de aprovar" : undefined}
                       className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-lg bg-secondary text-on-secondary hover:opacity-90 disabled:opacity-50">
                       {saving ? <span className="material-symbols-outlined animate-spin">progress_activity</span> : <span className="material-symbols-outlined">thumb_up</span>}
                       Aprovar
@@ -1249,8 +1309,8 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
                       {saving ? <span className="material-symbols-outlined animate-spin">progress_activity</span> : <span className="material-symbols-outlined">save</span>}
                       Salvar Rascunho
                     </button>
-                    <button type="button" onClick={() => save("review")} disabled={saving || !isValid}
-                      title="Envia a matéria para aprovação do revisor"
+                    <button type="button" onClick={() => save("review")} disabled={saving || !isValid || (semanticMode && !hasSemantic)}
+                      title={semanticMode && !hasSemantic ? "Conclua a análise semântica e salve o documento estruturado antes de enviar" : "Envia a matéria para aprovação do revisor"}
                       className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-lg bg-primary text-on-primary hover:bg-primary-container disabled:opacity-50">
                       {saving ? <span className="material-symbols-outlined animate-spin">progress_activity</span> : <span className="material-symbols-outlined">send</span>}
                       Enviar para Aprovação

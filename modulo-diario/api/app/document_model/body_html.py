@@ -142,8 +142,11 @@ def blocks_to_html(document) -> str:
 # CSS do corpo, escopado em ``.doc-body`` — o mesmo markup/CSS é usado no
 # preview do modelo (``render_html``) e no conteúdo da edição publicada.
 DOCUMENT_BODY_CSS = """
-.doc-body .doc-heading { font-size: 1.05em; font-weight: bold; margin: 4mm 0 2mm; }
-.doc-body .doc-command { text-align: center; font-weight: bold; margin: 4mm 0; }
+.doc-body { orphans: 2; widows: 2; }
+.doc-body .doc-heading { font-size: 1.05em; font-weight: bold; margin: 4mm 0 2mm;
+  break-after: avoid; page-break-after: avoid; }
+.doc-body .doc-command { text-align: center; font-weight: bold; margin: 4mm 0;
+  break-after: avoid; page-break-after: avoid; }
 .doc-body .doc-preamble { text-align: justify; margin: 2mm 0; }
 .doc-body .doc-paragraph { text-align: justify; text-indent: 2em; margin: 2mm 0; }
 .doc-body .doc-quote { margin: 2mm 0 2mm 4mm; font-style: italic; }
@@ -156,7 +159,7 @@ DOCUMENT_BODY_CSS = """
 .doc-body .doc-alinea .num,
 .doc-body .doc-paragraph-item .num { font-weight: bold; margin-right: 0.4em; }
 .doc-body .doc-signature { margin-top: 14mm; text-align: center; }
-.doc-body .sign-entry { margin-bottom: 10mm; page-break-inside: avoid; }
+.doc-body .sign-entry { margin-bottom: 10mm; page-break-inside: avoid; break-inside: avoid; }
 .doc-body .sign-line { border-top: 1px solid #000; width: 70mm; }
 .doc-body .sign-name { font-weight: bold; text-transform: uppercase; }
 .doc-body .sign-role { font-size: 0.95em; }

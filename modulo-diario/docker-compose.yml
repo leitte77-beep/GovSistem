@@ -11,10 +11,12 @@ services:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-modulo_diario}
       POSTGRES_USER: ${POSTGRES_USER:-diario_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-diario_password}
-    # Development only - remove in production
+      # Fail closed: never start with a hard-coded/default password.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env}
+    # Nunca expor o banco em todas as interfaces: acesso só pelo host local
+    # (ou pela rede interna do compose).
     ports:
-      - "9632:5432"
+      - "127.0.0.1:9632:5432"
     volumes:
       - modulo_diario_pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -31,9 +33,9 @@ services:
     image: redis:7-alpine
     logging: *default-logging
     command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
-    # Development only - remove in production
+    # Redis sem autenticação: nunca expor em todas as interfaces.
     ports:
-      - "9579:6379"
+      - "127.0.0.1:9579:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -44,16 +46,19 @@ services:
     restart: unless-stopped
 
   minio:
-    image: minio/minio:latest
+    # Fixado por digest (imutável) em vez de :latest — evita atualizações
+    # silenciosas que quebram o serviço ou introduzem regressões.
+    image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     logging: *default-logging
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio_admin}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_password}
-    # Development only - remove in production
+      # Reaproveita as credenciais de acesso já exigidas pelo serviço de API
+      # quando as credenciais de root não forem definidas explicitamente.
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-${MINIO_ACCESS_KEY:?Defina MINIO_ACCESS_KEY no .env}}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-${MINIO_SECRET_KEY:?Defina MINIO_SECRET_KEY no .env}}
     ports:
-      - "9990:9000"
-      - "9991:9001"
+      - "127.0.0.1:9990:9000"
+      - "127.0.0.1:9991:9001"
     volumes:
       - modulo_diario_miniodata:/data
     healthcheck:
@@ -78,18 +83,18 @@ services:
       POSTGRES_PORT: 5432
       POSTGRES_DB: ${POSTGRES_DB:-modulo_diario}
       POSTGRES_USER: ${POSTGRES_USER:-diario_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-diario_password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env}
       REDIS_HOST: redis
       REDIS_PORT: 6379
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minio_admin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minio_password}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?Defina MINIO_ACCESS_KEY no .env}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?Defina MINIO_SECRET_KEY no .env}
       MINIO_BUCKET: ${MINIO_BUCKET:-doe-publicacoes}
       MINIO_SECURE: "false"
       SIGNER_URL: http://signer:8100
       PUBLIC_URL: ${PUBLIC_URL:-https://diario.govsistem.com.br}
-      SECRET_KEY: ${SECRET_KEY:-change-me-in-dev}
-      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-in-dev}
+      SECRET_KEY: ${SECRET_KEY:?Defina SECRET_KEY no .env}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Defina INTERNAL_API_KEY no .env}
       CORS_ORIGINS: '["http://localhost:9202","http://localhost:9200","http://127.0.0.1:9200","http://127.0.0.1:9202","https://farol.govsistem.com.br","https://diario.govsistem.com.br","https://doe-admin.govsistem.com.br","https://app.govsistem.com.br","https://admin.govsistem.com.br"]'
       ENVIRONMENT: ${ENVIRONMENT:-development}
     ports:
@@ -118,16 +123,16 @@ services:
       POSTGRES_HOST: postgres
       POSTGRES_DB: ${POSTGRES_DB:-modulo_diario}
       POSTGRES_USER: ${POSTGRES_USER:-diario_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-diario_password}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env}
       REDIS_HOST: redis
       MINIO_ENDPOINT: minio:9000
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minio_admin}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-minio_password}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?Defina MINIO_ACCESS_KEY no .env}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?Defina MINIO_SECRET_KEY no .env}
       MINIO_BUCKET: ${MINIO_BUCKET:-doe-publicacoes}
       SIGNER_URL: http://signer:8100
       API_URL: http://api:8000
-      INTERNAL_API_KEY: ${INTERNAL_API_KEY}
-      SECRET_KEY: ${SECRET_KEY}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Defina INTERNAL_API_KEY no .env}
+      SECRET_KEY: ${SECRET_KEY:?Defina SECRET_KEY no .env}
     command: celery -A app.worker worker --loglevel=info --concurrency=4 --beat
     depends_on:
       redis:
@@ -144,7 +149,7 @@ services:
     environment:
       SIGNER_PROVIDER: ${SIGNER_PROVIDER:-a1}
       VERIFICATION_BASE_URL: https://farol.govsistem.com.br/verificar
-      INTERNAL_API_KEY: ${INTERNAL_API_KEY:-change-me-in-dev}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Defina INTERNAL_API_KEY no .env}
       # Raízes oficiais ICP-Brasil (AC-Raiz). Sem elas a cadeia é honestamente
       # reportada como não confiável (trusted=false).
       ICP_BRASIL_ROOTS_PATH: /certs/icp-brasil-roots.pem

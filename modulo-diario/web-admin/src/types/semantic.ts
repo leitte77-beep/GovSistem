@@ -218,6 +218,13 @@ export interface SemanticDocument {
   text_integrity_hash?: string | null;
   classification_status: string;
   blocks: SemanticBlock[];
+  /** Deterministic adjustments made by the parser (duplicates removed,
+   * closing reordered). Shown to the reviewer — never applied silently. */
+  auto_adjustments?: Array<{
+    action: string;
+    block_type?: string;
+    text?: string;
+  }>;
   created_at?: string | null;
   updated_at?: string | null;
 }

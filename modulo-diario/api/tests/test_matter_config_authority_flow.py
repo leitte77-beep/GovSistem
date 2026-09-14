@@ -459,3 +459,54 @@ async def test_add_item_returns_updated_item_count(api_client, ctx):
     assert r2.status_code == 201, r2.text
     # item_count must already reflect the addition (no refetch needed)
     assert r2.json()["item_count"] == 2
+
+
+# ── Security: content_html must be sanitized server-side (Stored XSS) ────────
+
+
+@pytest.mark.anyio
+async def test_create_matter_sanitizes_content_html(api_client, ctx):
+    """A malicious content_html payload must never reach the database intact.
+
+    content_html is rendered with dangerouslySetInnerHTML on the public portal
+    and in the admin editor, so an unsanitized <script>/onerror survives as a
+    stored XSS reachable by anyone who views the published matter.
+    """
+    client = api_client(ctx.admin)
+    dirty = (
+        "<p>Texto legítimo</p>"
+        "<script>alert(document.cookie)</script>"
+        "<img src=x onerror=\"alert(1)\">"
+        "<a href=\"javascript:alert(1)\">link</a>"
+    )
+    resp = await client.post(
+        "/api/v1/matters",
+        json=_payload(ctx.permissive, title="Matéria XSS", content_html=dirty),
+    )
+    assert resp.status_code == 201, resp.text
+    body = resp.json()
+    assert "<script" not in body["content_html"]
+    assert "onerror" not in body["content_html"]
+    assert "javascript:" not in body["content_html"]
+    assert "Texto legítimo" in body["content_html"]
+
+    get_resp = await client.get(f"/api/v1/matters/{body['id']}")
+    assert "<script" not in get_resp.json()["content_html"]
+
+
+@pytest.mark.anyio
+async def test_update_matter_sanitizes_content_html(api_client, ctx):
+    client = api_client(ctx.admin)
+    created = (
+        await client.post("/api/v1/matters", json=_payload(ctx.permissive, title="Matéria"))
+    ).json()
+
+    dirty = "<p>Editado</p><script>alert(1)</script>"
+    resp = await client.patch(
+        f"/api/v1/matters/{created['id']}",
+        json={"content_html": dirty},
+        headers={"If-Match": '"1-x"'},
+    )
+    assert resp.status_code == 200, resp.text
+    assert "<script" not in resp.json()["content_html"]
+    assert "Editado" in resp.json()["content_html"]

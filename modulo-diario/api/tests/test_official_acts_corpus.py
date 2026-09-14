@@ -100,7 +100,8 @@ def _integrity_ok(source, doc):
 def test_lei_structure_and_signature():
     doc = parse_document(plain=LEI, title="LEI Nº 1.234/2026")
     types = _blocks(doc)
-    assert types[0] == "heading"
+    # The structured title is the single source of truth (header not duplicated).
+    assert not any(t == "heading" for t in types), types
     assert types.count("article") == 3
     assert "signature_block" in types
     sig = next(b for b in doc.blocks if b.type == "signature_block")

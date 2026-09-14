@@ -248,6 +248,21 @@ function normalizeTables(body: Element, doc: Document): boolean {
 }
 
 /**
+ * True when pasted HTML carries no real formatting signal (bold, italic,
+ * underline, heading, table, centered text) — typical of text copied from a
+ * PDF viewer (Adobe Acrobat, browser PDF preview), which wraps each line in
+ * a plain <span>/<p> with no styling. Treating that as "rich HTML" would
+ * skip the PDF-detection dialog and official-act formatter that only run
+ * today for text/plain-only pastes.
+ */
+export function htmlLacksFormatting(html: string): boolean {
+  if (!html.trim()) return true;
+  const hasFormattingTag = /<(strong|b|em|i|u|mark|table|h[1-6])[\s>]/i.test(html);
+  const hasFormattingStyle = /(font-weight\s*:\s*(bold|[6-9]00)|text-align\s*:\s*center|text-decoration\s*:\s*underline)/i.test(html);
+  return !hasFormattingTag && !hasFormattingStyle;
+}
+
+/**
  * Heuristics for text extracted from a PDF (plain text only, no HTML):
  * - line breaks after almost every line;
  * - repeated headers/footers;

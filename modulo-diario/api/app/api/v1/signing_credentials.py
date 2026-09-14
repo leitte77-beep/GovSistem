@@ -107,11 +107,12 @@ async def list_credentials(
 async def get_credential(
     credential_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_roles("ASSINADOR", "ADMIN")),
+    user: User = Depends(require_roles("ASSINADOR", "ADMIN")),
 ):
     result = await db.execute(
         select(SigningCredential).where(
             SigningCredential.id == credential_id,
+            SigningCredential.organization_id == user.organization_id,
             SigningCredential.deleted_at.is_(None),
         )
     )
@@ -193,6 +194,7 @@ async def sign_pdf(
     result = await db.execute(
         select(SigningCredential).where(
             SigningCredential.id == credential_id,
+            SigningCredential.organization_id == user.organization_id,
             SigningCredential.deleted_at.is_(None),
             SigningCredential.is_active,
         )
@@ -288,11 +290,12 @@ async def sign_pdf(
 async def delete_credential(
     credential_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
-    _: User = Depends(require_roles("ADMIN")),
+    user: User = Depends(require_roles("ADMIN")),
 ):
     result = await db.execute(
         select(SigningCredential).where(
             SigningCredential.id == credential_id,
+            SigningCredential.organization_id == user.organization_id,
             SigningCredential.deleted_at.is_(None),
         )
     )

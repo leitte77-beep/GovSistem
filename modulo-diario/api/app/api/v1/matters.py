@@ -16,7 +16,7 @@ from app.core.auth import get_current_user, require_roles
 from app.core.content_mode import MODE_SEMANTIC, normalize_mode
 from app.core.database import get_db
 from app.core.file_validator import validate_upload
-from app.core.html_sanitizer import extract_plain_text
+from app.core.html_sanitizer import extract_plain_text, sanitize_html
 from app.core.versioning import current_etag, require_no_conflict
 from app.middleware.audit import capture_request_info, log_audit_event
 from app.models.act_type import ActType
@@ -279,7 +279,8 @@ async def create_matter(
         if ref_result.scalar_one_or_none() is None:
             raise HTTPException(404, "Referenced matter not found")
 
-    plain_text = extract_plain_text(body.content_html)
+    sanitized_content_html = sanitize_html(body.content_html) if body.content_html else body.content_html
+    plain_text = extract_plain_text(sanitized_content_html)
     act_type = await _load_act_type(db, body.act_type_id)
 
     # Required per-type rules + dynamic field values are validated server-side.
@@ -310,7 +311,7 @@ async def create_matter(
         act_type_id=body.act_type_id,
         title=body.title.strip(),
         summary=body.summary.strip() if body.summary else None,
-        content_html=body.content_html,
+        content_html=sanitized_content_html,
         content_json=body.content_json,
         content_mode=body.content_mode or "rich_text",
         plain_text=plain_text,
@@ -514,8 +515,8 @@ async def update_matter(
         )
         matter.org_unit_id = body.org_unit_id
     if body.content_html is not None:
-        matter.content_html = body.content_html
-        matter.plain_text = extract_plain_text(body.content_html)
+        matter.content_html = sanitize_html(body.content_html) if body.content_html else body.content_html
+        matter.plain_text = extract_plain_text(matter.content_html)
     if body.content_json is not None:
         matter.content_json = body.content_json
     if body.content_mode is not None:

@@ -94,7 +94,12 @@ def _parse_golden() -> dict:
 def test_golden_parses_articles_and_commands():
     doc = _parse_golden()
     types = [b.type for b in doc.blocks]
-    assert "heading" in types
+    # The structured title is the single source of truth: the pasted header is
+    # removed from the body (never duplicated).
+    assert not any(
+        b.type == "heading" and "DECRETO Nº 04/2026" in (b.text or "")
+        for b in doc.blocks
+    )
     assert "command" in types
     assert types.count("article") == 3
     # Every article label ("Art. 1º", "Art. 2º", "Art. 3º") must survive.

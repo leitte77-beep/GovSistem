@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { cleanPastedHtml, detectPdfExtractedText } from "@/lib/clipboard";
+import { cleanPastedHtml, detectPdfExtractedText, htmlLacksFormatting } from "@/lib/clipboard";
 import { plainTextToStructuredHtml } from "@/lib/contentAutoformat";
 
 describe("cleanPastedHtml (rich paste)", () => {
@@ -75,6 +75,29 @@ describe("plain text → structured (no silent tables)", () => {
     const out = plainTextToStructuredHtml("Linha um\nLinha dois\nLinha três");
     expect(out).not.toContain("<table");
     expect(out).toContain("<p>");
+  });
+});
+
+describe("htmlLacksFormatting", () => {
+  it("HTML chapado do Acrobat (sem negrito/centralização) é detectado como sem formatação", () => {
+    const html = '<span style="font-size:11pt">RESOLVE:</span><p>Art. 1º texto</p>';
+    expect(htmlLacksFormatting(html)).toBe(true);
+  });
+
+  it("HTML com <strong> não é considerado sem formatação", () => {
+    expect(htmlLacksFormatting("<p><strong>RESOLVE:</strong></p>")).toBe(false);
+  });
+
+  it("HTML com text-align:center não é considerado sem formatação", () => {
+    expect(htmlLacksFormatting('<p style="text-align:center">Farol, 11 de setembro de 2026.</p>')).toBe(false);
+  });
+
+  it("HTML com tabela não é considerado sem formatação", () => {
+    expect(htmlLacksFormatting("<table><tr><td>1</td></tr></table>")).toBe(false);
+  });
+
+  it("string vazia é considerada sem formatação", () => {
+    expect(htmlLacksFormatting("")).toBe(true);
   });
 });
 

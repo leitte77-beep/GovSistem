@@ -6,10 +6,10 @@ import { formatLongDatePT } from "@/lib/dates";
 
 export const dynamic = "force-dynamic";
 
-type PageProps = { params: { codigo: string } };
+type PageProps = { params: Promise<{ codigo: string }> };
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
-  const code = params.codigo;
+  const { codigo: code } = await params;
   const origin = await getRequestOrigin();
   return {
     title: `Verificação de autenticidade — ${code}`,
@@ -23,7 +23,7 @@ function certName(subject: string | undefined): string {
 }
 
 export default async function VerificarCodePage({ params }: PageProps) {
-  const code = params.codigo;
+  const { codigo: code } = await params;
   const origin = await getRequestOrigin();
   const result = await getVerificationServer(code).catch(() => null);
 

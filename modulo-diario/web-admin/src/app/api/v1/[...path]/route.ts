@@ -4,9 +4,10 @@ const API_URL = process.env.API_URL || "http://api:8000/api/v1";
 
 async function proxy(
   request: NextRequest,
-  { params }: { params: { path: string[] } }
+  { params }: { params: Promise<{ path: string[] }> }
 ) {
-  const target = new URL(`${API_URL}/${params.path.join("/")}`);
+  const { path } = await params;
+  const target = new URL(`${API_URL}/${path.join("/")}`);
   request.nextUrl.searchParams.forEach((value, key) => {
     target.searchParams.append(key, value);
   });

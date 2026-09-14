@@ -240,7 +240,10 @@ async def import_csv(
         raise ValueError(f"Virus detected: {scan.message}")
 
     text = content.decode("utf-8", errors="replace")
-    dialect = csv.Sniffer().sniff(text[:4096])
+    try:
+        dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t|")
+    except csv.Error:
+        dialect = csv.excel
     reader = csv.reader(io.StringIO(text), dialect)
 
     html_parts: list[str] = ["<table>"]

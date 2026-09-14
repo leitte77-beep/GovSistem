@@ -70,10 +70,10 @@ class TestUnauthorizedAccess:
 
     def test_protected_route_requires_auth_header(self):
         """All routes under /api/v1/* (except public/* and health) require auth."""
-        from app.api.v1.router import api_router
+        paths = app.openapi()["paths"]
         private_routes = [
-            r.path for r in api_router.routes
-            if hasattr(r, "path") and "public" not in r.path and "health" not in r.path
+            path for path in paths
+            if path.startswith("/api/v1/") and "public" not in path and "health" not in path
         ]
         assert len(private_routes) > 0
 

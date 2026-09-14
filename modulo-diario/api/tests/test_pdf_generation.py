@@ -15,7 +15,9 @@ LAYOUTS = ("classico", "moderno", "minimalista")
 
 @pytest.fixture
 def template_env():
-    return Environment(loader=FileSystemLoader(str(TEMPLATE_DIR)))
+    # There is a single template per layout (layouts/<name>/); "classico" is
+    # the default. No template lives directly under TEMPLATE_DIR.
+    return Environment(loader=FileSystemLoader(str(LAYOUTS_DIR / "classico")))
 
 
 @pytest.fixture(autouse=True)
@@ -26,8 +28,8 @@ def setup_db():
 
 class TestTemplateRendering:
     def test_template_exists(self):
-        assert (TEMPLATE_DIR / "edition.html").exists()
-        assert (TEMPLATE_DIR / "edition.css").exists()
+        assert (LAYOUTS_DIR / "classico" / "edition.html").exists()
+        assert (LAYOUTS_DIR / "classico" / "edition.css").exists()
 
     def test_template_renders_basic_edition(self, template_env):
         template = template_env.get_template("edition.html")
@@ -42,7 +44,7 @@ class TestTemplateRendering:
             publication_date="15 de maio de 2026",
             preliminary_code="AB12CD34",
             verification_url="http://localhost:7200/verificar",
-            css_path=str(TEMPLATE_DIR / "edition.css"),
+            css_path=str(LAYOUTS_DIR / "classico" / "edition.css"),
             sections=[
                 {
                     "title": "Atos do Executivo",
@@ -190,6 +192,7 @@ class TestTemplateRendering:
         pages = PdfReader(io.BytesIO(pdf)).pages
 
         assert len(pages) > 1
+        pages_with_table_header = 0
         for page_number, page in enumerate(pages, start=1):
             assert float(page.mediabox.height) > float(page.mediabox.width)
             text = page.extract_text()
@@ -199,6 +202,16 @@ class TestTemplateRendering:
             assert "4 de setembro de 2026" in text
             assert manifest_hash in text.replace("\n", "").replace(" ", "")
             assert f"{page_number}/{len(pages)}" in text.replace(" ", "")
+            if "Tabela de 13 colunas" in text:
+                pages_with_table_header += 1
+
+        # A table that spans multiple pages must repeat its <thead> on every
+        # page it appears on (native `display: table-header-group` behavior),
+        # not just the first — otherwise later pages are unreadable.
+        assert pages_with_table_header > 1, (
+            "the table header ('Tabela de 13 colunas') must repeat on every "
+            "page the table spans across, not only the first"
+        )
 
     def test_template_empty_edition(self, template_env):
         template = template_env.get_template("edition.html")
@@ -213,7 +226,7 @@ class TestTemplateRendering:
             publication_date="1 de janeiro de 2026",
             preliminary_code="EMPTY01",
             verification_url="http://localhost:7200/verificar",
-            css_path=str(TEMPLATE_DIR / "edition.css"),
+            css_path=str(LAYOUTS_DIR / "classico" / "edition.css"),
             sections=[],
         )
         assert "EMPTY01" in html

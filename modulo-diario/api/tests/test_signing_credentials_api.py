@@ -249,8 +249,8 @@ async def test_upload_credential_empty_file(client):
 
 
 @patch("httpx.AsyncClient")
-@patch("app.services.encryption.decrypt_bytes", return_value=b"\x30\x82")
-@patch("app.services.encryption.decrypt", return_value="decrypted_pass")
+@patch("app.services.credential_secrets.decrypt_bytes", return_value=b"\x30\x82")
+@patch("app.services.credential_secrets.decrypt", return_value="decrypted_pass")
 @pytest.mark.anyio
 async def test_sign_pdf(mock_decrypt, mock_decrypt_bytes, mock_httpx, client, override_auth_and_db):
     mock_db, _ = override_auth_and_db
@@ -309,6 +309,54 @@ async def test_delete_credential_not_found(client, override_auth_and_db):
 
     response = await client.delete(f"/api/v1/signing-credentials/{uuid.uuid4()}")
     assert response.status_code == 404
+
+
+# ── Multitenancy isolation ────────────────────────────────────────────────────
+
+
+def _assert_org_scoped(mock_db, call_index, organization_id):
+    stmt = mock_db.execute.call_args_list[call_index][0][0]
+    compiled = stmt.compile()
+    assert "organization_id" in str(compiled)
+    assert organization_id in compiled.params.values()
+
+
+@pytest.mark.anyio
+async def test_get_credential_is_org_scoped(client, override_auth_and_db):
+    mock_db, user = override_auth_and_db
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    mock_db.execute.return_value = mock_result
+
+    response = await client.get(f"/api/v1/signing-credentials/{uuid.uuid4()}")
+    assert response.status_code == 404
+    _assert_org_scoped(mock_db, -1, user.organization_id)
+
+
+@pytest.mark.anyio
+async def test_delete_credential_is_org_scoped(client, override_auth_and_db):
+    mock_db, user = override_auth_and_db
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    mock_db.execute.return_value = mock_result
+
+    response = await client.delete(f"/api/v1/signing-credentials/{uuid.uuid4()}")
+    assert response.status_code == 404
+    _assert_org_scoped(mock_db, -1, user.organization_id)
+
+
+@pytest.mark.anyio
+async def test_sign_pdf_is_org_scoped(client, override_auth_and_db):
+    mock_db, user = override_auth_and_db
+    mock_result = MagicMock()
+    mock_result.scalar_one_or_none.return_value = None
+    mock_db.execute.return_value = mock_result
+
+    files = {"file": ("doc.pdf", b"%PDF-1.4 fake", "application/pdf")}
+    data = {"credential_id": str(uuid.uuid4())}
+    response = await client.post("/api/v1/signing-credentials/sign-pdf", data=data, files=files)
+    assert response.status_code == 404
+    _assert_org_scoped(mock_db, -1, user.organization_id)
 
 
 # ── Verify PDF ────────────────────────────────────────────────────────────────

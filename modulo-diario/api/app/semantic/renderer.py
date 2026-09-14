@@ -120,10 +120,20 @@ def _media_css(
 .doe-table thead th { background: var(--doe-tables-header-background, #e8e8e8);
   font-weight: var(--doe-tables-header-weight, bold); }
 .doe-table .doe-total { font-weight: bold; background: #f4f4f4; }
+/* A table with too many columns to stay legible in portrait is split into
+   stacked column groups (see _render_split_table) instead of a landscape
+   page — every page of this document stays the same portrait size. */
+.doe-table-split-caption { font-weight: bold; margin-bottom: 0.4em; }
+.doe-table-split .doe-table { margin-top: 1.2em; }
+.doe-table-split .doe-table:first-of-type { margin-top: 0; }
+.doe-table-split-note { font-size: 8pt; font-style: italic; color: #444;
+  margin: 0 0 0.2em; }
 .doe-signature { margin: 2em 0 0; text-align: var(--doe-signature-alignment, center);
   break-inside: avoid; page-break-inside: avoid; }
 .doe-signature .doe-sign-name { font-weight: var(--doe-signature-name-weight, bold); }
 .doe-signature .doe-sign-role { font-weight: var(--doe-signature-role-weight, normal); }
+/* Closing (place + date) sits between the body and the signature. */
+.doe-signature .doe-fecho { margin: 0 0 1.6em; }
 .doe-page-break { page-break-before: always; }
 .doe-list ul, .doe-list ol { margin: 0.3em 0 0.3em 1.5em; }
 .doe-quote { font-style: italic; margin: 0.6em 1.5em; }
@@ -374,17 +384,66 @@ def _cell_extra_class(content: str) -> str:
     return ""
 
 
+# Accounting/procurement tables routinely carry 12-20+ columns (empenho,
+# licitação). Past this width even a 6pt font shreds the numbers. Rather than
+# a landscape page (deliberately ruled out for this document — every page
+# must stay the same portrait size, see test_pdf_generation.py), a table this
+# wide is split into stacked column groups that repeat the leading column
+# (the row's label/account) so each group still reads on its own, portrait,
+# at a legible size. Tables with merged cells (colspan/rowspan) are left
+# alone — splitting could not preserve those spans correctly.
+_SPLIT_MIN_COLS = 12
+_SPLIT_GROUP_SIZE = 8
+
+
+def _table_has_span(*row_groups: list) -> bool:
+    return any(
+        cell.colspan > 1 or cell.rowspan > 1
+        for rows in row_groups
+        for row in rows
+        for cell in row
+    )
+
+
+def _column_groups(ncols: int, group_size: int) -> list[list[int]]:
+    """Column index groups for a split table, each repeating column 0 as key."""
+    if ncols <= group_size:
+        return [list(range(ncols))]
+    key = [0]
+    data = list(range(1, ncols))
+    chunk = max(group_size - 1, 1)
+    return [key + data[i:i + chunk] for i in range(0, len(data), chunk)]
+
+
 def _render_table(block, cls: str) -> str:
-    caption = f"<caption>{_esc(block.caption)}</caption>" if block.caption else ""
     widths = getattr(block, "column_widths", None) or []
     ncols = max(
         [len(block.headers) if block.headers else 0]
         + [len(row) for row in block.rows]
         + [0]
     )
-    colgroup = ""
     if widths:
         ncols = max(ncols, len(widths))
+
+    rows = list(block.rows)
+    header_rows = []
+    while rows and rows[0] and all(cell.header for cell in rows[0]):
+        header_rows.append(rows.pop(0))
+
+    if (
+        ncols > _SPLIT_MIN_COLS
+        and not _table_has_span(header_rows, rows)
+        and (not widths or len(widths) == ncols)
+    ):
+        return _render_split_table(block, ncols, widths, header_rows, rows)
+
+    return _render_single_table(block, ncols, widths, header_rows, rows)
+
+
+def _render_single_table(block, ncols: int, widths: list, header_rows: list, rows: list) -> str:
+    caption = f"<caption>{_esc(block.caption)}</caption>" if block.caption else ""
+    colgroup = ""
+    if widths:
         cols = "".join(f"<col style='width:{w:g}%'/>" for w in widths)
         colgroup = f"<colgroup>{cols}</colgroup>"
     wide = " doe-table--wide" if ncols >= 8 else ""
@@ -397,10 +456,6 @@ def _render_table(block, cls: str) -> str:
     style = f" style='{';'.join(style_bits)}'" if style_bits else ""
 
     thead = ""
-    rows = list(block.rows)
-    header_rows = []
-    while rows and rows[0] and all(cell.header for cell in rows[0]):
-        header_rows.append(rows.pop(0))
     if header_rows:
         thead = "<thead>" + "".join(_render_row(r) for r in header_rows) + "</thead>"
     elif block.headers:
@@ -416,6 +471,63 @@ def _render_table(block, cls: str) -> str:
         f"<table class='doe-table{wide}' data-cols='{ncols}'{style}>"
         f"{caption}{colgroup}{thead}{tbody}</table>"
     )
+
+
+def _subset_row(row: list, indices: list[int]):
+    return [row[i] for i in indices if i < len(row)]
+
+
+def _render_split_table(
+    block, ncols: int, widths: list, header_rows: list, rows: list
+) -> str:
+    groups = _column_groups(ncols, _SPLIT_GROUP_SIZE)
+    parts: list[str] = []
+    if block.caption:
+        parts.append(f'<p class="doe-table-split-caption">{_esc(block.caption)}</p>')
+    for group_idx, indices in enumerate(groups):
+        group_ncols = len(indices)
+        group_widths = [widths[i] for i in indices if i < len(widths)] if widths else []
+        if group_widths:
+            total = sum(group_widths) or 1.0
+            group_widths = [w / total * 100.0 for w in group_widths]
+        colgroup = ""
+        if group_widths:
+            cols = "".join(f"<col style='width:{w:g}%'/>" for w in group_widths)
+            colgroup = f"<colgroup>{cols}</colgroup>"
+        style_bits = ["table-layout:fixed"] if group_widths else []
+        font_size = _table_font_size(group_ncols)
+        if font_size:
+            style_bits.append(f"font-size:{font_size}")
+        style = f" style='{';'.join(style_bits)}'" if style_bits else ""
+
+        thead = ""
+        if header_rows:
+            thead = "<thead>" + "".join(
+                _render_row(_subset_row(r, indices)) for r in header_rows
+            ) + "</thead>"
+        elif block.headers:
+            cells = "".join(
+                f"<th scope='col'>{_esc(h)}</th>"
+                for h in _subset_row(list(block.headers), indices)
+            )
+            thead = f"<thead><tr>{cells}</tr></thead>"
+        tbody = (
+            "<tbody>" + "\n".join(
+                _render_row(_subset_row(r, indices)) for r in rows
+            ) + "</tbody>"
+            if rows else ""
+        )
+        note = (
+            f'<p class="doe-table-split-note">Continuação — colunas '
+            f'{group_idx + 1}/{len(groups)}</p>'
+            if group_idx > 0 else ""
+        )
+        parts.append(
+            note
+            + f"<table class='doe-table doe-table--wide' data-cols='{group_ncols}'{style}>"
+            + f"{colgroup}{thead}{tbody}</table>"
+        )
+    return f'<div class="doe-table-split">{"".join(parts)}</div>'
 
 
 def _render_row(row) -> str:
@@ -447,20 +559,25 @@ def _render_cell(cell) -> str:
 def _render_signature(block, cls: str) -> str:
     parts = [f'<div class="{cls}">']
     for entry in block.entries:
-        if entry.location and entry.date:
-            loc = f"<p>{_esc(entry.location)}, {_esc(entry.date)}</p>"
-        elif entry.location:
-            loc = f"<p>{_esc(entry.location)}</p>"
-        elif entry.date:
-            loc = f"<p>{_esc(entry.date)}</p>"
-        else:
-            loc = ""
+        # Fecho (local + data) is part of the closing and MUST precede the
+        # signature name/role. Multi-line locations keep their line breaks.
+        loc_lines: list[str] = []
+        if entry.location:
+            loc_lines.extend(
+                line for line in str(entry.location).split("\n") if line.strip()
+            )
+        if entry.date:
+            loc_lines.append(str(entry.date))
+        fecho = ""
+        if loc_lines:
+            joined = "<br/>".join(_esc(line.strip()) for line in loc_lines)
+            fecho = f'<p class="doe-fecho">{joined}</p>'
         parts.append(
             '<div class="doe-signature">'
-            f'<p class="doe-sign-name">{_esc(entry.name)}</p>'
-            f'<p class="doe-sign-role">{_esc(entry.role)}</p>'
+            + fecho
+            + f'<p class="doe-sign-name">{_esc(entry.name)}</p>'
+            + f'<p class="doe-sign-role">{_esc(entry.role)}</p>'
             + (f"<p>{_esc(entry.organ)}</p>" if entry.organ else "")
-            + loc
             + "</div>"
         )
     parts.append("</div>")

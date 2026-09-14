@@ -2,8 +2,8 @@ FROM node:20-alpine AS base
 WORKDIR /app
 
 FROM base AS deps
-COPY package.json ./
-RUN npm install
+COPY package.json package-lock.json ./
+RUN npm ci
 
 FROM base AS builder
 ARG NEXT_PUBLIC_API_URL=https://diario.govsistem.com.br/api/v1

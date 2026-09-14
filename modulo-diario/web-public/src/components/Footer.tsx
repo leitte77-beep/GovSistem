@@ -39,20 +39,20 @@ export default function Footer() {
             © {currentYear} {org?.name || "Diário Oficial Eletrônico"}. Todos os direitos reservados.
           </p>
           <div className="flex gap-4 mt-2 justify-center md:justify-end">
-            <a
+            <Link
               href="/"
               className="text-on-surface-variant hover:text-primary"
               aria-label="Website"
             >
               <span className="material-symbols-outlined">public</span>
-            </a>
-            <a
+            </Link>
+            <Link
               href="/contato"
               className="text-on-surface-variant hover:text-primary"
               aria-label="Email"
             >
               <span className="material-symbols-outlined">mail</span>
-            </a>
+            </Link>
           </div>
         </div>
       </div>

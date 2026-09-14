@@ -37,6 +37,11 @@ from app.semantic.renderer import render_document
 from app.semantic.schemas import SemanticDocument
 from app.semantic.snapshot import verify_snapshot
 from app.semantic.templates import default_config_for
+from app.services.signature_validation import (
+    REVOCATION_CHECKED_VALUES,
+    TIMESTAMP_PRESENT_VALUES,
+    certificate_valid_at,
+)
 
 router = APIRouter(tags=["public semantic"])
 limiter = Limiter(key_func=get_remote_address)
@@ -99,9 +104,13 @@ async def _load_artifacts(snapshot_id, db: AsyncSession) -> list[PublicationArti
     return list(result.scalars().all())
 
 
-def _render_snapshot_matters(snapshot: dict, template_slug: str = "outro") -> list[dict]:
-    """Render each matter from the frozen snapshot into safe HTML."""
-    config = default_config_for(template_slug)
+def _render_snapshot_matters(snapshot: dict, template_slug: str | None = None) -> list[dict]:
+    """Render each matter from the frozen snapshot into safe HTML.
+
+    The template config is resolved from the document's own ``document_type``
+    (falling back to the explicit slug / "outro"), exactly like the PDF path, so
+    the public page and the PDF can never render different layouts.
+    """
     matters_out = []
     for item in snapshot.get("items", []):
         html = ""
@@ -109,6 +118,9 @@ def _render_snapshot_matters(snapshot: dict, template_slug: str = "outro") -> li
         if semantic:
             try:
                 doc = SemanticDocument.model_validate(semantic)
+                config = default_config_for(
+                    template_slug or doc.document_type or "outro"
+                )
                 html = render_document(doc, config, media="screen")
             except Exception:  # noqa: BLE001
                 html = item.get("content_html") or ""
@@ -127,7 +139,29 @@ def _render_snapshot_matters(snapshot: dict, template_slug: str = "outro") -> li
     return matters_out
 
 
+def _signature_timestamp(sig) -> Optional[str]:
+    """Earliest valid RFC 3161 token for a signature, if one exists.
+
+    Guards against MagicMock/duck-typed objects so a non-list relationship
+    never produces a false positive.
+    """
+    records = getattr(sig, "timestamp_records", None)
+    if not isinstance(records, (list, tuple)):
+        return None
+    for rec in records:
+        status = getattr(rec, "validation_status", None) or getattr(rec, "status", None)
+        if status == "valid" and getattr(rec, "gen_time", None):
+            return rec.gen_time.isoformat()
+    return None
+
+
 def _build_authenticity(edition: Edition, snapshot: Optional[dict]) -> dict:
+    # The persisted result of the last validation run is authoritative. The
+    # signer metadata is only a fallback, so a stale value can never
+    # contradict a newer official result.
+    details = edition.signature_validation_details or {}
+    status = str(edition.signature_validation_status or "").lower()
+
     signatures = []
     for sig in (edition.signatures or []):
         ci = sig.certificate_info or {}
@@ -141,6 +175,8 @@ def _build_authenticity(edition: Edition, snapshot: Optional[dict]) -> dict:
         certificate_document = (
             re.sub(r"\D", "", document_match.group(1)) if document_match else ""
         )
+        # A real token only; the ordinary signing date is not a timestamp.
+        timestamp = ci.get("timestamp") or _signature_timestamp(sig)
         signatures.append({
             "signed_at": sig.signed_at.isoformat() if sig.signed_at else None,
             "subject": subject,
@@ -155,7 +191,7 @@ def _build_authenticity(edition: Edition, snapshot: Optional[dict]) -> dict:
             "sha256_signed": ci.get("sha256_signed", ""),
             "chain_trusted": bool(ci.get("chain_trusted")),
             "verified_at": ci.get("validated_at") or ci.get("verified_at"),
-            "timestamp": ci.get("timestamp"),
+            "timestamp": timestamp,
             "verification_code": ci.get("verification_code") or edition.verification_code or "",
         })
 
@@ -164,66 +200,78 @@ def _build_authenticity(edition: Edition, snapshot: Optional[dict]) -> dict:
     if snapshot:
         snapshot_ok, snapshot_reason = verify_snapshot(snapshot)
 
-    validation_checked_at = None
-    intact = bool(edition.signature_validation_status)
-    # "Trusted" requires the ICP-Brasil chain to have been actually validated,
-    # not merely an intact CMS. Falls back to the persisted re-validation
-    # result so editions signed before roots were configured can be shown
-    # honestly as trusted once re-validated.
-    details = edition.signature_validation_details or {}
-    chain_trusted = bool(
-        (signatures and signatures[0].get("chain_trusted"))
-        or details.get("chain_trusted")
+    has_signature = bool(signatures)
+
+    # Integrity: an "invalid" status (or an absent one) must never be coerced
+    # into True just because the column is non-empty.
+    detail_integrity = details.get("integrity")
+    if isinstance(detail_integrity, bool):
+        intact = detail_integrity
+    else:
+        # "indeterminate" means the CMS was verified intact but the chain was
+        # not; "valid" means both.
+        intact = status in ("valid", "indeterminate")
+
+    detail_chain = details.get("chain_trusted")
+    if isinstance(detail_chain, bool):
+        chain_trusted: Optional[bool] = detail_chain
+    elif has_signature:
+        chain_trusted = bool(signatures[0].get("chain_trusted"))
+    else:
+        chain_trusted = None
+
+    if isinstance(details.get("certificate_valid"), bool):
+        certificate_valid: Optional[bool] = details["certificate_valid"]
+    elif has_signature:
+        certificate_valid = certificate_valid_at(
+            signatures[0].get("valid_from"),
+            signatures[0].get("valid_to"),
+            signatures[0].get("signed_at"),
+        )
+    else:
+        certificate_valid = None
+
+    revocation_status = str(details.get("revocation_status") or "").lower()
+    revocation_checked: Optional[bool] = (
+        revocation_status in REVOCATION_CHECKED_VALUES if revocation_status else None
     )
+
+    timestamp_status = str(details.get("timestamp_status") or "").lower()
+    if has_signature and signatures[0].get("timestamp"):
+        timestamped: Optional[bool] = True
+    elif timestamp_status:
+        timestamped = timestamp_status in TIMESTAMP_PRESENT_VALUES
+    else:
+        timestamped = None
+
     trusted = bool(
-        edition.signature_validation_status in ("valid", "ok") and chain_trusted
+        status in ("valid", "ok")
+        and intact
+        and chain_trusted is True
+        and certificate_valid is not False
     )
-    # Derive independent sub-states from the last signature's certificate info
-    # (only when a signature exists). None = não verificado / indisponível.
-    certificate_valid = None
-    revocation_checked = None
-    timestamped = None
-    if signatures:
-        ci = signatures[0]
-        cert_valid = _certificate_valid_now(ci.get("valid_to"))
-        certificate_valid = cert_valid
-        revocation_checked = True if ci.get("validation_status") else None
-        timestamped = bool(ci.get("timestamp") or ci.get("signed_at"))
-        validation_checked_at = ci.get("validated_at")
+
     return {
         "verification_code": edition.verification_code or "",
         "signed_pdf_hash": edition.signed_pdf_hash or edition.pdf_hash,
         "content_manifest_hash": edition.content_manifest_hash or (snapshot or {}).get("content_manifest_hash"),
         "snapshot_intact": snapshot_ok,
         "snapshot_status": snapshot_reason,
-        "validation_checked_at": validation_checked_at,
+        "validation_checked_at": details.get("validated_at"),
+        "revocation_status": revocation_status or None,
+        "timestamp_status": timestamp_status or None,
         "signatures": signatures,
         "states": {
             "signed": bool(edition.signed_pdf_path),
             "intact": intact,
             "trusted": trusted,
             "certificate_valid": certificate_valid,
-            "chain_trusted": chain_trusted,  # requires real ICP-Brasil roots
+            "chain_trusted": chain_trusted,
             "revocation_checked": revocation_checked,
             "timestamped": timestamped,
             "snapshot_intact": snapshot_ok,
         },
     }
-
-
-def _certificate_valid_now(valid_to: str | None) -> bool | None:
-    """True when the certificate is still within its validity window.
-
-    Returns None (não verificado) when there is no validity data.
-    """
-    if not valid_to:
-        return None
-    try:
-        from datetime import datetime
-        end = datetime.fromisoformat(str(valid_to).replace("Z", "+00:00"))
-        return datetime.now(end.tzinfo) <= end
-    except Exception:  # noqa: BLE001
-        return None
 
 
 def _mask_serial(serial: str) -> str:

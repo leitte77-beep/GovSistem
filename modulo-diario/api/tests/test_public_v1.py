@@ -200,6 +200,7 @@ async def test_v1_get_edition_by_year_number(client, override_db):
 
     r = MagicMock()
     r.scalar_one_or_none.return_value = edition
+    r.scalars.return_value.first.return_value = edition
     mock_db.execute.return_value = r
 
     response = await client.get("/api/public/v1/editions/2026/1")
