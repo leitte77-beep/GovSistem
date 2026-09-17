@@ -27,6 +27,7 @@ import {
   Landmark,
   ClipboardList,
   Settings,
+  Star,
 } from "lucide-react";
 
 export const PERM = {
@@ -122,6 +123,7 @@ const ITEM = {
   protocolos: { key: "protocolos", href: "/protocolos", label: "Cobranças de protocolo", icon: Stamp },
   autoridades: { key: "autoridades", href: "/autoridades", label: "Autoridades", icon: Landmark },
   mencoes: { key: "mencoes", href: "/mencoes", label: "Onde fui citado", icon: AtSign },
+  acompanhamentos: { key: "acompanhamentos", href: "/acompanhamentos", label: "Acompanhamentos", icon: Star },
   parametros: { key: "parametros", href: "/admin/parametros", label: "Parâmetros avançados", icon: Settings },
 } satisfies Record<string, NavItem>;
 
@@ -169,7 +171,9 @@ export function navGroupsDoPerfil(perfil: Perfil, perms: string[] = []): NavGrou
       );
   }
 
-  // Ser citado acontece em qualquer perfil, então a tela entra para todos.
+  // Acompanhar e ser citado acontecem em qualquer perfil, então as telas
+  // entram para todos.
+  grupos.push({ title: "Acompanhamento pessoal", items: [ITEM.acompanhamentos] });
   grupos.push({ title: "Comunicação", items: [ITEM.mencoes] });
 
   // Prestações só para quem responde por elas.

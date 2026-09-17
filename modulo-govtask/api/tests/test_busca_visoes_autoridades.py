@@ -168,6 +168,48 @@ async def test_apenas_uma_visao_padrao_por_recurso(client, make_tenant, catalogo
     assert sum(1 for v in visoes if v["padrao"]) == 1
 
 
+@pytest.mark.asyncio
+async def test_filtros_da_visao_sao_honrados_pela_listagem(client, make_tenant, catalogo_padrao):
+    """Uma visão salva precisa filtrar de verdade ao ser aplicada (§49, §50).
+
+    Sem isto, o whitelist aceitaria uma visão como "Emendas federais" e a
+    listagem devolveria tudo — a visão existiria só no nome.
+    """
+    t = await make_tenant("ASSESSOR")
+    await _demanda(client, t["headers"], titulo="Ambulância federal", esfera="FEDERAL")
+    await _demanda(client, t["headers"], titulo="Material municipal", esfera="MUNICIPAL")
+
+    visao = await client.post(
+        f"{BASE}/visoes",
+        json={
+            "nome": "Federais do exercício",
+            "filtros": {
+                "busca": "Ambulância",
+                "esfera": "FEDERAL",
+                "minhas": True,
+                "aguardando_terceiro": False,
+            },
+        },
+        headers=t["headers"],
+    )
+    assert visao.status_code == 201, visao.text
+
+    resultado = (
+        await client.get(
+            f"{DEMANDAS}",
+            params={
+                "busca": "Ambulância",
+                "esfera": "FEDERAL",
+                "minhas": "true",
+                "aguardando_terceiro": "false",
+            },
+            headers=t["headers"],
+        )
+    ).json()
+    assert resultado["total"] == 1
+    assert resultado["items"][0]["titulo"] == "Ambulância federal"
+
+
 # ── Autoridades ─────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio

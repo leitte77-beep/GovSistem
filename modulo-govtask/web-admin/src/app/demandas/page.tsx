@@ -7,11 +7,13 @@ import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { PERM } from "@/lib/perfil";
 import { notify } from "@/components/ui/Toast";
+import { VisoesBar } from "@/components/demandas/VisoesBar";
 import { formatDate } from "@/lib/utils";
 import type { DemandaV2, DemandaV2Page } from "@/types/govtask";
 
 /**
- * Listagem de demandas com filtros rápidos e ações em lote (§188, §189).
+ * Listagem de demandas com visões salvas, filtros rápidos e ações em lote
+ * (§49, §50, §188, §189).
  *
  * As ações em lote exigem motivo e passam pela mesma autorização da operação
  * individual: o que o usuário não pode abrir, não entra no lote.
@@ -20,8 +22,8 @@ export default function DemandasPage() {
   const { hasPermission } = useAuth();
   const podeEditar = hasPermission(PERM.EDIT, PERM.ADMIN);
   const [dados, setDados] = useState<DemandaV2Page>();
-  const [q, setQ] = useState("");
-  const [filtro, setFiltro] = useState<"todas" | "atrasadas" | "minhas" | "externo">("todas");
+  const [filtros, setFiltros] = useState<Record<string, unknown>>({});
+  const [tipos, setTipos] = useState<{ id: string; rotulo: string }[]>([]);
   const [nova, setNova] = useState(false);
   const [titulo, setTitulo] = useState("");
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
@@ -32,22 +34,18 @@ export default function DemandasPage() {
   const [processando, setProcessando] = useState(false);
 
   const carregar = useCallback(
-    async () =>
-      setDados(
-        await api.listDemandasV2({
-          q,
-          atrasadas: filtro === "atrasadas",
-          minhas: filtro === "minhas",
-          aguardando_externo: filtro === "externo",
-        })
-      ),
-    [q, filtro]
+    async () => setDados(await api.listDemandasV2(filtros)),
+    [filtros]
   );
 
   useEffect(() => {
     const timer = setTimeout(() => carregar(), 180);
     return () => clearTimeout(timer);
   }, [carregar]);
+
+  useEffect(() => {
+    api.catalogosDemandas().then((c) => setTipos(c.tipos)).catch(() => setTipos([]));
+  }, []);
 
   useEffect(() => {
     if (podeEditar) api.listUsers().then(setUsuarios).catch(() => setUsuarios([]));
@@ -61,6 +59,35 @@ export default function DemandasPage() {
     setTitulo("");
     window.location.href = `/demandas/${d.id}`;
   }
+
+  /** O preset reescreve só as três chaves que ele governa; o resto é preservado. */
+  const aplicarPreset = (key: "todas" | "minhas" | "atrasadas" | "externo") => {
+    setFiltros((atual) => {
+      const proximo = { ...atual };
+      delete proximo.minhas;
+      delete proximo.atrasadas;
+      delete proximo.aguardando_terceiro;
+      if (key === "minhas") proximo.minhas = true;
+      if (key === "atrasadas") proximo.atrasadas = true;
+      if (key === "externo") proximo.aguardando_terceiro = true;
+      return proximo;
+    });
+  };
+
+  const presetAtual = filtros.minhas ? "minhas" : filtros.atrasadas ? "atrasadas" : filtros.aguardando_terceiro ? "externo" : "todas";
+
+  const aplicarVisao = (novos: Record<string, unknown>) => {
+    setFiltros({ ...novos });
+    setSelecionadas(new Set());
+  };
+
+  const definir = (chave: string, valor: unknown) =>
+    setFiltros((atual) => {
+      const proximo = { ...atual };
+      if (valor === "" || valor === undefined || valor === null) delete proximo[chave];
+      else proximo[chave] = valor;
+      return proximo;
+    });
 
   const alternar = (id: string) =>
     setSelecionadas((atual) => {
@@ -106,6 +133,7 @@ export default function DemandasPage() {
 
   const itens = dados?.items ?? [];
   const todasSelecionadas = itens.length > 0 && itens.every((d) => selecionadas.has(d.id));
+  const temFiltro = Object.keys(filtros).length > 0;
 
   return (
     <div className="max-w-7xl space-y-6">
@@ -120,19 +148,37 @@ export default function DemandasPage() {
         </button>
       </header>
 
+      <VisoesBar filtrosAtuais={filtros} onAplicar={aplicarVisao} />
+
       <section className="rounded-xl border border-slate-200 bg-white p-3">
         <div className="flex flex-col gap-3 lg:flex-row">
           <label className="flex flex-1 items-center gap-2 rounded-lg bg-slate-50 px-3">
             <Search className="h-4 w-4 text-slate-400" />
-            <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar por número, título, objeto ou assunto" className="h-10 w-full bg-transparent text-sm outline-none" />
+            <input value={String(filtros.busca ?? "")} onChange={(e) => definir("busca", e.target.value)} placeholder="Buscar por número, título, objeto ou assunto" className="h-10 w-full bg-transparent text-sm outline-none" />
           </label>
           <div className="flex gap-2 overflow-auto">
             {([["todas", "Todas"], ["minhas", "Sob minha gestão"], ["atrasadas", "Atrasadas"], ["externo", "Aguardando externo"]] as const).map(([key, label]) => (
-              <button key={key} onClick={() => setFiltro(key)} className={`whitespace-nowrap rounded-lg px-3 py-2 text-xs font-semibold ${filtro === key ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
+              <button key={key} onClick={() => aplicarPreset(key)} className={`whitespace-nowrap rounded-lg px-3 py-2 text-xs font-semibold ${presetAtual === key ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}>
                 {label}
               </button>
             ))}
           </div>
+        </div>
+        <div className="mt-3 flex flex-col gap-2 border-t border-slate-100 pt-3 sm:flex-row sm:items-center">
+          <select value={String(filtros.prioridade ?? "")} onChange={(e) => definir("prioridade", e.target.value)} aria-label="Prioridade" className="h-9 rounded-lg border border-slate-300 px-2 text-xs text-slate-700">
+            <option value="">Prioridade: todas</option>
+            {["BAIXA", "NORMAL", "ALTA", "URGENTE", "CRITICA"].map((p) => <option key={p} value={p}>{p}</option>)}
+          </select>
+          <select value={String(filtros.tipo_id ?? "")} onChange={(e) => definir("tipo_id", e.target.value)} aria-label="Tipo de demanda" className="h-9 rounded-lg border border-slate-300 px-2 text-xs text-slate-700">
+            <option value="">Tipo: todos</option>
+            {tipos.map((t) => <option key={t.id} value={t.id}>{t.rotulo}</option>)}
+          </select>
+          <input inputMode="numeric" value={String(filtros.exercicio ?? "")} onChange={(e) => definir("exercicio", e.target.value.replace(/\D/g, "").slice(0, 4))} placeholder="Exercício (ex.: 2026)" aria-label="Exercício" className="h-9 w-40 rounded-lg border border-slate-300 px-2 text-xs" />
+          {temFiltro && (
+            <button onClick={() => setFiltros({})} className="inline-flex items-center gap-1 text-xs font-semibold text-slate-500 hover:text-blue-700">
+              <X className="h-3.5 w-3.5" />Limpar filtros
+            </button>
+          )}
         </div>
       </section>
 
@@ -169,7 +215,11 @@ export default function DemandasPage() {
           <DemandaLinha key={d.id} d={d} selecionavel={podeEditar} selecionada={selecionadas.has(d.id)} onSelecionar={() => alternar(d.id)} />
         ))}
         {!dados && <div className="p-12 text-center text-sm text-slate-500">Carregando…</div>}
-        {dados && itens.length === 0 && <div className="p-12 text-center text-sm text-slate-500">Nenhuma demanda neste recorte.</div>}
+        {dados && itens.length === 0 && (
+          <div className="p-12 text-center text-sm text-slate-500">
+            {temFiltro ? "Nenhuma demanda neste recorte. Ajuste os filtros ou limpe-os." : "Nenhuma demanda cadastrada ainda."}
+          </div>
+        )}
       </section>
 
       {nova && (

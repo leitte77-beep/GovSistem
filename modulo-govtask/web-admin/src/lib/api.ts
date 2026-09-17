@@ -559,7 +559,7 @@ export const api = {
     return request<any>(`/dashboards/${perfil}`);
   },
 
-  listDemandasV2(params?: { q?: string; atrasadas?: boolean; minhas?: boolean; aguardando_externo?: boolean; page?: number }) {
+  listDemandasV2(params?: Record<string, unknown>) {
     return request<import("@/types/govtask").DemandaV2Page>(`/demandas${qs(params)}`);
   },
   getDemandaV2(id: string) { return request<import("@/types/govtask").DemandaV2>(`/demandas/${id}`); },
@@ -568,6 +568,10 @@ export const api = {
   listarTarefasDemanda(id: string) { return request<any[]>(`/demandas/${id}/tarefas`); },
   timelineDemanda(id: string) { return request<{ items: any[] }>(`/demandas/${id}/timeline`); },
   duplicarDemanda(id: string) { return request<{ id: string; numero: string }>(`/demandas/${id}/duplicar`, { method: "POST" }); },
+
+  // ── Acompanhar / favoritar demanda (§45, §46) ──
+  seguirDemanda(id: string, favorito = false) { return request<void>(`/demandas/${id}/seguir${qs({ favorito })}`, { method: "POST" }); },
+  deixarDeSeguirDemanda(id: string) { return request<void>(`/demandas/${id}/seguir`, { method: "DELETE" }); },
 
   // ── Protocolos externos (§33, §34) ──
   listarProtocolos(demandaId: string) { return request<Protocolo[]>(`/demandas/${demandaId}/protocolos`); },
@@ -627,9 +631,36 @@ export const api = {
     return res.blob();
   },
 
-  // ── Obra como faceta da demanda (§54) ──
+  // ── Obra como faceta da demanda (§54–§58) ──
   listarObrasDemanda(demandaId: string) { return request<Obra[]>(`/demandas/${demandaId}/obras`); },
   criarObraDemanda(demandaId: string, data: Record<string, unknown>) { return request<Obra>(`/demandas/${demandaId}/obras`, { method: "POST", body: JSON.stringify(data) }); },
+  atualizarObraDemanda(demandaId: string, obraId: string, data: Record<string, unknown>) { return request<Obra>(`/demandas/${demandaId}/obras/${obraId}`, { method: "PATCH", body: JSON.stringify(data) }); },
+  excluirObraDemanda(demandaId: string, obraId: string) { return request<void>(`/demandas/${demandaId}/obras/${obraId}`, { method: "DELETE" }); },
+  adicionarCronogramaDemanda(demandaId: string, obraId: string, data: Record<string, unknown>) { return request<Obra>(`/demandas/${demandaId}/obras/${obraId}/cronograma`, { method: "POST", body: JSON.stringify(data) }); },
+  atualizarCronogramaDemanda(demandaId: string, obraId: string, itemId: string, data: Record<string, unknown>) { return request<Obra>(`/demandas/${demandaId}/obras/${obraId}/cronograma/${itemId}`, { method: "PATCH", body: JSON.stringify(data) }); },
+  listarDiarioDemanda(demandaId: string, obraId: string) { return request<DiarioObra[]>(`/demandas/${demandaId}/obras/${obraId}/diario`); },
+  registrarDiarioDemanda(demandaId: string, obraId: string, data: Record<string, unknown>) { return request<DiarioObra>(`/demandas/${demandaId}/obras/${obraId}/diario`, { method: "POST", body: JSON.stringify(data) }); },
+  excluirDiarioDemanda(demandaId: string, obraId: string, registroId: string) { return request<void>(`/demandas/${demandaId}/obras/${obraId}/diario/${registroId}`, { method: "DELETE" }); },
+  listarFotosDemanda(demandaId: string, obraId: string) { return request<RegistroFoto[]>(`/demandas/${demandaId}/obras/${obraId}/fotos`); },
+  registrarFotoDemanda(demandaId: string, obraId: string, data: Record<string, unknown>) { return request<RegistroFoto>(`/demandas/${demandaId}/obras/${obraId}/fotos`, { method: "POST", body: JSON.stringify(data) }); },
+  anexarFotoDemanda(demandaId: string, obraId: string, fotoId: string, anexoId: string) { return request<RegistroFoto>(`/demandas/${demandaId}/obras/${obraId}/fotos/${fotoId}/anexar${qs({ anexo_id: anexoId })}`, { method: "POST" }); },
+  listarVistoriasDemanda(demandaId: string, obraId: string) { return request<VistoriaObra[]>(`/demandas/${demandaId}/obras/${obraId}/vistorias`); },
+  registrarVistoriaDemanda(demandaId: string, obraId: string, data: Record<string, unknown>) { return request<VistoriaObra>(`/demandas/${demandaId}/obras/${obraId}/vistorias`, { method: "POST", body: JSON.stringify(data) }); },
+  excluirVistoriaDemanda(demandaId: string, obraId: string, vistoriaId: string) { return request<void>(`/demandas/${demandaId}/obras/${obraId}/vistorias/${vistoriaId}`, { method: "DELETE" }); },
+
+  // ── Central de documentos da demanda (§29–§31) ──
+  uploadDocumentoDemanda(demandaId: string, file: File, opts?: { pasta?: string; descricao?: string; tipo_documento?: string; categoria?: string; classificacao?: string; motivo_versao?: string; substituir_grupo_id?: string }) {
+    const fd = new FormData();
+    fd.append("arquivo", file);
+    if (opts?.pasta) fd.append("pasta", opts.pasta);
+    if (opts?.descricao) fd.append("descricao", opts.descricao);
+    fd.append("tipo_documento", opts?.tipo_documento || "OUTRO");
+    fd.append("categoria", opts?.categoria || "OUTROS");
+    fd.append("classificacao", opts?.classificacao || "INTERNO");
+    if (opts?.motivo_versao) fd.append("motivo_versao", opts.motivo_versao);
+    if (opts?.substituir_grupo_id) fd.append("substituir_grupo_id", opts.substituir_grupo_id);
+    return request<{ id: string; nome_arquivo: string }>(`/demandas/${demandaId}/documentos`, { method: "POST", body: fd });
+  },
 
   listarModelosDemanda() { return request<any[]>("/modelos-demanda"); },
   criarModeloDemanda(data: { nome: string; descricao?: string; configuracao: Record<string, unknown> }) { return request<any>("/modelos-demanda", { method: "POST", body: JSON.stringify(data) }); },

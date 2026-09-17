@@ -36,7 +36,7 @@ FILTROS_PERMITIDOS = {
     "tag", "atrasada", "sem_movimentacao_dias", "bloqueada",
     "aguardando_terceiro", "prazo_ate", "prazo_de", "criada_de", "criada_ate",
     "valor_min", "valor_max", "encerradas", "arquivadas", "seguindo",
-    "ordenar_por", "ordem",
+    "minhas", "ordenar_por", "ordem",
 }
 
 

@@ -596,9 +596,16 @@ Dashboards v2 por perfil disponíveis em `/dashboards/{prefeito|assessor|secreta
 e nas rotas web equivalentes. Cada painel lê exclusivamente as demandas do
 tenant e privilegia filas de atenção, não tabelas administrativas.
 
-Pendências remanescentes: tempo real (§127), assinatura digital (§78),
-integrações GovDoc/GovPro/GovFrota/Arena (§134–§137), camada de IA (§92, só a
-fronteira pronta) e testes de interação no frontend.
+Pendências remanescentes: tempo real (§127), notificações multicanal (§41, só
+in-app), assinatura digital (§78), integrações GovDoc/GovPro/GovFrota/Arena
+(§134–§137), camada de IA (§92, só a fronteira pronta) e testes de interação no
+frontend.
+
+A interface das visões salvas (§49, §50), da página de Acompanhamentos (§45,
+§46) e da obra pela demanda (§54–§58) deixou de ser pendência: ver a entrada
+"Acompanhamentos, visões salvas e obra pela demanda" no CHANGELOG. Continuam
+fora do alcance da tela a medição sob a demanda e uma aba própria de documentos
+(A API de documentos já existe e é usada pelas fotos de obra).
 
 ## 7. Gestão avançada (v3)
 

@@ -225,6 +225,10 @@ class DemandaDetailOut(DemandaListItem):
     campos_extras: Optional[dict] = None
     observacoes: Optional[str] = None
     created_at: datetime
+    # Estado do usuário que pediu o detalhe (§45, §46) — o botão "Acompanhar"
+    # precisa saber se já está ligado, em vez de adivinhar pelo clique.
+    seguindo: bool = False
+    favorito: bool = False
 
 
 class DemandaPage(BaseModel):

@@ -4,6 +4,57 @@ Ordem cronológica inversa. Cada entrada registra o que mudou, a migração
 correspondente e o que ficou de fora, para que a próxima pessoa não descubra a
 pendência em produção.
 
+## 2026-09-17 — Acompanhamentos, visões salvas e obra pela demanda
+
+Fecha as lacunas de interface deixadas pela v2/v3: §29–§31, §45–§46, §49–§50 e
+§54–§58. **Sem migração** — as mudanças de API são aditivas.
+
+### Adicionado
+
+- **`seguindo` e `favorito` no detalhe da demanda.** O botão "Acompanhar" lê o
+  estado real do vínculo em vez de adivinhar pelo primeiro clique. O vínculo
+  continua em `demanda_seguidores`; o detalhe apenas o expõe.
+- **A listagem de demandas passa a honrar os filtros que o whitelist das visões
+  já anunciava** (esfera, fonte, órgão, programa, valores, datas, criticidade,
+  impacto, confidencialidade, origem, setor solicitante, gestor, solicitante,
+  subcategoria, arquivadas). Antes, uma visão como "Emendas federais em
+  andamento" era aceita com `201` e ignorada ao ser aplicada: existia só no
+  nome. `busca` vira alias de `q`, e `bloqueada`/`aguardando_terceiro` passam a
+  ser aceitos como os plurais originais.
+- **`minhas` entra no whitelist de filtros** das visões, para o preset "sob
+  minha gestão" poder ser salvo.
+- **Frontend — visões salvas (§49, §50).** Barra na listagem com salvar o
+  recorte atual, aplicar, compartilhar com a equipe, definir como padrão e
+  excluir. Filtros adicionais de prioridade, tipo e exercício, e "limpar
+  filtros".
+- **Frontend — Acompanhamentos (§45, §46).** Tela com as filas "que eu
+  acompanho" (seguindo) e "sob minha gestão" (minhas), separando interesse de
+  responsabilidade. Botão Acompanhar/Acompanhando no detalhe, presente na
+  navegação de todos os perfis.
+- **Frontend — aba Obras no detalhe da demanda (§54–§58).** Cadastro de obra,
+  execução física e financeira, cronograma, diário, fotos e vistorias pelo
+  caminho `/demandas/{id}/obras`, que já era montado e autorizado no servidor.
+  As fotos usam a central de documentos da demanda (`POST
+  /demandas/{id}/documentos`) e são vinculadas ao registro fotográfico.
+
+### Testes
+
+- `test_filtros_da_visao_sao_honrados_pela_listagem`: uma visão com filtros é
+  salva e, aplicada, filtra de verdade.
+- `test_seguir_reflete_no_detalhe_e_na_listagem`: o estado do botão Acompanhar
+  acompanha o vínculo e o filtro `seguindo`.
+
+### Não feito nesta entrega
+
+- **Medições continuam só sob o convênio.** A API não monta
+  `/demandas/{id}/medicoes`; levá-las para a demanda é trabalho de backend e
+  ficou de fora para não duplicar o acompanhamento.
+- **Central de documentos ainda não tem aba própria** no detalhe da demanda. O
+  upload existe e já é usado pelas fotos de obra; uma aba completa (§29–§31)
+  fica para a próxima entrega.
+- Testes de interação no frontend continuam ausentes (as telas passam `tsc` e
+  `build`).
+
 ## 2026-09-17 — Relacionamento, controle e navegação
 
 Fecha as lacunas de §32–34, §42–50, §54, §59–61, §67, §90–91, §93, §131, §158,
@@ -144,9 +195,8 @@ Bugs que já existiam antes destas mudanças e apareceram ao exercitar os fluxos
 - Assinatura digital (§78) e integrações GovDoc/GovPro/GovFrota/Arena (§134–137).
 - Testes de frontend: as telas novas passaram por `tsc` e build, não por teste
   automatizado de interação.
-- Telas de administração de visões salvas (`/visoes` tem API, mas a interface
-  ainda não expõe salvar/aplicar filtro) e de obra pela demanda (a API já monta
-  `/demandas/{id}/obras`, a tela de obra continua entrando pelo convênio).
+- ~~Telas de administração de visões salvas e de obra pela demanda.~~ Resolvido
+  na entrega seguinte ("Acompanhamentos, visões salvas e obra pela demanda").
 - Suíte `pytest` contra PostgreSQL: continua rodando em SQLite. A migração e a
   busca full-text, porém, **foram** validadas contra uma cópia do banco de
   produção (ver "Validação executada" na arquitetura).

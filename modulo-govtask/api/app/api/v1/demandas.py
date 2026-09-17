@@ -227,24 +227,49 @@ async def lote_tags(
 @router.get("", response_model=DemandaPage)
 async def listar_demandas(
     q: str | None = Query(None, description="Busca por número, título, objeto ou assunto"),
+    busca: str | None = Query(None, description="Alias de `q`, usado pelas visões salvas"),
     status_id: uuid.UUID | None = None,
     tipo_id: uuid.UUID | None = None,
     categoria_id: uuid.UUID | None = None,
+    subcategoria_id: uuid.UUID | None = None,
+    criticidade: str | None = None,
+    impacto: str | None = None,
+    confidencialidade: str | None = None,
+    origem: str | None = None,
     prioridade: PrioridadeDemanda | None = None,
     responsavel_geral_id: uuid.UUID | None = None,
     responsavel_atual_id: uuid.UUID | None = None,
     setor_atual_id: uuid.UUID | None = None,
+    setor_solicitante_id: uuid.UUID | None = None,
+    gestor_id: uuid.UUID | None = None,
+    solicitante_id: uuid.UUID | None = None,
     autoridade_id: uuid.UUID | None = None,
     exercicio: int | None = None,
+    esfera: str | None = None,
+    fonte_recurso: str | None = None,
+    orgao_concedente: str | None = None,
+    programa: str | None = None,
     tag: str | None = None,
+    prazo_de: datetime | None = None,
+    prazo_ate: datetime | None = None,
+    criada_de: datetime | None = None,
+    criada_ate: datetime | None = None,
+    valor_min: float | None = None,
+    valor_max: float | None = None,
     atrasadas: bool | None = Query(None, description="Somente demandas fora do prazo"),
     sem_movimentacao_dias: int | None = Query(None, ge=1, le=365),
     aguardando_externo: bool | None = None,
+    # `aguardando_terceiro` e `bloqueada` são os nomes que as visões salvas
+    # guardam; os plurais são os originais. Aceitar os dois evita que uma visão
+    # válida seja salva e depois ignorada silenciosamente ao ser aplicada.
+    aguardando_terceiro: bool | None = None,
     bloqueadas: bool | None = None,
+    bloqueada: bool | None = None,
     minhas: bool | None = Query(None, description="Demandas sob minha responsabilidade"),
     seguindo: bool | None = Query(None, description="Demandas que eu acompanho"),
     incluir_rascunhos: bool = False,
     incluir_arquivadas: bool = False,
+    arquivadas: bool | None = None,
     encerradas: bool | None = Query(None, description="true=só encerradas, false=só abertas"),
     ordenar_por: str = Query("movimentacao", pattern="^(numero|titulo|prazo|movimentacao|criacao)$"),
     ordem: str = Query("desc", pattern="^(asc|desc)$"),
@@ -255,7 +280,10 @@ async def listar_demandas(
 ):
     permissoes = get_user_permissions(user)
     stmt = svc.aplicar_escopo(
-        select(Demanda), user, permissoes, incluir_arquivadas=incluir_arquivadas
+        select(Demanda),
+        user,
+        permissoes,
+        incluir_arquivadas=incluir_arquivadas or bool(arquivadas),
     )
 
     if not incluir_rascunhos:
@@ -264,15 +292,26 @@ async def listar_demandas(
             or_(Demanda.is_rascunho.is_(False), Demanda.criado_por_id == user.id)
         )
 
-    if q:
+    termo = q or busca
+    if termo:
         # Full-text no PostgreSQL (índice GIN sobre `busca_tsv`), ILIKE fora dele.
-        stmt = aplicar_busca(stmt, db, q)
+        stmt = aplicar_busca(stmt, db, termo)
     if status_id:
         stmt = stmt.where(Demanda.status_id == status_id)
     if tipo_id:
         stmt = stmt.where(Demanda.tipo_id == tipo_id)
     if categoria_id:
         stmt = stmt.where(Demanda.categoria_id == categoria_id)
+    if subcategoria_id:
+        stmt = stmt.where(Demanda.subcategoria_id == subcategoria_id)
+    if criticidade:
+        stmt = stmt.where(Demanda.criticidade == criticidade)
+    if impacto:
+        stmt = stmt.where(Demanda.impacto == impacto)
+    if confidencialidade:
+        stmt = stmt.where(Demanda.confidencialidade == confidencialidade)
+    if origem:
+        stmt = stmt.where(Demanda.origem == origem)
     if prioridade:
         stmt = stmt.where(Demanda.prioridade == prioridade.value)
     if responsavel_geral_id:
@@ -281,10 +320,38 @@ async def listar_demandas(
         stmt = stmt.where(Demanda.responsavel_atual_id == responsavel_atual_id)
     if setor_atual_id:
         stmt = stmt.where(Demanda.setor_atual_id == setor_atual_id)
+    if setor_solicitante_id:
+        stmt = stmt.where(Demanda.setor_solicitante_id == setor_solicitante_id)
+    if gestor_id:
+        stmt = stmt.where(Demanda.gestor_id == gestor_id)
+    if solicitante_id:
+        stmt = stmt.where(Demanda.solicitante_id == solicitante_id)
     if autoridade_id:
         stmt = stmt.where(Demanda.autoridade_id == autoridade_id)
     if exercicio:
         stmt = stmt.where(Demanda.exercicio == exercicio)
+    if esfera:
+        stmt = stmt.where(Demanda.esfera == esfera)
+    if fonte_recurso:
+        stmt = stmt.where(Demanda.fonte_recurso == fonte_recurso)
+    if orgao_concedente:
+        stmt = stmt.where(Demanda.orgao_concedente == orgao_concedente)
+    if programa:
+        stmt = stmt.where(Demanda.programa == programa)
+    if prazo_de:
+        stmt = stmt.where(Demanda.prazo_final >= prazo_de)
+    if prazo_ate:
+        stmt = stmt.where(Demanda.prazo_final <= prazo_ate)
+    if criada_de:
+        stmt = stmt.where(Demanda.created_at >= criada_de)
+    if criada_ate:
+        stmt = stmt.where(Demanda.created_at <= criada_ate)
+    if valor_min is not None:
+        stmt = stmt.where(Demanda.valor_previsto >= valor_min)
+    if valor_max is not None:
+        stmt = stmt.where(Demanda.valor_previsto <= valor_max)
+    if bloqueada is not None:
+        stmt = stmt.where(Demanda.bloqueada.is_(bloqueada))
     if bloqueadas is not None:
         stmt = stmt.where(Demanda.bloqueada.is_(bloqueadas))
     if minhas:
@@ -329,7 +396,7 @@ async def listar_demandas(
         stmt = stmt.where(
             Demanda.concluida_em.is_(None), Demanda.ultima_movimentacao_em < corte
         )
-    if aguardando_externo:
+    if aguardando_externo or aguardando_terceiro:
         externos = (
             select(StatusDemanda.id)
             .where(StatusDemanda.is_aguardando_externo.is_(True))
@@ -387,7 +454,19 @@ async def _detalhe(db: AsyncSession, demanda_id: uuid.UUID, user: User) -> Deman
         .execution_options(populate_existing=True)
     )
     demanda = (await db.execute(stmt)).scalar_one()
-    return _serializar(demanda, DemandaDetailOut)
+    saida = _serializar(demanda, DemandaDetailOut)
+    # O botão "Acompanhar" lê o estado real do vínculo, não o otimismo da tela.
+    vinculo = (
+        await db.execute(
+            select(DemandaSeguidor.favorito).where(
+                DemandaSeguidor.demanda_id == demanda_id,
+                DemandaSeguidor.user_id == user.id,
+            )
+        )
+    ).scalar_one_or_none()
+    saida.seguindo = vinculo is not None
+    saida.favorito = bool(vinculo)
+    return saida
 
 
 @router.get("/{demanda_id}", response_model=DemandaDetailOut)

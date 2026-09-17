@@ -248,6 +248,7 @@ export interface DemandaV2 {
   responsavel_geral?: { id: string; name: string } | null;
   responsavel_atual?: { id: string; name: string } | null;
   setor_atual?: { id: string; nome: string } | null; tags: string[];
+  seguindo?: boolean; favorito?: boolean;
 }
 
 export interface DemandaV2Page { items: DemandaV2[]; total: number; page: number; pages: number; page_size: number; }
@@ -481,7 +482,10 @@ export interface CronogramaItem {
 
 export interface Obra {
   id: string;
-  convenio_id: string;
+  // A obra pende de um convênio (entidades anteriores à v2) ou de uma demanda
+  // (§54); pelo menos um dos dois está preenchido.
+  convenio_id: string | null;
+  demanda_id?: string | null;
   nome: string | null;
   endereco: string | null;
   coordenadas: string | null;

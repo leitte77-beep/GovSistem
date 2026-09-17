@@ -1,7 +1,5 @@
 """Núcleo de demandas: criação, numeração, ciclo de vida e timeline."""
 
-import asyncio
-
 import pytest
 
 BASE = "/api/govtask/demandas"
@@ -189,3 +187,27 @@ async def test_tags_sao_criadas_e_filtram(client, make_tenant, catalogo_padrao):
 
     filtrada = await client.get(f"{BASE}?tag=deputado-x", headers=t["headers"])
     assert filtrada.json()["total"] == 1
+
+
+@pytest.mark.asyncio
+async def test_seguir_reflete_no_detalhe_e_na_listagem(client, make_tenant, catalogo_padrao):
+    """O botão "Acompanhar" precisa do estado real, não do otimismo da tela."""
+    t = await make_tenant("ASSESSOR")
+    demanda = await _criar(client, t["headers"])
+
+    detalhe = (await client.get(f"{BASE}/{demanda['id']}", headers=t["headers"])).json()
+    assert detalhe["seguindo"] is False
+
+    seguir = await client.post(f"{BASE}/{demanda['id']}/seguir", headers=t["headers"])
+    assert seguir.status_code == 204
+
+    detalhe = (await client.get(f"{BASE}/{demanda['id']}", headers=t["headers"])).json()
+    assert detalhe["seguindo"] is True
+    assert (await client.get(f"{BASE}?seguindo=true", headers=t["headers"])).json()["total"] == 1
+
+    deixar = await client.delete(f"{BASE}/{demanda['id']}/seguir", headers=t["headers"])
+    assert deixar.status_code == 204
+
+    detalhe = (await client.get(f"{BASE}/{demanda['id']}", headers=t["headers"])).json()
+    assert detalhe["seguindo"] is False
+    assert (await client.get(f"{BASE}?seguindo=true", headers=t["headers"])).json()["total"] == 0
