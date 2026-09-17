@@ -52,6 +52,7 @@ from app.models.enums import (
     TipoCampoCustomizado,
     TipoContagemSla,
     TipoRelacionamentoDemanda,
+    StatusAssinatura,
 )
 from app.models.user import User
 from app.models.role import Role
@@ -68,6 +69,7 @@ from app.models.evento_timeline import EventoTimeline
 from app.models.contestacao import Contestacao
 from app.models.notificacao import Notificacao
 from app.models.notificacao_preferencia import NotificacaoPreferencia
+from app.models.assinatura_documento import AssinaturaDocumento
 from app.models.comentario import Comentario
 from app.models.comentario_demanda import (
     ComentarioDemanda,
@@ -178,6 +180,8 @@ __all__ = [
     "Contestacao",
     "Notificacao",
     "NotificacaoPreferencia",
+    "AssinaturaDocumento",
+    "StatusAssinatura",
     "Comentario",
     "TemplateFluxo",
     "TemplateEtapa",

@@ -346,6 +346,11 @@ class TipoEvento(str, Enum):
     WEBHOOK_ENDPOINT_CRIADO = "WEBHOOK_ENDPOINT_CRIADO"
     WEBHOOK_ENTREGUE = "WEBHOOK_ENTREGUE"
     WEBHOOK_FALHOU = "WEBHOOK_FALHOU"
+    # ── Assinatura de documento (§78) ─────────────────────
+    ASSINATURA_SOLICITADA = "ASSINATURA_SOLICITADA"
+    ASSINATURA_EM_REVISAO = "ASSINATURA_EM_REVISAO"
+    ASSINATURA_REGISTRADA = "ASSINATURA_REGISTRADA"
+    ASSINATURA_CANCELADA = "ASSINATURA_CANCELADA"
 
 
 # ── Contestação ───────────────────────────────────────────
@@ -886,3 +891,19 @@ class StatusWebhookEntrega(str, Enum):
     SUCESSO = "SUCESSO"
     FALHA = "FALHA"
     DESCARTADO = "DESCARTADO"
+
+
+# ── Assinatura de documento (§78) ─────────────────────────
+class StatusAssinatura(str, Enum):
+    """Ciclo de vida da assinatura de um documento.
+
+    `ASSINADO` só é alcançado por evidência do módulo de assinatura (referência
+    e hash) entregue por rota interna — nunca por um usuário comum trocando o
+    status na mão, o que seria uma assinatura simulada.
+    """
+
+    RASCUNHO = "RASCUNHO"
+    EM_REVISAO = "EM_REVISAO"
+    AGUARDANDO_ASSINATURA = "AGUARDANDO_ASSINATURA"
+    ASSINADO = "ASSINADO"
+    CANCELADO = "CANCELADO"

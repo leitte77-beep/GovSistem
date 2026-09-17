@@ -10,11 +10,26 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { Download, FileText, History, Plus, Trash2, Upload } from "lucide-react";
+import { CheckCircle2, Download, FileText, History, PenLine, Plus, Trash2, Upload } from "lucide-react";
 import { api } from "@/lib/api";
 import { notify } from "@/components/ui/Toast";
 import { cn, formatDate } from "@/lib/utils";
-import type { ArvoreDocumentosDemanda, DocumentoDemanda } from "@/types/govtask";
+import type { ArvoreDocumentosDemanda, AssinaturaDocumento, DocumentoDemanda } from "@/types/govtask";
+
+const ASSINATURA_LABEL: Record<string, string> = {
+  RASCUNHO: "Rascunho",
+  EM_REVISAO: "Em revisão",
+  AGUARDANDO_ASSINATURA: "Aguardando assinatura",
+  ASSINADO: "Assinado",
+  CANCELADO: "Cancelado",
+};
+
+function assinaturaTone(status: string): string {
+  if (status === "ASSINADO") return "bg-emerald-50 text-emerald-800 ring-emerald-200";
+  if (status === "CANCELADO") return "bg-slate-100 text-slate-600 ring-slate-200";
+  if (status === "AGUARDANDO_ASSINATURA") return "bg-amber-50 text-amber-800 ring-amber-200";
+  return "bg-blue-50 text-blue-800 ring-blue-200";
+}
 
 const CATEGORIAS: Record<string, string> = {
   PROPOSTA: "Proposta",
@@ -49,11 +64,23 @@ export function DocumentosDemandaTab({ demandaId, podeEditar }: { demandaId: str
   const [mostrarForm, setMostrarForm] = useState(false);
   const [versaoDeGrupo, setVersaoDeGrupo] = useState<string | null>(null);
   const [versoes, setVersoes] = useState<Record<string, DocumentoDemanda[]>>({});
+  const [assinaturas, setAssinaturas] = useState<Record<string, AssinaturaDocumento | null>>({});
+  const [painelAssinatura, setPainelAssinatura] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
     try {
-      setArvore(await api.arvoreDocumentosDemanda(demandaId));
+      const arv = await api.arvoreDocumentosDemanda(demandaId);
+      setArvore(arv);
+      // O estado da assinatura é por grupo; carrega junto para o selo aparecer
+      // sem exigir um clique por documento.
+      const grupos = Array.from(
+        new Set(arv.pastas.flatMap((p) => p.documentos.map((d) => d.documento_grupo_id ?? d.id)))
+      );
+      const pares = await Promise.all(
+        grupos.map(async (g) => [g, await api.assinaturaDocumento(demandaId, g).catch(() => null)] as const)
+      );
+      setAssinaturas(Object.fromEntries(pares));
     } catch (e) {
       notify.error(e instanceof Error ? e.message : "Não foi possível carregar os documentos");
     } finally {
@@ -62,6 +89,23 @@ export function DocumentosDemandaTab({ demandaId, podeEditar }: { demandaId: str
   }, [demandaId]);
 
   useEffect(() => { carregar(); }, [carregar]);
+
+  const atualizarAssinatura = async (grupo: string, acao: "solicitar" | "revisar" | "cancelar") => {
+    try {
+      if (acao === "solicitar") await api.solicitarAssinatura(demandaId, grupo);
+      else if (acao === "revisar") await api.revisarAssinatura(demandaId, grupo);
+      else {
+        const motivo = window.prompt("Motivo do cancelamento (fica na auditoria)");
+        if (!motivo || motivo.trim().length < 5) return notify.error("Informe o motivo (mínimo 5 caracteres)");
+        await api.cancelarAssinatura(demandaId, grupo, motivo.trim());
+      }
+      const atual = await api.assinaturaDocumento(demandaId, grupo);
+      setAssinaturas((prev) => ({ ...prev, [grupo]: atual }));
+      notify.success("Assinatura atualizada");
+    } catch (e) {
+      notify.error(e instanceof Error ? e.message : "Não foi possível atualizar a assinatura");
+    }
+  };
 
   const enviar = async (substituirGrupoId?: string) => {
     if (!arquivo) return notify.error("Selecione o arquivo");
@@ -194,6 +238,7 @@ export function DocumentosDemandaTab({ demandaId, podeEditar }: { demandaId: str
             {no.documentos.map((doc) => {
               const grupo = doc.documento_grupo_id ?? doc.id;
               const abertas = versoes[grupo];
+              const assinatura = assinaturas[grupo];
               return (
                 <li key={doc.id} className="rounded-lg border border-slate-100 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -201,6 +246,11 @@ export function DocumentosDemandaTab({ demandaId, podeEditar }: { demandaId: str
                       <p className="truncate text-sm font-medium text-slate-800">
                         {doc.nome_arquivo}
                         <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-[11px] font-bold text-slate-600">v{doc.versao}</span>
+                        {assinatura && (
+                          <span className={cn("ml-2 rounded-full px-2 py-0.5 text-[11px] font-bold ring-1", assinaturaTone(assinatura.status))}>
+                            {ASSINATURA_LABEL[assinatura.status] ?? assinatura.status}
+                          </span>
+                        )}
                       </p>
                       <p className="mt-0.5 text-xs text-slate-500">
                         {doc.enviado_por?.name || "Sistema"} · {formatDate(doc.created_at)}
@@ -208,6 +258,13 @@ export function DocumentosDemandaTab({ demandaId, podeEditar }: { demandaId: str
                       </p>
                     </div>
                     <div className="flex shrink-0 items-center gap-1">
+                      <button
+                        onClick={() => setPainelAssinatura(painelAssinatura === grupo ? null : grupo)}
+                        aria-label={`Assinatura de ${doc.nome_arquivo}`}
+                        className={cn("rounded p-1.5 hover:bg-slate-100", painelAssinatura === grupo ? "text-blue-700" : "text-slate-500")}
+                      >
+                        <PenLine className="h-4 w-4" />
+                      </button>
                       <button onClick={() => baixar(doc)} aria-label={`Baixar ${doc.nome_arquivo}`} className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700"><Download className="h-4 w-4" /></button>
                       <button onClick={() => verVersoes(doc)} aria-label="Ver versões" className={cn("rounded p-1.5 hover:bg-slate-100", abertas ? "text-blue-700" : "text-slate-500")}><History className="h-4 w-4" /></button>
                       {podeEditar && (
@@ -228,6 +285,54 @@ export function DocumentosDemandaTab({ demandaId, podeEditar }: { demandaId: str
                       )}
                     </div>
                   </div>
+
+                  {painelAssinatura === grupo && (
+                    <div className="mt-3 rounded-lg bg-slate-50 p-3 text-xs text-slate-600">
+                      {assinatura ? (
+                        <>
+                          <p className="flex items-center gap-1.5 font-semibold text-slate-800">
+                            <CheckCircle2 className="h-3.5 w-3.5 text-slate-400" />
+                            {ASSINATURA_LABEL[assinatura.status] ?? assinatura.status}
+                          </p>
+                          {assinatura.solicitado_por && (
+                            <p className="mt-1">Solicitado por {assinatura.solicitado_por.name} em {formatDate(assinatura.solicitado_em)}.</p>
+                          )}
+                          {assinatura.status === "ASSINADO" && (
+                            <p className="mt-1">
+                              Assinado por {assinatura.assinado_por?.name || "assinador externo"} em {formatDate(assinatura.assinado_em)}.
+                              {assinatura.referencia_externa ? ` Referência ${assinatura.referencia_externa}` : ""}
+                              {assinatura.provedor ? ` (${assinatura.provedor})` : ""}
+                              {assinatura.hash_assinado ? ` · hash ${assinatura.hash_assinado.slice(0, 12)}…` : ""}
+                            </p>
+                          )}
+                          {assinatura.status === "CANCELADO" && assinatura.motivo_cancelamento && (
+                            <p className="mt-1">Motivo: {assinatura.motivo_cancelamento}</p>
+                          )}
+                          {podeEditar && assinatura.status !== "ASSINADO" && assinatura.status !== "CANCELADO" && (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {assinatura.status !== "AGUARDANDO_ASSINATURA" && (
+                                <button onClick={() => atualizarAssinatura(grupo, "solicitar")} className="rounded bg-blue-700 px-2.5 py-1 font-semibold text-white">Solicitar assinatura</button>
+                              )}
+                              {assinatura.status === "AGUARDANDO_ASSINATURA" && (
+                                <button onClick={() => atualizarAssinatura(grupo, "revisar")} className="rounded bg-white px-2.5 py-1 font-semibold text-slate-700 ring-1 ring-slate-200">Voltar para revisão</button>
+                              )}
+                              <button onClick={() => atualizarAssinatura(grupo, "cancelar")} className="rounded px-2.5 py-1 font-semibold text-red-700 hover:bg-red-50">Cancelar</button>
+                            </div>
+                          )}
+                          {assinatura.status === "ASSINADO" && (
+                            <p className="mt-2 text-slate-400">A assinatura é registrada pelo módulo de assinatura, com referência e hash.</p>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <p>Sem solicitação de assinatura para este documento.</p>
+                          {podeEditar && (
+                            <button onClick={() => atualizarAssinatura(grupo, "solicitar")} className="mt-2 rounded bg-blue-700 px-2.5 py-1 font-semibold text-white">Solicitar assinatura</button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )}
 
                   {abertas && (
                     <ol className="mt-3 space-y-1 border-l-2 border-slate-100 pl-3 text-xs">

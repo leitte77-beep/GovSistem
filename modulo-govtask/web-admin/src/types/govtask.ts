@@ -215,6 +215,25 @@ export interface DocumentoDemanda {
   created_at: string;
 }
 
+export type StatusAssinatura = "RASCUNHO" | "EM_REVISAO" | "AGUARDANDO_ASSINATURA" | "ASSINADO" | "CANCELADO";
+
+export interface AssinaturaDocumento {
+  id: string;
+  demanda_id: string;
+  documento_grupo_id: string;
+  anexo_id: string | null;
+  status: StatusAssinatura;
+  solicitado_por: { id: string; name: string } | null;
+  solicitado_em: string | null;
+  revisado_em: string | null;
+  assinado_por: { id: string; name: string } | null;
+  assinado_em: string | null;
+  referencia_externa: string | null;
+  provedor: string | null;
+  hash_assinado: string | null;
+  motivo_cancelamento: string | null;
+}
+
 export interface ArvoreDocumentosDemanda {
   pastas: { pasta: string; quantidade: number; documentos: DocumentoDemanda[] }[];
   total: number;

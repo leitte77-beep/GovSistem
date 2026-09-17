@@ -692,6 +692,12 @@ export const api = {
   removerDocumentoDemanda(demandaId: string, documentoId: string, motivo: string) {
     return request<void>(`/demandas/${demandaId}/documentos/${documentoId}`, { method: "DELETE", body: JSON.stringify({ motivo }) });
   },
+
+  // ── Assinatura de documento (§78) ──
+  assinaturaDocumento(demandaId: string, grupoId: string) { return request<import("@/types/govtask").AssinaturaDocumento | null>(`/demandas/${demandaId}/documentos/${grupoId}/assinatura`); },
+  solicitarAssinatura(demandaId: string, grupoId: string) { return request<import("@/types/govtask").AssinaturaDocumento>(`/demandas/${demandaId}/documentos/${grupoId}/assinatura/solicitar`, { method: "POST", body: JSON.stringify({}) }); },
+  revisarAssinatura(demandaId: string, grupoId: string) { return request<import("@/types/govtask").AssinaturaDocumento>(`/demandas/${demandaId}/documentos/${grupoId}/assinatura/revisar`, { method: "POST" }); },
+  cancelarAssinatura(demandaId: string, grupoId: string, motivo: string) { return request<import("@/types/govtask").AssinaturaDocumento>(`/demandas/${demandaId}/documentos/${grupoId}/assinatura/cancelar`, { method: "POST", body: JSON.stringify({ motivo }) }); },
   async baixarDocumentoDemanda(demandaId: string, documentoId: string) {
     const res = await fetch(`${BASE_URL}/demandas/${demandaId}/documentos/${documentoId}/download`, { headers: getHeaders() });
     if (!res.ok) throw new Error("Não foi possível baixar o documento");

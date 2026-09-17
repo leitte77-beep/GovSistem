@@ -4,6 +4,46 @@ Ordem cronológica inversa. Cada entrada registra o que mudou, a migração
 correspondente e o que ficou de fora, para que a próxima pessoa não descubra a
 pendência em produção.
 
+## 2026-09-17 — Assinatura de documento
+
+Fecha §78. O ciclo de vida é explícito e a transição para **Assinado** não é
+oferecida a usuários comuns: ela depende da rota interna que recebe referência e
+hash do módulo de assinatura. Sem evidência, o documento permanece "Aguardando
+assinatura" — não há assinatura simulada.
+
+**Migração:** `b2c3d4e5f6a7_assinatura_documento` (aditiva). Exige
+`alembic upgrade head` antes da publicação.
+
+### Adicionado
+
+- **Modelo `documento_assinaturas`.** Uma linha por grupo de documentos (§31),
+  com estados Rascunho, Em revisão, Aguardando assinatura, Assinado e
+  Cancelado; autoria da solicitação, da revisão e da assinatura.
+- **Rotas de usuário.** `GET .../assinatura`, `POST .../assinatura/solicitar`
+  (`resource.edit`), `.../revisar` e `.../cancelar` (motivo obrigatório). O
+  grupo é autorizado pela demanda e pela classificação do documento; outro
+  município recebe 404.
+- **Boundary do assinador.** `POST /internal/assinaturas/registrar`, protegido
+  por `INTERNAL_API_KEY`, exige `referencia` e `hash_assinado`; é o único
+  caminho para `ASSINADO`. Reenviar evidência para o mesmo grupo é 409.
+- **Auditoria e timeline.** Solicitar, revisar, registrar e cancelar geram
+  evento na timeline e registro de auditoria com o `demanda_id`.
+- **Frontend.** Na aba Documentos, selo de estado por documento, painel de
+  assinatura com solicitar/voltar para revisão/cancelar, e — depois de
+  registrada — autor, data, referência, provedor e hash.
+
+### Testes
+
+- `test_assinaturas.py`: fluxo até a evidência do assinador, exigência da chave
+  interna (sem chave não passa), conflito ao reenviar evidência e isolamento
+  entre municípios.
+
+### Não feito nesta entrega
+
+- **O GovTask não chama o assinador.** O boundary está pronto (rota interna com
+  evidência); acionar o serviço de assinatura é a próxima integração, e ela
+  exige o contrato e o certificado do ambiente.
+
 ## 2026-09-17 — Medições sob demanda e central de documentos
 
 Fecha as duas pendências registradas na entrega de UI: medições sob a demanda
