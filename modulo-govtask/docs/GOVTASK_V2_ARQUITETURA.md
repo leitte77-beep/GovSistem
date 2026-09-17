@@ -332,8 +332,12 @@ fonte de autorização — a navegação apenas facilita o acesso.
 - **A busca full-text foi exercitada de fato** nessa cópia, caso a caso (sem
   acento, plural, flexão verbal, `OR`, exclusão com `-`, entrada suja e termo
   com `%`). Foi o que revelou dois defeitos reais, agora corrigidos.
-- **Não executado:** a suíte `pytest` contra PostgreSQL (`TEST_DATABASE_URL`).
-  Ela continua rodando em SQLite, onde a busca cai no `ILIKE` equivalente.
+- **Suíte `pytest` contra PostgreSQL — executada.** O harness monta o schema
+  pelas migrations (uma vez por sessão) e trunca entre os testes; **215 testes
+  aprovados**, iguais aos 215 em SQLite. Foi o que revelou o defeito de
+  `tarefas.prazo` (`NOT NULL` no banco, opcional no modelo), corrigido na
+  migração `d4e5f6a7b8c9`. A partir daqui, o caminho full-text e o schema real
+  ficam cobertos pela suíte.
 
 > **Estado da produção.** O banco `govtask` em uso está em `f9a0b1c2d3e4`
 > (head), com as imagens de API e `web-admin` reconstruídas. Webhooks seguem

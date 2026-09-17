@@ -309,18 +309,28 @@ obrigatório nas operações sensíveis, e a timeline é append-only.
 ```bash
 cd modulo-govtask/api
 python3 -m pytest -q                       # SQLite em memória, isolado por teste
-TEST_DATABASE_URL=postgresql+asyncpg://... python3 -m pytest -q   # contra PostgreSQL
+
+# Contra PostgreSQL (schema montado pelas migrations; banco descartável)
+TEST_DATABASE_URL=postgresql+asyncpg://usuario:senha@host:5432/govtask_test \
+  python3 -m pytest -q
 ```
+
+O caminho PostgreSQL monta o schema com `alembic upgrade head` e trunca entre os
+testes. É o que exercita as colunas geradas de busca e o schema real de
+produção. O banco usado deve ser descartável: a suíte apaga o conteúdo.
 
 A suíte cobre isolamento entre municípios (§165, com 13 portas diferentes),
 permissões por role, máquinas de estado, prazos, uploads, workflow e os E2E do
 §166 (veículo por indicação parlamentar) e §167 (obra pela Demanda).
 
 O caminho full-text só existe no PostgreSQL: em SQLite a busca usa `ILIKE`
-equivalente. Para exercitá-lo pela suíte, rode com `TEST_DATABASE_URL`. A busca
-já foi validada manualmente contra PostgreSQL 16 (sem acento, plural, flexão
-verbal, `OR`, exclusão com `-`, entrada suja e termo com `%`), mas isso não está
-automatizado ainda.
+equivalente. Rodando com `TEST_DATABASE_URL`, a suíte exercita o índice de
+verdade — sem acento, plural, flexão verbal, `OR`, exclusão com `-`, entrada
+suja e termo com `%` — e o schema vem das migrations, não dos metadados.
+
+O primeiro uso da suíte em PostgreSQL revelou um defeito real: `tarefas.prazo`
+seguia `NOT NULL` desde a v1, embora o modelo v2 permita tarefa sem prazo. A
+correção está na migração `d4e5f6a7b8c9`.
 
 Frontend:
 

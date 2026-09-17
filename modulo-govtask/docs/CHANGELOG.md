@@ -4,6 +4,40 @@ Ordem cronológica inversa. Cada entrada registra o que mudou, a migração
 correspondente e o que ficou de fora, para que a próxima pessoa não descubra a
 pendência em produção.
 
+## 2026-09-17 — Suíte contra PostgreSQL e tarefa sem prazo
+
+A suíte completa passou a rodar contra PostgreSQL, exercitando o schema de
+produção (inclusive a busca full-text). O primeiro passo revelou um defeito real.
+
+**Migração:** `d4e5f6a7b8c9_tarefa_prazo_opcional`. Exige `alembic upgrade head`.
+
+### Corrigido
+
+- **Tarefa sem prazo era recusada pelo banco.** A migração do núcleo v2 tornou
+  `tarefas.convenio_id` e `tarefas.etapa_id` nulos (fluxo livre), mas esqueceu
+  `tarefas.prazo`, que continuava `NOT NULL` desde a v1. O modelo e os testes
+  tratavam o prazo como opcional — criar tarefa sem prazo estourava
+  `NotNullViolationError` em produção. A suíte em SQLite não via porque lá o
+  schema é montado pelos metadados. Agora a coluna aceita nulo, alinhada ao
+  modelo.
+
+### Adicionado
+
+- **Harness de teste para PostgreSQL.** `TEST_DATABASE_URL` aponta para um banco
+  descartável e a suíte monta o schema **pelas migrations** (uma vez por sessão)
+  e trunca entre os testes. Dois ajustes foram necessários, ambos do harness e
+  não do produto: `NullPool` (cada teste roda em um event loop e o asyncpg não
+  reaproveita conexão de outro loop) e montar pelas migrations em vez de
+  `create_all` — as colunas geradas `busca_tsv`/`busca_texto` só existem na
+  migration, então o caminho full-text só é exercitado de verdade assim.
+
+### Validado
+
+- **Migrações contra PostgreSQL 16**: cadeia completa do zero ao head, mais
+  `downgrade` e novo `upgrade` das quatro revisões desta rodada. Todas as
+  tabelas e colunas conferidas no banco; o banco descartável foi removido.
+- **Suíte completa em PostgreSQL: 215 testes aprovados** (e 215 em SQLite).
+
 ## 2026-09-17 — Outbox de e-mail
 
 Endurece a entrega da notificação por e-mail (§41, §126): o envio sai do fluxo

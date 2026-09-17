@@ -7,13 +7,18 @@ importar os modelos/aplicação.
 """
 
 import os
+import subprocess
+import sys
 import uuid
+from pathlib import Path
 
+import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
-from sqlalchemy.pool import StaticPool
+from sqlalchemy.pool import NullPool, StaticPool
 
 # SQLite não entende o tipo específico do PostgreSQL. Em CI/integração é
 # possível definir TEST_DATABASE_URL para rodar a mesma suíte contra um
@@ -22,7 +27,8 @@ import sqlalchemy
 import sqlalchemy.dialects.postgresql as _pg
 
 TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "sqlite+aiosqlite://")
-if TEST_DATABASE_URL.startswith("sqlite"):
+IS_POSTGRES = not TEST_DATABASE_URL.startswith("sqlite")
+if not IS_POSTGRES:
     _pg.UUID = sqlalchemy.Uuid
 
 from app.core.database import get_db  # noqa: E402
@@ -40,11 +46,45 @@ from app.models import (  # noqa: E402
 
 _ENGINE_KWARGS = (
     {"connect_args": {"check_same_thread": False}, "poolclass": StaticPool}
-    if TEST_DATABASE_URL.startswith("sqlite")
-    else {}
+    if not IS_POSTGRES
+    # `NullPool` no PostgreSQL: cada teste roda em um event loop próprio e o
+    # asyncpg não aceita reaproveitar uma conexão de outro loop. Sem isto, o
+    # primeiro teste passa e todos os seguintes estouram `InterfaceError`.
+    else {"poolclass": NullPool}
 )
 TEST_ENGINE = create_async_engine(TEST_DATABASE_URL, **_ENGINE_KWARGS)
 TEST_SESSION = async_sessionmaker(TEST_ENGINE, class_=AsyncSession, expire_on_commit=False)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _pg_schema():
+    """No PostgreSQL, monta o schema pelas migrations — uma vez por sessão.
+
+    `create_all` não serve aqui: `busca_tsv` e `busca_texto` são colunas geradas
+    criadas por migration e não existem nos metadados. Montar pelas migrations
+    é o que faz a suíte exercitar, de fato, o schema de produção — inclusive a
+    busca full-text.
+    """
+    if not IS_POSTGRES:
+        yield
+        return
+    url = make_url(TEST_DATABASE_URL)
+    ambiente = {
+        **os.environ,
+        "POSTGRES_HOST": url.host or "localhost",
+        "POSTGRES_PORT": str(url.port or 5432),
+        "POSTGRES_DB": url.database or "",
+        "POSTGRES_USER": url.username or "",
+        "POSTGRES_PASSWORD": url.password or "",
+        "DEBUG": "true",
+    }
+    subprocess.run(
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
+        cwd=Path(__file__).resolve().parents[1],
+        env=ambiente,
+        check=True,
+    )
+    yield
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -62,14 +102,28 @@ def _storage_temporario(tmp_path, monkeypatch):
     return tmp_path
 
 
+_TABELAS = [t.name for t in Base.metadata.sorted_tables]
+
+
 @pytest_asyncio.fixture(autouse=True)
-async def _reset_db():
-    """Recria o schema antes de cada teste e descarta depois."""
+async def _reset_db(_pg_schema):
+    """Limpa o schema antes de cada teste.
+
+    SQLite: recria pelos metadados. PostgreSQL: o schema foi montado pelas
+    migrations na sessão; aqui só se apaga o conteúdo, preservando as colunas
+    geradas de busca e a configuração de full-text.
+    """
     async with TEST_ENGINE.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+        if IS_POSTGRES:
+            await conn.execute(
+                text("TRUNCATE " + ", ".join(_TABELAS) + " RESTART IDENTITY CASCADE")
+            )
+        else:
+            await conn.run_sync(Base.metadata.create_all)
     yield
-    async with TEST_ENGINE.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+    if not IS_POSTGRES:
+        async with TEST_ENGINE.begin() as conn:
+            await conn.run_sync(Base.metadata.drop_all)
 
 
 @pytest_asyncio.fixture
