@@ -136,6 +136,23 @@ Para reverter, restaure o dump — **não** use `alembic downgrade` para desfaze
 cadeia inteira: as conversões de dados não são todas reversíveis, e o downgrade
 de `e8f9a0b1c2d3` remove obras que só existirem sob uma demanda.
 
+### A v3 foi aplicada em 17/09/2026
+
+A entrega de gestão avançada levou o banco de `e8f9a0b1c2d3` a `f9a0b1c2d3e4`
+(uma migração aditiva, sem conversão de dados). Backup em
+`backups/govtask-pre-v3-20260917_042239/`. Reverte com `alembic downgrade -1`
+sem perda de dados das entidades v2 — a migração só cria tabelas e uma coluna.
+
+Depois de aplicar, confira as sete tabelas novas e a coluna:
+`demanda_relacionamentos`, `demanda_marcos`, `demanda_riscos`,
+`campos_customizados`, `sla_config`, `webhook_endpoints`, `webhook_entregas` e
+`demandas.demanda_pai_id`.
+
+Webhooks ficam **desligados** por padrão (`WEBHOOKS_ENABLED=false`): mesmo com
+endpoint cadastrado, nenhum evento é enfileirado até a variável ser ligada. A
+entrega é sempre um passo explícito (`POST /api/govtask/webhooks/processar`),
+nunca dentro da transação da timeline.
+
 Antes de qualquer publicação futura desse porte, ensaie no ambiente alvo:
 
 ```bash

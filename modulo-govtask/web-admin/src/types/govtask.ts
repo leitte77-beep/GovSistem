@@ -817,3 +817,115 @@ export interface RelatorioDemanda {
   protocolos: { sistema: string; numero: string; orgao: string | null; data: string; situacao: string }[];
   timeline: { quando: string; ator: string | null; descricao: string }[];
 }
+
+// ── Gestão avançada (v3) ────────────────────────────────────────────────────
+
+export interface DemandaResumo {
+  id: string;
+  numero: string;
+  titulo: string;
+  progresso: number;
+  concluida_em?: string | null;
+}
+
+export interface Marco {
+  id: string;
+  titulo: string;
+  descricao?: string | null;
+  ordem: number;
+  status: "PENDENTE" | "EM_ANDAMENTO" | "CONCLUIDO" | "CANCELADO";
+  data_prevista?: string | null;
+  data_realizada?: string | null;
+  responsavel_id?: string | null;
+  atrasado: boolean;
+  created_at: string;
+}
+
+export interface Risco {
+  id: string;
+  descricao: string;
+  categoria?: string | null;
+  probabilidade: number;
+  impacto: number;
+  score: number;
+  nivel: "BAIXO" | "MEDIO" | "ALTO" | "CRITICO";
+  mitigacao?: string | null;
+  status: "IDENTIFICADO" | "EM_MITIGACAO" | "MITIGADO" | "MATERIALIZADO" | "ENCERRADO";
+  previsao?: string | null;
+  resolvido_em?: string | null;
+  responsavel_id?: string | null;
+  created_at: string;
+}
+
+export interface Relacionamento {
+  id: string;
+  tipo: "RELACIONADA" | "DEPENDENTE" | "DUPLICADA";
+  descricao?: string | null;
+  relacionada: DemandaResumo;
+  created_at: string;
+}
+
+export interface HierarquiaDemanda {
+  pai?: DemandaResumo | null;
+  filhas: DemandaResumo[];
+  relacionamentos: Relacionamento[];
+  tem_filhas: boolean;
+  total_filhas: number;
+  filhas_concluidas: number;
+  progresso_filhas?: number | null;
+  progresso_agregado: number;
+}
+
+export interface CampoCustomizado {
+  id: string;
+  chave: string;
+  rotulo: string;
+  tipo: "TEXTO" | "TEXTO_LONGO" | "NUMERO" | "MOEDA" | "DATA" | "SELECAO" | "MULTIPLA_ESCOLHA" | "BOOLEANO" | "USUARIO" | "DEPARTAMENTO" | "URL";
+  tipo_demanda_id?: string | null;
+  obrigatorio: boolean;
+  ativo: boolean;
+  ordem: number;
+  ajuda?: string | null;
+  opcoes?: unknown[] | null;
+  validacao?: Record<string, unknown> | null;
+}
+
+export interface CampoCustomizadoComValor extends CampoCustomizado {
+  valor?: unknown;
+}
+
+export interface SlaConfig {
+  id: string;
+  tipo_demanda_id?: string | null;
+  setor_id?: string | null;
+  prioridade?: string | null;
+  valor: number;
+  contagem: "HORAS" | "DIAS_CORRIDOS" | "DIAS_UTEIS";
+  descricao?: string | null;
+  ativo: boolean;
+}
+
+export interface SlaPainel {
+  resumo: Record<string, number>;
+  por_setor: Record<string, Record<string, number>>;
+  vencidas: {
+    demanda_id: string;
+    numero: string;
+    titulo: string;
+    setor: string;
+    vencimento: string;
+    horas_restantes: number;
+  }[];
+}
+
+export interface Webhook {
+  id: string;
+  url: string;
+  descricao?: string | null;
+  eventos?: string[] | null;
+  ativo: boolean;
+  ultima_entrega_em?: string | null;
+  ultimo_status?: string | null;
+  created_at: string;
+  secret?: string;
+}

@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.auth import get_current_user, get_user_permissions, require_permission
+from app.core.config import settings
 from app.core.database import get_db
 from app.core.permissions import Perm
 from app.models.checklist import Checklist
@@ -39,6 +40,13 @@ from app.schemas.demanda import (
     ProximaAcaoRequest,
     ReabrirRequest,
 )
+from app.schemas.gestao_avancada import (
+    LoteAtribuirRequest,
+    LotePrioridadeRequest,
+    LoteResultado,
+    LoteTagsRequest,
+)
+from app.services import campos_customizados as svc_campos
 from app.services import demandas as svc
 from app.services.busca import aplicar_busca
 from app.services.timeline import registrar_evento
@@ -92,6 +100,126 @@ async def _vincular_tags(
             db.add(tag)
             await db.flush()
         db.add(DemandaTag(demanda_id=demanda.id, tag_id=tag.id))
+
+
+# ── Ações em lote (§188, §189) ──────────────────────────────────────────────
+
+async def _demandas_do_lote(
+    db: AsyncSession, ids: list[uuid.UUID], user: User
+) -> tuple[list[Demanda], list[uuid.UUID]]:
+    """Carrega as demandas do escopo do usuário; fora dele ou encerradas, ignora.
+
+    Ação em lote nunca é atalho para furar autorização: cada item passa pelo
+    mesmo `get_demanda_ou_404` da operação individual.
+    """
+    permissoes = get_user_permissions(user)
+    carregadas: list[Demanda] = []
+    ignoradas: list[uuid.UUID] = []
+    for demanda_id in ids:
+        try:
+            demanda = await svc.get_demanda_ou_404(db, demanda_id, user, permissoes)
+        except HTTPException:
+            ignoradas.append(demanda_id)
+            continue
+        if demanda.concluida_em is not None:
+            ignoradas.append(demanda_id)
+            continue
+        carregadas.append(demanda)
+    return carregadas, ignoradas
+
+
+@router.post("/lote/prioridade", response_model=LoteResultado)
+async def lote_prioridade(
+    payload: LotePrioridadeRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission(Perm.RESOURCE_EDIT)),
+):
+    demandas, ignoradas = await _demandas_do_lote(db, payload.demanda_ids, user)
+    for demanda in demandas:
+        anterior = demanda.prioridade
+        demanda.prioridade = payload.prioridade
+        await svc.marcar_movimentacao(demanda)
+        await registrar_evento(
+            db,
+            tipo_evento=TipoEvento.DEMANDA_ATUALIZADA,
+            ator_id=user.id,
+            descricao=f"Prioridade alterada em lote: {anterior} → {payload.prioridade.value}",
+            demanda_id=demanda.id,
+            metadados={"lote": True, "motivo": payload.motivo, "antes": str(anterior)},
+        )
+    await db.commit()
+    return LoteResultado(atualizadas=len(demandas), ignoradas=ignoradas)
+
+
+@router.post("/lote/atribuir", response_model=LoteResultado)
+async def lote_atribuir(
+    payload: LoteAtribuirRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission(Perm.RESOURCE_EDIT)),
+):
+    responsavel = await db.get(User, payload.responsavel_id)
+    if responsavel is None or responsavel.organization_id != user.organization_id:
+        raise HTTPException(status_code=422, detail="Responsável inválido para esta organização")
+    demandas, ignoradas = await _demandas_do_lote(db, payload.demanda_ids, user)
+    for demanda in demandas:
+        anterior = demanda.responsavel_atual_id
+        demanda.responsavel_atual_id = responsavel.id
+        await svc.marcar_movimentacao(demanda)
+        await registrar_evento(
+            db,
+            tipo_evento=TipoEvento.DEMANDA_ATUALIZADA,
+            ator_id=user.id,
+            descricao=f"Responsável atual reatribuído em lote para {responsavel.name}",
+            demanda_id=demanda.id,
+            metadados={
+                "lote": True,
+                "motivo": payload.motivo,
+                "antes": str(anterior) if anterior else None,
+                "depois": str(responsavel.id),
+            },
+        )
+    await db.commit()
+    return LoteResultado(atualizadas=len(demandas), ignoradas=ignoradas)
+
+
+@router.post("/lote/tags", response_model=LoteResultado)
+async def lote_tags(
+    payload: LoteTagsRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission(Perm.RESOURCE_EDIT)),
+):
+    demandas, ignoradas = await _demandas_do_lote(db, payload.demanda_ids, user)
+    for demanda in demandas:
+        existentes = {v.tag_id for v in demanda.tags}
+        for rotulo in {r.strip() for r in payload.tags if r and r.strip()}:
+            slug = rotulo.lower().replace(" ", "-")[:80]
+            tag = (
+                await db.execute(
+                    select(Tag).where(
+                        Tag.organization_id == user.organization_id,
+                        Tag.slug == slug,
+                        Tag.deleted_at.is_(None),
+                    )
+                )
+            ).scalar_one_or_none()
+            if tag is None:
+                tag = Tag(organization_id=user.organization_id, slug=slug, rotulo=rotulo)
+                db.add(tag)
+                await db.flush()
+            if tag.id not in existentes:
+                db.add(DemandaTag(demanda_id=demanda.id, tag_id=tag.id))
+                existentes.add(tag.id)
+        await svc.marcar_movimentacao(demanda)
+        await registrar_evento(
+            db,
+            tipo_evento=TipoEvento.DEMANDA_ATUALIZADA,
+            ator_id=user.id,
+            descricao="Tags adicionadas em lote",
+            demanda_id=demanda.id,
+            metadados={"lote": True, "motivo": payload.motivo, "tags": payload.tags},
+        )
+    await db.commit()
+    return LoteResultado(atualizadas=len(demandas), ignoradas=ignoradas)
 
 
 # ── Listagem e busca ────────────────────────────────────────────────────────
@@ -238,6 +366,9 @@ async def criar_demanda(
     user: User = Depends(require_permission(Perm.RESOURCE_CREATE)),
 ):
     dados = payload.model_dump(exclude_unset=False, exclude={"rascunho", "tags"})
+    dados["campos_extras"] = await svc_campos.validar_para_demanda(
+        db, user.organization_id, dados.get("tipo_id"), dados.get("campos_extras")
+    )
     demanda = await svc.criar_demanda(db, dados, user, rascunho=payload.rascunho)
     if payload.tags:
         await _vincular_tags(db, demanda, payload.tags, user.organization_id)
@@ -285,6 +416,13 @@ async def atualizar_demanda(
         )
 
     alteracoes = payload.model_dump(exclude_unset=True)
+    if "campos_extras" in alteracoes or "tipo_id" in alteracoes:
+        alteracoes["campos_extras"] = await svc_campos.validar_para_demanda(
+            db,
+            user.organization_id,
+            alteracoes.get("tipo_id", demanda.tipo_id),
+            alteracoes.get("campos_extras", demanda.campos_extras),
+        )
     for campo in ("tipo_id", "categoria_id", "subcategoria_id"):
         if campo in alteracoes:
             modelo = CategoriaDemanda if "categoria" in campo else None
@@ -768,8 +906,36 @@ async def deixar_de_seguir(
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
-# ── Timeline ────────────────────────────────────────────────────────────────
+# ── QR code (§139, §162) ────────────────────────────────────────────────────
 
+@router.get("/{demanda_id}/qrcode")
+async def qrcode_demanda(
+    demanda_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission(Perm.RESOURCE_VIEW)),
+):
+    """QR do link permanente da demanda, para etiquetas e fiscalização.
+
+    O QR carrega apenas a URL; a autorização continua na rota de destino, então
+    fotografar o código não concede acesso a quem não pode abrir a demanda.
+    """
+    await svc.get_demanda_ou_404(db, demanda_id, user, get_user_permissions(user))
+    try:
+        import io
+
+        import qrcode
+        import qrcode.image.svg
+
+        url = f"{settings.PUBLIC_URL.rstrip('/')}/demandas/{demanda_id}"
+        imagem = qrcode.make(url, image_factory=qrcode.image.svg.SvgPathImage)
+        buffer = io.BytesIO()
+        imagem.save(buffer)
+        return Response(content=buffer.getvalue(), media_type="image/svg+xml")
+    except ImportError:
+        raise HTTPException(status_code=501, detail="Geração de QR indisponível neste ambiente")
+
+
+# ── Timeline ────────────────────────────────────────────────────────────────
 @router.get("/{demanda_id}/timeline")
 async def timeline(
     demanda_id: uuid.UUID,

@@ -44,6 +44,14 @@ from app.models.enums import (
     TipoNotificacao,
     TipoRegistroFinanceiro,
     TipoTarefa,
+    # v3 — gestão avançada
+    NivelRisco,
+    StatusMarco,
+    StatusRisco,
+    StatusWebhookEntrega,
+    TipoCampoCustomizado,
+    TipoContagemSla,
+    TipoRelacionamentoDemanda,
 )
 from app.models.user import User
 from app.models.role import Role
@@ -102,6 +110,12 @@ from app.models.calendario import Feriado
 from app.models.automacao import Automacao, AutomacaoExecucao
 from app.models.registro_demanda import RegistroDemanda
 from app.models.planejamento_demanda import AusenciaSubstituicao, ModeloDemanda, RecorrenciaDemanda
+from app.models.relacionamento_demanda import DemandaRelacionamento
+from app.models.marco import DemandaMarco
+from app.models.risco import DemandaRisco
+from app.models.campo_customizado import CampoCustomizado
+from app.models.sla import SlaConfig
+from app.models.webhook import WebhookEndpoint, WebhookEntrega
 from app.models.workflow import (
     Workflow,
     WorkflowEtapa,
@@ -230,4 +244,18 @@ __all__ = [
     "AusenciaSubstituicao",
     "ModeloDemanda",
     "RecorrenciaDemanda",
+    "DemandaRelacionamento",
+    "DemandaMarco",
+    "DemandaRisco",
+    "CampoCustomizado",
+    "SlaConfig",
+    "WebhookEndpoint",
+    "WebhookEntrega",
+    "NivelRisco",
+    "StatusMarco",
+    "StatusRisco",
+    "StatusWebhookEntrega",
+    "TipoCampoCustomizado",
+    "TipoContagemSla",
+    "TipoRelacionamentoDemanda",
 ]

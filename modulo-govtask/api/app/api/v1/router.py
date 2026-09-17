@@ -44,6 +44,16 @@ from app.api.v1.demanda_financeiro import router as demanda_financeiro_router
 from app.api.v1.checklists import router as checklists_router
 from app.api.v1.busca import router as busca_router
 from app.api.v1.relatorio_demanda import router as relatorio_demanda_router
+from app.api.v1.demandas_relacionamentos import router as demandas_relacionamentos_router
+from app.api.v1.demanda_marcos import router as demanda_marcos_router
+from app.api.v1.demanda_riscos import router as demanda_riscos_router
+from app.api.v1.campos_customizados import (
+    router as campos_customizados_router,
+    router_demanda as campos_customizados_demanda_router,
+)
+from app.api.v1.sla import router as sla_router, router_demanda as sla_demanda_router
+from app.api.v1.webhooks import router as webhooks_router
+from app.api.v1.catalogos import router as catalogos_router
 
 api_router = APIRouter()
 api_router.include_router(internal_router)
@@ -58,6 +68,15 @@ api_router.include_router(checklists_router)
 api_router.include_router(comentarios_router)
 api_router.include_router(demanda_financeiro_router)
 api_router.include_router(relatorio_demanda_router)
+api_router.include_router(demandas_relacionamentos_router)
+api_router.include_router(demanda_marcos_router)
+api_router.include_router(demanda_riscos_router)
+api_router.include_router(campos_customizados_router)
+api_router.include_router(campos_customizados_demanda_router)
+api_router.include_router(sla_router)
+api_router.include_router(sla_demanda_router)
+api_router.include_router(webhooks_router)
+api_router.include_router(catalogos_router)
 api_router.include_router(autoridades_router)
 api_router.include_router(visoes_router)
 api_router.include_router(busca_router)

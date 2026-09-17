@@ -22,7 +22,6 @@ from app.core.database import async_session
 from app.models.organization import Organization
 from app.services.notifications import verificar_prazos
 from app.services.prazos import varrer_organizacao
-from app.services.prazos import varrer_organizacao
 
 logger = logging.getLogger("govtask.scheduler")
 
@@ -44,19 +43,13 @@ async def _varrer_organizacoes() -> None:
                 resultado = await varrer_organizacao(db, organization_id)
             async with async_session() as db:
                 legado = await verificar_prazos(db, organization_id)
+            # Uma passagem por organização: `varrer_organizacao` cobre tarefas,
+            # demandas, etapas, protocolos e o escalonamento.
             resultado = {**resultado, **{f"legado_{k}": v for k, v in legado.items()}}
             if any(resultado.values()):
                 logger.info(
-                    "prazos verificados",
+                    "prazos e alertas verificados",
                     extra={"organization_id": str(organization_id), **resultado},
-                )
-            # Motor v2: alertas das demandas, com escalonamento configurável.
-            async with async_session() as db:
-                alertas = await varrer_organizacao(db, organization_id)
-            if alertas.get("alertas_criados") or alertas.get("alertas_resolvidos"):
-                logger.info(
-                    "alertas atualizados",
-                    extra={"organization_id": str(organization_id), **alertas},
                 )
         except Exception:
             logger.exception(

@@ -262,6 +262,12 @@ class Demanda(Base, TimestampMixin, SoftDeleteMixin):
     duplicada_de_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("demandas.id", ondelete="SET NULL"), nullable=True
     )
+    # Demanda pai, quando este é um desdobramento de um projeto maior (§221).
+    # O progresso agregado da pai soma as filhas (§222).
+    demanda_pai_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("demandas.id", ondelete="SET NULL"),
+        nullable=True, index=True,
+    )
 
     # ── Relacionamentos ───────────────────────────────────
     tipo: Mapped[Optional["TipoDemanda"]] = relationship("TipoDemanda", lazy="selectin")

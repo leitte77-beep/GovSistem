@@ -150,9 +150,96 @@ Bugs que já existiam antes destas mudanças e apareceram ao exercitar os fluxos
 - Suíte `pytest` contra PostgreSQL: continua rodando em SQLite. A migração e a
   busca full-text, porém, **foram** validadas contra uma cópia do banco de
   produção (ver "Validação executada" na arquitetura).
-- **Publicação.** O banco `govtask` em uso está em `f7a1c2d3e4b5`: a cadeia v2
-  inteira ainda não foi aplicada em produção, e a imagem do container é anterior
-  a esta entrega. Publicar exige build novo e `alembic upgrade head`.
+
+## 2026-09-17 — Gestão avançada (v3)
+
+Fecha as lacunas de §139, §152–§154, §188–§189, §196, §205–§206, §211, §213,
+§220–§222 e §109 sobre o núcleo v2.
+
+**Migração:** `f9a0b1c2d3e4_gestao_avancada`.
+Exige `alembic upgrade head` antes da publicação.
+
+### Adicionado
+
+- **Hierarquia pai/filha e progresso agregado (§220–§222).** `demandas.demanda_pai_id`
+  (auto-referência) e `demanda_relacionamentos` para os vínculos laterais
+  (`RELACIONADA`, `DEPENDENTE`, `DUPLICADA`). O vínculo de pai recusa self e
+  ciclo, subindo a cadeia antes de gravar. `/demandas/{id}/hierarquia` devolve
+  pai, filhas, relacionamentos e o progresso agregado.
+- **Marcos (§213).** `demanda_marcos`: pontos de controle com data prevista,
+  conclusão e responsável. Concluir registra `data_realizada` e evento.
+- **Riscos (§211).** `demanda_riscos`: probabilidade (1–5) e impacto (1–5) viram
+  score e nível (`BAIXO`–`CRITICO`) calculados de forma transparente; mitigação,
+  responsável e previsão. Encerrar preenche `resolvido_em`.
+- **Campos customizados (§205, §206).** `campos_customizados` define campos por
+  tipo de demanda (texto, número, moeda, data, seleção, múltipla, booleano,
+  usuário, departamento, URL), com obrigatoriedade, opções e regras
+  (`min`, `max`, `max_len`, `regex`). O valor continua em `demandas.campos_extras`
+  e passa a ser **validado** na criação/edição: chave fora da definição, tipo
+  errado, opção inexistente ou obrigatório ausente devolvem 422. `GET
+  /demandas/{id}/campos-customizados` monta o formulário.
+- **SLA interno (§152–§154).** `sla_config` por organização/tipo/setor/prioridade,
+  com contagem em horas, dias corridos ou dias úteis (calendário do município).
+  `GET /demandas/{id}/sla` e `GET /sla/painel` (dentro/próximo/vencido por setor).
+  Não se confunde com `prazo_legal`.
+- **Ações em lote (§188, §189).** `POST /demandas/lote/{prioridade,atribuir,tags}`,
+  cada item passando pela mesma autorização da operação individual (o que não
+  se pode abrir é ignorado, nunca alterado). Motivo obrigatório e evento por
+  demanda.
+- **Webhooks de saída (§196).** `webhook_endpoints` + `webhook_entregas`.
+  O evento **enfileira** a entrega na transação da timeline (`WEBHOOKS_ENABLED`,
+  desligado por padrão); `POST /webhooks/processar` entrega com assinatura
+  HMAC-SHA256 e registra status/resposta. Retentativa idempotente com limite.
+- **QR code (§139, §162).** `GET /demandas/{id}/qrcode` devolve SVG do link
+  permanente. O ciclo completo de autorização continua na rota de destino.
+- **Catálogos para a interface.** `GET /catalogos/demandas` devolve tipos,
+  categorias e status (do tenant + do sistema).
+- **Frontend.** Aba **Gestão** no detalhe da demanda (marcos, riscos,
+  relacionamentos e campos adicionais, com edição conforme permissão);
+  `/admin/parametros` para campos, SLA e webhooks; ações em lote com seleção na
+  listagem de demandas; leitura/edição dos campos adicionais por demanda.
+- **PWA (§109).** `manifest.json`, ícone, service worker conservador (nunca
+  cacheia a API) e registro automático.
+- **Testes.** `test_gestao_avancada.py` cobre hierarquia/ciclo, isolamento de
+  tenant nos vínculos e no lote, marcos, riscos, campos (obrigatório, tipo,
+  chave desconhecida), SLA, webhooks (enfileiramento e entrega com dublê de
+  HTTP) e QR code.
+
+### Corrigido
+
+- **Documentação de publicação desatualizada.** O CHANGELOG e a arquitetura
+  afirmavam que a cadeia v2 não estava aplicada e que a imagem era anterior;
+  o ambiente real está em `e8f9a0b1c2d3` (head anterior) com containers
+  saudáveis. Nota corrigida.
+- **Varredura de prazos rodava duas vezes por organização.** `scheduler.py`
+  importava `varrer_organizacao` em duplicidade e chamava a mesma passagem
+  outra vez rotulando-a de "motor de alertas"; o segundo bloco ainda logava
+  `resultado` no lugar de `alertas`. Agora há uma única chamada, que já cobre
+  tarefas, demandas, etapas, protocolos e escalonamento.
+
+### Validado e publicado
+
+- `pytest`: **189 testes** aprovados.
+- `ruff check` nos arquivos novos e alterados: aprovado.
+- `npx tsc --noEmit` e `npm run build` no `web-admin`: aprovados.
+- **Migração v3 validada contra PostgreSQL 16**: `upgrade` de
+  `e8f9a0b1c2d3` a `f9a0b1c2d3e4`, `downgrade -1` e novo `upgrade`, com as sete
+  tabelas e a coluna `demandas.demanda_pai_id` conferidas no banco.
+- **Publicado no ambiente em 17/09/2026**: backup lógico do banco em
+  `backups/govtask-pre-v3-20260917_042239/`, imagens de API e `web-admin`
+  reconstruídas, containers recriados e `alembic upgrade head` aplicado
+  (`f9a0b1c2d3e4`). Conferido depois da subida: health ok, rota nova responde
+  401 sem token (existe e exige autorização), `qrcode` disponível na imagem e
+  as sete tabelas presentes no banco `govtask`.
+
+### Não feito nesta entrega
+
+- Notificação em tempo real (§127, WebSocket/SSE).
+- Assinatura digital (§78) e integrações GovDoc/GovPro/GovFrota/Arena (§134–§137).
+- Camada de IA (§92) — segue apenas a fronteira preparada.
+- Testes automatizados de interação no frontend (as telas passam `tsc` e build).
+- Webhooks em produção seguem desligados por padrão (`WEBHOOKS_ENABLED=false`);
+  exigem configuração de endpoint pelo administrador para gerar entregas.
 
 ## Entregas anteriores
 

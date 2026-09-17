@@ -109,6 +109,13 @@ class Settings(BaseSettings):
     DEADLINE_CHECK_ENABLED: bool = True
     DEADLINE_CHECK_INTERVAL_MINUTES: int = 60
 
+    # Webhooks de saída (§196). Desligado por padrão: só enfileira eventos se a
+    # organização tiver endpoint ativo, e a entrega é feita por processador
+    # explícito, nunca dentro da transação da timeline.
+    WEBHOOKS_ENABLED: bool = False
+    WEBHOOK_MAX_TENTATIVAS: int = 5
+    WEBHOOK_TIMEOUT_SEGUNDOS: int = 10
+
     PASSWORD_MIN_LENGTH: int = 8
     PASSWORD_MIN_UPPERCASE: int = 1
     PASSWORD_MIN_LOWERCASE: int = 1

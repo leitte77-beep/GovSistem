@@ -26,6 +26,7 @@ import {
   Gavel,
   Landmark,
   ClipboardList,
+  Settings,
 } from "lucide-react";
 
 export const PERM = {
@@ -121,6 +122,7 @@ const ITEM = {
   protocolos: { key: "protocolos", href: "/protocolos", label: "Cobranças de protocolo", icon: Stamp },
   autoridades: { key: "autoridades", href: "/autoridades", label: "Autoridades", icon: Landmark },
   mencoes: { key: "mencoes", href: "/mencoes", label: "Onde fui citado", icon: AtSign },
+  parametros: { key: "parametros", href: "/admin/parametros", label: "Parâmetros avançados", icon: Settings },
 } satisfies Record<string, NavItem>;
 
 /**
@@ -135,7 +137,7 @@ export function navGroupsDoPerfil(perfil: Perfil, perms: string[] = []): NavGrou
       grupos.push(
         { title: "Trabalho do dia", items: [ITEM.assessor, ITEM.mesa, ITEM.operacao, ITEM.demandas, ITEM.processos] },
         { title: "Acompanhamento", items: [ITEM.protocolos, ITEM.obras, ITEM.prestacoes, ITEM.calendario] },
-        { title: "Gestão", items: [ITEM.dashboard, ITEM.alertas, ITEM.autoridades, ITEM.relatoriosDemandas, ITEM.configuracoesDemandas, ITEM.relatorios] }
+        { title: "Gestão", items: [ITEM.dashboard, ITEM.alertas, ITEM.autoridades, ITEM.relatoriosDemandas, ITEM.configuracoesDemandas, ITEM.parametros, ITEM.relatorios] }
       );
       break;
 

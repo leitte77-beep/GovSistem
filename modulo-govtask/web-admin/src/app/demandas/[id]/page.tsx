@@ -12,6 +12,7 @@ import { ChecklistsTab } from "@/components/demanda/ChecklistsTab";
 import { ComentariosTab } from "@/components/demanda/ComentariosTab";
 import { FinanceiroDemandaTab } from "@/components/demanda/FinanceiroDemandaTab";
 import { ProtocolosTab } from "@/components/demanda/ProtocolosTab";
+import { GestaoTab } from "@/components/demanda/GestaoTab";
 import type { DemandaV2 } from "@/types/govtask";
 
 export default function DemandaDetalhePage() {
@@ -58,6 +59,7 @@ export default function DemandaDetalhePage() {
     ["visao", "Visão geral"],
     ["tarefas", `Tarefas (${tarefas.length})`],
     ["checklists", "Checklists"],
+    ["gestao", "Gestão"],
     ["protocolos", "Protocolos"],
     ["financeiro", "Financeiro"],
     ["comentarios", "Comentários"],
@@ -67,6 +69,7 @@ export default function DemandaDetalhePage() {
     {aba === "visao" && <div className="grid gap-6 lg:grid-cols-3"><section className="lg:col-span-2 rounded-xl border border-slate-200 bg-white p-6"><h2 className="font-bold text-slate-900">Situação da demanda</h2><dl className="mt-5 grid gap-5 sm:grid-cols-2 text-sm"><div className="sm:col-span-2"><dt className="flex items-center gap-2 text-xs text-slate-500">Resumo executivo{podeEditar && <button onClick={regerarResumo} title="Regerar a partir do andamento registrado" className="inline-flex items-center gap-1 font-semibold text-blue-700 hover:underline"><RefreshCw className="h-3 w-3"/>regerar</button>}</dt><dd className="mt-1 font-medium text-slate-800">{demanda.resumo_executivo || "Ainda não registrado"}</dd></div><Dado label="Tipo" value={demanda.tipo?.rotulo || "Não classificado"}/><Dado label="Aguardando" value={demanda.aguardando_terceiro || "Nenhuma pendência externa"}/><Dado label="Última movimentação" value={formatDate(demanda.ultima_movimentacao_em)}/></dl></section><section className="rounded-xl border border-amber-200 bg-amber-50 p-6"><ShieldAlert className="h-5 w-5 text-amber-700"/><h2 className="mt-3 font-bold text-amber-950">Ponto de atenção</h2><p className="mt-2 text-sm text-amber-800">{demanda.bloqueio_motivo || (demanda.atrasada ? "O prazo final foi ultrapassado." : "Nenhum bloqueio registrado.")}</p></section></div>}
     {aba === "tarefas" && <section className="overflow-hidden rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">{tarefas.length ? tarefas.map(t => <div key={t.id} className="flex items-center gap-4 p-5"><div className={`h-2.5 w-2.5 rounded-full ${t.atrasada ? "bg-red-600" : "bg-blue-600"}`}/><div className="min-w-0 flex-1"><p className="font-semibold text-slate-800">{t.titulo}</p><p className="mt-1 text-xs text-slate-500">{t.setor_destino?.nome || "Sem setor"} · {t.atribuida_a?.name || "Sem responsável"}</p></div><div className="text-right"><p className="text-xs font-semibold text-slate-700">{t.status.replaceAll("_", " ")}</p><p className="mt-1 text-xs text-slate-500">{t.prazo ? formatDate(t.prazo) : "Sem prazo"}</p></div></div>) : <p className="p-10 text-center text-sm text-slate-500">Nenhuma tarefa foi criada ainda.</p>}</section>}
     {aba === "checklists" && <ChecklistsTab demandaId={id} podeEditar={podeEditar}/>}
+    {aba === "gestao" && <GestaoTab demandaId={id} podeEditar={podeEditar}/>}
     {aba === "protocolos" && <ProtocolosTab demandaId={id} podeEditar={podeEditar}/>}
     {aba === "financeiro" && <FinanceiroDemandaTab demandaId={id} podeLancar={podeLancar}/>}
     {aba === "comentarios" && <ComentariosTab demandaId={id} usuarioId={user?.id} podeFixar={podeEditar}/>}

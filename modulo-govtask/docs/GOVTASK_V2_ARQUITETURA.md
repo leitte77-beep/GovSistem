@@ -4,9 +4,9 @@ Documento vivo. Registra o que existe hoje do redesenho do módulo e o que
 falta. Complementa (não substitui) a documentação das entidades anteriores.
 
 > **Atualização de implementação — 17/09/2026.** As seções abaixo descrevem
-> funcionalidades já codificadas no repositório. As migrações precisam ser
-> aplicadas no ambiente alvo antes da publicação (`alembic upgrade head`).
-> O histórico por entrega fica no [CHANGELOG](CHANGELOG.md); a operação do
+> funcionalidades já codificadas no repositório. A cadeia v2 (`e8f9a0b1c2d3`) e a
+> entrega v3 (`f9a0b1c2d3e4`, gestão avançada) estão aplicadas no banco em uso. O
+> histórico por entrega fica no [CHANGELOG](CHANGELOG.md); a operação do
 > módulo, em [OPERACAO.md](OPERACAO.md).
 
 ## Status de entrega
@@ -335,10 +335,9 @@ fonte de autorização — a navegação apenas facilita o acesso.
 - **Não executado:** a suíte `pytest` contra PostgreSQL (`TEST_DATABASE_URL`).
   Ela continua rodando em SQLite, onde a busca cai no `ILIKE` equivalente.
 
-> **Estado da produção.** O banco `govtask` em uso está em `f7a1c2d3e4b5`: **a
-> cadeia v2 inteira ainda não foi aplicada lá** — `demandas` não existe. A imagem
-> do container também é anterior a esta entrega. Publicar exige build novo mais
-> `alembic upgrade head`, e não apenas a migração desta entrega.
+> **Estado da produção.** O banco `govtask` em uso está em `f9a0b1c2d3e4`
+> (head), com as imagens de API e `web-admin` reconstruídas. Webhooks seguem
+> desligados (`WEBHOOKS_ENABLED=false`) até que um endpoint seja configurado.
 
 ## 1. O que mudou
 
@@ -597,5 +596,41 @@ Dashboards v2 por perfil disponíveis em `/dashboards/{prefeito|assessor|secreta
 e nas rotas web equivalentes. Cada painel lê exclusivamente as demandas do
 tenant e privilegia filas de atenção, não tabelas administrativas.
 
-Fases seguintes, na ordem prevista: relatórios, experiências operacionais
-complementares (kanban/calendário/vistas salvas) e frontend detalhado da demanda.
+Pendências remanescentes: tempo real (§127), assinatura digital (§78),
+integrações GovDoc/GovPro/GovFrota/Arena (§134–§137), camada de IA (§92, só a
+fronteira pronta) e testes de interação no frontend.
+
+## 7. Gestão avançada (v3)
+
+Revisão `f9a0b1c2d3e4`. Acrescenta, sem alterar as entidades anteriores:
+
+| Estrutura | Para quê | Seção |
+|---|---|---|
+| `demandas.demanda_pai_id` | Hierarquia de desdobramento e progresso agregado | §220–§222 |
+| `demanda_relacionamentos` | Vínculos laterais (relacionada, dependente, duplicada) | §220 |
+| `demanda_marcos` | Pontos de controle com data prevista e conclusão | §213 |
+| `demanda_riscos` | Probabilidade × impacto → score/nível, mitigação e responsável | §211 |
+| `campos_customizados` | Definição dos campos adicionais por tipo | §205–§206 |
+| `sla_config` | Meta interna por tipo/setor/prioridade | §152–§154 |
+| `webhook_endpoints` · `webhook_entregas` | Assinatura HMAC e fila de entregas | §196 |
+
+### Decisões que valem lembrar
+
+- **Valor do campo adicional não ganha tabela própria.** Continua em
+  `demandas.campos_extras`; a definição é que valida. Uma linha por campo
+  multiplicaria as consultas de detalhe sem ganho.
+- **Chave desconhecida é recusada** quando há definição para o tipo. Sem isso,
+  o formulário configurável viraria porta de mass assignment. Quando a
+  organização ainda não configurou nada, os valores passam como estão — a
+  validação não pode invalidar demandas antigas.
+- **Ciclo de pai é barrado subindo a cadeia**, não por trigger: a mensagem fica
+  compreensível e o teste cobre o caso.
+- **Lote não é atalho de autorização.** Cada item passa por `get_demanda_ou_404`;
+  o que está fora do escopo entra em `ignoradas`, nunca em `atualizadas`.
+- **Webhook separa enfileirar de entregar.** O evento grava a entrega na
+  transação da timeline sem tocar na rede; a entrega é um passo explícito,
+  assinado e com retentativa limitada. Ligado por `WEBHOOKS_ENABLED`.
+- **QR carrega só a URL.** A autorização continua na rota de destino: fotografar
+  o código não concede acesso.
+- **SLA interno é outro campo.** Nunca sobrescreve `prazo_legal`; a contagem em
+  dias úteis usa o calendário do município.

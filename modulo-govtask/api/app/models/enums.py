@@ -330,6 +330,22 @@ class TipoEvento(str, Enum):
     REGISTRO_FINANCEIRO_LANCADO = "REGISTRO_FINANCEIRO_LANCADO"
     REGISTRO_FINANCEIRO_REMOVIDO = "REGISTRO_FINANCEIRO_REMOVIDO"
     OBRA_VINCULADA = "OBRA_VINCULADA"
+    # ── Gestão avançada (v3) ──────────────────────────────
+    DEMANDA_RELACIONADA = "DEMANDA_RELACIONADA"
+    DEMANDA_RELACIONAMENTO_REMOVIDO = "DEMANDA_RELACIONAMENTO_REMOVIDO"
+    DEMANDA_PAI_VINCULADA = "DEMANDA_PAI_VINCULADA"
+    MARCO_CRIADO = "MARCO_CRIADO"
+    MARCO_CONCLUIDO = "MARCO_CONCLUIDO"
+    MARCO_REMOVIDO = "MARCO_REMOVIDO"
+    RISCO_REGISTRADO = "RISCO_REGISTRADO"
+    RISCO_ATUALIZADO = "RISCO_ATUALIZADO"
+    RISCO_REMOVIDO = "RISCO_REMOVIDO"
+    CAMPOS_CUSTOMIZADOS_ALTERADOS = "CAMPOS_CUSTOMIZADOS_ALTERADOS"
+    ACOES_EM_LOTE = "ACOES_EM_LOTE"
+    SLA_CONFIG_ALTERADO = "SLA_CONFIG_ALTERADO"
+    WEBHOOK_ENDPOINT_CRIADO = "WEBHOOK_ENDPOINT_CRIADO"
+    WEBHOOK_ENTREGUE = "WEBHOOK_ENTREGUE"
+    WEBHOOK_FALHOU = "WEBHOOK_FALHOU"
 
 
 # ── Contestação ───────────────────────────────────────────
@@ -792,3 +808,81 @@ class TipoContagemPrazo(str, Enum):
     DIAS_UTEIS = "DIAS_UTEIS"
     DATA_FIXA = "DATA_FIXA"
     HORAS = "HORAS"
+
+
+# ══════════════════════════════════════════════════════════
+# GovTask v3 — gestão avançada (relacionamento, risco, marco,
+# campos customizados, SLA e webhooks)
+# ══════════════════════════════════════════════════════════
+
+class TipoRelacionamentoDemanda(str, Enum):
+    """Vínculo entre demandas (§220).
+
+    Pai/filha é hierarquia: a filha tem `demanda_pai_id`. Aqui ficam os vínculos
+    laterais, que não mudam quem manda em quem.
+    """
+
+    RELACIONADA = "RELACIONADA"
+    DEPENDENTE = "DEPENDENTE"
+    DUPLICADA = "DUPLICADA"
+
+
+class StatusMarco(str, Enum):
+    """Situação de um marco do projeto (§213)."""
+
+    PENDENTE = "PENDENTE"
+    EM_ANDAMENTO = "EM_ANDAMENTO"
+    CONCLUIDO = "CONCLUIDO"
+    CANCELADO = "CANCELADO"
+
+
+class NivelRisco(str, Enum):
+    """Severidade derivada de probabilidade × impacto (§211)."""
+
+    BAIXO = "BAIXO"
+    MEDIO = "MEDIO"
+    ALTO = "ALTO"
+    CRITICO = "CRITICO"
+
+
+class StatusRisco(str, Enum):
+    """Ciclo de vida do risco registrado (§211)."""
+
+    IDENTIFICADO = "IDENTIFICADO"
+    EM_MITIGACAO = "EM_MITIGACAO"
+    MITIGADO = "MITIGADO"
+    MATERIALIZADO = "MATERIALIZADO"
+    ENCERRADO = "ENCERRADO"
+
+
+class TipoCampoCustomizado(str, Enum):
+    """Tipos aceitos em campo adicional por tipo de demanda (§205)."""
+
+    TEXTO = "TEXTO"
+    TEXTO_LONGO = "TEXTO_LONGO"
+    NUMERO = "NUMERO"
+    MOEDA = "MOEDA"
+    DATA = "DATA"
+    SELECAO = "SELECAO"
+    MULTIPLA_ESCOLHA = "MULTIPLA_ESCOLHA"
+    BOOLEANO = "BOOLEANO"
+    USUARIO = "USUARIO"
+    DEPARTAMENTO = "DEPARTAMENTO"
+    URL = "URL"
+
+
+class TipoContagemSla(str, Enum):
+    """Como o SLA interno conta o tempo (§153)."""
+
+    HORAS = "HORAS"
+    DIAS_CORRIDOS = "DIAS_CORRIDOS"
+    DIAS_UTEIS = "DIAS_UTEIS"
+
+
+class StatusWebhookEntrega(str, Enum):
+    """Resultado de uma tentativa de entrega de webhook (§196)."""
+
+    PENDENTE = "PENDENTE"
+    SUCESSO = "SUCESSO"
+    FALHA = "FALHA"
+    DESCARTADO = "DESCARTADO"

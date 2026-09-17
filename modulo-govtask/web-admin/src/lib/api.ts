@@ -564,6 +564,7 @@ export const api = {
   },
   getDemandaV2(id: string) { return request<import("@/types/govtask").DemandaV2>(`/demandas/${id}`); },
   criarDemandaV2(data: Record<string, unknown>) { return request<import("@/types/govtask").DemandaV2>("/demandas", { method: "POST", body: JSON.stringify(data) }); },
+  atualizarDemandaV2(id: string, data: Record<string, unknown>) { return request<import("@/types/govtask").DemandaV2>(`/demandas/${id}`, { method: "PATCH", body: JSON.stringify(data) }); },
   listarTarefasDemanda(id: string) { return request<any[]>(`/demandas/${id}/tarefas`); },
   timelineDemanda(id: string) { return request<{ items: any[] }>(`/demandas/${id}/timeline`); },
   duplicarDemanda(id: string) { return request<{ id: string; numero: string }>(`/demandas/${id}/duplicar`, { method: "POST" }); },
@@ -712,6 +713,46 @@ export const api = {
   excluirVistoria(convenioId: string, obraId: string, vistoriaId: string) {
     return request<void>(`/convenios/${convenioId}/obras/${obraId}/vistorias/${vistoriaId}`, { method: "DELETE" });
   },
+
+  // ── Gestão avançada: hierarquia, marcos, riscos, campos, SLA, webhooks, lote ──
+  catalogosDemandas() { return request<{ tipos: { id: string; chave: string; rotulo: string }[]; categorias: { id: string; chave: string; rotulo: string }[]; status: { id: string; chave: string; rotulo: string }[] }>("/catalogos/demandas"); },
+  hierarquiaDemanda(demandaId: string) { return request<import("@/types/govtask").HierarquiaDemanda>(`/demandas/${demandaId}/hierarquia`); },
+  vincularPai(demandaId: string, demandaPaiId: string) { return request<import("@/types/govtask").HierarquiaDemanda>(`/demandas/${demandaId}/pai`, { method: "PUT", body: JSON.stringify({ demanda_pai_id: demandaPaiId }) }); },
+  desvincularPai(demandaId: string) { return request<import("@/types/govtask").HierarquiaDemanda>(`/demandas/${demandaId}/pai`, { method: "DELETE" }); },
+  criarRelacionamento(demandaId: string, data: { relacionada_id: string; tipo?: string; descricao?: string }) { return request<import("@/types/govtask").Relacionamento>(`/demandas/${demandaId}/relacionamentos`, { method: "POST", body: JSON.stringify(data) }); },
+  removerRelacionamento(demandaId: string, vinculoId: string) { return request<void>(`/demandas/${demandaId}/relacionamentos/${vinculoId}`, { method: "DELETE" }); },
+
+  listarMarcos(demandaId: string) { return request<import("@/types/govtask").Marco[]>(`/demandas/${demandaId}/marcos`); },
+  criarMarco(demandaId: string, data: Record<string, unknown>) { return request<import("@/types/govtask").Marco>(`/demandas/${demandaId}/marcos`, { method: "POST", body: JSON.stringify(data) }); },
+  concluirMarco(demandaId: string, marcoId: string, data: { data_realizada?: string; observacao?: string } = {}) { return request<import("@/types/govtask").Marco>(`/demandas/${demandaId}/marcos/${marcoId}/concluir`, { method: "POST", body: JSON.stringify(data) }); },
+  removerMarco(demandaId: string, marcoId: string) { return request<void>(`/demandas/${demandaId}/marcos/${marcoId}`, { method: "DELETE" }); },
+
+  listarRiscos(demandaId: string) { return request<import("@/types/govtask").Risco[]>(`/demandas/${demandaId}/riscos`); },
+  criarRisco(demandaId: string, data: Record<string, unknown>) { return request<import("@/types/govtask").Risco>(`/demandas/${demandaId}/riscos`, { method: "POST", body: JSON.stringify(data) }); },
+  atualizarRisco(demandaId: string, riscoId: string, data: Record<string, unknown>) { return request<import("@/types/govtask").Risco>(`/demandas/${demandaId}/riscos/${riscoId}`, { method: "PATCH", body: JSON.stringify(data) }); },
+  removerRisco(demandaId: string, riscoId: string) { return request<void>(`/demandas/${demandaId}/riscos/${riscoId}`, { method: "DELETE" }); },
+
+  listarCamposCustomizados(tipoDemandaId?: string) { return request<import("@/types/govtask").CampoCustomizado[]>(`/campos-customizados${qs({ tipo_demanda_id: tipoDemandaId })}`); },
+  criarCampoCustomizado(data: Record<string, unknown>) { return request<import("@/types/govtask").CampoCustomizado>("/campos-customizados", { method: "POST", body: JSON.stringify(data) }); },
+  atualizarCampoCustomizado(id: string, data: Record<string, unknown>) { return request<import("@/types/govtask").CampoCustomizado>(`/campos-customizados/${id}`, { method: "PATCH", body: JSON.stringify(data) }); },
+  removerCampoCustomizado(id: string) { return request<void>(`/campos-customizados/${id}`, { method: "DELETE" }); },
+  camposDaDemanda(demandaId: string) { return request<{ campos: import("@/types/govtask").CampoCustomizadoComValor[] }>(`/demandas/${demandaId}/campos-customizados`); },
+
+  listarSlaConfig() { return request<import("@/types/govtask").SlaConfig[]>("/sla/config"); },
+  criarSlaConfig(data: Record<string, unknown>) { return request<import("@/types/govtask").SlaConfig>("/sla/config", { method: "POST", body: JSON.stringify(data) }); },
+  atualizarSlaConfig(id: string, data: Record<string, unknown>) { return request<import("@/types/govtask").SlaConfig>(`/sla/config/${id}`, { method: "PATCH", body: JSON.stringify(data) }); },
+  removerSlaConfig(id: string) { return request<void>(`/sla/config/${id}`, { method: "DELETE" }); },
+  painelSla() { return request<import("@/types/govtask").SlaPainel>("/sla/painel"); },
+
+  listarWebhooks() { return request<import("@/types/govtask").Webhook[]>("/webhooks"); },
+  criarWebhook(data: { url: string; descricao?: string; eventos?: string[] }) { return request<import("@/types/govtask").Webhook>("/webhooks", { method: "POST", body: JSON.stringify(data) }); },
+  atualizarWebhook(id: string, data: Record<string, unknown>) { return request<import("@/types/govtask").Webhook>(`/webhooks/${id}`, { method: "PATCH", body: JSON.stringify(data) }); },
+  removerWebhook(id: string) { return request<void>(`/webhooks/${id}`, { method: "DELETE" }); },
+  processarWebhooks() { return request<{ processadas: number; sucesso: number; falha: number }>("/webhooks/processar", { method: "POST" }); },
+
+  lotePrioridade(demandaIds: string[], prioridade: string, motivo: string) { return request<{ atualizadas: number; ignoradas: string[] }>("/demandas/lote/prioridade", { method: "POST", body: JSON.stringify({ demanda_ids: demandaIds, prioridade, motivo }) }); },
+  loteAtribuir(demandaIds: string[], responsavelId: string, motivo: string) { return request<{ atualizadas: number; ignoradas: string[] }>("/demandas/lote/atribuir", { method: "POST", body: JSON.stringify({ demanda_ids: demandaIds, responsavel_id: responsavelId, motivo }) }); },
+  loteTags(demandaIds: string[], tags: string[], motivo: string) { return request<{ atualizadas: number; ignoradas: string[] }>("/demandas/lote/tags", { method: "POST", body: JSON.stringify({ demanda_ids: demandaIds, tags, motivo }) }); },
 };
 
 export { AuthError };
