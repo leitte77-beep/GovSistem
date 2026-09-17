@@ -12,6 +12,7 @@ from app.models.enums import TipoEvento
 
 if TYPE_CHECKING:
     from app.models.convenio import Convenio
+    from app.models.demanda import Demanda
     from app.models.tarefa import Tarefa
     from app.models.user import User
 
@@ -20,11 +21,18 @@ class EventoTimeline(Base, TimestampMixin):
     """Registro imutável de eventos na linha do tempo. Append-only: nunca editar/apagar."""
     __tablename__ = "eventos_timeline"
 
-    convenio_id: Mapped[uuid.UUID] = mapped_column(
+    convenio_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("convenios.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
+    )
+    demanda_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("demandas.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+        comment="Demanda a que o evento pertence (núcleo v2)",
     )
     tarefa_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
@@ -32,8 +40,10 @@ class EventoTimeline(Base, TimestampMixin):
         nullable=True,
         index=True,
     )
-    tipo_evento: Mapped[TipoEvento] = mapped_column(
-        String(50), nullable=False, index=True
+    tipo_evento: Mapped[str] = mapped_column(
+        String(50), nullable=False, index=True,
+        comment="Valor de TipoEvento; guardado como texto para admitir novos eventos "
+                "sem migração de tipo no banco",
     )
     ator_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -51,9 +61,12 @@ class EventoTimeline(Base, TimestampMixin):
     )
 
     # Relationships
-    convenio: Mapped["Convenio"] = relationship("Convenio", back_populates="eventos")
+    convenio: Mapped[Optional["Convenio"]] = relationship(
+        "Convenio", back_populates="eventos"
+    )
+    demanda: Mapped[Optional["Demanda"]] = relationship("Demanda")
     tarefa: Mapped[Optional["Tarefa"]] = relationship("Tarefa", back_populates="eventos")
     ator: Mapped["User"] = relationship("User")
 
     def __repr__(self) -> str:
-        return f"<Evento {self.tipo_evento.value} em {self.ocorrido_em}>"
+        return f"<Evento {self.tipo_evento} em {self.ocorrido_em}>"

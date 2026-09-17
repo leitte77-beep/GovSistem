@@ -103,6 +103,12 @@ class Settings(BaseSettings):
     # Deadline notification milestones (days before deadline)
     NOTIFY_DEADLINE_DAYS: list[int] = [7, 3, 1, 0]
 
+    # Varredura periódica de prazos/escalonamento (app.services.scheduler).
+    # Roda in-process: mantenha um único worker uvicorn, ou desabilite aqui e
+    # dispare POST /admin/escalonamento/verificar por um agendador externo.
+    DEADLINE_CHECK_ENABLED: bool = True
+    DEADLINE_CHECK_INTERVAL_MINUTES: int = 60
+
     PASSWORD_MIN_LENGTH: int = 8
     PASSWORD_MIN_UPPERCASE: int = 1
     PASSWORD_MIN_LOWERCASE: int = 1

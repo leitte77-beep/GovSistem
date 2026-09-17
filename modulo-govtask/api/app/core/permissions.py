@@ -81,6 +81,75 @@ ROLE_DEFAULT_PERMISSIONS: dict[str, set[str]] = {
         Perm.FINANCIAL_VIEW,
         Perm.EXPORT,
     },
+    # ── Perfis do §93 ───────────────────────────────────────────────────────
+    # O executivo acompanha; não opera. Dar-lhe edição de tarefa alheia não
+    # ajudaria ninguém e embaralharia a responsabilidade registrada.
+    "PREFEITO": {
+        Perm.RESOURCE_VIEW,
+        Perm.RESOURCE_CREATE,
+        Perm.FINANCIAL_VIEW,
+        Perm.EXPORT,
+        Perm.AUDIT_VIEW,
+    },
+    "VICE_PREFEITO": {
+        Perm.RESOURCE_VIEW,
+        Perm.RESOURCE_CREATE,
+        Perm.FINANCIAL_VIEW,
+        Perm.EXPORT,
+    },
+    # O gabinete é o operador estratégico (§157): cobra, redistribui e fecha.
+    "CHEFE_GABINETE": {
+        Perm.RESOURCE_VIEW,
+        Perm.RESOURCE_CREATE,
+        Perm.RESOURCE_EDIT,
+        Perm.RESOURCE_DELETE,
+        Perm.TASK_ASSIGN,
+        Perm.TASK_APPROVE,
+        Perm.FINANCIAL_VIEW,
+        Perm.FINANCIAL_MANAGE,
+        Perm.ACCOUNTABILITY_MANAGE,
+        Perm.EXPORT,
+        Perm.AUDIT_VIEW,
+    },
+    "SECRETARIO": {
+        Perm.RESOURCE_VIEW,
+        Perm.RESOURCE_CREATE,
+        Perm.RESOURCE_EDIT,
+        Perm.TASK_ASSIGN,
+        Perm.TASK_APPROVE,
+        Perm.FINANCIAL_VIEW,
+        Perm.EXPORT,
+    },
+    "DIRETOR": {
+        Perm.RESOURCE_VIEW,
+        Perm.RESOURCE_CREATE,
+        Perm.RESOURCE_EDIT,
+        Perm.TASK_ASSIGN,
+        Perm.EXPORT,
+    },
+    "CHEFE_DEPARTAMENTO": {
+        Perm.RESOURCE_VIEW,
+        Perm.RESOURCE_CREATE,
+        Perm.RESOURCE_EDIT,
+        Perm.TASK_ASSIGN,
+        Perm.EXPORT,
+    },
+    # O servidor precisa ver a demanda em que trabalha, comentar, anexar e
+    # concluir a própria tarefa (§158). As rotas de tarefa exigem `resource.view`
+    # justamente para não obrigar cada servidor a ter poder de edição da demanda.
+    "SERVIDOR": {
+        Perm.RESOURCE_VIEW,
+    },
+    "CONSULTA": {
+        Perm.RESOURCE_VIEW,
+    },
+    # Auditor lê tudo, inclusive sigiloso, e não altera nada.
+    "AUDITOR": {
+        Perm.RESOURCE_VIEW,
+        Perm.AUDIT_VIEW,
+        Perm.FINANCIAL_VIEW,
+        Perm.EXPORT,
+    },
 }
 
 

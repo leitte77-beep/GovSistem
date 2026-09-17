@@ -11,15 +11,23 @@ from app.models.base import Base, SoftDeleteMixin, TimestampMixin
 
 if TYPE_CHECKING:
     from app.models.convenio import Convenio
+    from app.models.demanda import Demanda
     from app.models.user import User
 
 
 class Obra(Base, TimestampMixin, SoftDeleteMixin):
     __tablename__ = "obras"
 
-    convenio_id: Mapped[uuid.UUID] = mapped_column(
+    # Obras anteriores à v2 nasceram penduradas em um convênio; as novas nascem
+    # na demanda. Os dois campos convivem durante a transição, e ao menos um é
+    # exigido pela camada de serviço.
+    convenio_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("convenios.id", ondelete="CASCADE"),
-        nullable=False, index=True,
+        nullable=True, index=True,
+    )
+    demanda_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("demandas.id", ondelete="CASCADE"),
+        nullable=True, index=True,
     )
     nome: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     endereco: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
@@ -43,7 +51,12 @@ class Obra(Base, TimestampMixin, SoftDeleteMixin):
     percentual_financeiro: Mapped[Optional[Decimal]] = mapped_column(Numeric(5, 2), nullable=True)
     observacoes: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    convenio: Mapped["Convenio"] = relationship("Convenio", back_populates="obras")
+    convenio: Mapped[Optional["Convenio"]] = relationship(
+        "Convenio", back_populates="obras"
+    )
+    demanda: Mapped[Optional["Demanda"]] = relationship(
+        "Demanda", back_populates="obras"
+    )
     fiscal: Mapped[Optional["User"]] = relationship("User", foreign_keys=[fiscal_id])
     gestor: Mapped[Optional["User"]] = relationship("User", foreign_keys=[gestor_id])
     cronograma: Mapped[list["CronogramaItem"]] = relationship(

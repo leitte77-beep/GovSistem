@@ -236,6 +236,22 @@ export interface DashboardData {
   processos_por_situacao: { nome: string; count: number }[];
 }
 
+export interface DemandaV2 {
+  id: string; numero: string; titulo: string; prioridade: string; progresso: number;
+  prazo_final: string | null; ultima_movimentacao_em: string; bloqueada: boolean;
+  atrasada: boolean; dias_sem_movimentacao: number; concluida_em: string | null;
+  descricao?: string | null; objeto?: string | null; resumo_executivo?: string | null;
+  proxima_acao?: string | null; proxima_acao_prazo?: string | null;
+  bloqueio_motivo?: string | null; aguardando_terceiro?: string | null;
+  tipo?: { rotulo: string } | null; categoria?: { rotulo: string } | null;
+  status?: { rotulo: string; cor?: string | null } | null;
+  responsavel_geral?: { id: string; name: string } | null;
+  responsavel_atual?: { id: string; name: string } | null;
+  setor_atual?: { id: string; nome: string } | null; tags: string[];
+}
+
+export interface DemandaV2Page { items: DemandaV2[]; total: number; page: number; pages: number; page_size: number; }
+
 // ── Gestão de Recursos: novas entidades ───────────────────
 
 export type OrigemDiligencia = "GOVERNO_FEDERAL" | "GOVERNO_ESTADUAL" | "CONCEDENTE" | "MANDATARIA" | "CONTROLE_INTERNO" | "OUTRO";
@@ -593,6 +609,7 @@ export type ProcessoPendente = {
 
 export type MesaDoAssessor = {
   para_analisar: DemandaItem[];
+  contestacoes: DemandaItem[];
   devolvidas: DemandaItem[];
   nos_setores: SetorResumo[];
   para_protocolar: ProcessoPendente[];
@@ -607,3 +624,196 @@ export type CaixaDoDepartamento = {
   devolvidas: DemandaItem[];
   aguardando_analise: DemandaItem[];
 };
+
+// ── Núcleo v2: relacionamento, controle e navegação ───────
+// Espelham os schemas da API. O frontend não decide autorização: quando o
+// usuário não tem `financial.view`, `financeiro` chega vazio do servidor.
+
+export type StatusProtocolo =
+  | "PROTOCOLADO" | "EM_ANALISE" | "EM_DILIGENCIA"
+  | "DOCUMENTACAO_COMPLEMENTAR" | "APROVADO" | "REJEITADO" | "ARQUIVADO";
+
+export interface ProtocoloAtualizacao {
+  id: string;
+  situacao: StatusProtocolo;
+  descricao: string;
+  ocorrido_em: string;
+  registrado_por_id: string | null;
+}
+
+export interface Protocolo {
+  id: string;
+  demanda_id: string;
+  sistema: string;
+  numero: string;
+  ano: number | null;
+  orgao: string | null;
+  data_protocolo: string;
+  url: string | null;
+  situacao: StatusProtocolo;
+  observacoes: string | null;
+  prazo_resposta: string | null;
+  proxima_verificacao: string | null;
+  responsavel_id: string | null;
+  atualizacoes: ProtocoloAtualizacao[];
+}
+
+export interface AgendaProtocolos {
+  total_abertos: number;
+  cobrar_hoje: { id: string; demanda_id: string; sistema: string; numero: string; orgao: string | null; situacao: string; proxima_verificacao: string | null }[];
+  prazo_de_resposta_vencido: { id: string; demanda_id: string; sistema: string; numero: string; prazo_resposta: string | null }[];
+  sem_acompanhamento_agendado: { id: string; demanda_id: string; numero: string }[];
+}
+
+export interface ComentarioDemanda {
+  id: string;
+  demanda_id: string;
+  tarefa_id: string | null;
+  responde_a_id: string | null;
+  autor_id: string;
+  autor_nome: string | null;
+  texto: string;
+  fixado: boolean;
+  editado_em: string | null;
+  created_at: string;
+  mencoes: { user_id: string; lido_em: string | null }[];
+}
+
+export interface Mencao {
+  mencao_id: string;
+  comentario_id: string;
+  demanda_id: string;
+  tarefa_id: string | null;
+  texto: string;
+  criado_em: string;
+  lido_em: string | null;
+}
+
+export interface ChecklistItem {
+  id: string;
+  descricao: string;
+  ordem: number;
+  obrigatorio: boolean;
+  exige_documento: boolean;
+  documento_id: string | null;
+  observacao: string | null;
+  concluido_em: string | null;
+  concluido_por_id: string | null;
+}
+
+export interface Checklist {
+  id: string;
+  demanda_id: string;
+  etapa_id: string | null;
+  titulo: string;
+  descricao: string | null;
+  obrigatorio: boolean;
+  total: number;
+  concluidos: number;
+  itens: ChecklistItem[];
+}
+
+export type TipoRegistroFinanceiro =
+  | "PREVISAO" | "APROVACAO" | "CONTRAPARTIDA" | "LICITADO" | "CONTRATADO"
+  | "EMPENHO" | "LIQUIDACAO" | "PAGAMENTO" | "NOTA_FISCAL"
+  | "REPASSE_RECEBIDO" | "DEVOLUCAO" | "OUTRO";
+
+export interface RegistroFinanceiro {
+  id: string;
+  demanda_id: string;
+  tipo: TipoRegistroFinanceiro;
+  valor: string;
+  data_registro: string;
+  numero_documento: string | null;
+  fonte_recurso: string | null;
+  favorecido: string | null;
+  descricao: string | null;
+  documento_id: string | null;
+  registrado_por_id: string;
+}
+
+export interface FinanceiroDemanda {
+  demanda_id: string;
+  numero: string;
+  fonte_recurso: string | null;
+  esfera: string | null;
+  orgao_concedente: string | null;
+  // Derivados dos lançamentos: `null` significa "sem lançamento", não zero.
+  valor_previsto: number | null;
+  valor_aprovado: number | null;
+  valor_contrapartida: number | null;
+  valor_licitado: number | null;
+  valor_contratado: number | null;
+  valor_empenhado: number | null;
+  valor_liquidado: number | null;
+  valor_pago: number | null;
+  valor_executado: number | null;
+  saldo: number;
+  por_tipo: Record<string, number>;
+  registros: RegistroFinanceiro[];
+}
+
+export interface Autoridade {
+  id: string;
+  nome: string;
+  tipo: string;
+  cargo: string | null;
+  instituicao: string | null;
+  partido: string | null;
+  esfera: string | null;
+  telefone: string | null;
+  email: string | null;
+  assessor_nome: string | null;
+  assessor_telefone: string | null;
+  observacoes: string | null;
+  ativo: boolean;
+  contatos: { id: string; nome: string; funcao: string | null; telefone: string | null; email: string | null }[];
+}
+
+export interface HistoricoAutoridade {
+  autoridade: { id: string; nome: string; cargo: string | null; instituicao: string | null; esfera: string | null };
+  total_demandas: number;
+  em_andamento: number;
+  concluidas: number;
+  valor_indicado: number;
+  valor_aprovado: number;
+  valor_contratado: number;
+  valor_executado: number;
+  valor_pago: number;
+  demandas: { id: string; numero: string; titulo: string; situacao: string | null; concluida_em: string | null; valor_aprovado: number }[];
+}
+
+export interface BuscaGlobal {
+  termo: string;
+  demandas: { id: string; numero: string; titulo: string; status: string | null; prioridade: string; prazo_final: string | null; atrasada: boolean }[];
+  tarefas: { id: string; demanda_id: string | null; titulo: string; status: string }[];
+  protocolos: { id: string; demanda_id: string; sistema: string; numero: string; situacao: string }[];
+  autoridades: { id: string; nome: string; cargo: string | null; instituicao: string | null }[];
+  comentarios: { id: string; demanda_id: string; trecho: string; criado_em: string }[];
+}
+
+export interface VisaoSalva {
+  id: string;
+  nome: string;
+  descricao: string | null;
+  recurso: string;
+  filtros: Record<string, unknown>;
+  layout: string;
+  compartilhada: boolean;
+  padrao: boolean;
+  user_id: string;
+  minha: boolean;
+}
+
+export interface RelatorioDemanda {
+  demanda: Record<string, unknown> & { numero: string; titulo: string };
+  resumo_executivo: string;
+  participantes: { papel: string; nome: string | null; setor: string | null }[];
+  financeiro: Record<string, string | null>;
+  tarefas: { titulo: string; responsavel: string | null; status: string; prazo: string }[];
+  tarefas_abertas: number;
+  checklists: { titulo: string; total: number; concluidos: number; itens: { descricao: string; concluido_em: string | null; concluido_por: string | null }[] }[];
+  documentos: { nome: string; versao: number; pasta: string | null; enviado_em: string; hash: string | null }[];
+  protocolos: { sistema: string; numero: string; orgao: string | null; data: string; situacao: string }[];
+  timeline: { quando: string; ator: string | null; descricao: string }[];
+}

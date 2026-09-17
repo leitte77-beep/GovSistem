@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import { Search, CornerDownLeft, FileText, CheckSquare, ArrowUpDown, X } from "lucide-react";
+import { Search, CornerDownLeft, FileText, CheckSquare, ArrowUpDown, Landmark, MessageSquare, Stamp, X } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { PERM } from "@/lib/perfil";
 
@@ -37,6 +37,10 @@ const STATIC_COMMANDS: Command[] = [
   { id: "busca", label: "Busca global", sub: "Pesquisar em tudo", href: "/busca", icon: <Search className="w-4 h-4" />, keywords: "buscar pesquisa procurar" },
   { id: "licitacoes", label: "Licitações & contratos", sub: "Área de contratação", href: "/licitacoes", icon: <FileText className="w-4 h-4" />, keywords: "licitação licitacao contrato edital pregão compras", perms: [PERM.LICITACAO] },
   { id: "processos", label: "Processos", sub: "Lista de processos/convênios", href: "/convenios", icon: <FileText className="w-4 h-4" />, keywords: "processos convênios lista" },
+  { id: "demandas", label: "Demandas", sub: "Núcleo de demandas", href: "/demandas", icon: <FileText className="w-4 h-4" />, keywords: "demandas lista núcleo nucleo" },
+  { id: "autoridades", label: "Autoridades", sub: "Parlamentares, órgãos e parceiros", href: "/autoridades", icon: <Landmark className="w-4 h-4" />, keywords: "autoridade deputado senador vereador parlamentar órgão orgao instituição" },
+  { id: "protocolos", label: "Cobranças de protocolo", sub: "O que precisa ser cobrado nos órgãos", href: "/protocolos", icon: <Stamp className="w-4 h-4" />, keywords: "protocolo cobrar acompanhamento transferegov sei diligência" },
+  { id: "mencoes", label: "Onde fui citado", sub: "@menções nos comentários", href: "/mencoes", icon: <MessageSquare className="w-4 h-4" />, keywords: "menção mencao citado comentário arroba" },
 ];
 
 export function CommandPalette() {
@@ -45,6 +49,7 @@ export function CommandPalette() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [processos, setProcessos] = useState<{ id: string; titulo: string; tipo?: string }[]>([]);
+  const [demandas, setDemandas] = useState<{ id: string; numero: string; titulo: string }[]>([]);
   const [selected, setSelected] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -72,6 +77,17 @@ export function CommandPalette() {
     if (open) setTimeout(() => inputRef.current?.focus(), 30);
     else setQuery("");
   }, [open]);
+
+  // Busca no servidor, com atraso curto: digitar não deve virar uma requisição
+  // por tecla, e a base real é grande demais para filtrar no navegador.
+  useEffect(() => {
+    const termo = query.trim();
+    if (termo.length < 2) { setDemandas([]); return; }
+    const timer = setTimeout(() => {
+      api.sugestoesBusca(termo).then(setDemandas).catch(() => setDemandas([]));
+    }, 220);
+    return () => clearTimeout(timer);
+  }, [query]);
 
   const q = query.trim().toLowerCase();
 
@@ -108,7 +124,15 @@ export function CommandPalette() {
         icon: <FileText className="w-4 h-4" />,
       }));
 
-  const all: Command[] = [...commandResults, ...processoResults];
+  const demandaResults: Command[] = demandas.map((d) => ({
+    id: `dem-${d.id}`,
+    label: d.titulo,
+    sub: `Demanda ${d.numero}`,
+    href: `/demandas/${d.id}`,
+    icon: <FileText className="w-4 h-4" />,
+  }));
+
+  const all: Command[] = [...commandResults, ...demandaResults, ...processoResults];
 
   useEffect(() => {
     setSelected(0);

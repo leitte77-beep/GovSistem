@@ -30,8 +30,15 @@ from app.services.timeline import registrar_evento
 
 router = APIRouter(tags=["fluxo"])
 
-# Status em que a demanda está com o departamento.
-COM_O_SETOR = ["AGUARDANDO_ACEITE", "EM_ANDAMENTO", "CONTESTADA"]
+# Status em que a bola está com o departamento. CONTESTADA fica de fora: a
+# tarefa contestada aguarda uma decisão do coordenador sobre o prazo, não
+# trabalho do setor — contá-la aqui fazia a mesa dizer que o departamento
+# estava tocando algo que, na verdade, esperava por ela.
+COM_O_SETOR = ["AGUARDANDO_ACEITE", "EM_ANDAMENTO"]
+
+# Status que a demanda ocupa enquanto ainda está aberta no setor, para efeito
+# de prazo (a contestada continua correndo contra o relógio).
+ABERTAS_NO_SETOR = COM_O_SETOR + ["CONTESTADA"]
 
 
 # ── Saída ───────────────────────────────────────────────────────────────────
@@ -72,6 +79,7 @@ class MesaDoAssessor(BaseModel):
     """As cinco perguntas do coordenador, na ordem em que ele trabalha."""
 
     para_analisar: list[DemandaItem]      # setor entregou, preciso conferir
+    contestacoes: list[DemandaItem]       # setor contestou o prazo, preciso decidir
     devolvidas: list[DemandaItem]         # devolvi para correção, aguardo
     nos_setores: list[SetorResumo]        # está com os departamentos
     para_protocolar: list[ProcessoPendente]   # pronto, falta protocolar no governo
@@ -91,19 +99,23 @@ class CaixaDoDepartamento(BaseModel):
 
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
+def _aware(momento: datetime | None) -> datetime | None:
+    """Datas gravadas antes da coluna virar timestamptz chegam sem fuso."""
+    if momento is None:
+        return None
+    return momento if momento.tzinfo else momento.replace(tzinfo=timezone.utc)
+
+
 def _dias_desde(momento: datetime | None) -> int | None:
+    momento = _aware(momento)
     if not momento:
         return None
-    if momento.tzinfo is None:
-        momento = momento.replace(tzinfo=timezone.utc)
     return (datetime.now(timezone.utc) - momento).days
 
 
 def _demanda(t: Tarefa) -> DemandaItem:
     agora = datetime.now(timezone.utc)
-    prazo = t.prazo_interno or t.prazo
-    if prazo and prazo.tzinfo is None:
-        prazo = prazo.replace(tzinfo=timezone.utc)
+    prazo = _aware(t.prazo_interno or t.prazo)
     aberta = t.status not in ("CONCLUIDA", "CANCELADA")
     return DemandaItem(
         id=t.id,
@@ -151,13 +163,14 @@ async def mesa_do_assessor(
 
     tarefas = (await db.execute(
         _query_tarefas(tenant_id).where(
-            Tarefa.status.in_(COM_O_SETOR + ["ENTREGUE", "DEVOLVIDA"])
+            Tarefa.status.in_(ABERTAS_NO_SETOR + ["ENTREGUE", "DEVOLVIDA"])
         ).order_by(Tarefa.prazo.asc().nulls_last())
     )).scalars().all()
 
     demandas = [_demanda(t) for t in tarefas]
 
     para_analisar = [d for d in demandas if d.status == "ENTREGUE"]
+    contestacoes = [d for d in demandas if d.status == "CONTESTADA"]
     devolvidas = [d for d in demandas if d.status == "DEVOLVIDA"]
     com_setor = [d for d in demandas if d.status in COM_O_SETOR]
 
@@ -176,17 +189,18 @@ async def mesa_do_assessor(
         resumo.demandas.append(d)
     nos_setores = sorted(por_setor.values(), key=lambda s: (-s.atrasadas, -s.total))
 
+    limite = agora + timedelta(days=3)
+
+    def _vence_em_breve(d: DemandaItem) -> bool:
+        prazo = _aware(d.prazo_interno or d.prazo)
+        return d.atrasada or bool(prazo and prazo <= limite)
+
     prazos_criticos = sorted(
-        [
-            d
-            for d in demandas
-            if d.status in COM_O_SETOR
-            and (
-                d.atrasada
-                or ((d.prazo_interno or d.prazo) and (d.prazo_interno or d.prazo).replace(tzinfo=timezone.utc) <= agora + timedelta(days=3))  # type: ignore[union-attr]
-            )
-        ],
-        key=lambda d: (not d.atrasada, d.prazo or datetime.max.replace(tzinfo=timezone.utc)),
+        [d for d in demandas if d.status in ABERTAS_NO_SETOR and _vence_em_breve(d)],
+        key=lambda d: (
+            not d.atrasada,
+            _aware(d.prazo) or datetime.max.replace(tzinfo=timezone.utc),
+        ),
     )[:15]
 
     # Processos: o que falta protocolar e o que está com o governo.
@@ -229,6 +243,7 @@ async def mesa_do_assessor(
 
     return MesaDoAssessor(
         para_analisar=para_analisar,
+        contestacoes=contestacoes,
         devolvidas=devolvidas,
         nos_setores=nos_setores,
         para_protocolar=para_protocolar[:10],

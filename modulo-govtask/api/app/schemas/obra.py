@@ -78,7 +78,10 @@ class CronogramaItemOut(BaseModel):
 
 class ObraOut(BaseModel):
     id: uuid.UUID
-    convenio_id: uuid.UUID
+    # A obra pende de um convênio (entidades anteriores à v2) ou de uma demanda
+    # (§54). Exigir o convênio impedia a obra de nascer na demanda.
+    convenio_id: uuid.UUID | None = None
+    demanda_id: uuid.UUID | None = None
     nome: str | None
     endereco: str | None
     coordenadas: str | None

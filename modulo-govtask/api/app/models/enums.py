@@ -162,24 +162,66 @@ class Prioridade(str, Enum):
 
 
 class StatusTarefa(str, Enum):
+    """Ciclo de vida da tarefa (§3).
+
+    Independente do status da demanda: concluir a tarefa não conclui a demanda.
+    Os estados de espera (AGUARDANDO_*) existem para que o painel mostre *por
+    que* a tarefa não anda, em vez de deixá-la parada em "em andamento".
+    """
+
+    NAO_INICIADA = "NAO_INICIADA"
+    A_FAZER = "A_FAZER"
     AGUARDANDO_ACEITE = "AGUARDANDO_ACEITE"
+    RECEBIDA = "RECEBIDA"
     EM_ANDAMENTO = "EM_ANDAMENTO"
+    AGUARDANDO_INFORMACAO = "AGUARDANDO_INFORMACAO"
+    AGUARDANDO_OUTRO_SETOR = "AGUARDANDO_OUTRO_SETOR"
+    AGUARDANDO_TERCEIRO = "AGUARDANDO_TERCEIRO"
+    AGUARDANDO_DOCUMENTO = "AGUARDANDO_DOCUMENTO"
     ENTREGUE = "ENTREGUE"
+    EM_REVISAO = "EM_REVISAO"
     DEVOLVIDA = "DEVOLVIDA"
     CONTESTADA = "CONTESTADA"
+    BLOQUEADA = "BLOQUEADA"
     CONCLUIDA = "CONCLUIDA"
     CANCELADA = "CANCELADA"
 
     @classmethod
+    def esperas(cls) -> list["StatusTarefa"]:
+        """Estados em que a tarefa depende de alguém de fora para andar."""
+        return [
+            cls.AGUARDANDO_INFORMACAO,
+            cls.AGUARDANDO_OUTRO_SETOR,
+            cls.AGUARDANDO_TERCEIRO,
+            cls.AGUARDANDO_DOCUMENTO,
+        ]
+
+    @classmethod
     def valid_transitions(cls) -> dict[str, list[str]]:
+        esperas = cls.esperas()
         return {
-            cls.AGUARDANDO_ACEITE: [cls.EM_ANDAMENTO, cls.CANCELADA],
+            cls.NAO_INICIADA: [cls.A_FAZER, cls.AGUARDANDO_ACEITE, cls.EM_ANDAMENTO, cls.CANCELADA],
+            cls.A_FAZER: [cls.EM_ANDAMENTO, cls.AGUARDANDO_ACEITE, cls.BLOQUEADA, cls.CANCELADA],
+            cls.AGUARDANDO_ACEITE: [cls.RECEBIDA, cls.EM_ANDAMENTO, cls.BLOQUEADA, cls.CANCELADA],
+            cls.RECEBIDA: [cls.EM_ANDAMENTO, *esperas, cls.BLOQUEADA, cls.CANCELADA],
+            # CONCLUIDA direto de EM_ANDAMENTO é o caminho do servidor de
+            # departamento (§158): Iniciar → Concluir, sem obrigá-lo a "entregar"
+            # antes. Entrega e revisão continuam existindo para as tarefas que
+            # exigem retorno ou aprovação — quem decide isso é a tarefa, não o
+            # grafo de estados.
             cls.EM_ANDAMENTO: [
-                cls.ENTREGUE, cls.CONTESTADA, cls.CANCELADA,
+                cls.ENTREGUE, cls.EM_REVISAO, cls.CONTESTADA, cls.BLOQUEADA,
+                cls.CONCLUIDA, *esperas, cls.CANCELADA,
             ],
-            cls.ENTREGUE: [cls.CONCLUIDA, cls.DEVOLVIDA, cls.CANCELADA],
+            cls.AGUARDANDO_INFORMACAO: [cls.EM_ANDAMENTO, cls.BLOQUEADA, cls.CANCELADA],
+            cls.AGUARDANDO_OUTRO_SETOR: [cls.EM_ANDAMENTO, cls.BLOQUEADA, cls.CANCELADA],
+            cls.AGUARDANDO_TERCEIRO: [cls.EM_ANDAMENTO, cls.BLOQUEADA, cls.CANCELADA],
+            cls.AGUARDANDO_DOCUMENTO: [cls.EM_ANDAMENTO, cls.BLOQUEADA, cls.CANCELADA],
+            cls.ENTREGUE: [cls.CONCLUIDA, cls.EM_REVISAO, cls.DEVOLVIDA, cls.CANCELADA],
+            cls.EM_REVISAO: [cls.CONCLUIDA, cls.DEVOLVIDA, cls.EM_ANDAMENTO, cls.CANCELADA],
             cls.DEVOLVIDA: [cls.EM_ANDAMENTO, cls.CANCELADA],
             cls.CONTESTADA: [cls.EM_ANDAMENTO, cls.CANCELADA],
+            cls.BLOQUEADA: [cls.EM_ANDAMENTO, cls.A_FAZER, cls.CANCELADA],
             cls.CONCLUIDA: [],
             cls.CANCELADA: [],
         }
@@ -197,10 +239,17 @@ class StatusTarefa(str, Enum):
 
     @classmethod
     def is_aberta(cls, status: "StatusTarefa") -> bool:
+        """Tarefa ainda pendente de trabalho — entra no cálculo de atraso."""
         return status in (
+            cls.NAO_INICIADA,
+            cls.A_FAZER,
             cls.AGUARDANDO_ACEITE,
+            cls.RECEBIDA,
             cls.EM_ANDAMENTO,
             cls.CONTESTADA,
+            cls.DEVOLVIDA,
+            cls.BLOQUEADA,
+            *cls.esperas(),
         )
 
 
@@ -254,6 +303,33 @@ class TipoEvento(str, Enum):
     DOCUMENTO_ENVIADO_EXTERNO = "DOCUMENTO_ENVIADO_EXTERNO"
     AUDITORIA_REGISTRADA = "AUDITORIA_REGISTRADA"
     OBSERVACAO_REGISTRADA = "OBSERVACAO_REGISTRADA"
+    # ── Núcleo de demandas (v2) ───────────────────────────
+    DEMANDA_CRIADA = "DEMANDA_CRIADA"
+    DEMANDA_PUBLICADA = "DEMANDA_PUBLICADA"
+    DEMANDA_ATUALIZADA = "DEMANDA_ATUALIZADA"
+    DEMANDA_STATUS_ALTERADO = "DEMANDA_STATUS_ALTERADO"
+    DEMANDA_ENCAMINHADA = "DEMANDA_ENCAMINHADA"
+    DEMANDA_BLOQUEADA = "DEMANDA_BLOQUEADA"
+    DEMANDA_DESBLOQUEADA = "DEMANDA_DESBLOQUEADA"
+    DEMANDA_CONCLUIDA = "DEMANDA_CONCLUIDA"
+    DEMANDA_REABERTA = "DEMANDA_REABERTA"
+    DEMANDA_CANCELADA = "DEMANDA_CANCELADA"
+    DEMANDA_ARQUIVADA = "DEMANDA_ARQUIVADA"
+    PROXIMA_ACAO_DEFINIDA = "PROXIMA_ACAO_DEFINIDA"
+    PARTICIPANTE_ADICIONADO = "PARTICIPANTE_ADICIONADO"
+    PARTICIPANTE_REMOVIDO = "PARTICIPANTE_REMOVIDO"
+    PROTOCOLO_ATUALIZADO = "PROTOCOLO_ATUALIZADO"
+    DOCUMENTO_VERSIONADO = "DOCUMENTO_VERSIONADO"
+    PRAZO_PROXIMO = "PRAZO_PROXIMO"
+    PRAZO_VENCIDO = "PRAZO_VENCIDO"
+    AUTOMACAO_EXECUTADA = "AUTOMACAO_EXECUTADA"
+    COMENTARIO_ADICIONADO = "COMENTARIO_ADICIONADO"
+    CHECKLIST_CRIADO = "CHECKLIST_CRIADO"
+    CHECKLIST_ITEM_CONCLUIDO = "CHECKLIST_ITEM_CONCLUIDO"
+    CHECKLIST_ITEM_REABERTO = "CHECKLIST_ITEM_REABERTO"
+    REGISTRO_FINANCEIRO_LANCADO = "REGISTRO_FINANCEIRO_LANCADO"
+    REGISTRO_FINANCEIRO_REMOVIDO = "REGISTRO_FINANCEIRO_REMOVIDO"
+    OBRA_VINCULADA = "OBRA_VINCULADA"
 
 
 # ── Contestação ───────────────────────────────────────────
@@ -293,6 +369,7 @@ class TipoNotificacao(str, Enum):
     REPASSE_RECEBIDO = "REPASSE_RECEBIDO"
     COMENTARIO_MENCAO = "COMENTARIO_MENCAO"
     ATRASO_ESCALADO = "ATRASO_ESCALADO"
+    PROTOCOLO_ATUALIZADO = "PROTOCOLO_ATUALIZADO"
 
 
 class CanalNotificacao(str, Enum):
@@ -493,3 +570,225 @@ class StatusEntrega(str, Enum):
     RECEBIMENTO_DEFINITIVO = "RECEBIMENTO_DEFINITIVO"
     INAUGURADA = "INAUGURADA"
     ENCERRADA = "ENCERRADA"
+
+
+# ══════════════════════════════════════════════════════════
+# GovTask v2 — núcleo de Demandas
+# ══════════════════════════════════════════════════════════
+
+class ConfidencialidadeDemanda(str, Enum):
+    """Quem pode enxergar a demanda (§96)."""
+
+    NORMAL = "NORMAL"
+    INTERNA = "INTERNA"
+    RESTRITA = "RESTRITA"
+    CONFIDENCIAL = "CONFIDENCIAL"
+
+
+class OrigemDemanda(str, Enum):
+    """De onde a demanda surgiu (§6). Complementado por `origem_descricao`."""
+
+    DETERMINACAO_PREFEITO = "DETERMINACAO_PREFEITO"
+    REUNIAO = "REUNIAO"
+    CONVERSA = "CONVERSA"
+    LIGACAO = "LIGACAO"
+    WHATSAPP = "WHATSAPP"
+    EMAIL = "EMAIL"
+    OFICIO = "OFICIO"
+    SOLICITACAO_INTERNA = "SOLICITACAO_INTERNA"
+    SECRETARIO = "SECRETARIO"
+    VEREADOR = "VEREADOR"
+    DEPUTADO_ESTADUAL = "DEPUTADO_ESTADUAL"
+    DEPUTADO_FEDERAL = "DEPUTADO_FEDERAL"
+    SENADOR = "SENADOR"
+    GOVERNO_ESTADUAL = "GOVERNO_ESTADUAL"
+    GOVERNO_FEDERAL = "GOVERNO_FEDERAL"
+    MINISTERIO = "MINISTERIO"
+    SECRETARIA_ESTADUAL = "SECRETARIA_ESTADUAL"
+    CIDADAO = "CIDADAO"
+    EMPRESA = "EMPRESA"
+    ORGAO_CONTROLE = "ORGAO_CONTROLE"
+    PROCESSO_ADMINISTRATIVO = "PROCESSO_ADMINISTRATIVO"
+    SISTEMA_EXTERNO = "SISTEMA_EXTERNO"
+    OUTRO = "OUTRO"
+
+
+class PrioridadeDemanda(str, Enum):
+    """Prioridade da demanda (§44). Superconjunto de `Prioridade` das tarefas."""
+
+    BAIXA = "BAIXA"
+    NORMAL = "NORMAL"
+    ALTA = "ALTA"
+    URGENTE = "URGENTE"
+    CRITICA = "CRITICA"
+
+    @classmethod
+    def peso(cls, valor: "str | PrioridadeDemanda") -> int:
+        """Ordem de urgência — usada para ordenar listas e filas de atenção."""
+        ordem = {
+            cls.BAIXA: 0, cls.NORMAL: 1, cls.ALTA: 2,
+            cls.URGENTE: 3, cls.CRITICA: 4,
+        }
+        try:
+            return ordem[cls(valor)]
+        except ValueError:
+            return 1
+
+
+class PapelParticipante(str, Enum):
+    """Matriz de responsabilidades (§76), inspirada em RACI."""
+
+    RESPONSAVEL = "RESPONSAVEL"
+    APROVADOR = "APROVADOR"
+    COLABORADOR = "COLABORADOR"
+    CONSULTADO = "CONSULTADO"
+    INFORMADO = "INFORMADO"
+
+
+class TipoAutoridade(str, Enum):
+    """Cadastro de autoridades e instituições externas (§7)."""
+
+    DEPUTADO_FEDERAL = "DEPUTADO_FEDERAL"
+    DEPUTADO_ESTADUAL = "DEPUTADO_ESTADUAL"
+    SENADOR = "SENADOR"
+    VEREADOR = "VEREADOR"
+    MINISTRO = "MINISTRO"
+    SECRETARIO_ESTADUAL = "SECRETARIO_ESTADUAL"
+    SECRETARIO_MUNICIPAL = "SECRETARIO_MUNICIPAL"
+    ORGAO = "ORGAO"
+    MINISTERIO = "MINISTERIO"
+    INSTITUICAO = "INSTITUICAO"
+    ENTIDADE = "ENTIDADE"
+    ASSOCIACAO = "ASSOCIACAO"
+    EMPRESA = "EMPRESA"
+    OUTRO = "OUTRO"
+
+
+class StatusProtocolo(str, Enum):
+    """Acompanhamento de protocolo em sistema externo (§34)."""
+
+    PROTOCOLADO = "PROTOCOLADO"
+    EM_ANALISE = "EM_ANALISE"
+    EM_DILIGENCIA = "EM_DILIGENCIA"
+    DOCUMENTACAO_COMPLEMENTAR = "DOCUMENTACAO_COMPLEMENTAR"
+    APROVADO = "APROVADO"
+    REJEITADO = "REJEITADO"
+    ARQUIVADO = "ARQUIVADO"
+
+
+class TipoRegistroFinanceiro(str, Enum):
+    """Natureza de um lançamento financeiro gerencial da demanda (§61)."""
+
+    PREVISAO = "PREVISAO"
+    APROVACAO = "APROVACAO"
+    CONTRAPARTIDA = "CONTRAPARTIDA"
+    LICITADO = "LICITADO"
+    CONTRATADO = "CONTRATADO"
+    EMPENHO = "EMPENHO"
+    LIQUIDACAO = "LIQUIDACAO"
+    PAGAMENTO = "PAGAMENTO"
+    NOTA_FISCAL = "NOTA_FISCAL"
+    REPASSE_RECEBIDO = "REPASSE_RECEBIDO"
+    DEVOLUCAO = "DEVOLUCAO"
+    OUTRO = "OUTRO"
+
+
+class TipoTarefa(str, Enum):
+    """Natureza da tarefa (§77, §23)."""
+
+    EXECUCAO = "EXECUCAO"
+    APROVACAO = "APROVACAO"
+    INFORMACAO = "INFORMACAO"
+    REVISAO = "REVISAO"
+
+
+class TipoMovimentacaoTarefa(str, Enum):
+    """O que originou a mudança de mãos da tarefa (§20, §22, §23)."""
+
+    ATRIBUICAO = "ATRIBUICAO"
+    ENCAMINHAMENTO = "ENCAMINHAMENTO"
+    DEVOLUCAO = "DEVOLUCAO"
+    SOLICITACAO_INFORMACAO = "SOLICITACAO_INFORMACAO"
+    REATRIBUICAO = "REATRIBUICAO"
+    RETORNO = "RETORNO"
+
+
+class TipoFeriado(str, Enum):
+    """Origem do feriado, para o calendário municipal (§36)."""
+
+    NACIONAL = "NACIONAL"
+    ESTADUAL = "ESTADUAL"
+    MUNICIPAL = "MUNICIPAL"
+    PONTO_FACULTATIVO = "PONTO_FACULTATIVO"
+
+
+class SeveridadeAlerta(str, Enum):
+    """Classificação da central de alertas (§40).
+
+    A severidade ordena a fila de atenção; a interface nunca depende só da cor
+    para comunicá-la (§13, §107).
+    """
+
+    INFORMACAO = "INFORMACAO"
+    AVISO = "AVISO"
+    IMPORTANTE = "IMPORTANTE"
+    URGENTE = "URGENTE"
+    CRITICO = "CRITICO"
+
+    @classmethod
+    def peso(cls, valor: "str | SeveridadeAlerta") -> int:
+        ordem = {
+            cls.INFORMACAO: 0, cls.AVISO: 1, cls.IMPORTANTE: 2,
+            cls.URGENTE: 3, cls.CRITICO: 4,
+        }
+        try:
+            return ordem[cls(valor)]
+        except ValueError:
+            return 0
+
+
+class TipoAlerta(str, Enum):
+    """O que o alerta está dizendo (§40)."""
+
+    PRAZO_PROXIMO = "PRAZO_PROXIMO"
+    PRAZO_VENCIDO = "PRAZO_VENCIDO"
+    TAREFA_ATRASADA = "TAREFA_ATRASADA"
+    TAREFA_SEM_ACEITE = "TAREFA_SEM_ACEITE"
+    DEMANDA_PARADA = "DEMANDA_PARADA"
+    DEMANDA_BLOQUEADA = "DEMANDA_BLOQUEADA"
+    AGUARDANDO_TERCEIRO = "AGUARDANDO_TERCEIRO"
+    ETAPA_ATRASADA = "ETAPA_ATRASADA"
+    PROTOCOLO_SEM_RESPOSTA = "PROTOCOLO_SEM_RESPOSTA"
+    FOLLOWUP_DEVIDO = "FOLLOWUP_DEVIDO"
+    CONVENIO_VENCENDO = "CONVENIO_VENCENDO"
+    ESCALONAMENTO = "ESCALONAMENTO"
+
+
+class ModoEtapa(str, Enum):
+    """Como a etapa se relaciona com as de mesma ordem (§25)."""
+
+    SEQUENCIAL = "SEQUENCIAL"
+    PARALELA = "PARALELA"
+
+
+class RegraConclusaoEtapa(str, Enum):
+    """O que precisa acontecer para a etapa ser dada por concluída."""
+
+    TODAS_TAREFAS = "TODAS_TAREFAS"
+    QUALQUER_TAREFA = "QUALQUER_TAREFA"
+    MANUAL = "MANUAL"
+
+
+class StatusWorkflowVersao(str, Enum):
+    RASCUNHO = "RASCUNHO"
+    PUBLICADA = "PUBLICADA"
+    ARQUIVADA = "ARQUIVADA"
+
+
+class TipoContagemPrazo(str, Enum):
+    """Como um prazo é contado (§36)."""
+
+    DIAS_CORRIDOS = "DIAS_CORRIDOS"
+    DIAS_UTEIS = "DIAS_UTEIS"
+    DATA_FIXA = "DATA_FIXA"
+    HORAS = "HORAS"

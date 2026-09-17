@@ -4,30 +4,46 @@ from app.models.enums import (
     CategoriaDocumento,
     CategoriaRecurso,
     ClassificacaoDocumento,
+    ConfidencialidadeDemanda,
     EsferaRecurso,
+    ModoEtapa,
     NaturezaEtapa,
+    OrigemDemanda,
     OrigemDiligencia,
+    PapelParticipante,
     Prioridade,
+    PrioridadeDemanda,
     PrioridadeProcesso,
+    RegraConclusaoEtapa,
+    SeveridadeAlerta,
     SituacaoProcesso,
-    StatusConvenio,
     StatusContestacao,
     StatusContrato,
+    StatusConvenio,
     StatusDiligencia,
     StatusEntrega,
     StatusEtapa,
     StatusLicitacao,
     StatusMedicao,
     StatusPrestacao,
+    StatusProtocolo,
     StatusRepasse,
     StatusTarefa,
+    StatusWorkflowVersao,
     TipoAditivo,
+    TipoAlerta,
+    TipoAutoridade,
+    TipoContagemPrazo,
     TipoConvenio,
     TipoDocumento,
     TipoEntrega,
     TipoEvento,
+    TipoFeriado,
+    TipoMovimentacaoTarefa,
     TipoMovimento,
     TipoNotificacao,
+    TipoRegistroFinanceiro,
+    TipoTarefa,
 )
 from app.models.user import User
 from app.models.role import Role
@@ -44,6 +60,14 @@ from app.models.evento_timeline import EventoTimeline
 from app.models.contestacao import Contestacao
 from app.models.notificacao import Notificacao
 from app.models.comentario import Comentario
+from app.models.comentario_demanda import (
+    ComentarioDemanda,
+    ComentarioMencao,
+    ComentarioRevisao,
+)
+from app.models.checklist import Checklist, ChecklistItem
+from app.models.demanda_financeiro import RegistroFinanceiroDemanda
+from app.models.visao_salva import VisaoSalva
 from app.models.template_fluxo import TemplateFluxo, TemplateEtapa
 from app.models.diligencia import Diligencia
 from app.models.repasse import Repasse
@@ -60,6 +84,30 @@ from app.models.processo_status import ProcessoStatus
 from app.models.processo_favorito import ProcessoFavorito
 from app.models.auditoria import Auditoria
 from app.models.escalonamento import EscalonamentoConfig, EscalamentoAtraso
+from app.models.catalogo import (
+    CategoriaDemanda,
+    DemandaTag,
+    StatusDemanda,
+    Tag,
+    TipoDemanda,
+)
+from app.models.autoridade import Autoridade, AutoridadeContato
+from app.models.sequencia import SequenciaNumeracao
+from app.models.demanda import Demanda
+from app.models.demanda_participante import DemandaParticipante, DemandaSeguidor
+from app.models.protocolo_externo import ProtocoloAtualizacao, ProtocoloExterno
+from app.models.tarefa_movimentacao import TarefaMovimentacao
+from app.models.alerta import Alerta, AlertaConfig
+from app.models.calendario import Feriado
+from app.models.automacao import Automacao, AutomacaoExecucao
+from app.models.registro_demanda import RegistroDemanda
+from app.models.planejamento_demanda import AusenciaSubstituicao, ModeloDemanda, RecorrenciaDemanda
+from app.models.workflow import (
+    Workflow,
+    WorkflowEtapa,
+    WorkflowTarefaModelo,
+    WorkflowVersao,
+)
 
 __all__ = [
     "Base",
@@ -69,6 +117,13 @@ __all__ = [
     "CategoriaDocumento",
     "CategoriaRecurso",
     "ClassificacaoDocumento",
+    "ConfidencialidadeDemanda",
+    "OrigemDemanda",
+    "PapelParticipante",
+    "PrioridadeDemanda",
+    "StatusProtocolo",
+    "TipoAutoridade",
+    "TipoContagemPrazo",
     "EsferaRecurso",
     "NaturezaEtapa",
     "OrigemDiligencia",
@@ -132,4 +187,47 @@ __all__ = [
     "Auditoria",
     "EscalonamentoConfig",
     "EscalamentoAtraso",
+    "TipoDemanda",
+    "CategoriaDemanda",
+    "StatusDemanda",
+    "Tag",
+    "DemandaTag",
+    "Autoridade",
+    "AutoridadeContato",
+    "SequenciaNumeracao",
+    "Demanda",
+    "DemandaParticipante",
+    "DemandaSeguidor",
+    "ProtocoloExterno",
+    "ProtocoloAtualizacao",
+    "TarefaMovimentacao",
+    "Workflow",
+    "WorkflowVersao",
+    "WorkflowEtapa",
+    "WorkflowTarefaModelo",
+    "Alerta",
+    "AlertaConfig",
+    "Feriado",
+    "SeveridadeAlerta",
+    "TipoAlerta",
+    "TipoFeriado",
+    "ModoEtapa",
+    "RegraConclusaoEtapa",
+    "StatusWorkflowVersao",
+    "TipoTarefa",
+    "TipoMovimentacaoTarefa",
+    "Automacao",
+    "AutomacaoExecucao",
+    "ComentarioDemanda",
+    "ComentarioMencao",
+    "ComentarioRevisao",
+    "Checklist",
+    "ChecklistItem",
+    "RegistroFinanceiroDemanda",
+    "TipoRegistroFinanceiro",
+    "VisaoSalva",
+    "RegistroDemanda",
+    "AusenciaSubstituicao",
+    "ModeloDemanda",
+    "RecorrenciaDemanda",
 ]

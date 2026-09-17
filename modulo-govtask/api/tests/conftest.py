@@ -6,6 +6,7 @@ o SQLite, trocamos esse tipo pelo genérico `sqlalchemy.Uuid` ANTES de
 importar os modelos/aplicação.
 """
 
+import os
 import uuid
 
 import pytest_asyncio
@@ -14,11 +15,15 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
-# Patch do tipo UUID antes de qualquer import de modelo/aplicativo.
+# SQLite não entende o tipo específico do PostgreSQL. Em CI/integração é
+# possível definir TEST_DATABASE_URL para rodar a mesma suíte contra um
+# PostgreSQL temporário; nesse caso preservamos o tipo nativo.
 import sqlalchemy
 import sqlalchemy.dialects.postgresql as _pg
 
-_pg.UUID = sqlalchemy.Uuid
+TEST_DATABASE_URL = os.getenv("TEST_DATABASE_URL", "sqlite+aiosqlite://")
+if TEST_DATABASE_URL.startswith("sqlite"):
+    _pg.UUID = sqlalchemy.Uuid
 
 from app.core.database import get_db  # noqa: E402
 from app.core.permissions import ROLE_DEFAULT_PERMISSIONS  # noqa: E402
@@ -33,12 +38,28 @@ from app.models import (  # noqa: E402
     UserRole,
 )
 
-TEST_ENGINE = create_async_engine(
-    "sqlite+aiosqlite://",
-    connect_args={"check_same_thread": False},
-    poolclass=StaticPool,
+_ENGINE_KWARGS = (
+    {"connect_args": {"check_same_thread": False}, "poolclass": StaticPool}
+    if TEST_DATABASE_URL.startswith("sqlite")
+    else {}
 )
+TEST_ENGINE = create_async_engine(TEST_DATABASE_URL, **_ENGINE_KWARGS)
 TEST_SESSION = async_sessionmaker(TEST_ENGINE, class_=AsyncSession, expire_on_commit=False)
+
+
+@pytest_asyncio.fixture(autouse=True)
+def _storage_temporario(tmp_path, monkeypatch):
+    """Isola os arquivos enviados nos testes.
+
+    Sem isto, o storage local escreveria em `uploads/` dentro do repositório e
+    os arquivos de teste ficariam acumulados no disco de quem roda a suíte.
+    """
+    from app.core import storage as modulo_storage
+
+    monkeypatch.setattr(
+        modulo_storage.storage, "base_path", str(tmp_path / "storage"), raising=False
+    )
+    return tmp_path
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -122,3 +143,90 @@ async def make_tenant(_db):
         }
 
     return _make
+
+
+@pytest_asyncio.fixture
+async def catalogo_padrao(_db):
+    """Semeia o catálogo padrão do sistema (tipos e status de demanda).
+
+    Em produção o catálogo entra pela migration; nos testes ele é recriado aqui
+    porque o schema é montado direto pelos metadados.
+    """
+    from app.core.seeds_demanda import STATUS_PADRAO, TIPOS_PADRAO
+    from app.models import StatusDemanda, TipoDemanda
+
+    tipos = {}
+    for ordem, item in enumerate(TIPOS_PADRAO):
+        tipo = TipoDemanda(
+            organization_id=None, chave=item["chave"], rotulo=item["rotulo"],
+            ordem=ordem, is_system=True,
+            exige_obra=item.get("exige_obra", False),
+            exige_financeiro=item.get("exige_financeiro", False),
+            exige_convenio=item.get("exige_convenio", False),
+            exige_licitacao=item.get("exige_licitacao", False),
+            exige_contrato=item.get("exige_contrato", False),
+            exige_prestacao_contas=item.get("exige_prestacao_contas", False),
+        )
+        _db.add(tipo)
+        tipos[item["chave"]] = tipo
+
+    status = {}
+    for ordem, item in enumerate(STATUS_PADRAO):
+        st = StatusDemanda(
+            organization_id=None, chave=item["chave"], rotulo=item["rotulo"],
+            ordem=ordem, cor=item.get("cor"), is_system=True,
+            is_inicial=item.get("is_inicial", False),
+            is_final=item.get("is_final", False),
+            is_aguardando_externo=item.get("is_aguardando_externo", False),
+            conta_como_atrasavel=item.get("conta_como_atrasavel", True),
+        )
+        _db.add(st)
+        status[item["chave"]] = st
+
+    await _db.commit()
+    return {"tipos": tipos, "status": status}
+
+
+@pytest_asyncio.fixture
+async def workflows_padrao(_db, catalogo_padrao):
+    """Semeia os modelos de fluxo do sistema, como faz a migration."""
+    from app.core.seeds_workflow import WORKFLOWS_PADRAO, etapa_com_padroes
+    from app.models import (
+        Workflow,
+        WorkflowEtapa,
+        WorkflowTarefaModelo,
+        WorkflowVersao,
+    )
+    from app.models.enums import StatusWorkflowVersao
+
+    criados = {}
+    for modelo in WORKFLOWS_PADRAO:
+        wf = Workflow(
+            organization_id=None,
+            chave=modelo["chave"],
+            nome=modelo["nome"],
+            descricao=modelo.get("descricao"),
+            tipo_demanda_id=catalogo_padrao["tipos"][modelo["tipo_demanda"]].id,
+            is_system=True,
+        )
+        _db.add(wf)
+        await _db.flush()
+
+        versao = WorkflowVersao(
+            workflow_id=wf.id, versao=1, status=StatusWorkflowVersao.PUBLICADA
+        )
+        _db.add(versao)
+        await _db.flush()
+
+        for bruta in modelo["etapas"]:
+            etapa = etapa_com_padroes(bruta)
+            tarefas = etapa.pop("tarefas")
+            we = WorkflowEtapa(versao_id=versao.id, **etapa)
+            _db.add(we)
+            await _db.flush()
+            for t in tarefas:
+                _db.add(WorkflowTarefaModelo(etapa_id=we.id, **t))
+        criados[modelo["chave"]] = wf
+
+    await _db.commit()
+    return criados

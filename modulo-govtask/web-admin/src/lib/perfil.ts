@@ -10,6 +10,8 @@
 
 import type { LucideIcon } from "lucide-react";
 import {
+  AtSign,
+  Stamp,
   LayoutDashboard,
   FileText,
   CheckSquare,
@@ -64,11 +66,14 @@ export function perfilDoUsuario(perms: string[] = []): Perfil {
 export function homeDoPerfil(perfil: Perfil): string {
   switch (perfil) {
     case "coordenacao":
-      return "/mesa";
+      return "/assessor";
     case "executivo":
-      return "/executivo";
+      return "/prefeito";
+    case "engenharia":
+    case "licitacao":
+      return "/secretario";
     default:
-      return "/minhas-demandas";
+      return "/departamento";
   }
 }
 
@@ -90,8 +95,13 @@ export type NavItem = {
 export type NavGroup = { title: string; items: NavItem[] };
 
 const ITEM = {
+  demandas: { key: "demandas", href: "/demandas", label: "Demandas", icon: FileText },
+  operacao: { key: "operacao", href: "/operacao", label: "Mesa operacional", icon: LayoutGrid },
   mesa: { key: "mesa", href: "/mesa", label: "Minha Mesa", icon: ClipboardList },
-  dashboard: { key: "dashboard", href: "/", label: "Painel Geral", icon: LayoutDashboard },
+  dashboard: { key: "dashboard", href: "/prefeito", label: "Painel Geral", icon: LayoutDashboard },
+  assessor: { key: "assessor", href: "/assessor", label: "Painel do Assessor", icon: ClipboardList },
+  secretario: { key: "secretario", href: "/secretario", label: "Painel da Secretaria", icon: Building2 },
+  departamento: { key: "departamento", href: "/departamento", label: "Meu Trabalho", icon: CheckSquare },
   minhasDemandas: { key: "minhas-demandas", href: "/minhas-demandas", label: "Minhas Demandas", icon: CheckSquare },
   executivo: { key: "executivo", href: "/executivo", label: "Painel Executivo", icon: Landmark },
   pendencias: { key: "pendencias", href: "/pendencias", label: "Minhas Pendências", icon: CheckSquare },
@@ -105,7 +115,12 @@ const ITEM = {
   prestacoes: { key: "prestacoes", href: "/prestacoes", label: "Prestações de Contas", icon: ClipboardCheck },
   calendario: { key: "calendario", href: "/calendario", label: "Calendário", icon: CalendarDays },
   relatorios: { key: "relatorios", href: "/convenios/relatorios", label: "Relatórios", icon: BarChart3 },
+  relatoriosDemandas: { key: "relatorios-demandas", href: "/relatorios-demandas", label: "Relatórios de demandas", icon: BarChart3 },
+  configuracoesDemandas: { key: "configuracoes-demandas", href: "/configuracoes-demandas", label: "Configurar demandas", icon: ClipboardCheck },
   alertas: { key: "alertas", href: "/alertas", label: "Alertas", icon: Bell },
+  protocolos: { key: "protocolos", href: "/protocolos", label: "Cobranças de protocolo", icon: Stamp },
+  autoridades: { key: "autoridades", href: "/autoridades", label: "Autoridades", icon: Landmark },
+  mencoes: { key: "mencoes", href: "/mencoes", label: "Onde fui citado", icon: AtSign },
 } satisfies Record<string, NavItem>;
 
 /**
@@ -118,39 +133,42 @@ export function navGroupsDoPerfil(perfil: Perfil, perms: string[] = []): NavGrou
   switch (perfil) {
     case "coordenacao":
       grupos.push(
-        { title: "Trabalho do dia", items: [ITEM.mesa, ITEM.processos] },
-        { title: "Acompanhamento", items: [ITEM.obras, ITEM.prestacoes, ITEM.calendario] },
-        { title: "Gestão", items: [ITEM.dashboard, ITEM.alertas, ITEM.relatorios] }
+        { title: "Trabalho do dia", items: [ITEM.assessor, ITEM.mesa, ITEM.operacao, ITEM.demandas, ITEM.processos] },
+        { title: "Acompanhamento", items: [ITEM.protocolos, ITEM.obras, ITEM.prestacoes, ITEM.calendario] },
+        { title: "Gestão", items: [ITEM.dashboard, ITEM.alertas, ITEM.autoridades, ITEM.relatoriosDemandas, ITEM.configuracoesDemandas, ITEM.relatorios] }
       );
       break;
 
     case "engenharia":
       grupos.push(
-        { title: "Trabalho do dia", items: [ITEM.minhasDemandas, ITEM.obras] },
+        { title: "Trabalho do dia", items: [ITEM.secretario, ITEM.demandas, ITEM.minhasDemandas, ITEM.obras] },
         { title: "Consulta", items: [ITEM.processos, ITEM.calendario] }
       );
       break;
 
     case "licitacao":
       grupos.push(
-        { title: "Trabalho do dia", items: [ITEM.minhasDemandas, ITEM.licitacoes] },
+        { title: "Trabalho do dia", items: [ITEM.secretario, ITEM.demandas, ITEM.minhasDemandas, ITEM.licitacoes] },
         { title: "Consulta", items: [ITEM.processos, ITEM.calendario] }
       );
       break;
 
     case "executivo":
       grupos.push(
-        { title: "Visão Geral", items: [ITEM.executivo] },
-        { title: "Acompanhamento", items: [ITEM.processos, ITEM.obras, ITEM.relatorios] }
+        { title: "Visão Geral", items: [ITEM.dashboard, ITEM.demandas, ITEM.executivo] },
+        { title: "Acompanhamento", items: [ITEM.processos, ITEM.obras, ITEM.autoridades, ITEM.relatoriosDemandas, ITEM.relatorios] }
       );
       break;
 
     default:
       grupos.push(
-        { title: "Trabalho do dia", items: [ITEM.minhasDemandas] },
+        { title: "Trabalho do dia", items: [ITEM.departamento, ITEM.demandas, ITEM.minhasDemandas] },
         { title: "Consulta", items: [ITEM.processos, ITEM.calendario] }
       );
   }
+
+  // Ser citado acontece em qualquer perfil, então a tela entra para todos.
+  grupos.push({ title: "Comunicação", items: [ITEM.mencoes] });
 
   // Prestações só para quem responde por elas.
   if (perfil !== "coordenacao" && has(perms, PERM.ACCOUNTABILITY)) {

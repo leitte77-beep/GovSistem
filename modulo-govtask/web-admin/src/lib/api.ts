@@ -1,4 +1,4 @@
-import type { Convenio, ConvenioListItem, Etapa, TimelineEvent, Anexo, Tarefa, TarefaListItem, Comentario, Contestacao, Notificacao, TemplateFluxo, Setor, Diligencia, Repasse, Medicao, MovimentoFinanceiro, ResumoFinanceiro, Contrato, Aditivo, Licitacao, Prestacao, EntregaObjeto, AuditoriaRegistro, Obra, DiarioObra, RegistroFoto, VistoriaObra, MesaDoAssessor, CaixaDoDepartamento } from "@/types/govtask";
+import type { Convenio, ConvenioListItem, Etapa, TimelineEvent, Anexo, Tarefa, TarefaListItem, Comentario, Contestacao, Notificacao, TemplateFluxo, Setor, Diligencia, Repasse, Medicao, MovimentoFinanceiro, ResumoFinanceiro, Contrato, Aditivo, Licitacao, Prestacao, EntregaObjeto, AuditoriaRegistro, Obra, DiarioObra, RegistroFoto, VistoriaObra, MesaDoAssessor, CaixaDoDepartamento, Protocolo, AgendaProtocolos, ComentarioDemanda, Mencao, Checklist, FinanceiroDemanda, RegistroFinanceiro, Autoridade, HistoricoAutoridade, BuscaGlobal, VisaoSalva, RelatorioDemanda } from "@/types/govtask";
 
 const BASE_URL = "/api/govtask";
 const ACCESS_TOKEN_KEY = "govtask_access_token";
@@ -553,6 +553,96 @@ export const api = {
 
   getDashboard() {
     return request<import("@/types/govtask").DashboardData>("/dashboard");
+  },
+
+  getDashboardPerfil(perfil: "prefeito" | "assessor" | "secretario" | "departamento") {
+    return request<any>(`/dashboards/${perfil}`);
+  },
+
+  listDemandasV2(params?: { q?: string; atrasadas?: boolean; minhas?: boolean; aguardando_externo?: boolean; page?: number }) {
+    return request<import("@/types/govtask").DemandaV2Page>(`/demandas${qs(params)}`);
+  },
+  getDemandaV2(id: string) { return request<import("@/types/govtask").DemandaV2>(`/demandas/${id}`); },
+  criarDemandaV2(data: Record<string, unknown>) { return request<import("@/types/govtask").DemandaV2>("/demandas", { method: "POST", body: JSON.stringify(data) }); },
+  listarTarefasDemanda(id: string) { return request<any[]>(`/demandas/${id}/tarefas`); },
+  timelineDemanda(id: string) { return request<{ items: any[] }>(`/demandas/${id}/timeline`); },
+  duplicarDemanda(id: string) { return request<{ id: string; numero: string }>(`/demandas/${id}/duplicar`, { method: "POST" }); },
+
+  // ── Protocolos externos (§33, §34) ──
+  listarProtocolos(demandaId: string) { return request<Protocolo[]>(`/demandas/${demandaId}/protocolos`); },
+  criarProtocolo(demandaId: string, data: Record<string, unknown>) { return request<Protocolo>(`/demandas/${demandaId}/protocolos`, { method: "POST", body: JSON.stringify(data) }); },
+  atualizarProtocolo(demandaId: string, protocoloId: string, data: { situacao: string; descricao: string; proxima_verificacao?: string; prazo_resposta?: string }) { return request<Protocolo>(`/demandas/${demandaId}/protocolos/${protocoloId}/atualizacoes`, { method: "POST", body: JSON.stringify(data) }); },
+  corrigirProtocolo(demandaId: string, protocoloId: string, data: Record<string, unknown>) { return request<Protocolo>(`/demandas/${demandaId}/protocolos/${protocoloId}`, { method: "PATCH", body: JSON.stringify(data) }); },
+  removerProtocolo(demandaId: string, protocoloId: string, motivo: string) { return request<void>(`/demandas/${demandaId}/protocolos/${protocoloId}${qs({ motivo })}`, { method: "DELETE" }); },
+  agendaProtocolos() { return request<AgendaProtocolos>("/protocolos/acompanhamento"); },
+
+  // ── Conversa interna (§42, §43) ──
+  listarComentarios(demandaId: string, tarefaId?: string) { return request<ComentarioDemanda[]>(`/demandas/${demandaId}/comentarios${qs({ tarefa_id: tarefaId })}`); },
+  comentar(demandaId: string, data: { texto: string; tarefa_id?: string; responde_a_id?: string }) { return request<ComentarioDemanda>(`/demandas/${demandaId}/comentarios`, { method: "POST", body: JSON.stringify(data) }); },
+  editarComentario(demandaId: string, comentarioId: string, texto: string) { return request<ComentarioDemanda>(`/demandas/${demandaId}/comentarios/${comentarioId}`, { method: "PATCH", body: JSON.stringify({ texto }) }); },
+  revisoesComentario(demandaId: string, comentarioId: string) { return request<{ texto_anterior: string; created_at: string }[]>(`/demandas/${demandaId}/comentarios/${comentarioId}/revisoes`); },
+  fixarComentario(demandaId: string, comentarioId: string, fixado: boolean) { return request<ComentarioDemanda>(`/demandas/${demandaId}/comentarios/${comentarioId}/fixar${qs({ fixado })}`, { method: "POST" }); },
+  excluirComentario(demandaId: string, comentarioId: string) { return request<void>(`/demandas/${demandaId}/comentarios/${comentarioId}`, { method: "DELETE" }); },
+  minhasMencoes(apenasNaoLidas = true) { return request<Mencao[]>(`/minhas-mencoes${qs({ apenas_nao_lidas: apenasNaoLidas })}`); },
+  marcarMencaoLida(mencaoId: string) { return request<void>(`/minhas-mencoes/${mencaoId}/lida`, { method: "POST" }); },
+
+  // ── Checklists (§32, §67) ──
+  listarChecklists(demandaId: string) { return request<Checklist[]>(`/demandas/${demandaId}/checklists`); },
+  criarChecklist(demandaId: string, data: { titulo: string; descricao?: string; obrigatorio?: boolean; etapa_id?: string; itens?: { descricao: string; obrigatorio?: boolean; exige_documento?: boolean }[] }) { return request<Checklist>(`/demandas/${demandaId}/checklists`, { method: "POST", body: JSON.stringify(data) }); },
+  adicionarItemChecklist(demandaId: string, checklistId: string, data: { descricao: string; obrigatorio?: boolean; exige_documento?: boolean }) { return request<Checklist>(`/demandas/${demandaId}/checklists/${checklistId}/itens`, { method: "POST", body: JSON.stringify(data) }); },
+  concluirItemChecklist(demandaId: string, checklistId: string, itemId: string, data: { observacao?: string; documento_id?: string }) { return request<Checklist>(`/demandas/${demandaId}/checklists/${checklistId}/itens/${itemId}/concluir`, { method: "POST", body: JSON.stringify(data) }); },
+  reabrirItemChecklist(demandaId: string, checklistId: string, itemId: string, motivo: string) { return request<Checklist>(`/demandas/${demandaId}/checklists/${checklistId}/itens/${itemId}/reabrir${qs({ motivo })}`, { method: "POST" }); },
+  removerItemChecklist(demandaId: string, checklistId: string, itemId: string) { return request<void>(`/demandas/${demandaId}/checklists/${checklistId}/itens/${itemId}`, { method: "DELETE" }); },
+  removerChecklist(demandaId: string, checklistId: string) { return request<void>(`/demandas/${demandaId}/checklists/${checklistId}`, { method: "DELETE" }); },
+
+  // ── Financeiro gerencial (§59, §61) ──
+  financeiroDemanda(demandaId: string) { return request<FinanceiroDemanda>(`/demandas/${demandaId}/financeiro`); },
+  lancarFinanceiro(demandaId: string, data: Record<string, unknown>) { return request<RegistroFinanceiro>(`/demandas/${demandaId}/financeiro`, { method: "POST", body: JSON.stringify(data) }); },
+  estornarFinanceiro(demandaId: string, registroId: string, motivo: string) { return request<void>(`/demandas/${demandaId}/financeiro/${registroId}${qs({ motivo })}`, { method: "DELETE" }); },
+
+  // ── Autoridades (§7, §148) ──
+  listarAutoridades(params?: { busca?: string; tipo?: string; esfera?: string }) { return request<Autoridade[]>(`/autoridades${qs(params)}`); },
+  criarAutoridade(data: Record<string, unknown>) { return request<Autoridade>("/autoridades", { method: "POST", body: JSON.stringify(data) }); },
+  getAutoridade(id: string) { return request<Autoridade>(`/autoridades/${id}`); },
+  editarAutoridade(id: string, data: Record<string, unknown>) { return request<Autoridade>(`/autoridades/${id}`, { method: "PATCH", body: JSON.stringify(data) }); },
+  inativarAutoridade(id: string) { return request<void>(`/autoridades/${id}`, { method: "DELETE" }); },
+  historicoAutoridade(id: string) { return request<HistoricoAutoridade>(`/autoridades/${id}/historico`); },
+  adicionarContatoAutoridade(id: string, data: Record<string, unknown>) { return request<any>(`/autoridades/${id}/contatos`, { method: "POST", body: JSON.stringify(data) }); },
+
+  // ── Busca global e visões salvas (§48, §50) ──
+  buscaGlobal(q: string, limite = 10) { return request<BuscaGlobal>(`/busca${qs({ q, limite })}`); },
+  sugestoesBusca(q: string) { return request<{ id: string; numero: string; titulo: string }[]>(`/busca/sugestoes${qs({ q })}`); },
+  listarVisoes(recurso?: string) { return request<VisaoSalva[]>(`/visoes${qs({ recurso })}`); },
+  salvarVisao(data: { nome: string; filtros: Record<string, unknown>; descricao?: string; recurso?: string; layout?: string; compartilhada?: boolean; padrao?: boolean }) { return request<VisaoSalva>("/visoes", { method: "POST", body: JSON.stringify(data) }); },
+  editarVisao(id: string, data: Record<string, unknown>) { return request<VisaoSalva>(`/visoes/${id}`, { method: "PATCH", body: JSON.stringify(data) }); },
+  excluirVisao(id: string) { return request<void>(`/visoes/${id}`, { method: "DELETE" }); },
+
+  // ── Relatório completo da demanda (§90, §91) ──
+  relatorioDemanda(demandaId: string) { return request<RelatorioDemanda>(`/demandas/${demandaId}/relatorio`); },
+  gerarResumoExecutivo(demandaId: string) { return request<{ resumo_executivo: string }>(`/demandas/${demandaId}/resumo-executivo`, { method: "POST" }); },
+  async baixarRelatorioDemandaPdf(demandaId: string) {
+    const res = await fetch(`${BASE_URL}/demandas/${demandaId}/relatorio.pdf`, { headers: getHeaders() });
+    if (!res.ok) throw new Error("Não foi possível gerar o relatório em PDF");
+    return res.blob();
+  },
+
+  // ── Obra como faceta da demanda (§54) ──
+  listarObrasDemanda(demandaId: string) { return request<Obra[]>(`/demandas/${demandaId}/obras`); },
+  criarObraDemanda(demandaId: string, data: Record<string, unknown>) { return request<Obra>(`/demandas/${demandaId}/obras`, { method: "POST", body: JSON.stringify(data) }); },
+
+  listarModelosDemanda() { return request<any[]>("/modelos-demanda"); },
+  criarModeloDemanda(data: { nome: string; descricao?: string; configuracao: Record<string, unknown> }) { return request<any>("/modelos-demanda", { method: "POST", body: JSON.stringify(data) }); },
+  instanciarModeloDemanda(id: string) { return request<{ id: string; numero: string }>(`/modelos-demanda/${id}/instanciar`, { method: "POST" }); },
+  listarRecorrenciasDemanda() { return request<any[]>("/recorrencias-demanda"); },
+  criarRecorrenciaDemanda(data: { modelo_id: string; periodicidade: "MENSAL" | "TRIMESTRAL" | "ANUAL"; proxima_execucao: string }) { return request<any>("/recorrencias-demanda", { method: "POST", body: JSON.stringify(data) }); },
+  processarRecorrenciasDemanda() { return request<{ criadas: { id: string; numero: string }[]; total: number }>("/recorrencias-demanda/processar", { method: "POST" }); },
+  listarAusenciasSubstituicoes() { return request<any[]>("/ausencias-substituicoes"); },
+  criarAusenciaSubstituicao(data: Record<string, unknown>) { return request<any>("/ausencias-substituicoes", { method: "POST", body: JSON.stringify(data) }); },
+  relatorioDemandasResumo() { return request<{ ativas: number; novas_semana: number; movimentadas_semana: number; concluidas_semana: number; atrasadas: number; sem_movimentacao: number; valor_andamento: number; backlog_por_setor: Record<string, number>; heatmap_prazos: Record<string, number>; idade_media_dias: number }>("/relatorios/demandas/resumo"); },
+  async baixarRelatorioDemandasCsv() {
+    const res = await fetch(`${BASE_URL}/relatorios/demandas/exportar.csv`, { headers: getHeaders() });
+    if (!res.ok) throw new Error("Não foi possível exportar o relatório");
+    return res.blob();
   },
 
   // ── Relatórios ──

@@ -17,6 +17,7 @@ import {
   Send,
   Landmark,
   Clock,
+  Scale,
   ChevronRight,
   Plus,
   CheckCircle2,
@@ -61,8 +62,10 @@ function MesaConteudo() {
 
   const totalNosSetores = mesa.nos_setores.reduce((s, x) => s + x.total, 0);
   const atrasadasTotal = mesa.nos_setores.reduce((s, x) => s + x.atrasadas, 0);
+  const contestacoes = mesa.contestacoes ?? [];
   const tudoEmDia =
     mesa.para_analisar.length === 0 &&
+    contestacoes.length === 0 &&
     mesa.devolvidas.length === 0 &&
     totalNosSetores === 0 &&
     mesa.para_protocolar.length === 0;
@@ -76,7 +79,9 @@ function MesaConteudo() {
         <p className="text-[14px] text-[#667085] mt-1">
           {tudoEmDia
             ? "Nada aguardando você no momento."
-            : `${mesa.para_analisar.length} para analisar · ${totalNosSetores} nos departamentos${
+            : `${mesa.para_analisar.length} para analisar${
+                contestacoes.length ? ` · ${contestacoes.length} contestação(ões)` : ""
+              } · ${totalNosSetores} nos departamentos${
                 atrasadasTotal ? ` (${atrasadasTotal} em atraso)` : ""
               } · ${mesa.para_protocolar.length} para protocolar`}
         </p>
@@ -97,7 +102,24 @@ function MesaConteudo() {
         ))}
       </Bloco>
 
-      {/* 2 — Está com os departamentos */}
+      {/* 2 — Contestaram o prazo, a decisão é minha */}
+      {contestacoes.length > 0 && (
+        <Bloco
+          icone={<Scale className="w-[18px] h-[18px]" />}
+          titulo="Prazos contestados"
+          descricao="O departamento pediu revisão do prazo e aguarda sua decisão"
+          cor="#B42318"
+          fundo="#FEF3F2"
+          contagem={contestacoes.length}
+          vazio=""
+        >
+          {contestacoes.map((d) => (
+            <LinhaDemanda key={d.id} d={d} acao="Decidir" />
+          ))}
+        </Bloco>
+      )}
+
+      {/* 3 — Está com os departamentos */}
       <div className="bg-white border border-[#E4E7EC] rounded-xl overflow-hidden">
         <div className="flex items-center gap-3 px-5 py-4 border-b border-[#F2F4F7]">
           <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 bg-[#F2F4F7] text-[#475467]">
@@ -144,7 +166,7 @@ function MesaConteudo() {
         )}
       </div>
 
-      {/* 3 — Devolvi para correção */}
+      {/* 4 — Devolvi para correção */}
       {mesa.devolvidas.length > 0 && (
         <Bloco
           icone={<Undo2 className="w-[18px] h-[18px]" />}
@@ -161,7 +183,7 @@ function MesaConteudo() {
         </Bloco>
       )}
 
-      {/* 4 — Preciso protocolar no governo */}
+      {/* 5 — Preciso protocolar no governo */}
       <Bloco
         icone={<Send className="w-[18px] h-[18px]" />}
         titulo="Preciso protocolar no governo"
@@ -181,7 +203,7 @@ function MesaConteudo() {
         ))}
       </Bloco>
 
-      {/* 5 — Com o governo */}
+      {/* 6 — Com o governo */}
       {mesa.aguardando_governo.length > 0 && (
         <Bloco
           icone={<Landmark className="w-[18px] h-[18px]" />}
@@ -198,7 +220,7 @@ function MesaConteudo() {
         </Bloco>
       )}
 
-      {/* 6 — Prazos e esquecidos */}
+      {/* 7 — Prazos e esquecidos */}
       {(mesa.prazos_criticos.length > 0 || mesa.sem_movimentacao.length > 0) && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {mesa.prazos_criticos.length > 0 && (

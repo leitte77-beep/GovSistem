@@ -17,16 +17,22 @@ async def criar_notificacao(
     db: AsyncSession,
     destinatario_id: uuid.UUID,
     tipo: TipoNotificacao,
-    convenio_id: uuid.UUID,
     mensagem: str,
+    convenio_id: uuid.UUID | None = None,
+    demanda_id: uuid.UUID | None = None,
     tarefa_id: uuid.UUID | None = None,
     canal: CanalNotificacao = CanalNotificacao.IN_APP,
 ) -> Notificacao:
-    """Cria uma notificação para um usuário."""
+    """Cria uma notificação para um usuário.
+
+    A notificação se prende a uma demanda (v2) ou a um convênio (entidades
+    anteriores) — é o que dá ao usuário o link de volta para o contexto.
+    """
     notificacao = Notificacao(
         destinatario_id=destinatario_id,
         tipo=tipo,
         convenio_id=convenio_id,
+        demanda_id=demanda_id,
         tarefa_id=tarefa_id,
         mensagem=mensagem,
         canal=canal,
@@ -402,3 +408,25 @@ async def verificar_prazos(db: AsyncSession, organization_id: uuid.UUID) -> dict
 
     await db.commit()
     return {"notificacoes_criadas": criadas, "escalonadas": escaladas}
+
+
+# ── Tarefas da demanda (núcleo v2) ──────────────────────────────────────────
+
+async def notificar_tarefa_demanda(
+    db: AsyncSession,
+    tarefa,
+    tipo: TipoNotificacao,
+    destinatario_id: uuid.UUID | None,
+    mensagem: str,
+) -> Notificacao | None:
+    """Notifica sobre uma tarefa da demanda. Sem destinatário, não faz nada."""
+    if destinatario_id is None:
+        return None
+    return await criar_notificacao(
+        db,
+        destinatario_id=destinatario_id,
+        tipo=tipo,
+        demanda_id=tarefa.demanda_id,
+        tarefa_id=tarefa.id,
+        mensagem=mensagem,
+    )

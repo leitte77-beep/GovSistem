@@ -1,4 +1,5 @@
 import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -28,46 +29,87 @@ from app.schemas.obra import (
 )
 from app.services.auditoria import registrar_auditoria
 
-router = APIRouter(prefix="/convenios/{convenio_id}/obras", tags=["obras"])
+# Sem prefixo: o mesmo conjunto de rotas é montado duas vezes em `router.py`,
+# sob o convênio (entidades anteriores à v2) e sob a demanda (§54). O pai vem do
+# contexto, não de um parâmetro fixo, para que diário, fotos e vistorias
+# funcionem igual nos dois caminhos em vez de existirem só para um deles.
+router = APIRouter(tags=["obras"])
 
 
-async def _get_convenio(db, convenio_id, user):
-    result = await db.execute(
-        select(Convenio).where(
-            Convenio.id == convenio_id,
-            Convenio.organization_id == user.organization_id,
-            Convenio.deleted_at.is_(None),
+@dataclass
+class ContextoObra:
+    """Pai autorizado da obra: um convênio ou uma demanda, nunca os dois."""
+
+    convenio_id: uuid.UUID | None = None
+    demanda_id: uuid.UUID | None = None
+
+    @property
+    def filtro(self):
+        if self.demanda_id is not None:
+            return Obra.demanda_id == self.demanda_id
+        return Obra.convenio_id == self.convenio_id
+
+
+async def contexto_obra(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> ContextoObra:
+    """Resolve e autoriza o pai da obra a partir do caminho da requisição.
+
+    A autorização acontece aqui, antes de qualquer handler tocar na obra: é o
+    que garante que nenhum id de obra alcance o acervo de outro município, seja
+    pelo caminho do convênio ou pelo da demanda.
+    """
+    parametros = request.path_params
+    if "demanda_id" in parametros:
+        from app.core.auth import get_user_permissions
+        from app.services.demandas import get_demanda_ou_404
+
+        demanda = await get_demanda_ou_404(
+            db, uuid.UUID(str(parametros["demanda_id"])), user, get_user_permissions(user)
         )
-    )
-    return result.scalar_one_or_none()
+        return ContextoObra(demanda_id=demanda.id)
+
+    convenio_id = uuid.UUID(str(parametros["convenio_id"]))
+    convenio = (
+        await db.execute(
+            select(Convenio).where(
+                Convenio.id == convenio_id,
+                Convenio.organization_id == user.organization_id,
+                Convenio.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if convenio is None:
+        raise HTTPException(status_code=404, detail="Processo não encontrado")
+    return ContextoObra(convenio_id=convenio.id)
 
 
-async def _get_obra(db, convenio_id, obra_id, user):
+async def _get_obra(db, ctx: ContextoObra, obra_id, user, *, recarregar: bool = False):
     result = await db.execute(
         select(Obra)
-        .join(Convenio, Convenio.id == Obra.convenio_id)
-        .where(
-            Obra.id == obra_id,
-            Convenio.id == convenio_id,
-            Convenio.organization_id == user.organization_id,
-            Obra.deleted_at.is_(None),
-        )
+        .where(Obra.id == obra_id, ctx.filtro, Obra.deleted_at.is_(None))
         .options(selectinload(Obra.cronograma))
     )
-    return result.scalar_one_or_none()
+    obra = result.scalar_one_or_none()
+    # A sessão roda com `expire_on_commit=False`: uma coleção lida antes do
+    # commit continuaria devolvendo a lista antiga, e a resposta esconderia o
+    # item de cronograma que o usuário acabou de inserir.
+    if obra is not None and recarregar:
+        await db.refresh(obra, attribute_names=["cronograma"])
+    return obra
 
 
 @router.get("", response_model=list[ObraOut])
 async def listar_obras(
-    convenio_id: uuid.UUID,
+    ctx: ContextoObra = Depends(contexto_obra),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    if not await _get_convenio(db, convenio_id, user):
-        raise HTTPException(status_code=404, detail="Processo não encontrado")
     result = await db.execute(
         select(Obra)
-        .where(Obra.convenio_id == convenio_id, Obra.deleted_at.is_(None))
+        .where(ctx.filtro, Obra.deleted_at.is_(None))
         .options(selectinload(Obra.cronograma))
     )
     return result.scalars().all()
@@ -76,16 +118,14 @@ async def listar_obras(
 @router.post("", response_model=ObraOut, status_code=201)
 async def criar_obra(
     request: Request,
-    convenio_id: uuid.UUID,
     body: ObraCreate,
+    ctx: ContextoObra = Depends(contexto_obra),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission(Perm.ENGINEERING_MANAGE)),
 ):
-    if not await _get_convenio(db, convenio_id, user):
-        raise HTTPException(status_code=404, detail="Processo não encontrado")
-
     obra = Obra(
-        convenio_id=convenio_id,
+        convenio_id=ctx.convenio_id,
+        demanda_id=ctx.demanda_id,
         nome=body.nome,
         endereco=body.endereco,
         coordenadas=body.coordenadas,
@@ -109,24 +149,24 @@ async def criar_obra(
         user_id=user.id,
         organization_id=user.organization_id,
         acao="obra.criar",
-        convenio_id=convenio_id,
+        convenio_id=ctx.convenio_id,
         entidade="obra",
         entidade_id=obra.id,
         request=request,
     )
     await db.commit()
-    return await _get_obra(db, convenio_id, obra.id, user)
+    return await _get_obra(db, ctx, obra.id, user, recarregar=True)
 
 
 @router.patch("/{obra_id}", response_model=ObraOut)
 async def atualizar_obra(
-    convenio_id: uuid.UUID,
     obra_id: uuid.UUID,
     body: ObraUpdate,
+    ctx: ContextoObra = Depends(contexto_obra),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission(Perm.ENGINEERING_MANAGE)),
 ):
-    obra = await _get_obra(db, convenio_id, obra_id, user)
+    obra = await _get_obra(db, ctx, obra_id, user)
     if not obra:
         raise HTTPException(status_code=404, detail="Obra não encontrada")
 
@@ -139,18 +179,18 @@ async def atualizar_obra(
             setattr(obra, field, value)
 
     await db.commit()
-    return await _get_obra(db, convenio_id, obra_id, user)
+    return await _get_obra(db, ctx, obra_id, user, recarregar=True)
 
 
 @router.post("/{obra_id}/cronograma", response_model=ObraOut)
 async def adicionar_cronograma(
-    convenio_id: uuid.UUID,
     obra_id: uuid.UUID,
     body: CronogramaItemCreate,
+    ctx: ContextoObra = Depends(contexto_obra),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission(Perm.ENGINEERING_MANAGE)),
 ):
-    obra = await _get_obra(db, convenio_id, obra_id, user)
+    obra = await _get_obra(db, ctx, obra_id, user)
     if not obra:
         raise HTTPException(status_code=404, detail="Obra não encontrada")
 
@@ -166,19 +206,19 @@ async def adicionar_cronograma(
     )
     db.add(item)
     await db.commit()
-    return await _get_obra(db, convenio_id, obra_id, user)
+    return await _get_obra(db, ctx, obra_id, user, recarregar=True)
 
 
 @router.patch("/{obra_id}/cronograma/{item_id}", response_model=ObraOut)
 async def atualizar_cronograma(
-    convenio_id: uuid.UUID,
     obra_id: uuid.UUID,
     item_id: uuid.UUID,
     body: CronogramaItemUpdate,
+    ctx: ContextoObra = Depends(contexto_obra),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission(Perm.ENGINEERING_MANAGE)),
 ):
-    obra = await _get_obra(db, convenio_id, obra_id, user)
+    obra = await _get_obra(db, ctx, obra_id, user)
     if not obra:
         raise HTTPException(status_code=404, detail="Obra não encontrada")
     result = await db.execute(select(CronogramaItem).where(CronogramaItem.id == item_id, CronogramaItem.obra_id == obra_id))
@@ -192,17 +232,17 @@ async def atualizar_cronograma(
             setattr(item, field, value)
 
     await db.commit()
-    return await _get_obra(db, convenio_id, obra_id, user)
+    return await _get_obra(db, ctx, obra_id, user, recarregar=True)
 
 
 @router.get("/{obra_id}/diario", response_model=list[DiarioOut])
 async def listar_diario(
-    convenio_id: uuid.UUID,
     obra_id: uuid.UUID,
+    ctx: ContextoObra = Depends(contexto_obra),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    obra = await _get_obra(db, convenio_id, obra_id, user)
+    obra = await _get_obra(db, ctx, obra_id, user)
     if not obra:
         raise HTTPException(status_code=404, detail="Obra não encontrada")
     result = await db.execute(
@@ -213,13 +253,13 @@ async def listar_diario(
 
 @router.post("/{obra_id}/diario", response_model=DiarioOut, status_code=201)
 async def registrar_diario(
-    convenio_id: uuid.UUID,
     obra_id: uuid.UUID,
     body: DiarioCreate,
+    ctx: ContextoObra = Depends(contexto_obra),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission(Perm.ENGINEERING_MANAGE)),
 ):
-    obra = await _get_obra(db, convenio_id, obra_id, user)
+    obra = await _get_obra(db, ctx, obra_id, user)
     if not obra:
         raise HTTPException(status_code=404, detail="Obra não encontrada")
 
@@ -247,14 +287,14 @@ async def registrar_diario(
 
 @router.patch("/{obra_id}/diario/{registro_id}", response_model=DiarioOut)
 async def atualizar_diario(
-    convenio_id: uuid.UUID,
     obra_id: uuid.UUID,
     registro_id: uuid.UUID,
     body: DiarioCreate,
+    ctx: ContextoObra = Depends(contexto_obra),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission(Perm.ENGINEERING_MANAGE)),
 ):
-    obra = await _get_obra(db, convenio_id, obra_id, user)
+    obra = await _get_obra(db, ctx, obra_id, user)
     if not obra:
         raise HTTPException(status_code=404, detail="Obra não encontrada")
     result = await db.execute(
@@ -277,13 +317,13 @@ async def atualizar_diario(
 
 @router.delete("/{obra_id}/diario/{registro_id}", status_code=204)
 async def excluir_diario(
-    convenio_id: uuid.UUID,
     obra_id: uuid.UUID,
     registro_id: uuid.UUID,
+    ctx: ContextoObra = Depends(contexto_obra),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission(Perm.ENGINEERING_MANAGE)),
 ):
-    obra = await _get_obra(db, convenio_id, obra_id, user)
+    obra = await _get_obra(db, ctx, obra_id, user)
     if not obra:
         raise HTTPException(status_code=404, detail="Obra não encontrada")
     result = await db.execute(
@@ -303,12 +343,12 @@ async def excluir_diario(
 
 @router.get("/{obra_id}/fotos", response_model=list[FotoOut])
 async def listar_fotos(
-    convenio_id: uuid.UUID,
     obra_id: uuid.UUID,
+    ctx: ContextoObra = Depends(contexto_obra),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    obra = await _get_obra(db, convenio_id, obra_id, user)
+    obra = await _get_obra(db, ctx, obra_id, user)
     if not obra:
         raise HTTPException(status_code=404, detail="Obra não encontrada")
     result = await db.execute(
@@ -319,13 +359,13 @@ async def listar_fotos(
 
 @router.post("/{obra_id}/fotos", response_model=FotoOut, status_code=201)
 async def registrar_foto(
-    convenio_id: uuid.UUID,
     obra_id: uuid.UUID,
     body: FotoCreate,
+    ctx: ContextoObra = Depends(contexto_obra),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission(Perm.ENGINEERING_MANAGE)),
 ):
-    obra = await _get_obra(db, convenio_id, obra_id, user)
+    obra = await _get_obra(db, ctx, obra_id, user)
     if not obra:
         raise HTTPException(status_code=404, detail="Obra não encontrada")
 
@@ -347,14 +387,14 @@ async def registrar_foto(
 
 @router.post("/{obra_id}/fotos/{foto_id}/anexar", response_model=FotoOut)
 async def anexar_foto(
-    convenio_id: uuid.UUID,
     obra_id: uuid.UUID,
     foto_id: uuid.UUID,
     anexo_id: uuid.UUID,
+    ctx: ContextoObra = Depends(contexto_obra),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission(Perm.ENGINEERING_MANAGE)),
 ):
-    obra = await _get_obra(db, convenio_id, obra_id, user)
+    obra = await _get_obra(db, ctx, obra_id, user)
     if not obra:
         raise HTTPException(status_code=404, detail="Obra não encontrada")
     result = await db.execute(select(RegistroFotografico).where(RegistroFotografico.id == foto_id, RegistroFotografico.obra_id == obra_id))
@@ -369,12 +409,12 @@ async def anexar_foto(
 
 @router.get("/{obra_id}/vistorias", response_model=list[VistoriaOut])
 async def listar_vistorias(
-    convenio_id: uuid.UUID,
     obra_id: uuid.UUID,
+    ctx: ContextoObra = Depends(contexto_obra),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(get_current_user),
 ):
-    obra = await _get_obra(db, convenio_id, obra_id, user)
+    obra = await _get_obra(db, ctx, obra_id, user)
     if not obra:
         raise HTTPException(status_code=404, detail="Obra não encontrada")
     result = await db.execute(
@@ -385,13 +425,13 @@ async def listar_vistorias(
 
 @router.post("/{obra_id}/vistorias", response_model=VistoriaOut, status_code=201)
 async def registrar_vistoria(
-    convenio_id: uuid.UUID,
     obra_id: uuid.UUID,
     body: VistoriaCreate,
+    ctx: ContextoObra = Depends(contexto_obra),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission(Perm.ENGINEERING_MANAGE)),
 ):
-    obra = await _get_obra(db, convenio_id, obra_id, user)
+    obra = await _get_obra(db, ctx, obra_id, user)
     if not obra:
         raise HTTPException(status_code=404, detail="Obra não encontrada")
 
@@ -416,14 +456,14 @@ async def registrar_vistoria(
 
 @router.patch("/{obra_id}/vistorias/{vistoria_id}", response_model=VistoriaOut)
 async def atualizar_vistoria(
-    convenio_id: uuid.UUID,
     obra_id: uuid.UUID,
     vistoria_id: uuid.UUID,
     body: VistoriaUpdate,
+    ctx: ContextoObra = Depends(contexto_obra),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission(Perm.ENGINEERING_MANAGE)),
 ):
-    obra = await _get_obra(db, convenio_id, obra_id, user)
+    obra = await _get_obra(db, ctx, obra_id, user)
     if not obra:
         raise HTTPException(status_code=404, detail="Obra não encontrada")
     result = await db.execute(select(VistoriaObra).where(VistoriaObra.id == vistoria_id, VistoriaObra.obra_id == obra_id))
@@ -444,13 +484,13 @@ async def atualizar_vistoria(
 
 @router.delete("/{obra_id}/vistorias/{vistoria_id}", status_code=204)
 async def excluir_vistoria(
-    convenio_id: uuid.UUID,
     obra_id: uuid.UUID,
     vistoria_id: uuid.UUID,
+    ctx: ContextoObra = Depends(contexto_obra),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission(Perm.RESOURCE_DELETE)),
 ):
-    obra = await _get_obra(db, convenio_id, obra_id, user)
+    obra = await _get_obra(db, ctx, obra_id, user)
     if not obra:
         raise HTTPException(status_code=404, detail="Obra não encontrada")
     result = await db.execute(select(VistoriaObra).where(VistoriaObra.id == vistoria_id, VistoriaObra.obra_id == obra_id))
@@ -464,12 +504,12 @@ async def excluir_vistoria(
 
 @router.delete("/{obra_id}", status_code=204)
 async def excluir_obra(
-    convenio_id: uuid.UUID,
     obra_id: uuid.UUID,
+    ctx: ContextoObra = Depends(contexto_obra),
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_permission(Perm.RESOURCE_DELETE)),
 ):
-    obra = await _get_obra(db, convenio_id, obra_id, user)
+    obra = await _get_obra(db, ctx, obra_id, user)
     if not obra:
         raise HTTPException(status_code=404, detail="Obra não encontrada")
     obra.deleted_at = datetime.now(timezone.utc)

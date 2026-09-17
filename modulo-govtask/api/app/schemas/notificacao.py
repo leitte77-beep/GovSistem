@@ -11,7 +11,10 @@ class NotificacaoOut(BaseModel):
     id: uuid.UUID
     destinatario_id: uuid.UUID
     tipo: TipoNotificacao
-    convenio_id: uuid.UUID
+    # A notificação se prende a uma demanda (v2) **ou** a um convênio (entidades
+    # anteriores); exigir o convênio quebrava toda notificação do núcleo novo.
+    convenio_id: Optional[uuid.UUID] = None
+    demanda_id: Optional[uuid.UUID] = None
     tarefa_id: uuid.UUID | None
     mensagem: str
     canal: CanalNotificacao

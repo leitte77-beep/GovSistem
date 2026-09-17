@@ -224,7 +224,9 @@ async def criar_convenio(
         categoria=body.categoria.value if body.categoria else None,
         esfera=body.esfera.value if body.esfera else None,
         prioridade=body.prioridade.value if body.prioridade else None,
-        situacao=body.situacao or (SituacaoProcesso.default_flow()[0] if body.categoria else None),
+        # Todo processo nasce com situação: é ela que alimenta o stepper, o
+        # progresso e os filtros. Sem categoria o processo ficava sem trilho.
+        situacao=body.situacao or SituacaoProcesso.default_flow()[0],
         parlamentar=body.parlamentar,
         parlamentar_cargo=body.parlamentar_cargo,
         partido=body.partido,
