@@ -3,12 +3,13 @@ from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.auth import get_current_user, require_roles
+from app.core.auth import get_current_user, require_permission
 from app.core.database import get_db
+from app.core.permissions import Perm
 from app.models.setor import Setor
 from app.models.template_fluxo import TemplateEtapa, TemplateFluxo
 from app.models.user import User
@@ -46,7 +47,10 @@ async def listar_setores(
     user: User = Depends(get_current_user),
 ):
     result = await db.execute(
-        select(Setor).where(Setor.deleted_at.is_(None)).order_by(Setor.nome)
+        select(Setor).where(
+            or_(Setor.organization_id == user.organization_id, Setor.organization_id.is_(None)),
+            Setor.deleted_at.is_(None),
+        ).order_by(Setor.nome)
     )
     return result.scalars().all()
 
@@ -55,9 +59,10 @@ async def listar_setores(
 async def criar_setor(
     body: SetorCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ADMIN")),
+    user: User = Depends(require_permission(Perm.ADMIN_CONFIG)),
 ):
     setor = Setor(
+        organization_id=user.organization_id,
         nome=body.nome,
         sigla=body.sigla,
         descricao=body.descricao,
@@ -78,7 +83,13 @@ async def listar_templates_fluxo(
 ):
     query = (
         select(TemplateFluxo)
-        .where(TemplateFluxo.deleted_at.is_(None))
+        .where(
+            or_(
+                TemplateFluxo.organization_id == user.organization_id,
+                TemplateFluxo.organization_id.is_(None),
+            ),
+            TemplateFluxo.deleted_at.is_(None),
+        )
         .options(selectinload(TemplateFluxo.etapas))
         .order_by(TemplateFluxo.nome)
     )
@@ -92,9 +103,10 @@ async def listar_templates_fluxo(
 async def criar_template_fluxo(
     body: TemplateFluxoCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ADMIN")),
+    user: User = Depends(require_permission(Perm.ADMIN_CONFIG)),
 ):
     template = TemplateFluxo(
+        organization_id=user.organization_id,
         nome=body.nome,
         tipo_convenio=body.tipo_convenio,
         descricao=body.descricao,
@@ -121,11 +133,15 @@ async def atualizar_template_fluxo(
     template_id: uuid.UUID,
     body: TemplateFluxoCreate,
     db: AsyncSession = Depends(get_db),
-    user: User = Depends(require_roles("ADMIN")),
+    user: User = Depends(require_permission(Perm.ADMIN_CONFIG)),
 ):
     result = await db.execute(
         select(TemplateFluxo)
-        .where(TemplateFluxo.id == template_id, TemplateFluxo.deleted_at.is_(None))
+        .where(
+            TemplateFluxo.id == template_id,
+            TemplateFluxo.organization_id == user.organization_id,
+            TemplateFluxo.deleted_at.is_(None),
+        )
         .options(selectinload(TemplateFluxo.etapas))
     )
     template = result.scalar_one_or_none()
@@ -169,6 +185,10 @@ async def listar_usuarios(
     user: User = Depends(get_current_user),
 ):
     result = await db.execute(
-        select(User).where(User.deleted_at.is_(None), User.is_active == True).order_by(User.name)
+        select(User).where(
+            User.organization_id == user.organization_id,
+            User.deleted_at.is_(None),
+            User.is_active == True,
+        ).order_by(User.name)
     )
     return result.scalars().all()

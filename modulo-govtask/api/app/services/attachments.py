@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.storage import storage
 from app.models.anexo import Anexo
-from app.models.enums import TipoDocumento
+from app.models.enums import CategoriaDocumento, ClassificacaoDocumento, TipoDocumento
 
 
 async def upload_anexo(
@@ -18,8 +18,16 @@ async def upload_anexo(
     convenio_id: uuid.UUID,
     enviado_por_id: uuid.UUID,
     tipo_documento: TipoDocumento = TipoDocumento.OUTRO,
+    categoria: CategoriaDocumento = CategoriaDocumento.OUTROS,
+    classificacao: ClassificacaoDocumento = ClassificacaoDocumento.INTERNO,
+    descricao: str | None = None,
+    motivo_versao: str | None = None,
     etapa_id: uuid.UUID | None = None,
     tarefa_id: uuid.UUID | None = None,
+    medicao_id: uuid.UUID | None = None,
+    prestacao_id: uuid.UUID | None = None,
+    diligencia_id: uuid.UUID | None = None,
+    entrega_id: uuid.UUID | None = None,
 ) -> Anexo:
     """Faz upload de um arquivo com versionamento automático."""
 
@@ -53,8 +61,16 @@ async def upload_anexo(
         convenio_id=convenio_id,
         etapa_id=etapa_id,
         tarefa_id=tarefa_id,
+        medicao_id=medicao_id,
+        prestacao_id=prestacao_id,
+        diligencia_id=diligencia_id,
+        entrega_id=entrega_id,
         nome_arquivo=file.filename or "arquivo",
         tipo_documento=tipo_documento,
+        categoria=categoria,
+        classificacao=classificacao,
+        descricao=descricao,
+        motivo_versao=motivo_versao,
         storage_path=storage_path,
         tamanho_bytes=len(content),
         versao=next_version,

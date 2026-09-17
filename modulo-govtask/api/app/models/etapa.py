@@ -2,27 +2,75 @@ import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING, List, Optional
 
-from sqlalchemy import DateTime, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, DateTime, ForeignKey, Integer, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, SoftDeleteMixin, TimestampMixin
-from app.models.enums import NaturezaEtapa, StatusEtapa
+from app.models.enums import (
+    ModoEtapa,
+    NaturezaEtapa,
+    RegraConclusaoEtapa,
+    StatusEtapa,
+)
 
 if TYPE_CHECKING:
     from app.models.anexo import Anexo
     from app.models.convenio import Convenio
+    from app.models.demanda import Demanda
     from app.models.tarefa import Tarefa
 
 
 class Etapa(Base, TimestampMixin, SoftDeleteMixin):
     __tablename__ = "etapas"
 
-    convenio_id: Mapped[uuid.UUID] = mapped_column(
+    convenio_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("convenios.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
+    )
+    demanda_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("demandas.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+        comment="Demanda dona da etapa (núcleo v2)",
+    )
+    workflow_versao_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workflow_versoes.id", ondelete="SET NULL"),
+        nullable=True,
+        comment="Versão do fluxo com que esta demanda começou",
+    )
+    workflow_etapa_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("workflow_etapas.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+        comment="Receita que originou esta etapa",
+    )
+    modo: Mapped[ModoEtapa] = mapped_column(
+        String(20), nullable=False, default=ModoEtapa.SEQUENCIAL
+    )
+    regra_conclusao: Mapped[RegraConclusaoEtapa] = mapped_column(
+        String(20), nullable=False, default=RegraConclusaoEtapa.TODAS_TAREFAS
+    )
+    documentos_obrigatorios: Mapped[Optional[list]] = mapped_column(
+        JSON, nullable=True
+    )
+    peso: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0,
+        comment="Peso da etapa no progresso da demanda (§68); 0 = distribuir igualmente",
+    )
+    descricao: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    setor_responsavel_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("setores.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    prazo: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True), nullable=True, comment="Prazo da etapa (§35)"
     )
     nome: Mapped[str] = mapped_column(String(255), nullable=False)
     ordem: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
@@ -48,7 +96,10 @@ class Etapa(Base, TimestampMixin, SoftDeleteMixin):
     )
 
     # Relationships
-    convenio: Mapped["Convenio"] = relationship("Convenio", back_populates="etapas")
+    convenio: Mapped[Optional["Convenio"]] = relationship(
+        "Convenio", back_populates="etapas"
+    )
+    demanda: Mapped[Optional["Demanda"]] = relationship("Demanda")
     tarefas: Mapped[List["Tarefa"]] = relationship(
         "Tarefa", back_populates="etapa", lazy="selectin",
         cascade="all, delete-orphan",

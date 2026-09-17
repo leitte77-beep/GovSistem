@@ -232,6 +232,7 @@ export default function NovaTarefaPage() {
   return (
     <div className="space-y-6 max-w-2xl">
       <PageHeader
+        eyebrow="Tarefa"
         title="Nova Tarefa"
         description={`Criar tarefa para o convênio: ${convenio.titulo}`}
         breadcrumbs={[

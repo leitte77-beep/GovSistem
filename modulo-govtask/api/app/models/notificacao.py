@@ -11,6 +11,7 @@ from app.models.enums import CanalNotificacao, TipoNotificacao
 
 if TYPE_CHECKING:
     from app.models.convenio import Convenio
+    from app.models.demanda import Demanda
     from app.models.tarefa import Tarefa
     from app.models.user import User
 
@@ -27,11 +28,18 @@ class Notificacao(Base, TimestampMixin):
     tipo: Mapped[TipoNotificacao] = mapped_column(
         String(30), nullable=False, index=True
     )
-    convenio_id: Mapped[uuid.UUID] = mapped_column(
+    convenio_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("convenios.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
         index=True,
+    )
+    demanda_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("demandas.id", ondelete="CASCADE"),
+        nullable=True,
+        index=True,
+        comment="Demanda a que a notificação se refere (núcleo v2)",
     )
     tarefa_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
@@ -50,7 +58,10 @@ class Notificacao(Base, TimestampMixin):
 
     # Relationships
     destinatario: Mapped["User"] = relationship("User", foreign_keys=[destinatario_id])
-    convenio: Mapped["Convenio"] = relationship("Convenio", back_populates="notificacoes")
+    convenio: Mapped[Optional["Convenio"]] = relationship(
+        "Convenio", back_populates="notificacoes"
+    )
+    demanda: Mapped[Optional["Demanda"]] = relationship("Demanda")
     tarefa: Mapped[Optional["Tarefa"]] = relationship(
         "Tarefa", back_populates="notificacoes"
     )

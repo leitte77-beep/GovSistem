@@ -75,6 +75,9 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
     INTERNAL_API_KEY: SecretStr = SecretStr("")
+    # Authentication is owned by the SaaS platform. Local credentials exist
+    # only as an opt-in escape hatch for isolated developer fixtures.
+    ALLOW_LOCAL_AUTH: bool = False
 
     UPLOAD_DIR: str = "uploads"
     MAX_UPLOAD_SIZE_MB: int = 50
@@ -99,6 +102,66 @@ class Settings(BaseSettings):
 
     # Deadline notification milestones (days before deadline)
     NOTIFY_DEADLINE_DAYS: list[int] = [7, 3, 1, 0]
+
+    # Varredura periódica de prazos/escalonamento (app.services.scheduler).
+    # Roda in-process: mantenha um único worker uvicorn, ou desabilite aqui e
+    # dispare POST /admin/escalonamento/verificar por um agendador externo.
+    DEADLINE_CHECK_ENABLED: bool = True
+    DEADLINE_CHECK_INTERVAL_MINUTES: int = 60
+
+    # Webhooks de saída (§196). Desligado por padrão: só enfileira eventos se a
+    # organização tiver endpoint ativo, e a entrega é feita por processador
+    # explícito, nunca dentro da transação da timeline.
+    WEBHOOKS_ENABLED: bool = False
+    WEBHOOK_MAX_TENTATIVAS: int = 5
+    WEBHOOK_TIMEOUT_SEGUNDOS: int = 10
+
+    # Notificações multicanal (§41). O canal in-app é sempre gravado; o e-mail é
+    # o único canal externo real hoje e fica desligado por padrão. WhatsApp e
+    # push entram como extensão do despachante quando houver provedor — nunca
+    # como integração simulada.
+    EMAIL_ENABLED: bool = False
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: SecretStr = SecretStr("")
+    SMTP_FROM: str = "nao-responder@localhost"
+    SMTP_USE_TLS: bool = True
+    SMTP_TIMEOUT_SEGUNDOS: int = 10
+    # Outbox: o e-mail é enfileirado na notificação e entregue por um
+    # processador, com retentativa. Sem isto, uma queda de SMTP perde o aviso.
+    EMAIL_MAX_TENTATIVAS: int = 5
+    EMAIL_OUTBOX_ENABLED: bool = True
+    EMAIL_OUTBOX_INTERVAL_MINUTES: int = 5
+
+    # Tempo real (§127). O broker em processo atende um único worker; com mais
+    # de um, ligue o fan-out por Redis para o evento alcançar quem está em
+    # outro processo.
+    REALTIME_ENABLED: bool = True
+    REALTIME_BACKEND: str = "memory"  # memory | redis
+    REALTIME_HEARTBEAT_SEGUNDOS: int = 20
+
+    # Camada de IA (§92). Desligada por padrão: nenhum texto de demanda sai do
+    # ambiente sem configuração explícita. As rotas devolvem **sugestão**, que
+    # só vira informação oficial por confirmação humana.
+    AI_ENABLED: bool = False
+    AI_PROVIDER: str = "gemini"
+    AI_API_KEY: SecretStr = SecretStr("")
+    AI_MODEL: str = "gemini-2.5-flash"
+    AI_TIMEOUT_SEGUNDOS: int = 30
+    AI_MAX_TOKENS: int = 1024
+
+    # Assinatura digital (§78). O GovTask aciona o serviço de assinatura do
+    # GovSistem (`apps/signer`). Sem URL e certificado configurados, a ação
+    # responde 503 — nunca uma assinatura simulada. O certificado A1 é segredo
+    # do ambiente e não fica no banco do módulo.
+    SIGNER_ENABLED: bool = False
+    SIGNER_URL: str = ""
+    SIGNER_INTERNAL_API_KEY: SecretStr = SecretStr("")
+    SIGNER_TIMEOUT_SEGUNDOS: int = 120
+    SIGNER_CERT_PFX_BASE64: SecretStr = SecretStr("")
+    SIGNER_CERT_PFX_PASSWORD: SecretStr = SecretStr("")
+    SIGNER_REASON_PADRAO: str = "Assinatura Digital - GovTask ICP-Brasil"
 
     PASSWORD_MIN_LENGTH: int = 8
     PASSWORD_MIN_UPPERCASE: int = 1

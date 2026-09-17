@@ -1,0 +1,21 @@
+{
+  "name": "GovTask — Gestão de Demandas",
+  "short_name": "GovTask",
+  "description": "Gestão estratégica de demandas, tarefas e projetos do município.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#f8fafc",
+  "theme_color": "#1d4ed8",
+  "lang": "pt-BR",
+  "categories": ["government", "productivity", "business"],
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

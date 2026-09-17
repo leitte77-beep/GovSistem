@@ -8,6 +8,7 @@ type PageHeaderProps = {
   description?: string;
   actions?: React.ReactNode;
   breadcrumbs?: { label: string; href?: string }[];
+  eyebrow?: string;
   className?: string;
 };
 
@@ -16,6 +17,7 @@ export function PageHeader({
   description,
   actions,
   breadcrumbs,
+  eyebrow,
   className,
 }: PageHeaderProps) {
   return (
@@ -25,14 +27,19 @@ export function PageHeader({
           <Breadcrumbs items={breadcrumbs} />
         </div>
       )}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-h1 text-text-title">{title}</h1>
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+        <div className="min-w-0">
+          {eyebrow && (
+            <p className="text-[12px] font-semibold uppercase tracking-[0.14em] text-[#2563EB] mb-1">
+              {eyebrow}
+            </p>
+          )}
+          <h1 className="text-h1 text-text-title tracking-tight">{title}</h1>
           {description && (
-            <p className="text-body-sm text-text-body mt-1">{description}</p>
+            <p className="text-body-sm text-text-body mt-1.5">{description}</p>
           )}
         </div>
-        {actions && <div className="flex items-center gap-3 shrink-0">{actions}</div>}
+        {actions && <div className="flex items-center gap-2.5 shrink-0">{actions}</div>}
       </div>
     </div>
   );

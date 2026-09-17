@@ -1,0 +1,4 @@
+Mantém o diretório no git. O Dockerfile faz `COPY --from=builder /app/public
+./public`, e o Next.js trata `public/` como opcional — mas o COPY não: sem o
+diretório, o build da imagem falha com "/app/public: not found". Como o git não
+versiona diretório vazio, ele desaparecia em qualquer checkout limpo.

@@ -14,6 +14,10 @@ class StorageBackend(ABC):
         ...
 
     @abstractmethod
+    async def retrieve(self, path: str) -> bytes:
+        ...
+
+    @abstractmethod
     async def delete(self, path: str) -> None:
         ...
 
@@ -35,6 +39,13 @@ class LocalStorage(StorageBackend):
         with open(full_path, "wb") as f:
             f.write(content)
         return path
+
+    async def retrieve(self, path: str) -> bytes:
+        full_path = os.path.join(self.base_path, path)
+        if not os.path.exists(full_path):
+            raise FileNotFoundError(path)
+        with open(full_path, "rb") as f:
+            return f.read()
 
     async def delete(self, path: str) -> None:
         full_path = os.path.join(self.base_path, path)
@@ -70,6 +81,9 @@ class MinioStorage(StorageBackend):
         )
         return path
 
+    async def retrieve(self, path: str) -> bytes:
+        return self._client.get_object(self._bucket, path)
+
     async def delete(self, path: str) -> None:
         self._client.remove_object(self._bucket, path)
 
@@ -102,6 +116,14 @@ class _SyncMinioClient:
 
     def put_object(self, bucket: str, path: str, data: BytesIO, length: int) -> None:
         self._client.put_object(bucket, path, data, length)
+
+    def get_object(self, bucket: str, path: str) -> bytes:
+        resposta = self._client.get_object(bucket, path)
+        try:
+            return resposta.read()
+        finally:
+            resposta.close()
+            resposta.release_conn()
 
     def remove_object(self, bucket: str, path: str) -> None:
         self._client.remove_object(bucket, path)

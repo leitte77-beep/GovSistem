@@ -22,7 +22,7 @@ export function Card({
       className={cn(
         "bg-surface-card border border-surface-border rounded-card shadow-card",
         padding,
-        hover && "transition-shadow hover:shadow-elevated cursor-pointer",
+        hover && "card-hover-lift cursor-pointer",
         className
       )}
       onClick={onClick}

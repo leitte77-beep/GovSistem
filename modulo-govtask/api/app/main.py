@@ -1,3 +1,5 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -8,15 +10,28 @@ from app.core.database import dispose_sync_engine, engine
 from app.middleware.audit import audit_middleware
 from app.middleware.json_logging import JSONLogMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
+from app.services import realtime, scheduler
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    scheduler.start()
+    await realtime.start()
+    yield
+    await scheduler.stop()
+    await realtime.stop()
+    dispose_sync_engine()
+    await engine.dispose()
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
         title=settings.APP_NAME,
-        description="GovTask - Gestão de Convênios Públicos",
+        description="GovTask - Gestão de Recursos Públicos",
         version=settings.VERSION,
         docs_url="/docs",
         redoc_url="/redoc",
+        lifespan=lifespan,
     )
 
     app.add_middleware(
@@ -49,11 +64,6 @@ def create_app() -> FastAPI:
     @app.get("/api/govtask/health")
     async def health():
         return {"status": "ok", "app": settings.APP_NAME, "version": settings.VERSION}
-
-    @app.on_event("shutdown")
-    async def shutdown():
-        dispose_sync_engine()
-        await engine.dispose()
 
     return app
 

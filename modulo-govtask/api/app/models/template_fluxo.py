@@ -15,6 +15,12 @@ if TYPE_CHECKING:
 class TemplateFluxo(Base, TimestampMixin, SoftDeleteMixin):
     __tablename__ = "templates_fluxo"
 
+    organization_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"),
+        nullable=True, index=True,
+        comment="NULL apenas para templates padrão mantidos pelo sistema",
+    )
+
     nome: Mapped[str] = mapped_column(String(255), nullable=False)
     tipo_convenio: Mapped[TipoConvenio] = mapped_column(
         String(20), nullable=False

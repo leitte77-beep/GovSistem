@@ -51,16 +51,16 @@ export function DataTable<T extends Record<string, unknown>>({
   const totalPages = pagination ? Math.ceil(pagination.total / pagination.pageSize) : 0;
 
   return (
-    <div className={cn("bg-surface-card border border-surface-border rounded-card overflow-hidden", className)}>
+    <div className={cn("bg-surface-card border border-surface-border rounded-card overflow-hidden shadow-card", className)}>
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-surface-border bg-[#F6F7F9]">
+            <tr className="border-b border-surface-border bg-[#F9FAFB]">
               {columns.map((col) => (
                 <th
                   key={col.key}
                   className={cn(
-                    "px-4 py-3 text-left text-label text-text-body",
+                    "px-4 py-3 text-left text-[12px] font-semibold uppercase tracking-wide text-[#667085]",
                     col.sortable && "cursor-pointer select-none hover:text-text-title",
                     col.className
                   )}
@@ -152,9 +152,9 @@ export function DataTable<T extends Record<string, unknown>>({
                   key={pageNum}
                   onClick={() => pagination.onChange(pageNum)}
                   className={cn(
-                    "w-8 h-8 rounded-btn text-body-sm font-medium transition-colors",
+                    "w-8 h-8 rounded-lg text-body-sm font-semibold transition-all",
                     pageNum === pagination.page
-                      ? "bg-[#1D4ED8] text-white"
+                      ? "bg-gradient-primary text-white shadow-md shadow-[#2563EB]/25"
                       : "text-text-body hover:bg-surface-bg"
                   )}
                 >
