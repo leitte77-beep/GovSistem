@@ -19,7 +19,7 @@ e em teste o volume é irrelevante.
 """
 
 
-from sqlalchemy import Select, func, or_, select, text
+from sqlalchemy import Select, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.autoridade import Autoridade
@@ -44,18 +44,24 @@ def aplicar_busca(stmt: Select, db: AsyncSession, termo: str) -> Select:
     if not termo:
         return stmt
     if _postgres(db):
-        # websearch_to_tsquery aceita a sintaxe que o usuário já conhece de
-        # buscadores ("ambulância -usada", "emenda OR convênio") sem estourar
-        # erro de sintaxe em entrada livre, ao contrário de to_tsquery.
-        consulta = func.websearch_to_tsquery(CONFIG_FTS, termo)
         # O trigrama entra em OR para cobrir o que o stemmer não unifica. O
-        # `%` do LIKE é escapado: um termo com `%` não pode virar curinga.
+        # `%` e o `_` do LIKE são escapados: um termo com `%` não pode virar
+        # curinga.
         alvo = "%" + termo.lower().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        # `websearch_to_tsquery` fica **dentro** do SQL, com o termo como
+        # parâmetro. Montá-la em Python e passá-la por `bindparams` enviaria o
+        # objeto da função como argumento de consulta, e o driver recusa.
+        # Aceita a sintaxe que o usuário já conhece de buscadores ("ambulância
+        # -usada", "emenda OR convênio") sem estourar erro em entrada livre,
+        # ao contrário de to_tsquery.
         return stmt.where(
             text(
-                "(demandas.busca_tsv @@ :__fts"
+                "(demandas.busca_tsv"
+                # CAST e não `::`: o `text()` do SQLAlchemy leria `:__cfg::`
+                # como nome de parâmetro e não encontraria o bind.
+                " @@ websearch_to_tsquery(CAST(:__cfg AS regconfig), :__termo)"
                 " OR demandas.busca_texto LIKE :__trgm ESCAPE '\\')"
-            ).bindparams(__fts=consulta, __trgm=alvo)
+            ).bindparams(__cfg=CONFIG_FTS, __termo=termo, __trgm=alvo)
         )
     alvo = f"%{termo}%"
     return stmt.where(

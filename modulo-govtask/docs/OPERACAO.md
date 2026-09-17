@@ -120,19 +120,23 @@ Se precisar injetar arquivos em um container em execução com `docker cp`,
 restaure depois extraindo `/app` de um `docker create` da própria imagem — senão
 o próximo restart sobe código novo contra banco antigo.
 
-### Atenção: a v2 nunca foi aplicada em produção
+### A v2 foi aplicada em 17/09/2026
 
-Em 17/09/2026 o banco `govtask` estava em **`f7a1c2d3e4b5`** — antes de
-`c0d1e2f3a4b5`. Ou seja, **a tabela `demandas` não existe em produção** e a
-imagem do container também é anterior. A primeira publicação da v2 vai rodar
-dez migrações de uma vez, incluindo as conversões de convênio em demanda.
+O banco `govtask` estava em `f7a1c2d3e4b5` (antes de `c0d1e2f3a4b5`, ou seja sem
+a tabela `demandas`) e foi levado a `e8f9a0b1c2d3` — dez migrações de uma vez,
+incluindo a conversão de convênio em demanda. Backup em
+`backups/govtask-pre-v2-20260917_032944/` (dump custom + SQL + volume de uploads
++ a revisão anterior anotada).
 
-Validado contra uma cópia do banco de produção (descartada em seguida): a cadeia
-completa sobe, o `downgrade -1` volta e o `upgrade` refaz. Números na cópia: 16
-convênios → 16 demandas, 89 etapas, 11 tarefas e 96 eventos religados, 14 anexos
-com grupo de versão, 1 obra vinculada à demanda correta e nenhuma órfã.
+Conversão conferida no banco real: 16 convênios → 16 demandas, 89 etapas, 11
+tarefas e 96 eventos religados, 14 anexos com grupo de versão, 1 obra vinculada e
+nenhuma órfã. Os convênios e os 9 usuários permaneceram intactos.
 
-Antes de publicar, repita isso no ambiente alvo:
+Para reverter, restaure o dump — **não** use `alembic downgrade` para desfazer a
+cadeia inteira: as conversões de dados não são todas reversíveis, e o downgrade
+de `e8f9a0b1c2d3` remove obras que só existirem sob uma demanda.
+
+Antes de qualquer publicação futura desse porte, ensaie no ambiente alvo:
 
 ```bash
 # Cópia do banco em uso, sem tocar no original

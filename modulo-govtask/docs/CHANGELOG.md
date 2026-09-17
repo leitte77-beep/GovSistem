@@ -65,10 +65,25 @@ Exige `alembic upgrade head` antes da publicação.
   prompt) e `test_e2e_obra` (§167), incluindo o teste de isolamento do §165 com
   13 portas diferentes.
 
+### Publicado
+
+Aplicado em produção em 17/09/2026: imagens reconstruídas, `alembic upgrade head`
+de `f7a1c2d3e4b5` a `e8f9a0b1c2d3`, containers recriados e nginx recarregado.
+Conversão conferida no banco real — 16 convênios → 16 demandas, 89 etapas, 11
+tarefas e 96 eventos religados, 14 anexos com grupo de versão, 1 obra vinculada e
+nenhuma órfã, 37 tipos, 17 status, 9 feriados e 4 workflows semeados.
+
+Verificado depois da subida: as 14 rotas novas respondem 200, o PDF sai com 3
+páginas, a busca acha "Pavimentação" a partir de "pavimentacao" usando o índice
+GIN (confirmado por `EXPLAIN`), e uma demanda de outro município responde 404 em
+todas as dez portas. Backup pré-deploy em
+`backups/govtask-pre-v2-20260917_032944/`.
+
 ### Corrigido
 
-Dois defeitos **desta própria entrega**, encontrados ao aplicar a migração contra
-uma cópia do banco de produção — não teriam aparecido em teste SQLite:
+Quatro defeitos **desta própria entrega**. Dois apareceram ao aplicar a migração
+contra uma cópia do banco de produção e dois só na primeira chamada real da API —
+nenhum deles daria as caras em teste SQLite:
 
 - **`MIN(uuid)` não existe no PostgreSQL.** O backfill que liga obra a demanda
   abortava a migração. Trocado por `(array_agg(DISTINCT demanda_id))[1]`, válido
@@ -79,6 +94,20 @@ uma cópia do banco de produção — não teriam aparecido em teste SQLite:
   nem `aquisição`/`aquisições`. Corrigido com a configuração `portugues_govtask`
   (`unaccent` + stemmer) e um índice trigrama em OR, ambos verificados caso a
   caso contra o PostgreSQL 16.
+- **`/busca` respondia 500 na primeira chamada real.** A expressão
+  `websearch_to_tsquery` era montada em Python e entregue a `bindparams`, o que
+  a enviava como *argumento de consulta*; o driver recusou com "expected str,
+  got websearch_to_tsquery". A função passou para dentro do SQL, com o termo
+  como parâmetro. Como o ramo PostgreSQL de `aplicar_busca` nunca roda em
+  SQLite, nenhum teste de rota alcançava essa linha — agora
+  `tests/test_busca_sql_postgres.py` compila a consulta contra o dialeto do
+  PostgreSQL e exige que todo parâmetro ligado seja valor primitivo.
+- **`CAST` em vez de `::regconfig`.** O `text()` do SQLAlchemy lê `:__cfg::` como
+  nome de parâmetro e não encontra o bind. Pego pelo teste novo, antes de
+  produção.
+- **Build da imagem do frontend falhava.** O Dockerfile faz `COPY /app/public`,
+  mas o diretório estava vazio e o git não versiona diretório vazio — some em
+  qualquer checkout limpo. Resolvido com `public/.gitkeep`.
 
 Bugs que já existiam antes destas mudanças e apareceram ao exercitar os fluxos:
 
