@@ -4,6 +4,30 @@ Ordem cronológica inversa. Cada entrada registra o que mudou, a migração
 correspondente e o que ficou de fora, para que a próxima pessoa não descubra a
 pendência em produção.
 
+## 2026-09-17 — Testes de frontend
+
+Fecha a parte de testes de interação do §164: o `web-admin` ganhou runner e os
+primeiros testes.
+
+**Sem migração.**
+
+### Adicionado
+
+- **Vitest + Testing Library + jsdom** no `web-admin` (`npm test`). Config em
+  `vitest.config.ts`, setup em `vitest.setup.ts`.
+- **Testes de lógica pura.** `utils.test.ts` (formatação de data/moeda/tamanho,
+  percentual com limite, tempo relativo, `cn`) e `perfil.test.ts` (classificação
+  por permissão, home por perfil, navegação por permissão, abas por permissão).
+- **Teste de componente.** `PreferenciasNotificacao.test.tsx` cobre o canal de
+  e-mail, a exigência dos tipos obrigatórios e o payload de salvamento, com a
+  API mockada.
+
+### Não feito nesta entrega
+
+- E2E de navegador (Playwright) sobre os fluxos completos. O runner de
+  componente cobre a lógica e os primeiros componentes; o E2E entra quando
+  houver um ambiente estável para rodá-lo em CI.
+
 ## 2026-09-17 — Camada de IA
 
 Fecha §92. A camada é **desligada por padrão** e nunca grava: as rotas devolvem

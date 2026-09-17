@@ -313,3 +313,10 @@ equivalente. Para exercitá-lo pela suíte, rode com `TEST_DATABASE_URL`. A busc
 já foi validada manualmente contra PostgreSQL 16 (sem acento, plural, flexão
 verbal, `OR`, exclusão com `-`, entrada suja e termo com `%`), mas isso não está
 automatizado ainda.
+
+Frontend:
+
+```bash
+cd modulo-govtask/web-admin
+npm test          # Vitest + Testing Library (jsdom)
+```
