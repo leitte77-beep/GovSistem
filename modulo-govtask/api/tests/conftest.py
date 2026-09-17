@@ -133,6 +133,12 @@ async def _db(_reset_db):
         yield session
 
 
+@pytest.fixture
+def db_engine():
+    """Engine da suíte, para testes que inspecionam o schema (só PostgreSQL)."""
+    return TEST_ENGINE
+
+
 @pytest_asyncio.fixture
 async def client(_reset_db):
     """Cliente HTTP sobre a aplicação real, com DB sobrescrito para o SQLite."""

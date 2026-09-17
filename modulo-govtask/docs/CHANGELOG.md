@@ -37,6 +37,10 @@ produção (inclusive a busca full-text). O primeiro passo revelou um defeito re
   `downgrade` e novo `upgrade` das quatro revisões desta rodada. Todas as
   tabelas e colunas conferidas no banco; o banco descartável foi removido.
 - **Suíte completa em PostgreSQL: 215 testes aprovados** (e 215 em SQLite).
+- **Teste de consistência do schema** (`test_schema_consistency.py`): compara a
+  nulabilidade de cada coluna do modelo com o schema vindo das migrations e
+  falha em divergência. É a rede que impede o defeito de `tarefas.prazo` de
+  voltar; só roda no PostgreSQL, onde o schema é real.
 
 ## 2026-09-17 — Outbox de e-mail
 
