@@ -4,6 +4,44 @@ Ordem cronológica inversa. Cada entrada registra o que mudou, a migração
 correspondente e o que ficou de fora, para que a próxima pessoa não descubra a
 pendência em produção.
 
+## 2026-09-17 — Medições sob demanda e central de documentos
+
+Fecha as duas pendências registradas na entrega de UI: medições sob a demanda
+(§58) e a aba de documentos no detalhe (§29–§31).
+
+**Migração:** `f1a2b3c4d5e6_medicoes_e_auditoria_por_demanda` (aditiva). Exige
+`alembic upgrade head` antes da publicação.
+
+### Adicionado
+
+- **Medições sob a demanda (§58).** `medicoes.convenio_id` passa a aceitar nulo
+  e `demanda_id` é adicionado, com a restrição `ck_medicoes_tem_pai`. As rotas
+  são montadas duas vezes — `/convenios/{id}/medicoes` e
+  `/demandas/{id}/medicoes` — com o pai resolvido e autorizado por dependência,
+  o mesmo desenho de `obras`. Nenhum id de medição alcança outro município por
+  um caminho que não valide o dono.
+- **Auditoria vinculada à demanda (§104).** `auditoria.demanda_id` permite que
+  o registro técnico aponte a demanda, não apenas o convênio;
+  `GET /auditoria?demanda_id=` filtra por ela.
+- **Frontend — aba Documentos (§29–§31).** Árvore por pasta, upload com pasta,
+  categoria e classificação, download auditado, remoção com motivo, **nova
+  versão** do mesmo grupo (a anterior permanece com autor, data e hash) e
+  histórico de versões expansível. Documento continua nunca sendo substituído.
+- **Frontend — medições na aba Obras.** Registro, aprovação e remoção de
+  medições vinculadas à demanda, inclusive quando ainda não há obra cadastrada
+  (a medição pende da demanda, não da obra).
+
+### Testes
+
+- `test_medicoes_demanda.py`: medição nasce sob a demanda e entra na timeline,
+  isolamento entre municípios (404 nas duas portas) e auditoria com
+  `demanda_id`.
+
+### Não feito nesta entrega
+
+- A obra pela demanda não ganhou aba de medições própria; as medições ficam na
+  aba Obras e valem para a demanda como um todo.
+
 ## 2026-09-17 — Tempo real e notificações por e-mail
 
 Fecha §41 (notificações multicanal) e §127 (tempo real) sobre a base de

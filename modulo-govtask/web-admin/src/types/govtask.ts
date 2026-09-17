@@ -196,6 +196,31 @@ export interface Notificacao {
   created_at: string;
 }
 
+export interface DocumentoDemanda {
+  id: string;
+  nome_arquivo: string;
+  descricao: string | null;
+  pasta: string | null;
+  tipo_documento: string;
+  categoria: string;
+  classificacao: string;
+  tamanho_bytes: number;
+  mime_type: string | null;
+  hash_sha256: string | null;
+  documento_grupo_id: string | null;
+  versao: number;
+  versao_atual: boolean;
+  motivo_versao: string | null;
+  enviado_por: { id: string; name: string } | null;
+  created_at: string;
+}
+
+export interface ArvoreDocumentosDemanda {
+  pastas: { pasta: string; quantidade: number; documentos: DocumentoDemanda[] }[];
+  total: number;
+  pastas_sugeridas: string[];
+}
+
 export interface PreferenciaNotificacao {
   email_ativo: boolean;
   tipos_email: string[];
@@ -319,7 +344,9 @@ export interface Repasse {
 
 export interface Medicao {
   id: string;
-  convenio_id: string;
+  // A medição pende de um convênio (entidades anteriores à v2) ou de uma demanda (§58).
+  convenio_id: string | null;
+  demanda_id?: string | null;
   numero: number;
   periodo_inicio: string | null;
   periodo_fim: string | null;

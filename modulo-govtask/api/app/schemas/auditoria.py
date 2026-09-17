@@ -1,6 +1,5 @@
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel
 
@@ -10,6 +9,7 @@ class AuditoriaOut(BaseModel):
     organization_id: uuid.UUID | None
     user_id: uuid.UUID | None
     convenio_id: uuid.UUID | None
+    demanda_id: uuid.UUID | None = None
     acao: str
     entidade: str | None
     entidade_id: uuid.UUID | None

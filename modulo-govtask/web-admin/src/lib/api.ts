@@ -668,6 +668,12 @@ export const api = {
   registrarVistoriaDemanda(demandaId: string, obraId: string, data: Record<string, unknown>) { return request<VistoriaObra>(`/demandas/${demandaId}/obras/${obraId}/vistorias`, { method: "POST", body: JSON.stringify(data) }); },
   excluirVistoriaDemanda(demandaId: string, obraId: string, vistoriaId: string) { return request<void>(`/demandas/${demandaId}/obras/${obraId}/vistorias/${vistoriaId}`, { method: "DELETE" }); },
 
+  // ── Medições sob a demanda (§58) ──
+  listarMedicoesDemanda(demandaId: string) { return request<Medicao[]>(`/demandas/${demandaId}/medicoes`); },
+  criarMedicaoDemanda(demandaId: string, data: Record<string, unknown>) { return request<Medicao>(`/demandas/${demandaId}/medicoes`, { method: "POST", body: JSON.stringify(data) }); },
+  aprovarMedicaoDemanda(demandaId: string, medicaoId: string) { return request<Medicao>(`/demandas/${demandaId}/medicoes/${medicaoId}/aprovar`, { method: "POST" }); },
+  excluirMedicaoDemanda(demandaId: string, medicaoId: string) { return request<void>(`/demandas/${demandaId}/medicoes/${medicaoId}`, { method: "DELETE" }); },
+
   // ── Central de documentos da demanda (§29–§31) ──
   uploadDocumentoDemanda(demandaId: string, file: File, opts?: { pasta?: string; descricao?: string; tipo_documento?: string; categoria?: string; classificacao?: string; motivo_versao?: string; substituir_grupo_id?: string }) {
     const fd = new FormData();
@@ -680,6 +686,17 @@ export const api = {
     if (opts?.motivo_versao) fd.append("motivo_versao", opts.motivo_versao);
     if (opts?.substituir_grupo_id) fd.append("substituir_grupo_id", opts.substituir_grupo_id);
     return request<{ id: string; nome_arquivo: string }>(`/demandas/${demandaId}/documentos`, { method: "POST", body: fd });
+  },
+  arvoreDocumentosDemanda(demandaId: string) { return request<import("@/types/govtask").ArvoreDocumentosDemanda>(`/demandas/${demandaId}/documentos`); },
+  versoesDocumentoDemanda(demandaId: string, grupoId: string) { return request<import("@/types/govtask").DocumentoDemanda[]>(`/demandas/${demandaId}/documentos/${grupoId}/versoes`); },
+  removerDocumentoDemanda(demandaId: string, documentoId: string, motivo: string) {
+    return request<void>(`/demandas/${demandaId}/documentos/${documentoId}`, { method: "DELETE", body: JSON.stringify({ motivo }) });
+  },
+  async baixarDocumentoDemanda(demandaId: string, documentoId: string) {
+    const res = await fetch(`${BASE_URL}/demandas/${demandaId}/documentos/${documentoId}/download`, { headers: getHeaders() });
+    if (!res.ok) throw new Error("Não foi possível baixar o documento");
+    const bruto = res.headers.get("Content-Disposition")?.match(/filename\*=UTF-8''([^;]+)/)?.[1];
+    return { blob: await res.blob(), nome: bruto ? decodeURIComponent(bruto) : undefined };
   },
 
   listarModelosDemanda() { return request<any[]>("/modelos-demanda"); },

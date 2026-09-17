@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import Optional
 
 from sqlalchemy import DateTime, ForeignKey, JSON, String
 from sqlalchemy.dialects.postgresql import UUID
@@ -27,6 +27,10 @@ class Auditoria(Base):
     convenio_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), nullable=True, index=True,
         comment="Processo/convênio relacionado, quando aplicável",
+    )
+    demanda_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True, index=True,
+        comment="Demanda relacionada (núcleo v2), quando aplicável",
     )
     acao: Mapped[str] = mapped_column(String(100), nullable=False)
     entidade: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)

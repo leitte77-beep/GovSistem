@@ -607,6 +607,11 @@ canal de e-mail (§41) deixaram de ser pendência: ver as entradas "Tempo real e
 notificações por e-mail" no CHANGELOG. A operação das variáveis e o ajuste do
 nginx estão em [OPERACAO.md](OPERACAO.md).
 
+As medições sob a demanda (§58) e a aba de documentos (§29–§31) também foram
+fechadas — ver "Medições sob demanda e central de documentos". A central de
+documentos já era usada pelas fotos de obra e agora tem interface própria, com
+versionamento.
+
 A interface das visões salvas (§49, §50), da página de Acompanhamentos (§45,
 §46) e da obra pela demanda (§54–§58) deixou de ser pendência: ver a entrada
 "Acompanhamentos, visões salvas e obra pela demanda" no CHANGELOG. Continuam

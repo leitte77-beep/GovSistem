@@ -3,7 +3,7 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String, Text
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Numeric, String, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -13,17 +13,33 @@ from app.models.enums import StatusMedicao
 if TYPE_CHECKING:
     from app.models.anexo import Anexo
     from app.models.convenio import Convenio
+    from app.models.demanda import Demanda
     from app.models.movimento_financeiro import MovimentoFinanceiro
     from app.models.user import User
 
 
 class Medicao(Base, TimestampMixin, SoftDeleteMixin):
     __tablename__ = "medicoes"
+    __table_args__ = (
+        # A medição pende de um convênio (entidades anteriores à v2) ou de uma
+        # demanda (§58); exigir o convênio impedia a medição de nascer na
+        # demanda, como aconteceu com a obra.
+        CheckConstraint(
+            "convenio_id IS NOT NULL OR demanda_id IS NOT NULL",
+            name="ck_medicoes_tem_pai",
+        ),
+    )
 
-    convenio_id: Mapped[uuid.UUID] = mapped_column(
+    convenio_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("convenios.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
+        index=True,
+    )
+    demanda_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("demandas.id", ondelete="CASCADE"),
+        nullable=True,
         index=True,
     )
     numero: Mapped[int] = mapped_column(nullable=False, comment="Número da medição")
@@ -50,7 +66,8 @@ class Medicao(Base, TimestampMixin, SoftDeleteMixin):
     data_aprovacao: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
-    convenio: Mapped["Convenio"] = relationship("Convenio", back_populates="medicoes")
+    convenio: Mapped[Optional["Convenio"]] = relationship("Convenio", back_populates="medicoes")
+    demanda: Mapped[Optional["Demanda"]] = relationship("Demanda")
     responsavel: Mapped[Optional["User"]] = relationship("User", foreign_keys=[responsavel_id])
     aprovada_por: Mapped[Optional["User"]] = relationship("User", foreign_keys=[aprovada_por_id])
     anexos: Mapped[list["Anexo"]] = relationship(

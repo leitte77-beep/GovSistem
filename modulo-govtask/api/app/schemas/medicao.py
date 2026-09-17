@@ -1,7 +1,6 @@
 import uuid
 from datetime import datetime
 from decimal import Decimal
-from typing import Optional
 
 from pydantic import BaseModel, Field
 
@@ -32,7 +31,10 @@ class MedicaoUpdate(BaseModel):
 
 class MedicaoOut(BaseModel):
     id: uuid.UUID
-    convenio_id: uuid.UUID
+    # A medição pende de um convênio (entidades anteriores à v2) ou de uma
+    # demanda (§58).
+    convenio_id: uuid.UUID | None = None
+    demanda_id: uuid.UUID | None = None
     numero: int
     periodo_inicio: datetime | None
     periodo_fim: datetime | None
