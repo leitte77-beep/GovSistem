@@ -72,8 +72,9 @@ por decisão. **Sem migração.**
   desta entrega.
 - `tsc --noEmit`, `npm run build`, `npm test` (20) e `npm run test:e2e` (5)
   aprovados; `npm run lint` sem erros.
-- Não publicado: as mudanças aguardam commit/merge (o binding de assinatura e a
-  IA dependem de configuração do ambiente).
+- Commitado em `geral` (`bff809c`) e enviado a `govsistem/geral`; a branch de
+  revisão `govtask-only` reúne só o módulo. As imagens de produção ainda rodam a
+  entrega anterior — o rebuild é um passo à parte, sem migração nova.
 
 ### Fora do escopo (por decisão)
 
@@ -140,15 +141,13 @@ foram tocados.
   `/demandas/{id}/medicoes` e `/demandas/{id}/ia/resumo` presentes no OpenAPI;
   `versao_esperada` no `DemandaUpdate` do container; sem erro nos logs.
 
-### Pendente de git
+### Git
 
-O código está na branch `geral`, **ainda não mesclada em `master`**. Um merge
-direto de `geral` em `master` arrastaria ~2.000 arquivos de outros módulos
-(govsocial, diário, govfrota, govdoc…), então a publicação foi feita a partir do
-diretório de trabalho — o mesmo procedimento do deploy anterior. Recomenda-se
-criar uma branch só do GovTask (off `master`) com os commits `6634061`…`ac34796`
-e os arquivos de infra do módulo, para registrar a v4 sem levar os demais
-módulos.
+O trabalho está na branch `geral` e foi enviado a `govsistem/geral`. Como um
+merge de `geral` em `master` arrastaria ~2.000 arquivos de outros módulos, foi
+criada a branch **`govtask-only`** (off `master`, commit `44479ca`) contendo
+**apenas** `modulo-govtask`, enviada ao remoto para revisão/PR sem levar os
+demais módulos. O `master` não foi alterado.
 
 ### Não feito nesta entrega
 

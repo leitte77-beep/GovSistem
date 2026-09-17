@@ -345,8 +345,9 @@ fonte de autorização — a navegação apenas facilita o acesso.
 > otimista. Imagens de `govtask-api` e `govtask-web` reconstruídas; backup
 > pré-deploy em `backups/govtask-pre-v4-20260917_162129/`. Webhooks seguem
 > desligados (`WEBHOOKS_ENABLED=false`) e e-mail/IA desligados por padrão.
-> O código está na branch `geral`, sem merge em `master` — ver "Pendente de git"
-> no [CHANGELOG](CHANGELOG.md).
+> O código está em `geral` (enviado a `govsistem/geral`) e há a branch de
+> revisão `govtask-only`, com **apenas** o GovTask, para PR sem os demais
+> módulos — ver "Git" no [CHANGELOG](CHANGELOG.md).
 
 ## 1. O que mudou
 
