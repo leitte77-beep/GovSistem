@@ -73,8 +73,13 @@ por decisão. **Sem migração.**
 - `tsc --noEmit`, `npm run build`, `npm test` (20) e `npm run test:e2e` (5)
   aprovados; `npm run lint` sem erros.
 - Commitado em `geral` (`bff809c`) e enviado a `govsistem/geral`; a branch de
-  revisão `govtask-only` reúne só o módulo. As imagens de produção ainda rodam a
-  entrega anterior — o rebuild é um passo à parte, sem migração nova.
+  revisão `govtask-only` reúne só o módulo.
+- **Publicado em 17/09/2026**: imagens de `govtask-api` e `govtask-web`
+  reconstruídas e containers recriados (`--no-deps`), nginx recarregado. Backup
+  pré-deploy em `backups/govtask-pre-deploy-20260917_175159/`. Sem migração nova
+  (o banco segue em `d5e6f7a8b9c0`). Verificado: health `ok`, rotas de
+  assinatura e de IA presentes, `pypdf`/`python-docx` no container, página de
+  workflows no bundle web e sem erros nos logs.
 
 ### Fora do escopo (por decisão)
 

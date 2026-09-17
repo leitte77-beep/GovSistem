@@ -229,8 +229,10 @@ logs. Reverte-se restaurando o dump — as migrações desta rodada são aditiva
 o dump é o caminho seguro.
 
 O código segue na branch `geral`, **sem merge em `master`**: um merge direto
-arrastaria ~2.000 arquivos de outros módulos. Para registrar o deploy no git sem
-isso, crie uma branch só do GovTask a partir de `master` (ver CHANGELOG).
+arrastaria ~2.000 arquivos de outros módulos. Em 17/09/2026 foi publicada,
+também, a entrega de assinador, IA, Kanban, editores, E2E e acessibilidade
+(rebuild das mesmas duas imagens, sem migração nova). A branch de revisão
+`govtask-only` reúne apenas `modulo-govtask` para um PR limpo (ver CHANGELOG).
 
 Antes de qualquer publicação futura desse porte, ensaie no ambiente alvo:
 
