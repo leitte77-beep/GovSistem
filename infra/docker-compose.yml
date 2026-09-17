@@ -526,6 +526,6 @@ volumes:
   chatgov_uploads:
     driver: local
   govtask_uploads:
-  govfrota_uploads:
     driver: local
+  govfrota_uploads:
     driver: local

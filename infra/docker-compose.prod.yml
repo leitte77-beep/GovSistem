@@ -515,7 +515,6 @@ volumes:
     driver: local
   govtask_uploads:
     driver: local
-    driver: local
 
 networks:
   internal:
