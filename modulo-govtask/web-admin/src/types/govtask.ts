@@ -295,6 +295,7 @@ export interface DashboardData {
 
 export interface DemandaV2 {
   id: string; numero: string; titulo: string; prioridade: string; progresso: number;
+  versao: number;
   prazo_final: string | null; ultima_movimentacao_em: string; bloqueada: boolean;
   atrasada: boolean; dias_sem_movimentacao: number; concluida_em: string | null;
   descricao?: string | null; objeto?: string | null; resumo_executivo?: string | null;
@@ -309,6 +310,11 @@ export interface DemandaV2 {
 }
 
 export interface DemandaV2Page { items: DemandaV2[]; total: number; page: number; pages: number; page_size: number; }
+
+export interface WorkflowResumo {
+  id: string; chave: string; nome: string; descricao?: string | null;
+  ativo: boolean; is_system: boolean; versao_atual?: number | null; qtd_etapas: number;
+}
 
 // ── Gestão de Recursos: novas entidades ───────────────────
 

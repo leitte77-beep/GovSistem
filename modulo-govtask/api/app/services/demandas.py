@@ -203,5 +203,10 @@ async def criar_demanda(
 
 
 async def marcar_movimentacao(demanda: Demanda) -> None:
-    """Zera o contador de inatividade da demanda (§39)."""
+    """Zera o contador de inatividade (§39) e avança a versão de concorrência (§120).
+
+    A versão sobe no mesmo ponto em que a movimentação é registrada, para que
+    nenhuma rota que altere a demanda deixe o controle de concorrência para trás.
+    """
     demanda.ultima_movimentacao_em = datetime.now(timezone.utc)
+    demanda.versao = (demanda.versao or 0) + 1

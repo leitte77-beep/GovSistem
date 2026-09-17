@@ -79,6 +79,10 @@ class Demanda(Base, TimestampMixin, SoftDeleteMixin):
     )
     exercicio: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
     sequencial: Mapped[int] = mapped_column(Integer, nullable=False)
+    versao: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=1, server_default="1",
+        comment="Controle de concorrência otimista (§120): incrementa a cada alteração",
+    )
 
     titulo: Mapped[str] = mapped_column(String(500), nullable=False)
     descricao: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

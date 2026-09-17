@@ -114,6 +114,11 @@ class DemandaUpdate(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
 
+    # Concorrência otimista (§120). Quando enviado, o servidor recusa a edição se
+    # a demanda já tiver sido alterada por outra pessoa nesse meio-tempo (409),
+    # em vez de sobrescrever a alteração alheia em silêncio.
+    versao_esperada: Optional[int] = Field(default=None, ge=1)
+
     titulo: Optional[str] = Field(default=None, min_length=3, max_length=500)
     descricao: Optional[str] = None
     resumo_executivo: Optional[str] = None
@@ -171,6 +176,7 @@ class DemandaListItem(BaseModel):
     is_rascunho: bool
     arquivada_em: Optional[datetime] = None
     concluida_em: Optional[datetime] = None
+    versao: int = 1
 
     tipo: Optional[CatalogoOut] = None
     categoria: Optional[CatalogoOut] = None

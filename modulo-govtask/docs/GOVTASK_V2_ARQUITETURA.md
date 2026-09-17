@@ -339,9 +339,14 @@ fonte de autorização — a navegação apenas facilita o acesso.
   migração `d4e5f6a7b8c9`. A partir daqui, o caminho full-text e o schema real
   ficam cobertos pela suíte.
 
-> **Estado da produção.** O banco `govtask` em uso está em `f9a0b1c2d3e4`
-> (head), com as imagens de API e `web-admin` reconstruídas. Webhooks seguem
-> desligados (`WEBHOOKS_ENABLED=false`) até que um endpoint seja configurado.
+> **Estado da produção (17/09/2026).** O banco `govtask` está em
+> `d5e6f7a8b9c0` (head): recebeu as entregas de tempo real/e-mail, medições sob
+> demanda, assinatura, IA, outbox de e-mail, tarefa sem prazo e concorrência
+> otimista. Imagens de `govtask-api` e `govtask-web` reconstruídas; backup
+> pré-deploy em `backups/govtask-pre-v4-20260917_162129/`. Webhooks seguem
+> desligados (`WEBHOOKS_ENABLED=false`) e e-mail/IA desligados por padrão.
+> O código está na branch `geral`, sem merge em `master` — ver "Pendente de git"
+> no [CHANGELOG](CHANGELOG.md).
 
 ## 1. O que mudou
 
@@ -478,6 +483,16 @@ autenticação própria: os tokens vêm do SaaS (SSO). Mapeamento em uso no núc
 | POST | `/{id}/cancelar` · `/reabrir` · `/arquivar` | Encerramento |
 | POST/DELETE | `/{id}/seguir` | Acompanhar / favoritar |
 | GET | `/{id}/timeline` | Histórico paginado |
+
+**Concorrência otimista (§120).** A demanda tem uma coluna `versao`, que sobe a
+cada movimentação. O `PATCH` aceita `versao_esperada`; se a versão lida não for
+mais a atual, responde **409** com `versao_atual` e o cliente recarrega — em vez
+de a última gravação apagar a primeira. O campo é opcional: quem não o envia
+(integrações antigas) mantém o comportamento anterior.
+
+**Formulário progressivo e autosave (§113, §121).** O frontend abre a demanda em
+cinco passos, com criação rápida no primeiro; os campos textuais extensos da
+visão geral salvam sozinhos, enviando a versão lida a cada gravação.
 
 ### Tarefas da demanda
 

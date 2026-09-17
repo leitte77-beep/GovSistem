@@ -10,6 +10,36 @@ class AuthError extends Error {
   }
 }
 
+/** Erro da API que preserva o status HTTP e o corpo — a UI precisa saber, por
+ * exemplo, que um 409 é conflito de edição (§120) e não uma falha qualquer. */
+export class ApiError extends Error {
+  status: number;
+  detail: unknown;
+
+  constructor(status: number, detail: unknown) {
+    super(mensagemDeErro(detail, status));
+    this.name = "ApiError";
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
+/** Extrai uma mensagem legível do `detail`, que pode ser string, objeto ou lista
+ * de validação do Pydantic — nunca deixa "[object Object]" chegar ao usuário. */
+function mensagemDeErro(detail: unknown, status: number): string {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const primeiro = detail[0] as { msg?: string } | undefined;
+    if (primeiro?.msg) return primeiro.msg;
+  }
+  if (detail && typeof detail === "object") {
+    const interno = detail as { detail?: unknown; message?: unknown };
+    if (typeof interno.detail === "string") return interno.detail;
+    if (typeof interno.message === "string") return interno.message;
+  }
+  return `Não foi possível concluir a operação (erro ${status}).`;
+}
+
 function getToken(): string | null {
   if (typeof window === "undefined") return null;
   bootstrapTokenFromQuery();
@@ -65,7 +95,7 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   }
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: "Unknown error" }));
-    throw new Error(err.detail || `HTTP ${res.status}`);
+    throw new ApiError(res.status, err.detail ?? `HTTP ${res.status}`);
   }
   if (res.status === 204) return undefined as T;
   return res.json();
@@ -588,6 +618,8 @@ export const api = {
   listarTarefasDemanda(id: string) { return request<any[]>(`/demandas/${id}/tarefas`); },
   timelineDemanda(id: string) { return request<{ items: any[] }>(`/demandas/${id}/timeline`); },
   duplicarDemanda(id: string) { return request<{ id: string; numero: string }>(`/demandas/${id}/duplicar`, { method: "POST" }); },
+  listarWorkflows() { return request<import("@/types/govtask").WorkflowResumo[]>("/workflows"); },
+  aplicarFluxo(id: string, workflowId: string) { return request<any[]>(`/demandas/${id}/aplicar-fluxo`, { method: "POST", body: JSON.stringify({ workflow_id: workflowId }) }); },
 
   // ── Acompanhar / favoritar demanda (§45, §46) ──
   seguirDemanda(id: string, favorito = false) { return request<void>(`/demandas/${id}/seguir${qs({ favorito })}`, { method: "POST" }); },

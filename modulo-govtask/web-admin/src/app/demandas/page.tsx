@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useState } from "react";
 import { Filter, Plus, Search, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { PERM } from "@/lib/perfil";
 import { notify } from "@/components/ui/Toast";
+import { NovaDemandaWizard } from "@/components/demandas/NovaDemandaWizard";
 import { VisoesBar } from "@/components/demandas/VisoesBar";
 import { formatDate } from "@/lib/utils";
 import type { DemandaV2, DemandaV2Page } from "@/types/govtask";
@@ -20,12 +22,12 @@ import type { DemandaV2, DemandaV2Page } from "@/types/govtask";
  */
 export default function DemandasPage() {
   const { hasPermission } = useAuth();
+  const router = useRouter();
   const podeEditar = hasPermission(PERM.EDIT, PERM.ADMIN);
   const [dados, setDados] = useState<DemandaV2Page>();
   const [filtros, setFiltros] = useState<Record<string, unknown>>({});
   const [tipos, setTipos] = useState<{ id: string; rotulo: string }[]>([]);
   const [nova, setNova] = useState(false);
-  const [titulo, setTitulo] = useState("");
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
   const [usuarios, setUsuarios] = useState<{ id: string; name: string }[]>([]);
   const [prioridade, setPrioridade] = useState("ALTA");
@@ -50,15 +52,6 @@ export default function DemandasPage() {
   useEffect(() => {
     if (podeEditar) api.listUsers().then(setUsuarios).catch(() => setUsuarios([]));
   }, [podeEditar]);
-
-  async function criar(e: FormEvent) {
-    e.preventDefault();
-    if (!titulo.trim()) return;
-    const d = await api.criarDemandaV2({ titulo });
-    setNova(false);
-    setTitulo("");
-    window.location.href = `/demandas/${d.id}`;
-  }
 
   /** O preset reescreve só as três chaves que ele governa; o resto é preservado. */
   const aplicarPreset = (key: "todas" | "minhas" | "atrasadas" | "externo") => {
@@ -222,24 +215,14 @@ export default function DemandasPage() {
         )}
       </section>
 
-      {nova && (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/40 p-4">
-          <form onSubmit={criar} className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
-            <div className="flex justify-between">
-              <div>
-                <h2 className="text-lg font-bold">Nova demanda</h2>
-                <p className="mt-1 text-sm text-slate-500">Comece pelo que foi solicitado; os detalhes podem ser registrados depois.</p>
-              </div>
-              <button type="button" onClick={() => setNova(false)}><X className="h-5 w-5" /></button>
-            </div>
-            <input autoFocus value={titulo} onChange={(e) => setTitulo(e.target.value)} className="mt-5 w-full rounded-lg border border-slate-300 px-3 py-3 text-sm" placeholder="Ex.: Aquisição de ambulância" />
-            <div className="mt-5 flex justify-end gap-2">
-              <button type="button" onClick={() => setNova(false)} className="rounded-lg px-4 py-2 text-sm">Cancelar</button>
-              <button className="rounded-lg bg-blue-700 px-4 py-2 text-sm font-semibold text-white">Criar demanda</button>
-            </div>
-          </form>
-        </div>
-      )}
+      <NovaDemandaWizard
+        aberto={nova}
+        onFechar={() => setNova(false)}
+        onCriada={(d) => {
+          setNova(false);
+          router.push(`/demandas/${d.id}`);
+        }}
+      />
     </div>
   );
 }

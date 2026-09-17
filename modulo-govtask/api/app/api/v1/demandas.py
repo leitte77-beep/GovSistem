@@ -495,6 +495,21 @@ async def atualizar_demanda(
         )
 
     alteracoes = payload.model_dump(exclude_unset=True)
+    # Controle de concorrência otimista (§120): a versão é comparada antes de
+    # tocar no registro. Sem isso, duas edições simultâneas sobrescreveriam uma
+    # à outra — o segundo a salvar apagaria o que o primeiro registrou.
+    versao_esperada = alteracoes.pop("versao_esperada", None)
+    if versao_esperada is not None and versao_esperada != demanda.versao:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "detail": (
+                    "A demanda foi alterada por outra pessoa desde que você a abriu. "
+                    "Recarregue os dados antes de salvar."
+                ),
+                "versao_atual": demanda.versao,
+            },
+        )
     if "campos_extras" in alteracoes or "tipo_id" in alteracoes:
         alteracoes["campos_extras"] = await svc_campos.validar_para_demanda(
             db,
@@ -928,6 +943,7 @@ async def arquivar(
             detail="Só demandas encerradas podem ser arquivadas",
         )
     demanda.arquivada_em = datetime.now(timezone.utc)
+    demanda.versao = (demanda.versao or 0) + 1
     await registrar_evento(
         db,
         tipo_evento=TipoEvento.DEMANDA_ARQUIVADA,

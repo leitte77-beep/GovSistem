@@ -203,6 +203,31 @@ endpoint cadastrado, nenhum evento é enfileirado até a variável ser ligada. A
 entrega é sempre um passo explícito (`POST /api/govtask/webhooks/processar`),
 nunca dentro da transação da timeline.
 
+### A v4 foi aplicada em 17/09/2026
+
+Publicação **só do GovTask** (nenhum outro módulo foi tocado). O banco saiu de
+`f9a0b1c2d3e4` para `d5e6f7a8b9c0`, cobrindo seis migrações: notificações
+multicanal, medições sob a demanda, assinatura de documento, outbox de e-mail,
+tarefa sem prazo e concorrência otimista.
+
+1. Backup pré-deploy em `backups/govtask-pre-v4-20260917_162129/` (dump custom,
+   SQL, tar do volume de uploads e a revisão anterior).
+2. Ensaio numa cópia `govtask_ensaio` (restaurada do dump): `upgrade head`,
+   `downgrade -1` e novo `upgrade`, com as contagens conferidas. Cópia descartada.
+3. Migração no banco real e reconstrução de `govtask-api`/`govtask-web`:
+   `docker compose -f docker-compose.prod.yml up -d --build --no-deps govtask-api govtask-web`,
+   seguida de `nginx -s reload`.
+
+Verificado depois da subida: health `ok`, `/eventos/stream` e
+`/notificacoes/preferencias` presentes, `versao_esperada` no `DemandaUpdate`,
+16 demandas / 11 tarefas / 16 convênios / 14 documentos preservados e sem erro nos
+logs. Reverte-se restaurando o dump — as migrações desta rodada são aditivas, mas
+o dump é o caminho seguro.
+
+O código segue na branch `geral`, **sem merge em `master`**: um merge direto
+arrastaria ~2.000 arquivos de outros módulos. Para registrar o deploy no git sem
+isso, crie uma branch só do GovTask a partir de `master` (ver CHANGELOG).
+
 Antes de qualquer publicação futura desse porte, ensaie no ambiente alvo:
 
 ```bash

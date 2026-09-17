@@ -4,6 +4,80 @@ Ordem cronológica inversa. Cada entrada registra o que mudou, a migração
 correspondente e o que ficou de fora, para que a próxima pessoa não descubra a
 pendência em produção.
 
+## 2026-09-17 — Concorrência, autosave e formulário progressivo (§113, §120, §121)
+
+Fecha as lacunas 6–8 levantadas na auditoria do prompt. Sem tocar em produção.
+
+**Migração:** `d5e6f7a8b9c0_versao_concorrencia_demanda` (aditiva). Exige
+`alembic upgrade head`.
+
+### Adicionado
+
+- **Concorrência otimista (§120).** `demandas.versao` incrementa a cada
+  movimentação, pelo mesmo ponto que já zera o contador de inatividade
+  (`services.demandas.marcar_movimentacao`) — assim nenhuma rota de alteração
+  deixou o controle para trás. O `PATCH /demandas/{id}` aceita `versao_esperada`:
+  se a demanda já tiver mudado, responde **409** com `versao_atual` em vez de
+  sobrescrever a edição alheia. A versão aparece na listagem e no detalhe.
+  Integrações antigas que não enviam o campo continuam funcionando (o bloqueio
+  só vale quando o cliente declara a versão que leu).
+- **Autosave na demanda (§121, §203).** Componente `EdicaoDemanda` na visão
+  geral permite editar título, objeto, descrição e resumo executivo; salva só o
+  que mudou após uma pausa de digitação, mostra "Salvando…"/"Salvo às HH:MM" e
+  envia `versao_esperada`. Em conflito, avisa e recarrega os dados atuais sem
+  perder o que o outro registrou. Ao desmontar, o texto pendente é enviado.
+- **Formulário progressivo em 5 passos (§113).** `NovaDemandaWizard` substitui o
+  modal de campo único por uma sequência (o que fazer → pessoas → prazos →
+  documentos → workflow), com **criação rápida** (§114) disponível já no passo 1.
+  O workflow escolhido é aplicado após a criação (`POST /demandas/{id}/aplicar-fluxo`).
+- **Erro de API estruturado.** `ApiError` preserva status e corpo; a UI distingue
+  o 409 de edição de uma falha qualquer e nunca mostra "[object Object]".
+
+### Testes
+
+- `test_concorrencia_demanda.py`: nasce na versão 1, PATCH avança a versão,
+  edição concorrente responde 409 sem alterar o registro, PATCH sem
+  `versao_esperada` continua, e arquivamento também avança a versão.
+- `demandaForm.test.ts`: normalização do payload (remove vazio, preserva `false`
+  e `0`) e conversão de data-only para fim do dia.
+- Suíte completa verde em SQLite e em PostgreSQL 16 (schema montado pelas
+  migrations, incluindo `test_schema_consistency`).
+- `tsc --noEmit`, `npm run build` e `ruff check` aprovados.
+
+### Publicado
+
+Aplicado no ambiente em 17/09/2026, somente o GovTask — os outros módulos não
+foram tocados.
+
+- **Backup pré-deploy** em `backups/govtask-pre-v4-20260917_162129/` (dump
+  custom, SQL, tar do volume `govtask_uploads` e a revisão anterior anotada).
+- **Ensaio em cópia do banco de produção** (`govtask_ensaio`): as seis migrações
+  (`f9a0b1c2d3e4` → `d5e6f7a8b9c0`) aplicadas do zero, dados preservados
+  (16 demandas, 11 tarefas, 16 convênios, 14 documentos), `downgrade -1` e novo
+  `upgrade` da migração nova. A cópia foi descartada.
+- **Migração em produção**: mesma cadeia, do `f9a0b1c2d3e4` ao `d5e6f7a8b9c0`,
+  com as contagens confirmadas depois.
+- **Imagens** de `govtask-api` e `govtask-web` reconstruídas e containers
+  recriados por `docker-compose.prod.yml` com `--no-deps`; nginx recarregado.
+- **Verificado**: health `ok`; `/eventos/stream`, `/notificacoes/preferencias`,
+  `/demandas/{id}/medicoes` e `/demandas/{id}/ia/resumo` presentes no OpenAPI;
+  `versao_esperada` no `DemandaUpdate` do container; sem erro nos logs.
+
+### Pendente de git
+
+O código está na branch `geral`, **ainda não mesclada em `master`**. Um merge
+direto de `geral` em `master` arrastaria ~2.000 arquivos de outros módulos
+(govsocial, diário, govfrota, govdoc…), então a publicação foi feita a partir do
+diretório de trabalho — o mesmo procedimento do deploy anterior. Recomenda-se
+criar uma branch só do GovTask (off `master`) com os commits `6634061`…`ac34796`
+e os arquivos de infra do módulo, para registrar a v4 sem levar os demais
+módulos.
+
+### Não feito nesta entrega
+
+- E2E de navegador (Playwright) sobre os fluxos continua ausente; o runner de
+  componente cobre a lógica pura.
+
 ## 2026-09-17 — Suíte contra PostgreSQL e tarefa sem prazo
 
 A suíte completa passou a rodar contra PostgreSQL, exercitando o schema de
