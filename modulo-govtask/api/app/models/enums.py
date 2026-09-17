@@ -907,3 +907,13 @@ class StatusAssinatura(str, Enum):
     AGUARDANDO_ASSINATURA = "AGUARDANDO_ASSINATURA"
     ASSINADO = "ASSINADO"
     CANCELADO = "CANCELADO"
+
+
+# ── Outbox de notificação (§41, §126) ─────────────────────
+class StatusEnvio(str, Enum):
+    """Situação de um envio na outbox de notificação."""
+
+    PENDENTE = "PENDENTE"
+    ENVIADO = "ENVIADO"
+    FALHA = "FALHA"
+    DESCARTADO = "DESCARTADO"

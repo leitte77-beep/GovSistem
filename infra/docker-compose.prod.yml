@@ -415,6 +415,9 @@ services:
       SMTP_PASSWORD: ${GOVTASK_SMTP_PASSWORD:-}
       SMTP_FROM: ${GOVTASK_SMTP_FROM:-nao-responder@localhost}
       SMTP_USE_TLS: ${GOVTASK_SMTP_USE_TLS:-true}
+      EMAIL_OUTBOX_ENABLED: ${GOVTASK_EMAIL_OUTBOX_ENABLED:-true}
+      EMAIL_OUTBOX_INTERVAL_MINUTES: ${GOVTASK_EMAIL_OUTBOX_INTERVAL_MINUTES:-5}
+      EMAIL_MAX_TENTATIVAS: ${GOVTASK_EMAIL_MAX_TENTATIVAS:-5}
       # Tempo real (§127). `memory` atende o worker único do deploy; ao rodar
       # mais de um worker uvicorn, use `redis` para o evento cruzar processos.
       REALTIME_ENABLED: ${GOVTASK_REALTIME_ENABLED:-true}

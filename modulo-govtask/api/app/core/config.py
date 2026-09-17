@@ -128,6 +128,11 @@ class Settings(BaseSettings):
     SMTP_FROM: str = "nao-responder@localhost"
     SMTP_USE_TLS: bool = True
     SMTP_TIMEOUT_SEGUNDOS: int = 10
+    # Outbox: o e-mail é enfileirado na notificação e entregue por um
+    # processador, com retentativa. Sem isto, uma queda de SMTP perde o aviso.
+    EMAIL_MAX_TENTATIVAS: int = 5
+    EMAIL_OUTBOX_ENABLED: bool = True
+    EMAIL_OUTBOX_INTERVAL_MINUTES: int = 5
 
     # Tempo real (§127). O broker em processo atende um único worker; com mais
     # de um, ligue o fan-out por Redis para o evento alcançar quem está em

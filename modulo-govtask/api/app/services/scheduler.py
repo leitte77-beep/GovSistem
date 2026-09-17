@@ -20,12 +20,14 @@ from sqlalchemy import select
 from app.core.config import settings
 from app.core.database import async_session
 from app.models.organization import Organization
+from app.services import email_outbox
 from app.services.notifications import verificar_prazos
 from app.services.prazos import varrer_organizacao
 
 logger = logging.getLogger("govtask.scheduler")
 
 _task: asyncio.Task | None = None
+_task_outbox: asyncio.Task | None = None
 
 
 async def _varrer_organizacoes() -> None:
@@ -71,30 +73,58 @@ async def _loop() -> None:
         await asyncio.sleep(max(intervalo - gasto, 60))
 
 
+async def _loop_outbox() -> None:
+    intervalo = max(settings.EMAIL_OUTBOX_INTERVAL_MINUTES, 1) * 60
+    # Entrega de e-mail é mais sensível ao tempo que a varredura de prazos;
+    # uma folga curta evita esperar o primeiro minuto inteiro no boot.
+    await asyncio.sleep(min(30, intervalo))
+    while True:
+        inicio = datetime.now(timezone.utc)
+        try:
+            async with async_session() as db:
+                resultado = await email_outbox.processar_pendentes(db)
+            if resultado["processados"]:
+                logger.info("outbox de e-mail processada", extra=resultado)
+        except Exception:
+            logger.exception("processamento da outbox de e-mail interrompido")
+        gasto = (datetime.now(timezone.utc) - inicio).total_seconds()
+        await asyncio.sleep(max(intervalo - gasto, 30))
+
+
 def start() -> None:
-    """Sobe o loop, se habilitado. Chamado uma vez, no startup."""
-    global _task
+    """Sobe os loops habilitados. Chamado uma vez, no startup."""
+    global _task, _task_outbox
+    if settings.DEADLINE_CHECK_ENABLED and not (_task and not _task.done()):
+        _task = asyncio.create_task(_loop(), name="govtask-verificar-prazos")
+        logger.info(
+            "verificação automática de prazos a cada %s min",
+            settings.DEADLINE_CHECK_INTERVAL_MINUTES,
+        )
     if not settings.DEADLINE_CHECK_ENABLED:
         logger.info("verificação automática de prazos desabilitada")
+
+    if settings.EMAIL_OUTBOX_ENABLED and not (_task_outbox and not _task_outbox.done()):
+        _task_outbox = asyncio.create_task(_loop_outbox(), name="govtask-email-outbox")
+        logger.info(
+            "outbox de e-mail a cada %s min",
+            settings.EMAIL_OUTBOX_INTERVAL_MINUTES,
+        )
+
+
+async def _cancelar(tarefa: asyncio.Task | None) -> None:
+    if tarefa is None:
         return
-    if _task and not _task.done():
-        return
-    _task = asyncio.create_task(_loop(), name="govtask-verificar-prazos")
-    logger.info(
-        "verificação automática de prazos a cada %s min",
-        settings.DEADLINE_CHECK_INTERVAL_MINUTES,
-    )
+    tarefa.cancel()
+    try:
+        await tarefa
+    except asyncio.CancelledError:
+        pass
 
 
 async def stop() -> None:
-    """Encerra o loop no shutdown, sem deixar task pendente."""
-    global _task
-    if _task is None:
-        return
-    _task.cancel()
-    try:
-        await _task
-    except asyncio.CancelledError:
-        pass
-    finally:
-        _task = None
+    """Encerra os loops no shutdown, sem deixar task pendente."""
+    global _task, _task_outbox
+    await _cancelar(_task)
+    await _cancelar(_task_outbox)
+    _task = None
+    _task_outbox = None

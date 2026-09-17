@@ -5,10 +5,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user, require_permission
 from app.core.database import get_db
+from app.core.permissions import Perm
 from app.models.enums import TipoNotificacao
 from app.models.notificacao import Notificacao
+from app.models.notificacao_envio import NotificacaoEnvio
 from app.models.notificacao_preferencia import NotificacaoPreferencia
 from app.models.user import User
 from app.schemas.notificacao import (
@@ -16,7 +18,7 @@ from app.schemas.notificacao import (
     PreferenciaNotificacaoOut,
     PreferenciaNotificacaoUpdate,
 )
-from app.services import email
+from app.services import email, email_outbox
 from app.services.notificacoes_canais import TIPOS_OBRIGATORIOS, obter_preferencia
 
 router = APIRouter(tags=["notificacoes"])
@@ -103,6 +105,49 @@ async def atualizar_preferencias(
     pref.tipos_email = sorted(set(payload.tipos_email))
     await db.commit()
     return _preferencia_out(pref)
+
+
+@router.get("/notificacoes/envios")
+async def listar_envios(
+    status_envio: str | None = Query(None, alias="status"),
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission(Perm.ADMIN_CONFIG)),
+):
+    """Diagnóstico da outbox de e-mail (§41, §126): o que saiu, o que falhou."""
+    query = (
+        select(NotificacaoEnvio)
+        .where(NotificacaoEnvio.organization_id == user.organization_id)
+        .order_by(NotificacaoEnvio.created_at.desc())
+        .limit(limit)
+    )
+    if status_envio:
+        query = query.where(NotificacaoEnvio.status == status_envio)
+    registros = (await db.execute(query)).scalars().all()
+    return [
+        {
+            "id": str(e.id),
+            "notificacao_id": str(e.notificacao_id),
+            "destinatario": e.destinatario,
+            "assunto": e.assunto,
+            "status": e.status,
+            "tentativas": e.tentativas,
+            "ultimo_erro": e.ultimo_erro,
+            "agendado_para": e.agendado_para,
+            "enviado_em": e.enviado_em,
+            "created_at": e.created_at,
+        }
+        for e in registros
+    ]
+
+
+@router.post("/notificacoes/envios/processar")
+async def processar_envios(
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission(Perm.ADMIN_CONFIG)),
+):
+    """Dispara a outbox sob demanda, para não esperar o ciclo do scheduler."""
+    return await email_outbox.processar_pendentes(db)
 
 
 @router.post("/notificacoes/{notificacao_id}/marcar-lida")

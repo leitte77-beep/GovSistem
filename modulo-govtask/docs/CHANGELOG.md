@@ -4,6 +4,33 @@ Ordem cronológica inversa. Cada entrada registra o que mudou, a migração
 correspondente e o que ficou de fora, para que a próxima pessoa não descubra a
 pendência em produção.
 
+## 2026-09-17 — Outbox de e-mail
+
+Endurece a entrega da notificação por e-mail (§41, §126): o envio sai do fluxo
+da operação e passa a ter retentativa.
+
+**Migração:** `c3d4e5f6a7b8_outbox_email` (aditiva). Exige `alembic upgrade head`.
+
+### Adicionado
+
+- **`notificacao_envios` (outbox).** A notificação grava a linha e segue; um
+  processador entrega com espera crescente (60s, 120s, 240s… até 1h) e desiste
+  depois de `EMAIL_MAX_TENTATIVAS`, marcando `DESCARTADO` — o histórico fica.
+- **Idempotência.** Chave única `(notificacao_id, canal)`: reprocessar a mesma
+  notificação não cria um segundo e-mail.
+- **Scheduler.** Loop próprio (`EMAIL_OUTBOX_INTERVAL_MINUTES`, padrão 5) separado
+  da varredura de prazos, para o e-mail não esperar o ciclo de uma hora.
+- **Diagnóstico (admin).** `GET /notificacoes/envios` (o que saiu, o que falhou)
+  e `POST /notificacoes/envios/processar` para uma passagem sob demanda.
+- **Configuração.** `EMAIL_OUTBOX_ENABLED`, `EMAIL_OUTBOX_INTERVAL_MINUTES`,
+  `EMAIL_MAX_TENTATIVAS`, documentados em `.env.example` e no compose.
+
+### Testes
+
+- `test_email_outbox.py`: despachar só enfileira (não envia na hora); entrega
+  marca `ENVIADO`; falha reagenda e depois descarta no limite; enfileirar duas
+  vezes gera uma linha; o diagnóstico exige administração.
+
 ## 2026-09-17 — Testes de frontend
 
 Fecha a parte de testes de interação do §164: o `web-admin` ganhou runner e os

@@ -100,6 +100,14 @@ O mesmo vale para as **recorrências de demanda**: o processamento é explícito
 | `EMAIL_ENABLED` | `false` | O canal in-app independe disto |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` | — | Sem `SMTP_HOST`, nenhum e-mail sai |
 | `SMTP_FROM` / `SMTP_USE_TLS` | `nao-responder@localhost` / `true` | Identidade do remetente |
+| `EMAIL_OUTBOX_ENABLED` | `true` | Enfileira e entrega por processador, com retentativa |
+| `EMAIL_OUTBOX_INTERVAL_MINUTES` | `5` | Ciclo do processador da outbox |
+| `EMAIL_MAX_TENTATIVAS` | `5` | Depois disso o envio vai a `DESCARTADO` (não some) |
+
+O e-mail não sai no meio da operação: a notificação grava a linha em
+`notificacao_envios` e o processador entrega, com espera crescente entre as
+tentativas. `GET /api/govtask/notificacoes/envios` (admin) mostra o que saiu e o
+que falhou; `POST .../envios/processar` força uma passagem sem esperar o ciclo.
 
 O deploy roda **um worker uvicorn**, então o broker em memória atende. Se o
 comando do container passar a usar `--workers > 1`, mude para

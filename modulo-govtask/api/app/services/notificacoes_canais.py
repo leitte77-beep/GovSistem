@@ -24,7 +24,7 @@ from app.models.enums import TipoNotificacao
 from app.models.notificacao import Notificacao
 from app.models.notificacao_preferencia import NotificacaoPreferencia
 from app.models.user import User
-from app.services import email, realtime
+from app.services import email, email_outbox, realtime
 
 logger = logging.getLogger("govtask.notificacoes")
 
@@ -135,4 +135,12 @@ async def despachar(db: AsyncSession, notificacao: Notificacao) -> None:
         return
     tipo = _normalizar(notificacao.tipo)
     assunto = _ASSUNTOS.get(tipo, "Atualização no GovTask")
-    await email.enviar(destinatario.email, assunto, _corpo(notificacao))
+    # Enfileira, não envia: o processador da outbox cuida da entrega e da
+    # retentativa, fora do fluxo que gerou o aviso. Sem outbox ligada, envia
+    # direto (comportamento antigo) para não deixar o e-mail sem saída.
+    if settings.EMAIL_OUTBOX_ENABLED:
+        await email_outbox.enfileirar(
+            db, notificacao, destinatario.organization_id, destinatario.email, assunto, _corpo(notificacao)
+        )
+    else:
+        await email.enviar(destinatario.email, assunto, _corpo(notificacao))

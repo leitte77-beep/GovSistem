@@ -597,12 +597,14 @@ e nas rotas web equivalentes. Cada painel lê exclusivamente as demandas do
 tenant e privilegia filas de atenção, não tabelas administrativas.
 
 Pendências remanescentes: WhatsApp/push como canais reais (§41 — o despachante
-é o ponto de extensão, sem canal simulado), outbox de e-mail com retentativa,
-acionamento do assinador (§78 — o boundary com evidência existe; falta o
-contrato/certificado do ambiente), integrações GovDoc/GovPro/GovFrota/Arena
-(§134–§137, fora de escopo por decisão), extração de dados de documentos e
-geração de ofícios por IA (§92 — o boundary existe) e testes de interação no
-frontend.
+é o ponto de extensão, sem canal simulado), acionamento do assinador (§78 — o
+boundary com evidência existe; falta o contrato/certificado do ambiente),
+integrações GovDoc/GovPro/GovFrota/Arena (§134–§137, fora de escopo por decisão),
+extração de dados de documentos e geração de ofícios por IA (§92 — o boundary
+existe) e E2E de navegador no frontend (o runner de componente já existe).
+
+A outbox de e-mail com retentativa deixou de ser pendência — ver "Outbox de
+e-mail" no CHANGELOG.
 
 O tempo real (§127, SSE com broker em processo e fan-out opcional por Redis) e o
 canal de e-mail (§41) deixaram de ser pendência: ver as entradas "Tempo real e
