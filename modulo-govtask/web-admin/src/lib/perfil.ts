@@ -28,6 +28,7 @@ import {
   ClipboardList,
   Settings,
   Star,
+  GitBranch,
 } from "lucide-react";
 
 export const PERM = {
@@ -125,6 +126,7 @@ const ITEM = {
   mencoes: { key: "mencoes", href: "/mencoes", label: "Onde fui citado", icon: AtSign },
   acompanhamentos: { key: "acompanhamentos", href: "/acompanhamentos", label: "Acompanhamentos", icon: Star },
   parametros: { key: "parametros", href: "/admin/parametros", label: "Parâmetros avançados", icon: Settings },
+  workflows: { key: "workflows", href: "/admin/workflows", label: "Workflows", icon: GitBranch },
 } satisfies Record<string, NavItem>;
 
 /**
@@ -139,7 +141,7 @@ export function navGroupsDoPerfil(perfil: Perfil, perms: string[] = []): NavGrou
       grupos.push(
         { title: "Trabalho do dia", items: [ITEM.assessor, ITEM.mesa, ITEM.operacao, ITEM.demandas, ITEM.processos] },
         { title: "Acompanhamento", items: [ITEM.protocolos, ITEM.obras, ITEM.prestacoes, ITEM.calendario] },
-        { title: "Gestão", items: [ITEM.dashboard, ITEM.alertas, ITEM.autoridades, ITEM.relatoriosDemandas, ITEM.configuracoesDemandas, ITEM.parametros, ITEM.relatorios] }
+        { title: "Gestão", items: [ITEM.dashboard, ITEM.alertas, ITEM.autoridades, ITEM.relatoriosDemandas, ITEM.configuracoesDemandas, ITEM.workflows, ITEM.parametros, ITEM.relatorios] }
       );
       break;
 

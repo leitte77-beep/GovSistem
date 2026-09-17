@@ -10,6 +10,7 @@ O provedor é trocável. Hoje só o Gemini está implementado; acrescentar outro
 um ramo novo em `_chamar_provedor`, sem tocar nas funções de prompt.
 """
 
+import json
 import logging
 import re
 
@@ -20,6 +21,7 @@ from app.core.config import settings
 logger = logging.getLogger("govtask.ia")
 
 _PREFIXO_LISTA = re.compile(r"^\s*(?:[-•*]|\d+[.)])\s*")
+_CERCA_JSON = re.compile(r"```(?:json)?\s*(.*?)```", re.DOTALL)
 
 
 class IADesabilitada(RuntimeError):
@@ -40,7 +42,7 @@ def _cabecalho(rotulo: str, valor) -> str:
     return f"{rotulo}: {valor}\n"
 
 
-async def _chamar_provedor(prompt: str) -> str:
+async def _chamar_provedor(prompt: str, *, max_tokens: int | None = None) -> str:
     if not configurada():
         raise IADesabilitada("Camada de IA desligada neste ambiente")
     if settings.AI_PROVIDER != "gemini":
@@ -52,7 +54,10 @@ async def _chamar_provedor(prompt: str) -> str:
     )
     corpo = {
         "contents": [{"parts": [{"text": prompt}]}],
-        "generationConfig": {"temperature": 0.2, "maxOutputTokens": 1024},
+        "generationConfig": {
+            "temperature": 0.2,
+            "maxOutputTokens": max_tokens or settings.AI_MAX_TOKENS,
+        },
     }
     try:
         async with httpx.AsyncClient(timeout=settings.AI_TIMEOUT_SEGUNDOS) as cliente:
@@ -114,6 +119,84 @@ async def sugerir_proxima_acao(demanda) -> str:
         "para a demanda avançar. Não explique nem liste alternativas."
     )
     return await _chamar_provedor(prompt)
+
+
+async def gerar_oficio(demanda) -> str:
+    """Redige o corpo de um ofício a partir do que está registrado (§79, §92).
+
+    Devolve texto para revisão — não protocola, não assina e não grava.
+    """
+    prompt = (
+        _contexto_demanda(demanda)
+        + "\nRedija o corpo de um ofício oficial do Município, em português do "
+        "Brasil, formal e objetivo, com destinatário genérico quando não "
+        "informado. Use somente os dados acima; não invente números de "
+        "protocolo nem datas que não estejam registradas. Devolva apenas o "
+        "texto do ofício, sem título nem comentários."
+    )
+    return await _chamar_provedor(prompt, max_tokens=1500)
+
+
+async def extrair_dados_documento(nome_arquivo: str, texto: str) -> dict:
+    """Extrai campos estruturados do texto de um documento (§92).
+
+    A saída é uma sugestão de preenchimento; quem confirma é o usuário.
+    """
+    recorte = texto[:8000]
+    prompt = (
+        f"Documento '{nome_arquivo}'. Conteúdo textual extraído:\n"
+        "---\n"
+        f"{recorte}\n"
+        "---\n"
+        "Extraia, SOMENTE do conteúdo acima, os campos que conseguir identificar. "
+        "Responda exclusivamente com um objeto JSON, sem comentários, usando as "
+        "chaves: objeto, valor, orgao, numero_documento, data_documento, "
+        "parlamentar, programa, observacoes. Use null para o que não encontrar. "
+        "Não invente valores."
+    )
+    bruto = await _chamar_provedor(prompt, max_tokens=1200)
+    return _json_do_texto(bruto)
+
+
+async def ranquear_demandas_semelhantes(demanda, candidatas: list[dict]) -> list[dict]:
+    """Reordena demandas candidatas por semelhança com a demanda dada (§92).
+
+    `candidatas` já vem de uma recuperação textual; a IA só reordena e explica.
+    """
+    if not candidatas:
+        return []
+    listagem = "\n".join(
+        f"- id={c['id']} | {c['numero']} | {c['titulo']} | {c.get('objeto') or ''}"
+        for c in candidatas
+    )
+    prompt = (
+        _contexto_demanda(demanda)
+        + "\nOutras demandas candidatas:\n"
+        + listagem
+        + "\nOrdene as candidatas da mais para a menos semelhante à demanda acima. "
+        "Responda exclusivamente com um array JSON de objetos com as chaves "
+        "id (string), score (0 a 100) e motivo (uma frase curta). Inclua apenas "
+        "as que tenham semelhança real."
+    )
+    bruto = await _chamar_provedor(prompt, max_tokens=1200)
+    dados = _json_do_texto(bruto)
+    if isinstance(dados, dict):
+        dados = dados.get("resultados") or dados.get("items") or []
+    if not isinstance(dados, list):
+        raise IAFalhou("Resposta de semelhança em formato inesperado")
+    return [d for d in dados if isinstance(d, dict) and d.get("id")]
+
+
+def _json_do_texto(bruto: str):
+    """Interpreta JSON mesmo quando o modelo o cerca com ```json … ```."""
+    texto = bruto.strip()
+    cerca = _CERCA_JSON.search(texto)
+    if cerca:
+        texto = cerca.group(1).strip()
+    try:
+        return json.loads(texto)
+    except (ValueError, TypeError) as exc:
+        raise IAFalhou("A IA respondeu em formato não interpretável") from exc
 
 
 async def sugerir_documentos_faltantes(demanda, documentos: list[str]) -> list[str]:

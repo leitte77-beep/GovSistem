@@ -29,6 +29,18 @@ const CLIMAS = ["Ensolarado", "Nublado", "Chuvoso", "Parcialmente nublado", "Ven
 type MedicaoForm = { numero: string; data: string; valor: string; percentual: string; percentual_acumulado: string; observacao: string };
 
 const OBRA_VAZIA = { nome: "", endereco: "", empresa: "", contrato_numero: "", valor_contrato: "" };
+
+/** Interpreta "lat, lng" das coordenadas da obra e valida os limites (§149). */
+function coordenadasDe(texto?: string | null): [number, number] | null {
+  if (!texto) return null;
+  const casa = texto.match(/(-?\d+(?:[.,]\d+)?)\s*[,;]\s*(-?\d+(?:[.,]\d+)?)/);
+  if (!casa) return null;
+  const lat = Number(casa[1].replace(",", "."));
+  const lng = Number(casa[2].replace(",", "."));
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (Math.abs(lat) > 90 || Math.abs(lng) > 180) return null;
+  return [lat, lng];
+}
 const DIARIO_VAZIO = { data: hoje(), clima: "Ensolarado", efetivo: "", equipe: "", atividades: "", ocorrencias: "", impedimentos: "" };
 const VISTORIA_VAZIA = { data: hoje(), tipo: "ROTINEIRA", vistoriador: "", orgao_vistoriador: "", status: "AGENDADA", observacoes: "", nao_conformidades: "", recomendacoes: "" };
 
@@ -297,6 +309,34 @@ export function ObrasDemandaTab({ demandaId, podeEditar }: Props) {
             {(obra.empresa || obra.endereco) && (
               <p className="mt-4 text-sm text-slate-600">{obra.empresa && <>Empresa: <strong>{obra.empresa}</strong>. </>}{obra.endereco}</p>
             )}
+            {(() => {
+              const coord = coordenadasDe(obra.coordenadas);
+              const busca = obra.endereco
+                ? `https://www.openstreetmap.org/search?query=${encodeURIComponent(obra.endereco)}`
+                : null;
+              if (!coord && !busca) return null;
+              const link = coord
+                ? `https://www.openstreetmap.org/?mlat=${coord[0]}&mlon=${coord[1]}#map=16/${coord[0]}/${coord[1]}`
+                : busca!;
+              const bbox = coord
+                ? `${coord[1] - 0.005},${coord[0] - 0.004},${coord[1] + 0.005},${coord[0] + 0.004}`
+                : "";
+              return (
+                <div className="mt-4">
+                  <a href={link} target="_blank" rel="noopener noreferrer" className="text-xs font-semibold text-blue-700 hover:underline">
+                    Ver no mapa (OpenStreetMap)
+                  </a>
+                  {coord && (
+                    <iframe
+                      title={`Mapa da obra ${obra.nome ?? ""}`}
+                      loading="lazy"
+                      className="mt-2 h-56 w-full rounded-lg border border-slate-200"
+                      src={`https://www.openstreetmap.org/export/embed.html?bbox=${bbox}&layer=mapnik&marker=${coord[0]},${coord[1]}`}
+                    />
+                  )}
+                </div>
+              );
+            })()}
           </section>
 
           <nav className="flex gap-1 border-b border-slate-200" aria-label="Seções da obra">

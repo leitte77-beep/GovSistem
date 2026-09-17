@@ -618,7 +618,14 @@ export const api = {
   listarTarefasDemanda(id: string) { return request<any[]>(`/demandas/${id}/tarefas`); },
   timelineDemanda(id: string) { return request<{ items: any[] }>(`/demandas/${id}/timeline`); },
   duplicarDemanda(id: string) { return request<{ id: string; numero: string }>(`/demandas/${id}/duplicar`, { method: "POST" }); },
+  alterarStatusDemanda(id: string, statusId: string, justificativa?: string) { return request<import("@/types/govtask").DemandaV2>(`/demandas/${id}/status`, { method: "POST", body: JSON.stringify({ status_id: statusId, justificativa }) }); },
   listarWorkflows() { return request<import("@/types/govtask").WorkflowResumo[]>("/workflows"); },
+  getWorkflow(id: string) { return request<import("@/types/govtask").WorkflowDetalhe>(`/workflows/${id}`); },
+  criarWorkflow(data: Record<string, unknown>) { return request<import("@/types/govtask").WorkflowDetalhe>("/workflows", { method: "POST", body: JSON.stringify(data) }); },
+  atualizarWorkflow(id: string, data: Record<string, unknown>) { return request<import("@/types/govtask").WorkflowDetalhe>(`/workflows/${id}`, { method: "PATCH", body: JSON.stringify(data) }); },
+  abrirVersaoWorkflow(id: string) { return request<import("@/types/govtask").VersaoWorkflow>(`/workflows/${id}/versoes`, { method: "POST" }); },
+  salvarRascunhoWorkflow(id: string, etapas: unknown[]) { return request<import("@/types/govtask").VersaoWorkflow>(`/workflows/${id}/rascunho/etapas`, { method: "PUT", body: JSON.stringify(etapas) }); },
+  publicarWorkflow(id: string, notas?: string) { return request<import("@/types/govtask").VersaoWorkflow>(`/workflows/${id}/rascunho/publicar`, { method: "POST", body: JSON.stringify({ notas }) }); },
   aplicarFluxo(id: string, workflowId: string) { return request<any[]>(`/demandas/${id}/aplicar-fluxo`, { method: "POST", body: JSON.stringify({ workflow_id: workflowId }) }); },
 
   // ── Acompanhar / favoritar demanda (§45, §46) ──
@@ -730,11 +737,15 @@ export const api = {
   iaResumo(demandaId: string) { return request<{ sugestao: string }>(`/demandas/${demandaId}/ia/resumo`, { method: "POST" }); },
   iaProximaAcao(demandaId: string) { return request<{ sugestao: string }>(`/demandas/${demandaId}/ia/proxima-acao`, { method: "POST" }); },
   iaDocumentosFaltantes(demandaId: string) { return request<{ sugestoes: string[] }>(`/demandas/${demandaId}/ia/documentos-faltantes`, { method: "POST" }); },
+  iaGerarOficio(demandaId: string) { return request<{ sugestao: string }>(`/demandas/${demandaId}/ia/gerar-oficio`, { method: "POST" }); },
+  iaExtrairDocumento(demandaId: string, documentoId: string) { return request<{ nome_arquivo: string; campos: Record<string, unknown>; trecho: string }>(`/demandas/${demandaId}/ia/extrair-documento`, { method: "POST", body: JSON.stringify({ documento_id: documentoId }) }); },
+  iaSemelhantes(demandaId: string, limite = 8) { return request<{ items: { id: string; numero: string; titulo: string; motivo: string; score: number }[]; ranqueada_por_ia: boolean }>(`/demandas/${demandaId}/ia/semelhantes${qs({ limite })}`); },
 
   // ── Assinatura de documento (§78) ──
   assinaturaDocumento(demandaId: string, grupoId: string) { return request<import("@/types/govtask").AssinaturaDocumento | null>(`/demandas/${demandaId}/documentos/${grupoId}/assinatura`); },
   solicitarAssinatura(demandaId: string, grupoId: string) { return request<import("@/types/govtask").AssinaturaDocumento>(`/demandas/${demandaId}/documentos/${grupoId}/assinatura/solicitar`, { method: "POST", body: JSON.stringify({}) }); },
   revisarAssinatura(demandaId: string, grupoId: string) { return request<import("@/types/govtask").AssinaturaDocumento>(`/demandas/${demandaId}/documentos/${grupoId}/assinatura/revisar`, { method: "POST" }); },
+  assinarDocumento(demandaId: string, grupoId: string) { return request<import("@/types/govtask").AssinaturaDocumento>(`/demandas/${demandaId}/documentos/${grupoId}/assinatura/assinar`, { method: "POST" }); },
   cancelarAssinatura(demandaId: string, grupoId: string, motivo: string) { return request<import("@/types/govtask").AssinaturaDocumento>(`/demandas/${demandaId}/documentos/${grupoId}/assinatura/cancelar`, { method: "POST", body: JSON.stringify({ motivo }) }); },
   async baixarDocumentoDemanda(demandaId: string, documentoId: string) {
     const res = await fetch(`${BASE_URL}/demandas/${demandaId}/documentos/${documentoId}/download`, { headers: getHeaders() });
@@ -827,7 +838,7 @@ export const api = {
   },
 
   // ── Gestão avançada: hierarquia, marcos, riscos, campos, SLA, webhooks, lote ──
-  catalogosDemandas() { return request<{ tipos: { id: string; chave: string; rotulo: string }[]; categorias: { id: string; chave: string; rotulo: string }[]; status: { id: string; chave: string; rotulo: string }[] }>("/catalogos/demandas"); },
+  catalogosDemandas() { return request<{ tipos: { id: string; chave: string; rotulo: string }[]; categorias: { id: string; chave: string; rotulo: string }[]; status: { id: string; chave: string; rotulo: string; cor?: string | null; is_inicial?: boolean; is_final?: boolean; is_aguardando_externo?: boolean }[] }>("/catalogos/demandas"); },
   hierarquiaDemanda(demandaId: string) { return request<import("@/types/govtask").HierarquiaDemanda>(`/demandas/${demandaId}/hierarquia`); },
   vincularPai(demandaId: string, demandaPaiId: string) { return request<import("@/types/govtask").HierarquiaDemanda>(`/demandas/${demandaId}/pai`, { method: "PUT", body: JSON.stringify({ demanda_pai_id: demandaPaiId }) }); },
   desvincularPai(demandaId: string) { return request<import("@/types/govtask").HierarquiaDemanda>(`/demandas/${demandaId}/pai`, { method: "DELETE" }); },

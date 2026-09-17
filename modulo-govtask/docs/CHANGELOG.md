@@ -4,6 +4,83 @@ Ordem cronológica inversa. Cada entrada registra o que mudou, a migração
 correspondente e o que ficou de fora, para que a próxima pessoa não descubra a
 pendência em produção.
 
+## 2026-09-17 — Assinador, IA, Kanban, editores, E2E e acessibilidade
+
+Fecha as lacunas restantes do prompt, exceto as integrações GovDoc/GovPro/
+GovFrota/Diário/Arena (§79, §134–§137) e WhatsApp/push (§41), deixadas de fora
+por decisão. **Sem migração.**
+
+### §78 — Assinador acionado de verdade
+
+- `services/assinador.py`: cliente do `apps/signer` (`/internal/sign-pdf`), com
+  chave interna e certificado A1 vindos do ambiente. **Desligado por padrão**;
+  sem URL/certificado, a rota responde 503 — nunca uma assinatura simulada.
+- `POST /demandas/{id}/documentos/{grupo}/assinatura/assinar`: exige PDF e
+  solicitação em aberto, envia ao assinador e grava o PDF assinado como **nova
+  versão** do grupo, com referência, hash e provedor no registro.
+- Frontend: botão "Assinar digitalmente" no painel de assinatura; a árvore
+  recarrega com a versão assinada.
+- `test_assinador_integracao.py` (4): 503 sem configuração, só PDF, fluxo com
+  dublê do assinador (nova versão + evidência) e exigência de solicitação.
+
+### §92 — IA além da sugestão
+
+- `services/extracao.py`: texto de PDF (pypdf), DOCX (python-docx) e formatos
+  textuais; recusa claro quando não há texto (digitalizado).
+- Rotas: `.../ia/gerar-oficio`, `.../ia/extrair-documento` e
+  `.../ia/semelhantes`. A busca de semelhantes recupera por tokens com OR e
+  reordena pela IA quando ligada, caindo na ordem textual quando não —
+  `ranqueada_por_ia` diz qual caminho foi usado.
+- Frontend: ações no painel de sugestões e botão de extração por documento.
+- `test_ia_avancada.py` (5).
+
+### §51 — Kanban com arrastar e soltar
+
+- Colunas passam a ser as **situações**; arrastar grava `POST /demandas/{id}/status`
+  e o servidor mantém as regras (coluna final não recebe arraste; 422 do
+  backend é mostrado). Um seletor no card é o caminho acessível por teclado.
+- `GET /catalogos/demandas` passa a devolver `is_inicial`/`is_final`.
+
+### §206–207 — Form builder e editor visual de workflow
+
+- Campos adicionais: opções para seleção/múltipla escolha e edição do rótulo,
+  obrigatoriedade e opções; tipos USUARIO/DEPARTAMENTO/MULTIPLA_ESCOLHA.
+- Novo `/admin/workflows`: lista, clona modelos do sistema, abre rascunho,
+  edita etapas (ordem, peso, modo, natureza, setor, prazo, regra, final),
+  valida a soma dos pesos, publica e mostra a prévia do fluxo. Entra na
+  navegação de Coordenação.
+
+### §164 — E2E de navegador
+
+- Playwright (`npm run test:e2e`) com a API interceptada no navegador: 5 testes
+  cobrindo o formulário progressivo, a criação rápida e a movimentação no
+  Kanban. Browsers já em cache no ambiente.
+
+### §107, §201, §149, §217, §219, §53, consolidação
+
+- ESLint (`next/core-web-vitals` + regras jsx-a11y) sem erros; link "Pular para
+  o conteúdo" e foco no `<main>` a cada troca de tela.
+- Aba Obras: mapa (OpenStreetMap) a partir das coordenadas/endereço.
+- Painel Executivo: widgets de KPI reordenáveis (preferência no navegador).
+- Atalho `N` abre a nova demanda quando não se está digitando.
+- Lista de demandas: modo **Tabela** com colunas escolhidas pelo usuário.
+- `/convenios` ganha aviso apontando para Demandas (transição §98).
+
+### Validado
+
+- API: **229 testes** aprovados em SQLite (1 pulado); `ruff` limpo nos arquivos
+  desta entrega.
+- `tsc --noEmit`, `npm run build`, `npm test` (20) e `npm run test:e2e` (5)
+  aprovados; `npm run lint` sem erros.
+- Não publicado: as mudanças aguardam commit/merge (o binding de assinatura e a
+  IA dependem de configuração do ambiente).
+
+### Fora do escopo (por decisão)
+
+- GovDoc/GovPro/GovFrota/Diário/Arena (§79, §134–§137) e WhatsApp/push (§41).
+- Há avisos de lint pré-existentes em outros arquivos do módulo, não tocados
+  aqui para não misturar refatoração com a entrega.
+
 ## 2026-09-17 — Concorrência, autosave e formulário progressivo (§113, §120, §121)
 
 Fecha as lacunas 6–8 levantadas na auditoria do prompt. Sem tocar em produção.

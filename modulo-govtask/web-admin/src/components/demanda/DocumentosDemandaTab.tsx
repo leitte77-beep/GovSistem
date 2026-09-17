@@ -10,7 +10,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, Download, FileText, History, PenLine, Plus, Trash2, Upload } from "lucide-react";
+import { CheckCircle2, Download, FileText, History, PenLine, Plus, Sparkles, Trash2, Upload } from "lucide-react";
 import { api } from "@/lib/api";
 import { notify } from "@/components/ui/Toast";
 import { cn, formatDate } from "@/lib/utils";
@@ -66,6 +66,9 @@ export function DocumentosDemandaTab({ demandaId, podeEditar }: { demandaId: str
   const [versoes, setVersoes] = useState<Record<string, DocumentoDemanda[]>>({});
   const [assinaturas, setAssinaturas] = useState<Record<string, AssinaturaDocumento | null>>({});
   const [painelAssinatura, setPainelAssinatura] = useState<string | null>(null);
+  const [iaLigada, setIaLigada] = useState(false);
+  const [extraindo, setExtraindo] = useState<string | null>(null);
+  const [extracao, setExtracao] = useState<{ docId: string; nome: string; campos: Record<string, unknown> } | null>(null);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -90,10 +93,27 @@ export function DocumentosDemandaTab({ demandaId, podeEditar }: { demandaId: str
 
   useEffect(() => { carregar(); }, [carregar]);
 
-  const atualizarAssinatura = async (grupo: string, acao: "solicitar" | "revisar" | "cancelar") => {
+  useEffect(() => {
+    api.iaStatus(demandaId).then((s) => setIaLigada(s.disponivel)).catch(() => setIaLigada(false));
+  }, [demandaId]);
+
+  const extrair = async (doc: DocumentoDemanda) => {
+    setExtraindo(doc.id);
+    try {
+      const r = await api.iaExtrairDocumento(demandaId, doc.id);
+      setExtracao({ docId: doc.id, nome: r.nome_arquivo, campos: r.campos });
+    } catch (e) {
+      notify.error(e instanceof Error ? e.message : "Não foi possível extrair dados do documento");
+    } finally {
+      setExtraindo(null);
+    }
+  };
+
+  const atualizarAssinatura = async (grupo: string, acao: "solicitar" | "revisar" | "cancelar" | "assinar") => {
     try {
       if (acao === "solicitar") await api.solicitarAssinatura(demandaId, grupo);
       else if (acao === "revisar") await api.revisarAssinatura(demandaId, grupo);
+      else if (acao === "assinar") await api.assinarDocumento(demandaId, grupo);
       else {
         const motivo = window.prompt("Motivo do cancelamento (fica na auditoria)");
         if (!motivo || motivo.trim().length < 5) return notify.error("Informe o motivo (mínimo 5 caracteres)");
@@ -101,7 +121,9 @@ export function DocumentosDemandaTab({ demandaId, podeEditar }: { demandaId: str
       }
       const atual = await api.assinaturaDocumento(demandaId, grupo);
       setAssinaturas((prev) => ({ ...prev, [grupo]: atual }));
-      notify.success("Assinatura atualizada");
+      // Assinar cria uma nova versão: recarrega a árvore para ela aparecer.
+      if (acao === "assinar") await carregar();
+      notify.success(acao === "assinar" ? "Documento assinado digitalmente" : "Assinatura atualizada");
     } catch (e) {
       notify.error(e instanceof Error ? e.message : "Não foi possível atualizar a assinatura");
     }
@@ -265,6 +287,16 @@ export function DocumentosDemandaTab({ demandaId, podeEditar }: { demandaId: str
                       >
                         <PenLine className="h-4 w-4" />
                       </button>
+                      {iaLigada && (
+                        <button
+                          onClick={() => void extrair(doc)}
+                          disabled={extraindo === doc.id}
+                          aria-label={`Extrair dados de ${doc.nome_arquivo}`}
+                          className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-violet-700 disabled:opacity-40"
+                        >
+                          <Sparkles className="h-4 w-4" />
+                        </button>
+                      )}
                       <button onClick={() => baixar(doc)} aria-label={`Baixar ${doc.nome_arquivo}`} className="rounded p-1.5 text-slate-500 hover:bg-slate-100 hover:text-blue-700"><Download className="h-4 w-4" /></button>
                       <button onClick={() => verVersoes(doc)} aria-label="Ver versões" className={cn("rounded p-1.5 hover:bg-slate-100", abertas ? "text-blue-700" : "text-slate-500")}><History className="h-4 w-4" /></button>
                       {podeEditar && (
@@ -314,7 +346,10 @@ export function DocumentosDemandaTab({ demandaId, podeEditar }: { demandaId: str
                                 <button onClick={() => atualizarAssinatura(grupo, "solicitar")} className="rounded bg-blue-700 px-2.5 py-1 font-semibold text-white">Solicitar assinatura</button>
                               )}
                               {assinatura.status === "AGUARDANDO_ASSINATURA" && (
-                                <button onClick={() => atualizarAssinatura(grupo, "revisar")} className="rounded bg-white px-2.5 py-1 font-semibold text-slate-700 ring-1 ring-slate-200">Voltar para revisão</button>
+                                <>
+                                  <button onClick={() => atualizarAssinatura(grupo, "assinar")} className="rounded bg-emerald-700 px-2.5 py-1 font-semibold text-white">Assinar digitalmente</button>
+                                  <button onClick={() => atualizarAssinatura(grupo, "revisar")} className="rounded bg-white px-2.5 py-1 font-semibold text-slate-700 ring-1 ring-slate-200">Voltar para revisão</button>
+                                </>
                               )}
                               <button onClick={() => atualizarAssinatura(grupo, "cancelar")} className="rounded px-2.5 py-1 font-semibold text-red-700 hover:bg-red-50">Cancelar</button>
                             </div>
@@ -331,6 +366,30 @@ export function DocumentosDemandaTab({ demandaId, podeEditar }: { demandaId: str
                           )}
                         </>
                       )}
+                    </div>
+                  )}
+
+                  {extracao?.docId === doc.id && (
+                    <div className="mt-3 rounded-lg border border-violet-200 bg-violet-50 p-3 text-xs">
+                      <p className="font-semibold text-violet-900">
+                        Dados sugeridos pela IA a partir de “{extracao.nome}”
+                      </p>
+                      {Object.entries(extracao.campos).filter(([, v]) => v !== null && v !== "").length ? (
+                        <dl className="mt-2 grid gap-1 sm:grid-cols-2">
+                          {Object.entries(extracao.campos)
+                            .filter(([, v]) => v !== null && v !== "")
+                            .map(([chave, valor]) => (
+                              <div key={chave}>
+                                <dt className="text-violet-700">{chave.replaceAll("_", " ")}</dt>
+                                <dd className="font-medium text-slate-800">{String(valor)}</dd>
+                              </div>
+                            ))}
+                        </dl>
+                      ) : (
+                        <p className="mt-1 text-violet-800">Nenhum campo reconhecido no documento.</p>
+                      )}
+                      <p className="mt-2 text-violet-700">Sugestão para conferência — nada foi gravado.</p>
+                      <button onClick={() => setExtracao(null)} className="mt-1 font-semibold text-violet-800 hover:underline">Fechar</button>
                     </div>
                   )}
 

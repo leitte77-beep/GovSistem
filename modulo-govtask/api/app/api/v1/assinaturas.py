@@ -7,10 +7,12 @@ assinatura. É a diferença entre registrar uma assinatura e simular uma: sem
 evidência, o documento fica "Aguardando assinatura", por mais que se clique.
 """
 
+import base64
+import io
 import uuid
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -30,6 +32,7 @@ from app.schemas.assinatura import (
     AssinaturaRegistrarInterno,
     AssinaturaSolicitar,
 )
+from app.services import assinador
 from app.services import documentos as svc_doc
 from app.services.auditoria import registrar_auditoria
 from app.services.demandas import get_demanda_ou_404, marcar_movimentacao
@@ -143,6 +146,112 @@ async def solicitar_assinatura(
         acao="assinatura.solicitar",
         entidade="documento_assinatura",
         entidade_id=registro.id,
+    )
+    await marcar_movimentacao(demanda)
+    await db.commit()
+    return await _recarregar(db, registro.id)
+
+
+@router.post(
+    "/demandas/{demanda_id}/documentos/{grupo_id}/assinatura/assinar",
+    response_model=AssinaturaOut,
+)
+async def assinar_documento(
+    demanda_id: uuid.UUID,
+    grupo_id: uuid.UUID,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(require_permission(Perm.RESOURCE_EDIT)),
+):
+    """Aciona o assinador sobre a versão corrente do grupo (§78).
+
+    Só PDF. O assinador devolve o arquivo assinado, que entra como **nova
+    versão** do mesmo grupo (a v anterior permanece), e a evidência fica no
+    registro de assinatura. Sem o assinador configurado, responde 503.
+    """
+    demanda = await _demanda_autorizada(db, demanda_id, user)
+    documento = await _grupo_autorizado(db, demanda, grupo_id, user)
+    registro = await _registro(db, demanda.id, grupo_id)
+    if registro is None or registro.status != StatusAssinatura.AGUARDANDO_ASSINATURA:
+        raise HTTPException(
+            status_code=409, detail="Solicite a assinatura antes de acionar o assinador"
+        )
+    if documento.mime_type != "application/pdf":
+        raise HTTPException(
+            status_code=422,
+            detail="O assinador digital aceita apenas PDF; converta o documento antes de assinar",
+        )
+
+    conteudo = await svc_doc.ler_conteudo(documento)
+    referencia = f"govtask:{demanda.id}:{grupo_id}"
+    try:
+        resultado = await assinador.assinar_pdf(
+            conteudo,
+            referencia=referencia,
+            reason=f"Demanda {demanda.numero} — {demanda.titulo}"[:120],
+        )
+    except assinador.AssinaturaNaoConfigurada:
+        raise HTTPException(
+            status_code=503,
+            detail="Assinatura digital não configurada neste ambiente",
+        )
+    except assinador.AssinaturaFalhou as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
+
+    assinado = base64.b64decode(resultado["signed_pdf_base64"])
+    nome_base = documento.nome_arquivo.rsplit(".", 1)[0]
+    arquivo = UploadFile(filename=f"{nome_base}-assinado.pdf", file=io.BytesIO(assinado))
+    nova_versao = await svc_doc.upload_documento(
+        db,
+        demanda,
+        arquivo,
+        user,
+        pasta=documento.pasta,
+        classificacao=documento.classificacao,
+        descricao="Versão assinada digitalmente (ICP-Brasil)",
+        motivo_versao="Assinado digitalmente",
+        substituir_grupo_id=grupo_id,
+    )
+
+    registro.status = StatusAssinatura.ASSINADO
+    registro.anexo_id = nova_versao.id
+    registro.referencia_externa = (
+        resultado.get("verification_code")
+        or resultado.get("certificate_serial")
+        or referencia
+    )
+    registro.hash_assinado = resultado["sha256_signed"]
+    registro.provedor = "icp-brasil-a1"
+    registro.assinado_por_id = user.id
+    registro.assinado_em = datetime.now(timezone.utc)
+
+    await registrar_evento(
+        db,
+        demanda_id=demanda.id,
+        tipo_evento=TipoEvento.ASSINATURA_REGISTRADA,
+        ator_id=user.id,
+        descricao=f"Documento assinado digitalmente: {documento.nome_arquivo}",
+        metadados={
+            "documento_grupo_id": str(grupo_id),
+            "referencia": str(registro.referencia_externa),
+            "provedor": registro.provedor,
+            "certificado": resultado.get("certificate_subject"),
+            "versao_assinada": nova_versao.versao,
+        },
+    )
+    await registrar_auditoria(
+        db,
+        request=request,
+        user_id=user.id,
+        organization_id=user.organization_id,
+        demanda_id=demanda.id,
+        acao="assinatura.assinar",
+        entidade="documento_assinatura",
+        entidade_id=registro.id,
+        dados_posteriores={
+            "referencia": str(registro.referencia_externa),
+            "hash": registro.hash_assinado,
+        },
     )
     await marcar_movimentacao(demanda)
     await db.commit()

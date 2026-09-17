@@ -428,6 +428,13 @@ services:
       AI_PROVIDER: ${GOVTASK_AI_PROVIDER:-gemini}
       AI_API_KEY: ${GOVTASK_AI_API_KEY:-}
       AI_MODEL: ${GOVTASK_AI_MODEL:-gemini-2.5-flash}
+      # Assinatura digital (§78): aciona o serviço `signer`. Desligada por
+      # padrão; sem URL e certificado, a rota responde 503.
+      SIGNER_ENABLED: ${GOVTASK_SIGNER_ENABLED:-false}
+      SIGNER_URL: ${GOVTASK_SIGNER_URL:-http://signer:8100}
+      SIGNER_INTERNAL_API_KEY: ${GOVTASK_SIGNER_INTERNAL_API_KEY:-}
+      SIGNER_CERT_PFX_BASE64: ${GOVTASK_SIGNER_CERT_PFX_BASE64:-}
+      SIGNER_CERT_PFX_PASSWORD: ${GOVTASK_SIGNER_CERT_PFX_PASSWORD:-}
     volumes:
       - govtask_uploads:/app/uploads
     depends_on:

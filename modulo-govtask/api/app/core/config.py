@@ -149,6 +149,19 @@ class Settings(BaseSettings):
     AI_API_KEY: SecretStr = SecretStr("")
     AI_MODEL: str = "gemini-2.5-flash"
     AI_TIMEOUT_SEGUNDOS: int = 30
+    AI_MAX_TOKENS: int = 1024
+
+    # Assinatura digital (§78). O GovTask aciona o serviço de assinatura do
+    # GovSistem (`apps/signer`). Sem URL e certificado configurados, a ação
+    # responde 503 — nunca uma assinatura simulada. O certificado A1 é segredo
+    # do ambiente e não fica no banco do módulo.
+    SIGNER_ENABLED: bool = False
+    SIGNER_URL: str = ""
+    SIGNER_INTERNAL_API_KEY: SecretStr = SecretStr("")
+    SIGNER_TIMEOUT_SEGUNDOS: int = 120
+    SIGNER_CERT_PFX_BASE64: SecretStr = SecretStr("")
+    SIGNER_CERT_PFX_PASSWORD: SecretStr = SecretStr("")
+    SIGNER_REASON_PADRAO: str = "Assinatura Digital - GovTask ICP-Brasil"
 
     PASSWORD_MIN_LENGTH: int = 8
     PASSWORD_MIN_UPPERCASE: int = 1

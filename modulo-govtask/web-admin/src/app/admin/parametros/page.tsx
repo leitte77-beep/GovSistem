@@ -16,8 +16,13 @@ import { PERM } from "@/lib/perfil";
 import { notify } from "@/components/ui/Toast";
 import type { CampoCustomizado, SlaConfig, Webhook } from "@/types/govtask";
 
-const TIPOS_CAMPO = ["TEXTO", "TEXTO_LONGO", "NUMERO", "MOEDA", "DATA", "SELECAO", "BOOLEANO", "URL"];
+const TIPOS_CAMPO = ["TEXTO", "TEXTO_LONGO", "NUMERO", "MOEDA", "DATA", "SELECAO", "MULTIPLA_ESCOLHA", "BOOLEANO", "USUARIO", "DEPARTAMENTO", "URL"];
 const CONTAGENS = ["DIAS_UTEIS", "DIAS_CORRIDOS", "HORAS"];
+const TIPOS_COM_OPCOES = new Set(["SELECAO", "MULTIPLA_ESCOLHA"]);
+
+function parseOpcoes(texto: string): string[] {
+  return texto.split(",").map((o) => o.trim()).filter(Boolean);
+}
 
 export default function ParametrosPage() {
   const { hasPermission } = useAuth();
@@ -29,7 +34,9 @@ export default function ParametrosPage() {
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
 
-  const [novoCampo, setNovoCampo] = useState({ chave: "", rotulo: "", tipo: "TEXTO", tipo_demanda_id: "", obrigatorio: false });
+  const [novoCampo, setNovoCampo] = useState({ chave: "", rotulo: "", tipo: "TEXTO", tipo_demanda_id: "", obrigatorio: false, opcoes: "" });
+  const [editando, setEditando] = useState<string | null>(null);
+  const [edicao, setEdicao] = useState({ rotulo: "", obrigatorio: false, opcoes: "" });
   const [novoSla, setNovoSla] = useState({ valor: 2, contagem: "DIAS_UTEIS", descricao: "" });
   const [novoWebhook, setNovoWebhook] = useState({ url: "", descricao: "" });
 
@@ -65,12 +72,41 @@ export default function ParametrosPage() {
         tipo: novoCampo.tipo,
         tipo_demanda_id: novoCampo.tipo_demanda_id || undefined,
         obrigatorio: novoCampo.obrigatorio,
+        opcoes: TIPOS_COM_OPCOES.has(novoCampo.tipo) ? parseOpcoes(novoCampo.opcoes) : undefined,
       });
-      setNovoCampo({ chave: "", rotulo: "", tipo: "TEXTO", tipo_demanda_id: "", obrigatorio: false });
+      setNovoCampo({ chave: "", rotulo: "", tipo: "TEXTO", tipo_demanda_id: "", obrigatorio: false, opcoes: "" });
       await carregar();
     } catch (e) {
       notify.error(e instanceof Error ? e.message : "Não foi possível criar o campo");
     } finally { setSalvando(false); }
+  };
+
+  const iniciarEdicao = (c: CampoCustomizado) => {
+    setEditando(c.id);
+    setEdicao({
+      rotulo: c.rotulo,
+      obrigatorio: c.obrigatorio,
+      opcoes: (c.opcoes ?? []).map(String).join(", "),
+    });
+  };
+
+  const salvarEdicao = async (c: CampoCustomizado) => {
+    if (!edicao.rotulo.trim()) return notify.error("Informe o rótulo");
+    setSalvando(true);
+    try {
+      await api.atualizarCampoCustomizado(c.id, {
+        rotulo: edicao.rotulo.trim(),
+        obrigatorio: edicao.obrigatorio,
+        ...(TIPOS_COM_OPCOES.has(c.tipo) ? { opcoes: parseOpcoes(edicao.opcoes) } : {}),
+      });
+      setEditando(null);
+      await carregar();
+      notify.success("Campo atualizado");
+    } catch (e) {
+      notify.error(e instanceof Error ? e.message : "Não foi possível salvar o campo");
+    } finally {
+      setSalvando(false);
+    }
   };
 
   const criarSla = async () => {
@@ -131,13 +167,33 @@ export default function ParametrosPage() {
           </select>
           <button onClick={criarCampo} disabled={salvando} className="inline-flex h-9 items-center justify-center gap-1 rounded-lg bg-blue-700 px-3 text-sm font-semibold text-white disabled:opacity-50"><Plus className="h-4 w-4" />Criar</button>
         </div>
+        {TIPOS_COM_OPCOES.has(novoCampo.tipo) && (
+          <input value={novoCampo.opcoes} onChange={(e) => setNovoCampo({ ...novoCampo, opcoes: e.target.value })} placeholder="Opções separadas por vírgula (ex.: Sim, Não, Em análise)" className="mt-2 h-9 w-full rounded-lg border border-slate-300 px-3 text-sm" />
+        )}
         <label className="mt-2 inline-flex items-center gap-2 text-sm text-slate-600"><input type="checkbox" checked={novoCampo.obrigatorio} onChange={(e) => setNovoCampo({ ...novoCampo, obrigatorio: e.target.checked })} />Obrigatório</label>
 
         <ul className="mt-4 divide-y divide-slate-100">
           {campos.map((c) => (
-            <li key={c.id} className="flex items-center justify-between gap-3 py-2 text-sm">
-              <span><span className="font-mono text-xs text-slate-500">{c.chave}</span> · {c.rotulo} <span className="text-xs text-slate-400">({c.tipo} · {nomeTipo(c.tipo_demanda_id)}{c.obrigatorio ? " · obrigatório" : ""})</span></span>
-              <button onClick={() => api.removerCampoCustomizado(c.id).then(carregar).catch(() => notify.error("Não foi possível remover"))} className="text-slate-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+            <li key={c.id} className="py-2 text-sm">
+              {editando === c.id ? (
+                <div className="flex flex-wrap items-center gap-2">
+                  <input value={edicao.rotulo} onChange={(e) => setEdicao({ ...edicao, rotulo: e.target.value })} className="h-8 rounded-lg border border-slate-300 px-2 text-sm" placeholder="Rótulo" />
+                  {TIPOS_COM_OPCOES.has(c.tipo) && (
+                    <input value={edicao.opcoes} onChange={(e) => setEdicao({ ...edicao, opcoes: e.target.value })} className="h-8 flex-1 rounded-lg border border-slate-300 px-2 text-sm" placeholder="Opções separadas por vírgula" />
+                  )}
+                  <label className="inline-flex items-center gap-1 text-xs text-slate-600"><input type="checkbox" checked={edicao.obrigatorio} onChange={(e) => setEdicao({ ...edicao, obrigatorio: e.target.checked })} />Obrigatório</label>
+                  <button onClick={() => salvarEdicao(c)} disabled={salvando} className="rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50">Salvar</button>
+                  <button onClick={() => setEditando(null)} className="rounded-lg px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100">Cancelar</button>
+                </div>
+              ) : (
+                <div className="flex items-center justify-between gap-3">
+                  <span><span className="font-mono text-xs text-slate-500">{c.chave}</span> · {c.rotulo} <span className="text-xs text-slate-400">({c.tipo} · {nomeTipo(c.tipo_demanda_id)}{c.obrigatorio ? " · obrigatório" : ""}{c.opcoes?.length ? ` · opções: ${c.opcoes.map(String).join("/")}` : ""})</span></span>
+                  <span className="flex shrink-0 items-center gap-2">
+                    <button onClick={() => iniciarEdicao(c)} className="text-xs font-semibold text-blue-700 hover:underline">Editar</button>
+                    <button onClick={() => api.removerCampoCustomizado(c.id).then(carregar).catch(() => notify.error("Não foi possível remover"))} className="text-slate-400 hover:text-red-600"><Trash2 className="h-4 w-4" /></button>
+                  </span>
+                </div>
+              )}
             </li>
           ))}
           {!campos.length && <li className="py-4 text-center text-xs text-slate-500">Nenhum campo adicional configurado.</li>}

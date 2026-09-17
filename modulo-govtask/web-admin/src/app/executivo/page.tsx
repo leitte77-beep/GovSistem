@@ -12,7 +12,12 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { notify } from "@/components/ui/Toast";
 import { formatCurrency, formatDate, SITUACAO_PROCESSO_LABELS, CATEGORIA_RECURSO_LABELS, cn } from "@/lib/utils";
 import type { ConvenioListItem } from "@/types/govtask";
-import { Target, TrendingUp, Building2, CheckCircle2, ArrowRight, Landmark, Wallet, Activity } from "lucide-react";
+import { Target, TrendingUp, Building2, CheckCircle2, ArrowRight, Landmark, Wallet, Activity, ChevronLeft, ChevronRight } from "lucide-react";
+
+// Widgets do painel (§217). A ordem é preferência de exibição do usuário,
+// guardada no navegador — não é dado do município.
+const WIDGETS_KPI = ["aprovado", "captado", "execucao", "concluidos"] as const;
+type WidgetKpi = (typeof WIDGETS_KPI)[number];
 
 type ObraExec = {
   id: string; convenio_id: string; convenio_titulo: string | null; nome: string; empresa: string;
@@ -45,6 +50,32 @@ function ExecutivoConteudo() {
   }, []);
 
   useEffect(() => { load(); }, [load]);
+
+  const [ordemWidgets, setOrdemWidgets] = useState<WidgetKpi[]>([...WIDGETS_KPI]);
+  useEffect(() => {
+    try {
+      const salvo = localStorage.getItem("govtask:executivo:widgets");
+      if (!salvo) return;
+      const parsed = JSON.parse(salvo);
+      if (Array.isArray(parsed)) {
+        const validos = WIDGETS_KPI.filter((k) => parsed.includes(k));
+        const faltantes = WIDGETS_KPI.filter((k) => !validos.includes(k));
+        setOrdemWidgets([...validos, ...faltantes]);
+      }
+    } catch {
+      /* preferência corrompida não impede o painel */
+    }
+  }, []);
+
+  const moverWidget = (indice: number, delta: number) =>
+    setOrdemWidgets((prev) => {
+      const destino = indice + delta;
+      if (destino < 0 || destino >= prev.length) return prev;
+      const copia = [...prev];
+      [copia[indice], copia[destino]] = [copia[destino], copia[indice]];
+      try { localStorage.setItem("govtask:executivo:widgets", JSON.stringify(copia)); } catch { /* ignore */ }
+      return copia;
+    });
 
   const emExecucao = convenios.filter((c) => c.status === "EM_ANDAMENTO");
   const concluidos = convenios.filter((c) => c.status === "CONCLUIDO");
@@ -117,12 +148,20 @@ function ExecutivoConteudo() {
             </div>
           </section>
 
-          {/* Cards executivos */}
+          {/* Cards executivos — ordem ajustável pelo usuário (§217) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {metric("Valor aprovado", formatCurrency(resumo?.total_aprovado ?? 0), "Total captado/empenhado", <Target className="w-5 h-5 text-[#1D4ED8]" />, "#1D4ED8")}
-            {metric("Recursos captados", formatCurrency(resumo?.total_captado ?? 0), "Repasses recebidos", <Wallet className="w-5 h-5 text-[#067647]" />, "#067647")}
-            {metric("Em execução", String(resumo?.em_andamento ?? 0), `${emExecucao.length} processos ativos`, <Activity className="w-5 h-5 text-[#B54708]" />, "#B54708")}
-            {metric("Concluídos", String(resumo?.concluidos ?? 0), `${concluidos.length} processos entregues`, <CheckCircle2 className="w-5 h-5 text-[#067647]" />, "#067647")}
+            {ordemWidgets.map((chave, i) => (
+              <div key={chave} className="group relative">
+                {chave === "aprovado" && metric("Valor aprovado", formatCurrency(resumo?.total_aprovado ?? 0), "Total captado/empenhado", <Target className="w-5 h-5 text-[#1D4ED8]" />, "#1D4ED8")}
+                {chave === "captado" && metric("Recursos captados", formatCurrency(resumo?.total_captado ?? 0), "Repasses recebidos", <Wallet className="w-5 h-5 text-[#067647]" />, "#067647")}
+                {chave === "execucao" && metric("Em execução", String(resumo?.em_andamento ?? 0), `${emExecucao.length} processos ativos`, <Activity className="w-5 h-5 text-[#B54708]" />, "#B54708")}
+                {chave === "concluidos" && metric("Concluídos", String(resumo?.concluidos ?? 0), `${concluidos.length} processos entregues`, <CheckCircle2 className="w-5 h-5 text-[#067647]" />, "#067647")}
+                <div className="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                  <button onClick={() => moverWidget(i, -1)} disabled={i === 0} aria-label="Mover widget para a esquerda" className="rounded bg-white/90 p-1 text-slate-500 shadow disabled:opacity-0"><ChevronLeft className="h-3.5 w-3.5" /></button>
+                  <button onClick={() => moverWidget(i, 1)} disabled={i === ordemWidgets.length - 1} aria-label="Mover widget para a direita" className="rounded bg-white/90 p-1 text-slate-500 shadow disabled:opacity-0"><ChevronRight className="h-3.5 w-3.5" /></button>
+                </div>
+              </div>
+            ))}
           </div>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

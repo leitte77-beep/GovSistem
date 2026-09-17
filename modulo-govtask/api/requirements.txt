@@ -19,6 +19,10 @@ reportlab>=4.0.0
 # QR code do link permanente da demanda (§139), gerado em SVG (sem Pillow).
 qrcode>=7.4.0
 
+# Extração de texto de documentos para a camada de IA (§92).
+pypdf>=4.0.0
+python-docx>=1.1.0
+
 # ── Testes ──
 pytest>=8.0.0
 pytest-asyncio>=0.24.0

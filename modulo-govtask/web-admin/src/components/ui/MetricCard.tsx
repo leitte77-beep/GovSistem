@@ -15,7 +15,7 @@ type MetricCardProps = {
 };
 
 export function MetricCard({ label, value, icon, color, href, className }: MetricCardProps) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line
   const Icons = LucideIcons as any;
   const IconComponent = Icons[icon];
 

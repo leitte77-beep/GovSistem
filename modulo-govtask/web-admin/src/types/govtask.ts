@@ -302,7 +302,7 @@ export interface DemandaV2 {
   proxima_acao?: string | null; proxima_acao_prazo?: string | null;
   bloqueio_motivo?: string | null; aguardando_terceiro?: string | null;
   tipo?: { rotulo: string } | null; categoria?: { rotulo: string } | null;
-  status?: { rotulo: string; cor?: string | null } | null;
+  status?: { id: string; rotulo: string; cor?: string | null } | null;
   responsavel_geral?: { id: string; name: string } | null;
   responsavel_atual?: { id: string; name: string } | null;
   setor_atual?: { id: string; nome: string } | null; tags: string[];
@@ -315,6 +315,33 @@ export interface WorkflowResumo {
   id: string; chave: string; nome: string; descricao?: string | null;
   ativo: boolean; is_system: boolean; versao_atual?: number | null; qtd_etapas: number;
 }
+
+export interface EtapaModelo {
+  id?: string;
+  chave: string; nome: string; descricao?: string | null;
+  ordem: number; peso: number;
+  modo: "SEQUENCIAL" | "PARALELA";
+  natureza: "INTERNA" | "GOVERNO";
+  regra_conclusao: "TODAS_TAREFAS" | "QUALQUER_TAREFA" | "MANUAL";
+  setor_responsavel_id?: string | null;
+  setor_responsavel?: { id: string; nome: string; sigla?: string | null } | null;
+  responsavel_id?: string | null;
+  prazo_dias?: number | null;
+  tipo_contagem: "DIAS_CORRIDOS" | "DIAS_UTEIS" | "DATA_FIXA" | "HORAS";
+  exige_aprovacao: boolean;
+  documentos_obrigatorios?: string[] | null;
+  condicao?: Record<string, unknown> | null;
+  status_demanda_id?: string | null;
+  is_final: boolean;
+  tarefas_modelo?: unknown[];
+}
+
+export interface VersaoWorkflow {
+  id: string; versao: number; status: "RASCUNHO" | "PUBLICADA";
+  notas?: string | null; publicada_em?: string | null; etapas: EtapaModelo[];
+}
+
+export interface WorkflowDetalhe extends WorkflowResumo { versoes: VersaoWorkflow[]; }
 
 // ── Gestão de Recursos: novas entidades ───────────────────
 

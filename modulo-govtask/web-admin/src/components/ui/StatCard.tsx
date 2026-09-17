@@ -16,7 +16,7 @@ type StatCardProps = {
 
 /** Cartão de indicador: ícone pastel no topo, valor em destaque e rótulo abaixo. */
 export function StatCard({ label, value, icon, color, href, className }: StatCardProps) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  // eslint-disable-next-line
   const Icons = LucideIcons as any;
   const IconComponent = Icons[icon];
 

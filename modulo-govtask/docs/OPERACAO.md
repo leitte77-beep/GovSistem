@@ -134,11 +134,15 @@ O e-mail é **best-effort** e sai no fluxo da notificação. Com `EMAIL_ENABLED=
 A IA **não grava nada**: devolve sugestão e o usuário aplica pela edição normal.
 Nenhum texto de demanda sai do ambiente sem `AI_ENABLED=true` e chave.
 
-A assinatura **não chama o assinador**. O GovTask expõe o boundary
-`POST /api/govtask/internal/assinaturas/registrar`, protegido por
-`INTERNAL_API_KEY`, que recebe referência e hash e é o único caminho para o
-estado `ASSINADO`. Até o assinador chamá-lo, o documento fica "Aguardando
-assinatura".
+A assinatura **chama o assinador** quando configurada. Além do boundary
+`POST /api/govtask/internal/assinaturas/registrar` (protegido por
+`INTERNAL_API_KEY`, recebe referência e hash), a rota de usuário
+`POST /demandas/{id}/documentos/{grupo}/assinatura/assinar` aciona o serviço
+`signer` (`SIGNER_URL`) com o certificado A1 do ambiente, guarda o PDF assinado
+como nova versão e registra a evidência. Sem `GOVTASK_SIGNER_ENABLED=true`,
+`SIGNER_URL` e certificado (`GOVTASK_SIGNER_CERT_PFX_BASE64`/
+`GOVTASK_SIGNER_CERT_PFX_PASSWORD`), a ação responde **503** — não há assinatura
+simulada. A chave interna deve ser a mesma do `signer` (`INTERNAL_API_KEY`).
 
 ## 3. Publicar uma versão
 

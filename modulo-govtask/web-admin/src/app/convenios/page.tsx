@@ -100,6 +100,17 @@ export default function ConveniosPage() {
 
   return (
     <div className="space-y-6">
+      {/* Consolidação da transição (§98): a operação nova é a Demanda. */}
+      <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 p-3 text-sm text-blue-900">
+        <span>
+          Esta visão de convênios é a anterior à <strong>Demanda</strong>. O acompanhamento atual — etapas, tarefas,
+          documentos e prazos — está em Demandas.
+        </span>
+        <Link href="/demandas" className="shrink-0 rounded-lg bg-blue-700 px-3 py-1.5 text-xs font-semibold text-white">
+          Ir para Demandas
+        </Link>
+      </div>
+
       {/* Cabeçalho */}
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
         <div className="min-w-0">

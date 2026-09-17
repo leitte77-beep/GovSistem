@@ -39,13 +39,22 @@ async def catalogos_demandas(
         return (await db.execute(stmt)).scalars().all()
 
     def _serializar(item):
-        return {
+        dados = {
             "id": str(item.id),
             "chave": item.chave,
             "rotulo": item.rotulo,
             "cor": item.cor,
             "is_system": item.is_system,
         }
+        # Só status tem ciclo de vida; a interface usa isto para saber quais
+        # colunas do Kanban aceitam arrastar (§51).
+        if isinstance(item, StatusDemanda):
+            dados.update(
+                is_inicial=item.is_inicial,
+                is_final=item.is_final,
+                is_aguardando_externo=item.is_aguardando_externo,
+            )
+        return dados
 
     return {
         "tipos": [_serializar(t) for t in await _itens(TipoDemanda)],

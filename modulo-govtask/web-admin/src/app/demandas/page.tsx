@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { Filter, Plus, Search, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -12,6 +13,47 @@ import { NovaDemandaWizard } from "@/components/demandas/NovaDemandaWizard";
 import { VisoesBar } from "@/components/demandas/VisoesBar";
 import { formatDate } from "@/lib/utils";
 import type { DemandaV2, DemandaV2Page } from "@/types/govtask";
+
+/** Colunas disponíveis no modo lista técnica (§53). */
+const COLUNAS_DISPONIVEIS: [string, string][] = [
+  ["numero", "Número"],
+  ["titulo", "Título"],
+  ["status", "Situação"],
+  ["tipo", "Tipo"],
+  ["prioridade", "Prioridade"],
+  ["setor_atual", "Setor"],
+  ["responsavel_atual", "Responsável"],
+  ["progresso", "Progresso"],
+  ["prazo_final", "Prazo"],
+  ["ultima_movimentacao_em", "Movimentação"],
+];
+
+function valorColuna(d: DemandaV2, chave: string): ReactNode {
+  switch (chave) {
+    case "numero":
+      return <Link href={`/demandas/${d.id}`} className="font-mono text-xs text-blue-700 hover:underline">{d.numero}</Link>;
+    case "titulo":
+      return d.titulo;
+    case "status":
+      return d.status?.rotulo ?? "—";
+    case "tipo":
+      return d.tipo?.rotulo ?? "—";
+    case "prioridade":
+      return d.prioridade;
+    case "setor_atual":
+      return d.setor_atual?.nome ?? "—";
+    case "responsavel_atual":
+      return d.responsavel_atual?.name ?? "—";
+    case "progresso":
+      return `${d.progresso}%`;
+    case "prazo_final":
+      return d.prazo_final ? formatDate(d.prazo_final) : "—";
+    case "ultima_movimentacao_em":
+      return formatDate(d.ultima_movimentacao_em);
+    default:
+      return "—";
+  }
+}
 
 /**
  * Listagem de demandas com visões salvas, filtros rápidos e ações em lote
@@ -23,6 +65,7 @@ import type { DemandaV2, DemandaV2Page } from "@/types/govtask";
 export default function DemandasPage() {
   const { hasPermission } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const podeEditar = hasPermission(PERM.EDIT, PERM.ADMIN);
   const [dados, setDados] = useState<DemandaV2Page>();
   const [filtros, setFiltros] = useState<Record<string, unknown>>({});
@@ -34,6 +77,35 @@ export default function DemandasPage() {
   const [responsavel, setResponsavel] = useState("");
   const [tag, setTag] = useState("");
   const [processando, setProcessando] = useState(false);
+  const [modo, setModo] = useState<"cards" | "tabela">("cards");
+  const [colunas, setColunas] = useState<string[]>(["numero", "titulo", "status", "setor_atual", "prazo_final"]);
+
+  // Preferência de exibição (§53): não é dado oficial, então fica no navegador.
+  useEffect(() => {
+    try {
+      const modoSalvo = localStorage.getItem("govtask:demandas:modo");
+      if (modoSalvo === "tabela" || modoSalvo === "cards") setModo(modoSalvo);
+      const colunasSalvas = localStorage.getItem("govtask:demandas:colunas");
+      if (colunasSalvas) {
+        const parsed = JSON.parse(colunasSalvas);
+        if (Array.isArray(parsed) && parsed.every((c) => typeof c === "string")) setColunas(parsed);
+      }
+    } catch {
+      /* preferência corrompida não impede a tela */
+    }
+  }, []);
+
+  const mudarModo = (novo: "cards" | "tabela") => {
+    setModo(novo);
+    try { localStorage.setItem("govtask:demandas:modo", novo); } catch { /* ignore */ }
+  };
+
+  const alternarColuna = (chave: string) =>
+    setColunas((prev) => {
+      const novo = prev.includes(chave) ? prev.filter((c) => c !== chave) : [...prev, chave];
+      try { localStorage.setItem("govtask:demandas:colunas", JSON.stringify(novo)); } catch { /* ignore */ }
+      return novo;
+    });
 
   const carregar = useCallback(
     async () => setDados(await api.listDemandasV2(filtros)),
@@ -48,6 +120,14 @@ export default function DemandasPage() {
   useEffect(() => {
     api.catalogosDemandas().then((c) => setTipos(c.tipos)).catch(() => setTipos([]));
   }, []);
+
+  // Atalho "N" (§219): abre o formulário e limpa o parâmetro da URL.
+  useEffect(() => {
+    if (searchParams.get("nova") === "1") {
+      setNova(true);
+      router.replace("/demandas");
+    }
+  }, [searchParams, router]);
 
   useEffect(() => {
     if (podeEditar) api.listUsers().then(setUsuarios).catch(() => setUsuarios([]));
@@ -172,6 +252,25 @@ export default function DemandasPage() {
               <X className="h-3.5 w-3.5" />Limpar filtros
             </button>
           )}
+          <div className="flex items-center gap-2 sm:ml-auto">
+            <div className="flex rounded-lg border border-slate-300" role="group" aria-label="Modo de exibição">
+              <button onClick={() => mudarModo("cards")} aria-pressed={modo === "cards"} className={`px-3 py-1.5 text-xs font-semibold ${modo === "cards" ? "bg-slate-900 text-white" : "text-slate-600"}`}>Cards</button>
+              <button onClick={() => mudarModo("tabela")} aria-pressed={modo === "tabela"} className={`px-3 py-1.5 text-xs font-semibold ${modo === "tabela" ? "bg-slate-900 text-white" : "text-slate-600"}`}>Tabela</button>
+            </div>
+            {modo === "tabela" && (
+              <details className="relative">
+                <summary className="cursor-pointer list-none rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700">Colunas</summary>
+                <div className="absolute right-0 z-20 mt-1 w-52 rounded-lg border border-slate-200 bg-white p-3 shadow-lg">
+                  {COLUNAS_DISPONIVEIS.map(([chave, rotulo]) => (
+                    <label key={chave} className="flex items-center gap-2 py-0.5 text-xs text-slate-700">
+                      <input type="checkbox" checked={colunas.includes(chave)} onChange={() => alternarColuna(chave)} />
+                      {rotulo}
+                    </label>
+                  ))}
+                </div>
+              </details>
+            )}
+          </div>
         </div>
       </section>
 
@@ -203,17 +302,51 @@ export default function DemandasPage() {
         )}
       </div>
 
-      <section className="overflow-hidden rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
-        {itens.map((d) => (
-          <DemandaLinha key={d.id} d={d} selecionavel={podeEditar} selecionada={selecionadas.has(d.id)} onSelecionar={() => alternar(d.id)} />
-        ))}
-        {!dados && <div className="p-12 text-center text-sm text-slate-500">Carregando…</div>}
-        {dados && itens.length === 0 && (
-          <div className="p-12 text-center text-sm text-slate-500">
-            {temFiltro ? "Nenhuma demanda neste recorte. Ajuste os filtros ou limpe-os." : "Nenhuma demanda cadastrada ainda."}
-          </div>
-        )}
-      </section>
+      {modo === "tabela" ? (
+        <section className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+          <table className="min-w-full divide-y divide-slate-100 text-sm">
+            <caption className="sr-only">Lista de demandas</caption>
+            <thead className="bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+              <tr>
+                {podeEditar && <th className="p-3"><span className="sr-only">Selecionar</span></th>}
+                {colunas.map((chave) => (
+                  <th key={chave} scope="col" className="whitespace-nowrap p-3">
+                    {COLUNAS_DISPONIVEIS.find(([k]) => k === chave)?.[1] ?? chave}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {itens.map((d) => (
+                <tr key={d.id} className="hover:bg-slate-50">
+                  {podeEditar && (
+                    <td className="p-3">
+                      <input type="checkbox" checked={selecionadas.has(d.id)} onChange={() => alternar(d.id)} aria-label={`Selecionar demanda ${d.numero}`} />
+                    </td>
+                  )}
+                  {colunas.map((chave) => (
+                    <td key={chave} className="whitespace-nowrap p-3 text-slate-700">{valorColuna(d, chave)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!dados && <div className="p-12 text-center text-sm text-slate-500">Carregando…</div>}
+          {dados && itens.length === 0 && <div className="p-12 text-center text-sm text-slate-500">Nenhuma demanda neste recorte.</div>}
+        </section>
+      ) : (
+        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white divide-y divide-slate-100">
+          {itens.map((d) => (
+            <DemandaLinha key={d.id} d={d} selecionavel={podeEditar} selecionada={selecionadas.has(d.id)} onSelecionar={() => alternar(d.id)} />
+          ))}
+          {!dados && <div className="p-12 text-center text-sm text-slate-500">Carregando…</div>}
+          {dados && itens.length === 0 && (
+            <div className="p-12 text-center text-sm text-slate-500">
+              {temFiltro ? "Nenhuma demanda neste recorte. Ajuste os filtros ou limpe-os." : "Nenhuma demanda cadastrada ainda."}
+            </div>
+          )}
+        </section>
+      )}
 
       <NovaDemandaWizard
         aberto={nova}

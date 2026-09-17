@@ -615,12 +615,20 @@ Dashboards v2 por perfil disponíveis em `/dashboards/{prefeito|assessor|secreta
 e nas rotas web equivalentes. Cada painel lê exclusivamente as demandas do
 tenant e privilegia filas de atenção, não tabelas administrativas.
 
-Pendências remanescentes: WhatsApp/push como canais reais (§41 — o despachante
-é o ponto de extensão, sem canal simulado), acionamento do assinador (§78 — o
-boundary com evidência existe; falta o contrato/certificado do ambiente),
-integrações GovDoc/GovPro/GovFrota/Arena (§134–§137, fora de escopo por decisão),
-extração de dados de documentos e geração de ofícios por IA (§92 — o boundary
-existe) e E2E de navegador no frontend (o runner de componente já existe).
+O **acionamento do assinador** (§78) deixou de ser pendência: `services/assinador.py`
+chama o `apps/signer`, o PDF assinado entra como nova versão do grupo e a
+evidência é registrada. Fica desligado até o ambiente prover URL e certificado A1
+(`GOVTASK_SIGNER_*`); sem isso, a rota responde 503.
+
+A **IA avançada** (§92) também avançou: geração de ofício, extração de dados de
+documento (PDF/DOCX) e demandas semelhantes — sempre como sugestão, sem gravar.
+
+O **E2E de navegador** (§164) existe em Playwright (`npm run test:e2e`), com a
+API interceptada no navegador.
+
+Pendências remanescentes, por decisão de escopo: WhatsApp/push como canais reais
+(§41 — sem canal simulado) e as integrações GovDoc/GovPro/GovFrota/Diário/Arena
+(§134–§137).
 
 A outbox de e-mail com retentativa deixou de ser pendência — ver "Outbox de
 e-mail" no CHANGELOG.
