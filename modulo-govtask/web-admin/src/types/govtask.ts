@@ -182,13 +182,26 @@ export interface Tarefa extends TarefaListItem {
 
 export interface Notificacao {
   id: string;
+  destinatario_id?: string;
   tipo: string;
   mensagem: string;
   lida: boolean;
   lida_em: string | null;
+  // A notificação se prende a uma demanda (núcleo v2) ou a um convênio
+  // (entidades anteriores); no núcleo novo o convênio é nulo.
   convenio_id: string | null;
+  demanda_id?: string | null;
   tarefa_id: string | null;
+  canal?: "IN_APP" | "EMAIL";
   created_at: string;
+}
+
+export interface PreferenciaNotificacao {
+  email_ativo: boolean;
+  tipos_email: string[];
+  tipos_disponiveis: string[];
+  tipos_obrigatorios: string[];
+  canal_configurado: boolean;
 }
 
 export interface Setor {

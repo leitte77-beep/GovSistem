@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.enums import CanalNotificacao, TipoNotificacao
 from app.models.notificacao import Notificacao
 from app.models.user import User
+from app.services.notificacoes_canais import despachar
 
 _MENCAO_RE = re.compile(r"@([A-Za-zÀ-ú0-9_.-]+)")
 
@@ -39,6 +40,9 @@ async def criar_notificacao(
     )
     db.add(notificacao)
     await db.flush()
+    # Sinal em tempo real e canais externos (§41, §127). O envio é best-effort:
+    # uma falha aqui não desfaz a notificação in-app já gravada.
+    await despachar(db, notificacao)
     return notificacao
 
 
@@ -240,7 +244,7 @@ async def verificar_prazos(db: AsyncSession, organization_id: uuid.UUID) -> dict
     Também dispara o escalonamento de atrasos conforme a configuração da
     organização (níveis de dias de atraso), evitando duplicidade por nível.
     """
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timezone
     from sqlalchemy import select
     from app.models.tarefa import Tarefa
     from app.models.convenio import Convenio

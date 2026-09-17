@@ -116,6 +116,26 @@ class Settings(BaseSettings):
     WEBHOOK_MAX_TENTATIVAS: int = 5
     WEBHOOK_TIMEOUT_SEGUNDOS: int = 10
 
+    # Notificações multicanal (§41). O canal in-app é sempre gravado; o e-mail é
+    # o único canal externo real hoje e fica desligado por padrão. WhatsApp e
+    # push entram como extensão do despachante quando houver provedor — nunca
+    # como integração simulada.
+    EMAIL_ENABLED: bool = False
+    SMTP_HOST: str = ""
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: SecretStr = SecretStr("")
+    SMTP_FROM: str = "nao-responder@localhost"
+    SMTP_USE_TLS: bool = True
+    SMTP_TIMEOUT_SEGUNDOS: int = 10
+
+    # Tempo real (§127). O broker em processo atende um único worker; com mais
+    # de um, ligue o fan-out por Redis para o evento alcançar quem está em
+    # outro processo.
+    REALTIME_ENABLED: bool = True
+    REALTIME_BACKEND: str = "memory"  # memory | redis
+    REALTIME_HEARTBEAT_SEGUNDOS: int = 20
+
     PASSWORD_MIN_LENGTH: int = 8
     PASSWORD_MIN_UPPERCASE: int = 1
     PASSWORD_MIN_LOWERCASE: int = 1

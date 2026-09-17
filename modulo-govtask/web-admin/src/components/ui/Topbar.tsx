@@ -38,13 +38,20 @@ export function Topbar({ user, onMenuClick }: TopbarProps) {
   useEffect(() => {
     if (!user) return;
     const loadUnread = () => {
-      api.listNotificacoes({ nao_lidas: true })
-        .then((n) => setUnreadCount(n.length))
+      api.resumoNotificacoes()
+        .then((r) => setUnreadCount(r.nao_lidas))
         .catch(() => {});
     };
     loadUnread();
+    // O polling é a rede de segurança; o tempo real (§127) antecipa o número
+    // assim que o evento chega, sem esperar o minuto.
     const interval = setInterval(loadUnread, 60000);
-    return () => clearInterval(interval);
+    const aoReceberEvento = () => loadUnread();
+    window.addEventListener("govtask:notificacao", aoReceberEvento);
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("govtask:notificacao", aoReceberEvento);
+    };
   }, [user]);
 
   useEffect(() => {

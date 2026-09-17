@@ -7,6 +7,7 @@ from app.api.v1.tarefas import router as tarefas_router
 from app.api.v1.anexos import router as anexos_router
 from app.api.v1.contestacoes import router as contestacoes_router
 from app.api.v1.notificacoes import router as notificacoes_router
+from app.api.v1.eventos import router as eventos_router
 from app.api.v1.admin import router as admin_router
 from app.api.v1.dashboard import router as dashboard_router
 from app.api.v1.internal import router as internal_router
@@ -86,6 +87,7 @@ api_router.include_router(tarefas_router)
 api_router.include_router(anexos_router)
 api_router.include_router(contestacoes_router)
 api_router.include_router(notificacoes_router)
+api_router.include_router(eventos_router)
 api_router.include_router(admin_router)
 api_router.include_router(diligencias_router)
 api_router.include_router(repasses_router)

@@ -596,10 +596,16 @@ Dashboards v2 por perfil disponíveis em `/dashboards/{prefeito|assessor|secreta
 e nas rotas web equivalentes. Cada painel lê exclusivamente as demandas do
 tenant e privilegia filas de atenção, não tabelas administrativas.
 
-Pendências remanescentes: tempo real (§127), notificações multicanal (§41, só
-in-app), assinatura digital (§78), integrações GovDoc/GovPro/GovFrota/Arena
+Pendências remanescentes: WhatsApp/push como canais reais (§41 — o despachante
+é o ponto de extensão, sem canal simulado), outbox de e-mail com retentativa,
+assinatura digital (§78), integrações GovDoc/GovPro/GovFrota/Arena
 (§134–§137), camada de IA (§92, só a fronteira pronta) e testes de interação no
 frontend.
+
+O tempo real (§127, SSE com broker em processo e fan-out opcional por Redis) e o
+canal de e-mail (§41) deixaram de ser pendência: ver as entradas "Tempo real e
+notificações por e-mail" no CHANGELOG. A operação das variáveis e o ajuste do
+nginx estão em [OPERACAO.md](OPERACAO.md).
 
 A interface das visões salvas (§49, §50), da página de Acompanhamentos (§45,
 §46) e da obra pela demanda (§54–§58) deixou de ser pendência: ver a entrada

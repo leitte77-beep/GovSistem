@@ -90,6 +90,30 @@ não duplicam, mas o trabalho é repetido. Com vários workers, prefira
 O mesmo vale para as **recorrências de demanda**: o processamento é explícito
 (`POST /recorrencias-demanda/processar`) até existir job periódico configurado.
 
+### Tempo real e e-mail (§41, §127)
+
+| Variável | Padrão | Observação |
+|---|---|---|
+| `REALTIME_ENABLED` | `true` | Desliga o `GET /eventos/stream` (responde 503) |
+| `REALTIME_BACKEND` | `memory` | `redis` faz o fan-out entre workers |
+| `REALTIME_HEARTBEAT_SEGUNDOS` | `20` | Ping para manter a conexão viva atrás do proxy |
+| `EMAIL_ENABLED` | `false` | O canal in-app independe disto |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASSWORD` | — | Sem `SMTP_HOST`, nenhum e-mail sai |
+| `SMTP_FROM` / `SMTP_USE_TLS` | `nao-responder@localhost` / `true` | Identidade do remetente |
+
+O deploy roda **um worker uvicorn**, então o broker em memória atende. Se o
+comando do container passar a usar `--workers > 1`, mude para
+`REALTIME_BACKEND=redis`; sem isso, um usuário conectado ao worker A não recebe o
+evento publicado pelo worker B (o polling de 60s ainda cobre, com atraso).
+
+A borda precisa do `location = /api/govtask/eventos/stream` com
+`proxy_buffering off` e `proxy_read_timeout` longo (já em
+`infra/nginx/sites/default.conf`). Sem isso, o nginx bufferiza o stream e o
+tempo real não chega — o sintoma é o sino só atualizar no polling.
+
+O e-mail é **best-effort** e sai no fluxo da notificação. Com `EMAIL_ENABLED=false`
+(ou sem SMTP), as preferências do usuário ficam salvas e nada é enviado.
+
 ## 3. Publicar uma versão
 
 ```bash

@@ -67,6 +67,7 @@ from app.models.anexo import Anexo
 from app.models.evento_timeline import EventoTimeline
 from app.models.contestacao import Contestacao
 from app.models.notificacao import Notificacao
+from app.models.notificacao_preferencia import NotificacaoPreferencia
 from app.models.comentario import Comentario
 from app.models.comentario_demanda import (
     ComentarioDemanda,
@@ -176,6 +177,7 @@ __all__ = [
     "EventoTimeline",
     "Contestacao",
     "Notificacao",
+    "NotificacaoPreferencia",
     "Comentario",
     "TemplateFluxo",
     "TemplateEtapa",

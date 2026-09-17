@@ -402,6 +402,23 @@ services:
       SAAS_JWT_SECRET: ${SAAS_JWT_SECRET}
       # Internal key DEVE ser igual ao INTERNAL_API_KEY da plataforma SaaS (protege /internal/sync-*).
       INTERNAL_API_KEY: ${GOVTASK_INTERNAL_API_KEY:-${INTERNAL_API_KEY}}
+      # URL pública usada nos links permanentes e no QR code da demanda (§139).
+      PUBLIC_URL: ${GOVTASK_PUBLIC_URL:-https://govtask.govsistem.com.br}
+      # Webhooks de saída (§196), desligados por padrão.
+      WEBHOOKS_ENABLED: ${GOVTASK_WEBHOOKS_ENABLED:-false}
+      # Notificações multicanal (§41). O canal in-app é sempre gravado; o
+      # e-mail fica desligado por padrão.
+      EMAIL_ENABLED: ${GOVTASK_EMAIL_ENABLED:-false}
+      SMTP_HOST: ${GOVTASK_SMTP_HOST:-}
+      SMTP_PORT: ${GOVTASK_SMTP_PORT:-587}
+      SMTP_USER: ${GOVTASK_SMTP_USER:-}
+      SMTP_PASSWORD: ${GOVTASK_SMTP_PASSWORD:-}
+      SMTP_FROM: ${GOVTASK_SMTP_FROM:-nao-responder@localhost}
+      SMTP_USE_TLS: ${GOVTASK_SMTP_USE_TLS:-true}
+      # Tempo real (§127). `memory` atende o worker único do deploy; ao rodar
+      # mais de um worker uvicorn, use `redis` para o evento cruzar processos.
+      REALTIME_ENABLED: ${GOVTASK_REALTIME_ENABLED:-true}
+      REALTIME_BACKEND: ${GOVTASK_REALTIME_BACKEND:-memory}
     volumes:
       - govtask_uploads:/app/uploads
     depends_on:

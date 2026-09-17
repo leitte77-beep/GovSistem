@@ -7,9 +7,12 @@ import { Sidebar } from "@/components/ui/Sidebar";
 import { Topbar } from "@/components/ui/Topbar";
 import { CommandPalette } from "@/components/CommandPalette";
 import { homeDoPerfil, perfilDoUsuario } from "@/lib/perfil";
+import { useRealtime } from "@/lib/realtime";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const { user, loading, logout } = useAuth();
+  // Mantém o stream aberto durante toda a sessão; um único EventSource por aba.
+  useRealtime();
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);

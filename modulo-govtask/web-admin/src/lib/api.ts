@@ -16,6 +16,11 @@ function getToken(): string | null {
   return localStorage.getItem(ACCESS_TOKEN_KEY);
 }
 
+/** Token atual, para o stream de eventos (o EventSource não envia cabeçalho). */
+export function getAccessToken(): string | null {
+  return getToken();
+}
+
 export function bootstrapTokenFromQuery(): string | null {
   if (typeof window === "undefined") return null;
   const urlParams = new URLSearchParams(window.location.search);
@@ -467,6 +472,21 @@ export const api = {
   listNotificacoes(params?: { nao_lidas?: boolean }) {
     const q = params?.nao_lidas ? "?nao_lidas=true" : "";
     return request<Notificacao[]>(`/notificacoes${q}`);
+  },
+
+  /** Contagem exata do sino; a listagem tem limite de página. */
+  resumoNotificacoes() {
+    return request<{ nao_lidas: number }>("/notificacoes/resumo");
+  },
+
+  preferenciasNotificacao() {
+    return request<import("@/types/govtask").PreferenciaNotificacao>("/notificacoes/preferencias");
+  },
+  atualizarPreferenciasNotificacao(data: { email_ativo: boolean; tipos_email: string[] }) {
+    return request<import("@/types/govtask").PreferenciaNotificacao>("/notificacoes/preferencias", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
   },
 
   marcarLida(id: string) {

@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/Button";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { notify } from "@/components/ui/Toast";
+import { PreferenciasNotificacao } from "@/components/notificacoes/PreferenciasNotificacao";
 import {
   Bell,
   BellRing,
@@ -61,6 +62,8 @@ function getIconColor(tipo: string): string {
 }
 
 function getLink(n: Notificacao): string {
+  // A demanda é o contexto mais forte do núcleo v2; a tarefa vem depois.
+  if (n.demanda_id) return `/demandas/${n.demanda_id}`;
   if (n.tarefa_id) return `/tarefas/${n.tarefa_id}`;
   if (n.convenio_id) return `/convenios/${n.convenio_id}`;
   return "#";
@@ -221,6 +224,8 @@ export default function NotificacoesPage() {
           {renderGroup("Anteriores", grouped.anteriores)}
         </div>
       )}
+
+      <PreferenciasNotificacao />
     </div>
   );
 }

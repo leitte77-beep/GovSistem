@@ -36,43 +36,42 @@ async def require_internal_key(
         )
 
 
-async def get_current_user(
-    request: Request,
-    credentials: Annotated[
-        HTTPAuthorizationCredentials | None, Depends(bearer_scheme)
-    ] = None,
-    db: AsyncSession = Depends(get_db),
-) -> User:
-    if credentials is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-        )
+def _decodificar_token(token: str) -> dict:
+    """Decodifica o token do módulo ou, como fallback, o do SSO da plataforma."""
     try:
-        payload = decode_token(credentials.credentials)
+        return decode_token(token)
     except Exception:
         # Try SaaS JWT secret as fallback (for SSO module_access tokens)
         saas_secret = settings.SAAS_JWT_SECRET.get_secret_value()
-        if saas_secret:
-            try:
-                import jwt as _jwt
-                payload = _jwt.decode(
-                    credentials.credentials,
-                    saas_secret,
-                    algorithms=[settings.ALGORITHM],
-                )
-            except Exception:
-                logger.warning("Token decode failed", exc_info=True)
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid or expired token",
-                )
-        else:
+        if not saas_secret:
             logger.warning("Token decode failed", exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid or expired token",
             )
+        try:
+            import jwt as _jwt
+            return _jwt.decode(
+                token,
+                saas_secret,
+                algorithms=[settings.ALGORITHM],
+            )
+        except Exception:
+            logger.warning("Token decode failed", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired token",
+            )
+
+
+async def get_user_from_token(token: str, db: AsyncSession) -> User:
+    """Resolve o usuário a partir de um token cru.
+
+    Separado de `get_current_user` porque o EventSource do navegador não permite
+    cabeçalho `Authorization`: o SSE recebe o token por query e usa esta mesma
+    validação, sem abrir uma segunda porta de autenticação.
+    """
+    payload = _decodificar_token(token)
 
     token_type = payload.get("type")
     if token_type == "module_access" and payload.get("module") != "govtask":
@@ -118,6 +117,21 @@ async def get_current_user(
         )
 
     return user
+
+
+async def get_current_user(
+    request: Request,
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None, Depends(bearer_scheme)
+    ] = None,
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
+    return await get_user_from_token(credentials.credentials, db)
 
 
 def get_user_permissions(user: User) -> set[str]:

@@ -10,14 +10,16 @@ from app.core.database import dispose_sync_engine, engine
 from app.middleware.audit import audit_middleware
 from app.middleware.json_logging import JSONLogMiddleware
 from app.middleware.security_headers import SecurityHeadersMiddleware
-from app.services import scheduler
+from app.services import realtime, scheduler
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     scheduler.start()
+    await realtime.start()
     yield
     await scheduler.stop()
+    await realtime.stop()
     dispose_sync_engine()
     await engine.dispose()
 

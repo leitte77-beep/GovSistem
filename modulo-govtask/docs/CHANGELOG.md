@@ -4,6 +4,60 @@ Ordem cronológica inversa. Cada entrada registra o que mudou, a migração
 correspondente e o que ficou de fora, para que a próxima pessoa não descubra a
 pendência em produção.
 
+## 2026-09-17 — Tempo real e notificações por e-mail
+
+Fecha §41 (notificações multicanal) e §127 (tempo real) sobre a base de
+notificações in-app.
+
+**Migração:** `f0a1b2c3d4e5_notificacoes_multicanal` (aditiva). Exige
+`alembic upgrade head` antes da publicação.
+
+### Adicionado
+
+- **Tempo real (§127).** `GET /eventos/stream` (SSE) autenticado por token de
+  query — o `EventSource` do navegador não envia cabeçalho `Authorization`. O
+  payload é um **sinal**, não a verdade: avisa que algo mudou e o cliente
+  recarrega pela API autorizada, então um evento publicado antes de um rollback
+  não vaza dado. `services/realtime.py` traz um broker em processo (worker
+  único, o deploy atual) e fan-out opcional por Redis
+  (`REALTIME_BACKEND=redis`) para quando houver mais de um worker.
+- **Publicação a partir das notificações.** `criar_notificacao` publica o sinal
+  e dispara os canais externos. Como toda notificação do sistema passa por esse
+  ponto, não há caminho que crie aviso sem atualizar o sino em tempo real.
+- **E-mail (§41).** `services/email.py` envia por SMTP, fora do event loop e de
+  forma best-effort; desligado por padrão (`EMAIL_ENABLED=false`).
+  `services/notificacoes_canais.py` decide quem recebe: o in-app é sempre
+  gravado, o e-mail depende da preferência do usuário e alguns tipos
+  (atraso escalado, devolução, prazo vencido) são **obrigatórios** e furam a
+  lista de opção.
+- **Preferências de notificação.** `notificacao_preferencias` guarda, por
+  usuário, se o e-mail está ativo e para quais tipos. API em
+  `GET/PUT /notificacoes/preferencias` e `GET /notificacoes/resumo` (contagem
+  exata do sino, sem o limite da listagem).
+- **Frontend.** `useRealtime()` abre um único `EventSource` por aba e dispara
+  `govtask:notificacao`; o sino usa a contagem exata e reage ao evento, mantendo
+  o polling de 60s como rede de segurança. A tela de notificações ganhou o
+  painel de canais (e-mail + tipos). A navegação de notificações passou a
+  preferir `demanda_id` antes de `tarefa_id`/`convenio_id`.
+- **Nginx.** `location = /api/govtask/eventos/stream` com buffering desligado e
+  `proxy_read_timeout 3600s` — sem isso o proxy segura o evento e o tempo real
+  não chega.
+
+### Testes
+
+- `test_notificacoes_canais.py`: regra de e-mail (desligado, lista vazia =
+  todos, lista restringe, obrigatórios furam), round-trip das preferências e
+  validação de tipo desconhecido, entrega do broker em tempo real, publicação a
+  partir de `criar_notificacao` e envio de e-mail com dublê de SMTP.
+
+### Não feito nesta entrega
+
+- **WhatsApp e push** seguem sem provedor. O despachante é o ponto de extensão,
+  mas nenhum canal é simulado: um canal que não existe não é chamado.
+- **Outbox de e-mail.** O envio é best-effort no fluxo da notificação; uma fila
+  persistente com retentativa entra quando houver volume que justifique.
+- Testes de interação no frontend continuam ausentes.
+
 ## 2026-09-17 — Acompanhamentos, visões salvas e obra pela demanda
 
 Fecha as lacunas de interface deixadas pela v2/v3: §29–§31, §45–§46, §49–§50 e
