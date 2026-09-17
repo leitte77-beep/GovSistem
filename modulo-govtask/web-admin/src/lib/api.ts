@@ -693,6 +693,12 @@ export const api = {
     return request<void>(`/demandas/${demandaId}/documentos/${documentoId}`, { method: "DELETE", body: JSON.stringify({ motivo }) });
   },
 
+  // ── IA da demanda (§92) — devolve sugestão, nunca grava ──
+  iaStatus(demandaId: string) { return request<{ disponivel: boolean; provedor: string; modelo: string }>(`/demandas/${demandaId}/ia/status`); },
+  iaResumo(demandaId: string) { return request<{ sugestao: string }>(`/demandas/${demandaId}/ia/resumo`, { method: "POST" }); },
+  iaProximaAcao(demandaId: string) { return request<{ sugestao: string }>(`/demandas/${demandaId}/ia/proxima-acao`, { method: "POST" }); },
+  iaDocumentosFaltantes(demandaId: string) { return request<{ sugestoes: string[] }>(`/demandas/${demandaId}/ia/documentos-faltantes`, { method: "POST" }); },
+
   // ── Assinatura de documento (§78) ──
   assinaturaDocumento(demandaId: string, grupoId: string) { return request<import("@/types/govtask").AssinaturaDocumento | null>(`/demandas/${demandaId}/documentos/${grupoId}/assinatura`); },
   solicitarAssinatura(demandaId: string, grupoId: string) { return request<import("@/types/govtask").AssinaturaDocumento>(`/demandas/${demandaId}/documentos/${grupoId}/assinatura/solicitar`, { method: "POST", body: JSON.stringify({}) }); },

@@ -136,6 +136,15 @@ class Settings(BaseSettings):
     REALTIME_BACKEND: str = "memory"  # memory | redis
     REALTIME_HEARTBEAT_SEGUNDOS: int = 20
 
+    # Camada de IA (§92). Desligada por padrão: nenhum texto de demanda sai do
+    # ambiente sem configuração explícita. As rotas devolvem **sugestão**, que
+    # só vira informação oficial por confirmação humana.
+    AI_ENABLED: bool = False
+    AI_PROVIDER: str = "gemini"
+    AI_API_KEY: SecretStr = SecretStr("")
+    AI_MODEL: str = "gemini-2.5-flash"
+    AI_TIMEOUT_SEGUNDOS: int = 30
+
     PASSWORD_MIN_LENGTH: int = 8
     PASSWORD_MIN_UPPERCASE: int = 1
     PASSWORD_MIN_LOWERCASE: int = 1

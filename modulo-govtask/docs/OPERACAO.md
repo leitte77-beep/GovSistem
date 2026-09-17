@@ -114,6 +114,24 @@ tempo real não chega — o sintoma é o sino só atualizar no polling.
 O e-mail é **best-effort** e sai no fluxo da notificação. Com `EMAIL_ENABLED=false`
 (ou sem SMTP), as preferências do usuário ficam salvas e nada é enviado.
 
+### IA e assinatura (§92, §78)
+
+| Variável | Padrão | Observação |
+|---|---|---|
+| `AI_ENABLED` | `false` | Sem isto, `/demandas/{id}/ia/*` responde 503 |
+| `AI_PROVIDER` | `gemini` | Provedor da camada de sugestão |
+| `AI_API_KEY` | — | Sem chave, a camada fica indisponível |
+| `AI_MODEL` | `gemini-2.5-flash` | Modelo usado nas sugestões |
+
+A IA **não grava nada**: devolve sugestão e o usuário aplica pela edição normal.
+Nenhum texto de demanda sai do ambiente sem `AI_ENABLED=true` e chave.
+
+A assinatura **não chama o assinador**. O GovTask expõe o boundary
+`POST /api/govtask/internal/assinaturas/registrar`, protegido por
+`INTERNAL_API_KEY`, que recebe referência e hash e é o único caminho para o
+estado `ASSINADO`. Até o assinador chamá-lo, o documento fica "Aguardando
+assinatura".
+
 ## 3. Publicar uma versão
 
 ```bash

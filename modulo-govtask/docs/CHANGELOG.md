@@ -4,6 +4,40 @@ Ordem cronológica inversa. Cada entrada registra o que mudou, a migração
 correspondente e o que ficou de fora, para que a próxima pessoa não descubra a
 pendência em produção.
 
+## 2026-09-17 — Camada de IA
+
+Fecha §92. A camada é **desligada por padrão** e nunca grava: as rotas devolvem
+sugestão, e aplicá-la é uma edição normal da demanda, com confirmação humana.
+
+**Sem migração.**
+
+### Adicionado
+
+- **`services/ia.py`.** Prompt factual montado a partir do que está registrado
+  na demanda; provedor trocável (hoje Gemini) isolado em uma função. Sem chave,
+  o recurso está indisponível e nada é enviado.
+- **Rotas de sugestão.** `GET /demandas/{id}/ia/status`,
+  `POST .../ia/resumo`, `.../ia/proxima-acao` e `.../ia/documentos-faltantes`.
+  Todas exigem apenas `resource.view` e **não persistem nada**. Com a camada
+  desligada, respondem 503; provedor fora do ar, 502.
+- **Frontend.** Painel "Sugestões de IA" na visão geral da demanda, visível só
+  quando a camada está disponível, com "Aplicar sugestão" (PATCH normal) e
+  "Descartar".
+- **Configuração.** `AI_ENABLED`, `AI_PROVIDER`, `AI_API_KEY`, `AI_MODEL`,
+  `AI_TIMEOUT_SEGUNDOS`, documentados em `.env.example` e no compose.
+
+### Testes
+
+- `test_ia.py`: camada desligada responde 503; sugestão é devolvida **sem
+  alterar** o resumo da demanda; a lista de documentos faltantes é interpretada
+  mesmo com numeração do modelo; isolamento entre municípios.
+
+### Não feito nesta entrega
+
+- Extração de dados de documentos, geração de ofícios e busca semântica de
+  processos semelhantes seguem fora do escopo. A camada está preparada para
+  recebê-las como novos prompts, sem mudar o boundary.
+
 ## 2026-09-17 — Assinatura de documento
 
 Fecha §78. O ciclo de vida é explícito e a transição para **Assinado** não é

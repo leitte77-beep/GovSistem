@@ -419,6 +419,12 @@ services:
       # mais de um worker uvicorn, use `redis` para o evento cruzar processos.
       REALTIME_ENABLED: ${GOVTASK_REALTIME_ENABLED:-true}
       REALTIME_BACKEND: ${GOVTASK_REALTIME_BACKEND:-memory}
+      # Camada de IA (§92), desligada por padrão: nenhum texto de demanda sai
+      # do ambiente sem configuração explícita.
+      AI_ENABLED: ${GOVTASK_AI_ENABLED:-false}
+      AI_PROVIDER: ${GOVTASK_AI_PROVIDER:-gemini}
+      AI_API_KEY: ${GOVTASK_AI_API_KEY:-}
+      AI_MODEL: ${GOVTASK_AI_MODEL:-gemini-2.5-flash}
     volumes:
       - govtask_uploads:/app/uploads
     depends_on:

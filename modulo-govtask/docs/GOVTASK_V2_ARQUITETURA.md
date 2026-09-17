@@ -598,8 +598,10 @@ tenant e privilegia filas de atenção, não tabelas administrativas.
 
 Pendências remanescentes: WhatsApp/push como canais reais (§41 — o despachante
 é o ponto de extensão, sem canal simulado), outbox de e-mail com retentativa,
-assinatura digital (§78), integrações GovDoc/GovPro/GovFrota/Arena
-(§134–§137), camada de IA (§92, só a fronteira pronta) e testes de interação no
+acionamento do assinador (§78 — o boundary com evidência existe; falta o
+contrato/certificado do ambiente), integrações GovDoc/GovPro/GovFrota/Arena
+(§134–§137, fora de escopo por decisão), extração de dados de documentos e
+geração de ofícios por IA (§92 — o boundary existe) e testes de interação no
 frontend.
 
 O tempo real (§127, SSE com broker em processo e fan-out opcional por Redis) e o
