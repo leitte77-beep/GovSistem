@@ -89,14 +89,19 @@ class MemberUpdate(BaseModel):
 
 
 class MemberProfileUpdate(BaseModel):
-    """Edição de perfil do vínculo. Nome/telefone/CPF são dados globais do
-    usuário; cargo/departamento são específicos do membership (não afetam
-    outros tenants). E-mail não é alterado aqui (exige confirmação segura)."""
+    """Edição completa do cadastro do usuário do tenant (gestor).
+
+    Nome, e-mail, telefone e CPF são dados globais da identidade. Cargo,
+    departamento, perfil (membership_role) e status do vínculo são
+    específicos do membership e não afetam outros tenants."""
     name: Optional[str] = None
+    email: Optional[EmailStr] = None
     phone: Optional[str] = None
     cpf: Optional[str] = None
     position: Optional[str] = None
     department: Optional[str] = None
+    membership_role: Optional[str] = None
+    is_active: Optional[bool] = None
 
 
 class GrantsBody(BaseModel):
@@ -477,11 +482,12 @@ async def update_tenant_user_profile(
     ctx: TenantContext = Depends(require_tenant_manager),
     db: AsyncSession = Depends(get_db),
 ):
-    """Edita o perfil de um usuário do tenant (gestor).
+    """Edita o cadastro completo de um usuário do tenant (gestor).
 
-    Dados globais (name, phone, cpf) são preservados entre tenants e só são
-    alterados quando fornecidos. Dados do vínculo (position, department) são
-    específicos do membership. E-mail não é alterado nesta rota.
+    Dados globais (name, email, phone, cpf) são preservados entre tenants e só
+    são alterados quando fornecidos. Dados do vínculo (position, department,
+    membership_role, is_active) são específicos do membership. A alteração de
+    e-mail/CPF exige que o valor não esteja em uso por outro usuário ativo.
     """
     mem = await get_membership(db, user_id, ctx.organization_id)
     if not mem or mem.deleted_at is not None:
@@ -496,33 +502,102 @@ async def update_tenant_user_profile(
 
     before = {
         "name": u.name,
+        "email": u.email,
         "phone": u.phone,
         "cpf": u.cpf,
         "position": mem.position,
         "department": mem.department,
+        "membership_role": mem.membership_role,
+        "is_active": mem.is_active,
     }
+
+    new_role = body.membership_role if body.membership_role is not None else mem.membership_role
+    new_active = body.is_active if body.is_active is not None else mem.is_active
+    if new_role not in ("ORG_ADMIN", "ORG_MEMBER"):
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Invalid membership_role")
+    if new_role == "ORG_ADMIN" and mem.membership_role != "ORG_ADMIN" and not ctx.is_manager:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Only managers can grant manager role")
+
+    # proteção do último gestor ativo quando perfil/status efetivamente mudam
+    if new_role != mem.membership_role or new_active != mem.is_active:
+        admins = (
+            await db.execute(
+                select(func.count(OrganizationMembership.id)).where(
+                    OrganizationMembership.organization_id == ctx.organization_id,
+                    OrganizationMembership.membership_role == "ORG_ADMIN",
+                    OrganizationMembership.is_active.is_(True),
+                    OrganizationMembership.deleted_at.is_(None),
+                )
+            )
+        ).scalar() or 0
+        if would_remove_last_active_manager(
+            admins,
+            target_is_active_manager=(mem.membership_role == "ORG_ADMIN" and mem.is_active),
+            actor_is_target=(ctx.membership_id == mem.id),
+            new_role_is_manager=(new_role == "ORG_ADMIN" and new_active),
+        ):
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                                detail="Não é possível remover o último gestor ativo")
 
     if body.name is not None:
         body.name = body.name.strip()
         if not body.name:
             raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="Nome não pode ser vazio")
         u.name = body.name
+    if body.email is not None:
+        email = body.email.strip().lower()
+        if not email:
+            raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail="E-mail não pode ser vazio")
+        if email != u.email:
+            dup_email = (
+                await db.execute(
+                    select(User).where(
+                        User.email == email,
+                        User.deleted_at.is_(None),
+                        User.id != user_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if dup_email:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                                    detail="E-mail já está em uso por outro usuário")
+        u.email = email
     if body.phone is not None:
         u.phone = body.phone.strip() or None
     if body.cpf is not None:
-        u.cpf = body.cpf.strip() or None
+        cpf = body.cpf.strip() or None
+        if cpf and cpf != u.cpf:
+            dup_cpf = (
+                await db.execute(
+                    select(User).where(
+                        User.cpf == cpf,
+                        User.deleted_at.is_(None),
+                        User.id != user_id,
+                    )
+                )
+            ).scalar_one_or_none()
+            if dup_cpf:
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT,
+                                    detail="CPF já está em uso por outro usuário")
+        u.cpf = cpf
     if body.position is not None:
         mem.position = body.position.strip() or None
     if body.department is not None:
         mem.department = body.department.strip() or None
 
+    mem.membership_role = new_role
+    mem.is_active = new_active
+    mem.status = "active" if new_active else "inactive"
     mem.updated_by = ctx.user.id
     after = {
         "name": u.name,
+        "email": u.email,
         "phone": u.phone,
         "cpf": u.cpf,
         "position": mem.position,
         "department": mem.department,
+        "membership_role": mem.membership_role,
+        "is_active": mem.is_active,
     }
 
     await _log(db, request, ctx, "membership_profile_update", "user", resource_id=str(user_id),
@@ -532,10 +607,13 @@ async def update_tenant_user_profile(
     return {
         "user_id": str(user_id),
         "name": u.name,
+        "email": u.email,
         "phone": u.phone,
         "cpf": u.cpf,
         "position": mem.position,
         "department": mem.department,
+        "membership_role": mem.membership_role,
+        "is_active": mem.is_active,
     }
 
 

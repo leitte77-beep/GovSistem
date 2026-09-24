@@ -69,7 +69,7 @@ export default function DetalhesUsuarioPage() {
   const isManager = user?.membership_role === "ORG_ADMIN";
 
   const actionLinks = [
-    { href: `/usuarios/${id}/editar`, icon: Pencil, label: "Editar dados", color: "bg-primary-50 text-primary-700", desc: "Atualizar nome, telefone, cargo e departamento" },
+    { href: `/usuarios/${id}/editar`, icon: Pencil, label: "Editar dados", color: "bg-primary-50 text-primary-700", desc: "Atualizar nome, e-mail, telefone, CPF e vínculo" },
     { href: `/usuarios/${id}/acessos`, icon: UserCog, label: "Acessos e permissões", color: "bg-violet-50 text-violet-600", desc: "Liberar ou remover módulos e roles" },
     { href: `/usuarios/${id}/perfil`, icon: ShieldCheck, label: "Perfil no órgão", color: "bg-cyan-50 text-cyan-600", desc: "Promover/rebaixar gestor e ativar/suspender" },
     { href: `/usuarios/${id}/senha`, icon: KeyRound, label: "Redefinir senha", color: "bg-amber-50 text-amber-600", desc: "Iniciar recuperação de senha" },
