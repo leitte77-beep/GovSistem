@@ -1,0 +1,2501 @@
+Você é uma IA sênior especialista em arquitetura de software enterprise, engenharia financeira, contabilidade brasileira, fiscal brasileiro, segurança, LGPD, meios de pagamento, SaaS, assinaturas recorrentes e desenvolvimento full-stack.
+
+Preciso que você desenvolva um módulo completo de FINANCEIRO + CONTABILIDADE + FISCAL para o meu sistema de diário.
+
+O sistema atual possui venda de planos/assinaturas. O novo módulo será responsável por controlar tudo que envolve dinheiro, vendas por plano, entradas, saídas, contas a receber, contas a pagar, dívidas, boletos, Pix, conciliação bancária, emissão de nota fiscal, relatórios financeiros, relatórios contábeis, relatórios fiscais e suporte às obrigações brasileiras vigentes em 2026.
+
+Antes de codar, leia o repositório atual, entenda a stack, banco de dados, arquitetura, autenticação, modelo de usuários, planos, assinaturas, permissões, sistema de cobrança atual, modelos existentes e padrões de código. Não quebre funcionalidades existentes. Trabalhe com migrações seguras, testes automatizados, feature flags e documentação.
+
+IMPORTANTE:
+1. O módulo deve ser projetado em nível enterprise.
+2. O módulo deve ser multiempresa/multitenant, mesmo que hoje exista apenas uma empresa.
+3. O módulo deve separar claramente regras financeiras, contábeis e fiscais.
+4. O módulo deve ser compatível com leis e práticas brasileiras vigentes em 2026.
+5. Não hardcode regras tributárias mutáveis. Crie motor fiscal parametrizável, versionado e auditável.
+6. Toda regra fiscal deve ter fonte, data de vigência, responsável pela aprovação e histórico de alteração.
+7. O sistema deve permitir revisão por contador.
+8. O sistema não deve prometer substituir contador, advogado tributarista ou ERP contábil oficial.
+9. Sempre que uma regra depender de regime tributário, CNAE, município, enquadramento, operação ou interpretação fiscal, crie configuração e campo de validação contábil.
+10. Para emissão real de NFS-e, boleto, Pix, DAS, DARF, SPED ou integrações bancárias/fiscais, use ambiente de homologação/sandbox antes da produção.
+11. Não armazene dados sensíveis de cartão. Use gateway/tokenização.
+12. Use valores monetários com Decimal ou inteiro em centavos. Nunca use float para dinheiro.
+13. Todos os lançamentos financeiros e contábeis devem ser auditáveis, rastreáveis e, quando aprovados/fechados, imutáveis. Correções devem ser feitas por estorno, ajuste ou lançamento complementar, nunca por edição silenciosa.
+14. Toda operação crítica deve ter idempotência, log de auditoria, rastreio de usuário, IP, origem, data/hora e motivo.
+15. O timezone padrão do sistema deve ser America/Sao_Paulo, com armazenamento consistente em UTC e apresentação em horário brasileiro.
+16. O sistema deve suportar CNPJ numérico e CNPJ alfanumérico, pois a Receita Federal inicia novo modelo para novas inscrições em julho de 2026. CNPJ deve ser tratado como string, nunca como número.
+17. O sistema deve estar preparado para a Reforma Tributária do Consumo, incluindo CBS/IBS nos documentos fiscais eletrônicos quando aplicável, seguindo notas técnicas, leiautes e tabelas oficiais atualizadas.
+18. O sistema deve suportar NFS-e padrão nacional/API, emissão municipal quando necessário, cancelamento, substituição, rejeição, consulta, armazenamento de XML/PDF/DANFSe e protocolos.
+19. O módulo deve gerar relatórios para gestão interna e para contador, mas transmissões oficiais devem ser integradas apenas quando houver API/provedor homologado e validação legal.
+
+OBJETIVO PRINCIPAL
+
+Construir um módulo financeiro, contábil e fiscal completo para um SaaS/sistema de diário com venda de planos, capaz de:
+
+- Registrar vendas por plano.
+- Gerenciar assinaturas, renovações, upgrades, downgrades, cancelamentos, trials, cupons, descontos, inadimplência e reativações.
+- Controlar contas a receber.
+- Controlar contas a pagar.
+- Controlar entradas e saídas.
+- Gerenciar dívidas de clientes.
+- Gerenciar dívidas da própria empresa.
+- Emitir cobranças por boleto, Pix, cartão ou outros meios.
+- Integrar com gateways, bancos, PSPs e provedores fiscais.
+- Emitir NFS-e quando aplicável.
+- Gerar relatórios financeiros, gerenciais, contábeis e fiscais.
+- Permitir conciliação bancária.
+- Gerar lançamentos contábeis em partidas dobradas.
+- Suportar regime de caixa e regime de competência.
+- Suportar plano de contas.
+- Suportar centros de custo.
+- Suportar fechamento mensal.
+- Suportar auditoria.
+- Suportar exportação para contador.
+- Suportar parametrização tributária brasileira 2026.
+- Suportar segurança, LGPD e controle de permissões.
+
+CONTEXTO DO SISTEMA
+
+O sistema é um sistema de diário. Ele possui usuários/clientes que contratam planos. Cada plano pode ter preço, periodicidade, limites, benefícios, status, cupons, promoções e regras de acesso.
+
+O módulo financeiro deve se conectar ao módulo de usuários/assinaturas/planos para saber:
+
+- Qual cliente comprou.
+- Qual plano comprou.
+- Valor bruto.
+- Desconto.
+- Valor líquido.
+- Forma de pagamento.
+- Data da compra.
+- Data de ativação.
+- Data de vencimento.
+- Data de renovação.
+- Status da assinatura.
+- Status do pagamento.
+- Status fiscal.
+- Nota fiscal vinculada.
+- Cobrança vinculada.
+- Conta contábil vinculada.
+- Centro de custo vinculado.
+- Receita por plano.
+- Receita por período.
+- Receita recorrente.
+- Inadimplência por plano.
+- Cancelamentos por plano.
+- Chargebacks por plano.
+- Reembolsos por plano.
+
+Você deve assumir que o sistema pode crescer e virar uma plataforma grande, com milhares ou milhões de cobranças. Portanto, projete com escalabilidade, filas, jobs, índices, logs e monitoramento.
+
+ARQUITETURA ESPERADA
+
+Proponha e implemente uma arquitetura modular. Se a aplicação atual for monolítica, use um monólito modular bem separado. Se já for microserviços, respeite a arquitetura existente.
+
+Crie domínios bem definidos:
+
+1. Billing / Assinaturas / Cobrança
+2. Accounts Receivable / Contas a Receber
+3. Accounts Payable / Contas a Pagar
+4. Payments / Pagamentos
+5. Treasury / Tesouraria
+6. Bank Reconciliation / Conciliação Bancária
+7. Fiscal / Notas Fiscais / Tributos
+8. Accounting / Contabilidade
+9. Reporting / BI Financeiro
+10. Compliance / Auditoria / LGPD
+11. Integrations / Gateways / Bancos / Provedores fiscais
+12. Customer Finance Portal / Portal financeiro do cliente
+13. Accountant Portal / Portal do contador
+
+A arquitetura deve conter:
+
+- Camada de domínio.
+- Camada de aplicação/use cases.
+- Camada de infraestrutura.
+- Camada de apresentação/API.
+- Camada de integrações externas.
+- Camada de eventos assíncronos.
+- Camada de relatórios.
+- Camada de auditoria.
+
+Use conceitos de DDD quando fizer sentido.
+
+Use eventos de domínio para ações financeiras importantes, por exemplo:
+
+- SubscriptionCreated
+- SubscriptionRenewed
+- SubscriptionCancelled
+- PlanChanged
+- InvoiceCreated
+- InvoiceIssued
+- InvoicePaid
+- InvoicePartiallyPaid
+- InvoiceOverdue
+- InvoiceCancelled
+- PaymentCreated
+- PaymentConfirmed
+- PaymentFailed
+- PaymentRefunded
+- ChargebackReceived
+- BoletoCreated
+- BoletoPaid
+- BoletoExpired
+- PixChargeCreated
+- PixPaid
+- NfseRequested
+- NfseAuthorized
+- NfseRejected
+- NfseCancelled
+- ReceivableCreated
+- ReceivableSettled
+- PayableCreated
+- PayableApproved
+- PayablePaid
+- JournalEntryPosted
+- JournalEntryReversed
+- AccountingPeriodClosed
+- BankStatementImported
+- BankTransactionReconciled
+
+Use outbox pattern para eventos críticos. Use inbox/idempotency para webhooks e eventos externos duplicados.
+
+REGRAS GERAIS DE DADOS FINANCEIROS
+
+1. Dinheiro deve ser armazenado como Decimal ou inteiro em centavos.
+2. Moeda padrão: BRL.
+3. Suportar outras moedas futuramente, mas não implementar conversão sem necessidade.
+4. Nunca usar float.
+5. Arredondamentos devem ser explícitos, testados e versionados.
+6. Guardar valor bruto, descontos, acréscimos, juros, multa, impostos, taxas de gateway, valor líquido, valor recebido e valor conciliado.
+7. Toda cobrança deve ter identificador interno único.
+8. Toda integração externa deve armazenar identificador externo.
+9. Webhooks devem ser idempotentes.
+10. Boletos, Pix, cartões e transferências devem ter status próprios.
+11. Pagamentos parciais devem ser suportados.
+12. Pagamentos a maior devem gerar crédito do cliente ou pendência de reembolso.
+13. Reembolsos devem gerar lançamento financeiro e contábil.
+14. Chargebacks devem gerar lançamento financeiro, ajuste contábil e status operacional.
+15. Cancelamento de assinatura não deve apagar histórico financeiro.
+16. Exclusão física de registros financeiros deve ser proibida por padrão.
+17. Use soft delete apenas para cadastros auxiliares. Documentos financeiros/fiscais devem ser cancelados, estornados ou inativados com motivo.
+18. Após fechamento contábil mensal, não permita alteração direta em lançamentos do período fechado.
+19. Correções em período fechado devem criar lançamentos de ajuste no período aberto ou reabrir período mediante permissão especial e auditoria.
+
+MÓDULO 1 — CADASTROS BASE
+
+Crie telas, tabelas, APIs e validações para:
+
+1. Empresas / tenants
+- ID
+- Razão social
+- Nome fantasia
+- CNPJ, incluindo suporte a alfanumérico
+- Inscrição municipal
+- Inscrição estadual, se aplicável
+- CNAE principal
+- CNAEs secundários
+- Regime tributário: MEI, Simples Nacional, Lucro Presumido, Lucro Real, outro
+- Anexo do Simples quando aplicável
+- Município do prestador
+- UF
+- Endereço fiscal
+- E-mail fiscal
+- Telefone
+- Responsável fiscal
+- Contador responsável
+- Certificado digital vinculado quando aplicável
+- Status fiscal
+- Configurações de emissão de NFS-e
+- Configurações de CBS/IBS
+- Configurações de retenções
+- Configurações de regime de caixa/competência
+- Data de início da configuração
+- Histórico de alterações
+
+2. Filiais
+- Empresa vinculada
+- CNPJ
+- Endereço
+- Município
+- Inscrições
+- Contas bancárias
+- Configuração fiscal própria
+- Status
+
+3. Clientes
+- Pessoa física ou jurídica
+- Nome / razão social
+- CPF ou CNPJ, com suporte a CNPJ alfanumérico
+- E-mail de cobrança
+- E-mail fiscal
+- Telefone
+- Endereço
+- Município
+- UF
+- País
+- Indicador de contribuinte
+- Tipo de cliente: B2C, B2B, governo, estrangeiro
+- Dados para emissão de NFS-e
+- Consentimentos LGPD quando aplicável
+- Preferência de pagamento
+- Status financeiro
+- Limite de crédito, se aplicável
+- Observações internas
+- Histórico de alterações
+
+4. Fornecedores
+- Pessoa física/jurídica
+- CPF/CNPJ
+- Dados bancários
+- Chave Pix
+- Categoria
+- Centro de custo padrão
+- Conta contábil padrão
+- Dados fiscais
+- Retenções aplicáveis
+- Documentos anexos
+- Status
+- Auditoria
+
+5. Planos
+- Nome do plano
+- Código interno
+- Periodicidade: mensal, trimestral, semestral, anual, avulso
+- Preço
+- Moeda
+- Trial
+- Benefícios
+- Limites
+- Produto/serviço fiscal vinculado
+- Código de serviço/NBS/lista de serviço quando aplicável
+- Tributação padrão
+- Conta contábil de receita
+- Centro de custo
+- Status
+- Vigência
+- Histórico de preços
+- Regras de upgrade/downgrade
+- Regras de pró-rata
+- Regras de cancelamento
+- Regras de reembolso
+- Regras de emissão de nota fiscal
+
+6. Produtos/Serviços fiscais
+- Descrição fiscal
+- Código de serviço nacional/municipal
+- NBS, quando aplicável
+- Natureza da operação
+- Município de incidência
+- ISS devido
+- ISS retido, se aplicável
+- CBS/IBS aplicável ou não
+- CST/cClassTrib/indicadores fiscais quando aplicável
+- Conta contábil de receita
+- Vigência
+- Fonte normativa
+- Aprovado por
+- Data de aprovação
+
+7. Contas bancárias
+- Banco
+- Agência
+- Conta
+- Tipo
+- Titular
+- CNPJ/CPF do titular
+- Chave Pix
+- Convênio de boleto
+- Carteira
+- Nosso número
+- Configuração CNAB 240/400
+- Webhook de pagamento
+- Certificado/API credentials
+- Ambiente: sandbox/homologação/produção
+- Status
+
+8. Centros de custo
+- Nome
+- Código
+- Hierarquia
+- Responsável
+- Ativo/inativo
+
+9. Plano de contas
+- Código
+- Nome
+- Tipo: ativo, passivo, patrimônio líquido, receita, despesa, dedução, custo
+- Natureza: devedora/credora
+- Conta pai
+- Aceita lançamento manual?
+- Conta sistêmica?
+- Ativa/inativa
+- Mapeamento fiscal/gerencial
+- Vigência
+
+MÓDULO 2 — ASSINATURAS, PLANOS E VENDAS POR PLANO
+
+Implementar gestão completa de assinaturas:
+
+1. Criar assinatura
+- Cliente
+- Plano
+- Data de início
+- Data de fim, se aplicável
+- Periodicidade
+- Valor contratado
+- Desconto
+- Cupom
+- Trial
+- Meio de pagamento
+- Dia de vencimento
+- Política de renovação
+- Política de nota fiscal
+- Política de reconhecimento de receita
+
+2. Ciclo de vida
+- Trial
+- Ativa
+- Pendente de pagamento
+- Inadimplente
+- Suspensa
+- Cancelada
+- Expirada
+- Em renegociação
+- Reativada
+
+3. Upgrades/downgrades
+- Cálculo de pró-rata
+- Crédito proporcional
+- Cobrança adicional
+- Ajuste de próxima fatura
+- Histórico do plano anterior e novo
+- Impacto contábil
+- Impacto fiscal
+- Reemissão ou ajuste de nota, quando aplicável
+
+4. Cancelamentos
+- Cancelamento imediato
+- Cancelamento no fim do ciclo
+- Reembolso total/parcial
+- Crédito para uso futuro
+- Motivo de cancelamento
+- Impacto em MRR/churn
+- Impacto financeiro
+- Impacto contábil
+- Impacto fiscal
+
+5. Métricas de planos
+- Vendas por plano
+- Receita bruta por plano
+- Receita líquida por plano
+- MRR por plano
+- ARR por plano
+- Novas assinaturas por plano
+- Renovações por plano
+- Cancelamentos por plano
+- Churn por plano
+- Inadimplência por plano
+- Ticket médio por plano
+- Taxa de conversão trial → pago
+- LTV estimado
+- Receita por coorte
+- Receita por canal de venda, se existir
+
+6. Relatórios
+- Vendas por plano por período
+- Comparativo mês a mês
+- Receita recorrente
+- Planos mais vendidos
+- Planos mais lucrativos
+- Planos com maior inadimplência
+- Planos com maior cancelamento
+- Clientes ativos por plano
+- Clientes inadimplentes por plano
+
+MÓDULO 3 — FATURAS, INVOICES E COBRANÇAS
+
+Criar entidade de fatura/cobrança interna separada de nota fiscal.
+
+Diferença conceitual:
+- Fatura/invoice/cobrança: documento financeiro interno ou cobrança ao cliente.
+- Nota fiscal: documento fiscal oficial.
+- Pagamento: liquidação financeira.
+- Lançamento contábil: registro contábil.
+
+A fatura deve conter:
+- Número interno
+- Cliente
+- Assinatura
+- Plano
+- Itens
+- Valor bruto
+- Descontos
+- Acréscimos
+- Juros
+- Multa
+- Impostos destacados
+- Taxas
+- Valor líquido
+- Vencimento
+- Competência
+- Status
+- Meio de pagamento
+- Link de pagamento
+- Boleto vinculado
+- Pix vinculado
+- Cartão vinculado
+- Nota fiscal vinculada
+- Lançamentos contábeis vinculados
+- Tentativas de cobrança
+- Histórico de e-mails/notificações
+- Auditoria
+
+Status da fatura:
+- Draft
+- Open
+- AwaitingPayment
+- PartiallyPaid
+- Paid
+- Overdue
+- Cancelled
+- Refunded
+- Chargeback
+- WrittenOff
+
+Regras:
+1. Fatura não é nota fiscal.
+2. Pode existir fatura sem nota fiscal, dependendo regra fiscal.
+3. Pode existir nota fiscal emitida a partir de fatura.
+4. Pode existir pagamento parcial.
+5. Pode existir múltiplos pagamentos para uma fatura.
+6. Pode existir reembolso.
+7. Pode existir baixa manual mediante permissão e justificativa.
+8. Fatura vencida deve entrar em régua de cobrança.
+9. Fatura paga deve gerar eventos para assinatura, contabilidade, fiscal e relatórios.
+10. Fatura cancelada deve preservar histórico.
+
+MÓDULO 4 — CONTAS A RECEBER
+
+Implementar contas a receber completo.
+
+Entidade Receivable:
+- Cliente
+- Fatura
+- Parcela
+- Valor original
+- Valor em aberto
+- Valor recebido
+- Vencimento
+- Competência
+- Status
+- Meio de pagamento previsto
+- Conta bancária prevista
+- Cobrança vinculada
+- Nota fiscal vinculada
+- Juros/multa/desconto
+- Data de pagamento
+- Data de baixa
+- Usuário que baixou
+- Motivo de baixa
+- Lançamento contábil
+
+Status:
+- Aberto
+- A vencer
+- Vencido
+- Em cobrança
+- Pago parcial
+- Pago
+- Renegociado
+- Cancelado
+- Perdão/baixa por perda
+- Protestado, se aplicável
+- Chargeback
+- Reembolsado
+
+Funcionalidades:
+- Listagem com filtros
+- Aging report
+- Cobrança por cliente
+- Cobrança por plano
+- Cobrança por período
+- Exportação CSV/XLSX
+- Baixa manual
+- Baixa automática por webhook
+- Baixa automática por CNAB retorno
+- Baixa por conciliação bancária
+- Renegociação
+- Parcelamento
+- Juros
+- Multa
+- Desconto por antecipação
+- Desconto manual com aprovação
+- Envio de lembretes
+- Bloqueio/suspensão de acesso por inadimplência
+- Reativação automática após pagamento
+- Histórico completo
+
+MÓDULO 5 — CONTAS A PAGAR
+
+Implementar contas a pagar.
+
+Entidade Payable:
+- Fornecedor
+- Descrição
+- Categoria
+- Conta contábil
+- Centro de custo
+- Documento fiscal recebido
+- Número do documento
+- Valor
+- Vencimento
+- Competência
+- Status
+- Forma de pagamento
+- Conta bancária de saída
+- Aprovação necessária
+- Aprovador
+- Data de aprovação
+- Data de pagamento
+- Comprovante
+- Retenções
+- Recorrência
+- Anexos
+- Observações
+- Lançamento contábil
+
+Status:
+- Rascunho
+- Aguardando aprovação
+- Aprovado
+- Agendado
+- Pago
+- Vencido
+- Cancelado
+- Recusado
+- Estornado
+
+Funcionalidades:
+- Cadastro de despesas
+- Despesas recorrentes
+- Parcelamento
+- Aprovação por alçada
+- Pagamento manual
+- Registro de comprovante
+- Agenda de vencimentos
+- Fluxo de caixa projetado
+- Relatórios por fornecedor
+- Relatórios por categoria
+- Relatórios por centro de custo
+- Retenções configuráveis
+- Anexos de notas/recibos/contratos
+- Auditoria
+
+MÓDULO 6 — DÍVIDAS
+
+O módulo deve tratar dois tipos de dívidas:
+
+A. Dívidas de clientes com a empresa
+B. Dívidas da empresa com terceiros
+
+Dívidas de clientes:
+- Cliente
+- Origem: fatura, assinatura, multa, serviço avulso
+- Valor principal
+- Juros
+- Multa
+- Correção
+- Desconto negociado
+- Valor renegociado
+- Parcelas
+- Vencimentos
+- Status
+- Histórico de cobranças
+- Acordos
+- Documentos assinados
+- Baixa
+- Perda
+- Protesto/negativação, se futuramente aplicável e juridicamente validado
+
+Dívidas da empresa:
+- Credor
+- Contrato
+- Valor principal
+- Juros
+- Multa
+- Parcelas
+- Vencimento
+- Garantias
+- Anexos
+- Status
+- Contabilização
+- Fluxo de caixa
+- Centro de custo
+- Relatórios
+
+Funcionalidades:
+- Renegociação
+- Simulação de parcelamento
+- Controle de acordos
+- Geração de novas cobranças
+- Baixa de parcelas
+- Relatório de inadimplência
+- Relatório de exposição de dívida
+- Projeção de pagamentos
+- Aging de dívidas
+
+MÓDULO 7 — BOLETOS
+
+Implementar integração de boletos via banco, PSP ou gateway.
+
+Não criar boleto bancário “falso”. Boletos reais devem ser registrados por banco/PSP autorizado, com credenciais e contrato.
+
+Entidade BoletoCharge:
+- Fatura
+- Cliente/pagador
+- Banco/PSP
+- Convênio
+- Carteira
+- Nosso número
+- Linha digitável
+- Código de barras
+- QR Code Pix quando suportado
+- Valor
+- Vencimento
+- Juros
+- Multa
+- Desconto
+- Instruções
+- Status
+- URL PDF
+- Identificador externo
+- Data de registro
+- Data de pagamento
+- Data de baixa
+- Data de expiração
+- Retorno CNAB
+- Webhook
+- Logs
+
+Status:
+- Criado
+- Registrado
+- Falha no registro
+- Emitido
+- Pago
+- Vencido
+- Baixado
+- Cancelado
+- Protesto solicitado, se aplicável
+- Erro
+
+Funcionalidades:
+- Gerar boleto via adapter
+- Enviar boleto por e-mail
+- Reemitir boleto
+- Atualizar vencimento quando permitido
+- Cancelar/baixar boleto
+- Importar arquivo retorno CNAB 240/400
+- Gerar arquivo remessa CNAB 240/400, se necessário
+- Receber webhook de pagamento
+- Conciliar automaticamente
+- Suportar boleto com Pix/QR Code quando o banco/PSP suportar
+- Suportar boleto dinâmico futuramente se disponível na integração
+- Validar idempotência por nosso número/identificador externo
+- Evitar duplicidade de boletos para mesma fatura
+
+MÓDULO 8 — PIX
+
+Implementar Pix para cobranças.
+
+Suportar:
+- Pix QR Code dinâmico
+- Pix copia e cola
+- Pix Cobrança com vencimento
+- Pix imediato
+- Webhook de confirmação
+- txid
+- endToEndId
+- PSP/banco
+- Status
+- Expiração
+- Juros/multa/desconto quando suportado
+- Conciliação automática
+- Reembolso/devolução Pix quando integração permitir
+- Pix Automático futuramente para recorrência, se o PSP suportar e estiver aprovado
+
+Entidade PixCharge:
+- Fatura
+- Cliente
+- txid
+- endToEndId
+- QR Code
+- Copia e cola
+- Valor
+- Vencimento/expiração
+- Status
+- PSP
+- Identificador externo
+- Webhook payload
+- Data de pagamento
+- Conta creditada
+- Logs
+- Auditoria
+
+Status:
+- Criado
+- Ativo
+- Pago
+- Expirado
+- Cancelado
+- Falha
+- Devolvido
+
+Regras:
+1. Webhooks duplicados não podem duplicar pagamentos.
+2. Pagamento Pix deve baixar fatura/receivable automaticamente.
+3. Pagamento Pix deve gerar lançamento contábil.
+4. Pagamento Pix deve alimentar conciliação.
+5. Pagamento Pix deve disparar emissão fiscal se a política fiscal assim determinar.
+6. Deve haver tela para copiar código Pix e exibir QR Code.
+7. Deve haver expiração e regeneração controlada.
+
+MÓDULO 9 — CARTÃO E GATEWAY
+
+Implementar integração por adapter.
+
+Não armazenar número completo do cartão, CVV ou dados proibidos. Usar tokenização do gateway.
+
+Entidade PaymentTransaction:
+- Fatura
+- Gateway
+- Método: cartão, Pix, boleto, transferência, manual
+- Valor
+- Taxa gateway
+- Parcelas
+- Status
+- Autorização
+- NSU/TID/identificador externo
+- Token, se aplicável
+- Bandeira
+- Últimos 4 dígitos, se permitido
+- Data de autorização
+- Data de captura
+- Data de liquidação prevista
+- Data de liquidação real
+- Chargeback
+- Reembolso
+- Payloads seguros
+- Logs sanitizados
+
+Status:
+- Criada
+- Autorizada
+- Capturada
+- Paga
+- Falhou
+- Recusada
+- Cancelada
+- Reembolsada
+- Chargeback
+- Em disputa
+
+Funcionalidades:
+- Pagamento à vista
+- Pagamento recorrente tokenizado
+- Retentativa inteligente
+- Dunning
+- Webhooks
+- Chargeback
+- Reembolso parcial/total
+- Conciliação com agenda de recebíveis
+- Taxas MDR
+- Antecipação, se aplicável
+- Relatório de taxas
+
+MÓDULO 10 — CONCILIAÇÃO BANCÁRIA
+
+Implementar conciliação bancária robusta.
+
+Fontes de extrato:
+- OFX
+- CSV
+- CNAB retorno
+- API bancária
+- Open Finance, se houver integração válida
+- Upload manual
+- Webhooks de PSP/gateway
+
+Entidade BankStatement:
+- Conta bancária
+- Período
+- Origem
+- Arquivo
+- Hash do arquivo
+- Importado por
+- Data de importação
+- Status
+
+Entidade BankStatementLine:
+- Data
+- Valor
+- Tipo: crédito/débito
+- Histórico
+- Documento
+- Identificador bancário
+- Saldo, se disponível
+- Possível match
+- Status de conciliação
+- Lançamento vinculado
+
+Funcionalidades:
+- Importar extrato
+- Detectar duplicidade por hash e identificadores
+- Match automático por valor, data, identificador, txid, endToEndId, nosso número, fatura, cliente
+- Match com tolerância configurável
+- Match manual
+- Desfazer conciliação
+- Criar lançamento a partir de transação não identificada
+- Classificar receita/despesa
+- Regras recorrentes de classificação
+- Relatório de pendências
+- Relatório de divergências
+- Auditoria
+
+Status de conciliação:
+- Não conciliado
+- Sugerido
+- Conciliado automaticamente
+- Conciliado manualmente
+- Divergente
+- Ignorado com justificativa
+
+MÓDULO 11 — NOTA FISCAL / FISCAL
+
+Implementar módulo fiscal com foco em NFS-e, mas extensível.
+
+IMPORTANTE:
+- Para SaaS/serviço, em geral a emissão será NFS-e, mas a regra final depende da natureza da operação, CNAE, município, regime e orientação contábil.
+- O sistema deve suportar NFS-e padrão nacional/API e integrações municipais/provedores quando necessário.
+- Não hardcode alíquotas municipais, regras de ISS, retenções, CBS/IBS, códigos fiscais ou prazos. Crie tabelas versionadas e configuráveis.
+- O sistema deve suportar as mudanças de 2026 relativas à Reforma Tributária do Consumo, campos de CBS/IBS, CST, cClassTrib, indicadores e leiautes oficiais.
+- Em 2026, trate CBS/IBS como obrigação acessória/teste quando aplicável, mas mantenha motor preparado para anos seguintes.
+- Toda nota deve guardar snapshot dos dados usados no momento da emissão. Nunca recalcular nota antiga com regra nova.
+
+Entidade FiscalProfile:
+- Empresa
+- Regime tributário
+- CNAE
+- Município
+- Inscrição municipal
+- Código de serviço padrão
+- Alíquota ISS padrão
+- ISS retido padrão?
+- Responsável tributário
+- Simples Nacional?
+- MEI?
+- Lucro Presumido?
+- Lucro Real?
+- CBS/IBS aplicável?
+- Regras de retenção
+- Provedor NFS-e
+- Ambiente
+- Certificado digital
+- Vigência
+- Aprovado por contador
+- Fonte normativa
+- Observações
+
+Entidade NfseDocument:
+- Fatura
+- Cliente
+- Prestador
+- Serviço
+- Número
+- Série
+- RPS/DPS, conforme aplicável
+- Chave/código de verificação
+- XML
+- PDF/DANFSe
+- Protocolo
+- Status
+- Data de emissão
+- Competência
+- Município de prestação/incidência
+- Valores
+- ISS
+- Retenções
+- CBS/IBS, quando aplicável
+- CST/cClassTrib/indicadores, quando aplicável
+- Provedor
+- Payload de envio
+- Payload de retorno
+- Erros/rejeições
+- Cancelamento
+- Substituição
+- Logs
+- Auditoria
+
+Status:
+- Rascunho
+- Pendente de emissão
+- Enviada
+- Autorizada
+- Rejeitada
+- Cancelada
+- Substituída
+- Erro técnico
+- Aguardando consulta
+- Contingência, se aplicável
+
+Funcionalidades:
+- Pré-visualização fiscal antes de emitir
+- Validação de cadastro do tomador
+- Validação de CPF/CNPJ
+- Suporte a CNPJ alfanumérico
+- Validação de endereço e município
+- Validação de código de serviço
+- Emissão via API
+- Consulta de status
+- Download XML/PDF
+- Cancelamento
+- Substituição
+- Reenvio após erro técnico
+- Tratamento de rejeição
+- Histórico de tentativas
+- Fila assíncrona de emissão
+- Retentativa com backoff
+- Dashboard de notas pendentes/rejeitadas
+- Alertas para contador
+- Exportação para contador
+- Armazenamento seguro dos documentos fiscais
+- Política de retenção documental
+- Logs sem expor dados sensíveis desnecessários
+
+Política de emissão de nota:
+- Permitir configurar se a NFS-e deve ser emitida:
+  a. na criação da fatura;
+  b. na confirmação de pagamento;
+  c. no início da prestação;
+  d. no fim da competência;
+  e. manualmente;
+  f. conforme regra validada pelo contador.
+- A política pode variar por empresa, plano, município, tipo de cliente e regime tributário.
+- O sistema deve impedir emissão automática quando a configuração fiscal estiver incompleta.
+
+Campos fiscais mínimos por item:
+- Descrição do serviço
+- Código do serviço
+- NBS/lista de serviço quando aplicável
+- Valor do serviço
+- Desconto condicionado/incondicionado
+- Deduções
+- Base de cálculo
+- Alíquota ISS
+- Valor ISS
+- ISS retido
+- Responsável retenção
+- Município incidência
+- Exigibilidade ISS
+- Natureza de operação
+- Regime especial, se houver
+- CBS/IBS: CST, cClassTrib, base, alíquota, valor, indicador, quando aplicável
+- Fonte da regra
+- Versão da regra
+
+MÓDULO 12 — REFORMA TRIBUTÁRIA 2026 / CBS / IBS
+
+Criar design preparado para Reforma Tributária do Consumo.
+
+Requisitos:
+1. Criar tabela de regras tributárias versionadas.
+2. Suportar campos de CBS e IBS nos documentos fiscais.
+3. Suportar tabelas oficiais atualizáveis: CST, cClassTrib, indicadores, anexos técnicos.
+4. Suportar vigência por data.
+5. Suportar regras diferentes por regime tributário.
+6. Suportar alíquotas de teste de 2026 e regras futuras sem alterar código.
+7. Suportar uso de calculadora oficial/API oficial quando disponível.
+8. Registrar snapshot de cálculo.
+9. Registrar fonte normativa.
+10. Registrar quem aprovou a regra.
+11. Registrar data de aprovação.
+12. Permitir modo simulação.
+13. Permitir comparar cálculo interno com retorno de API/provedor fiscal.
+14. Gerar relatório de divergências.
+15. Não bloquear operação por regra fiscal incerta sem permitir workflow de revisão.
+16. Gerar alertas para atualização de tabelas fiscais.
+
+Entidades sugeridas:
+- tax_rule_sets
+- tax_rule_versions
+- tax_codes
+- tax_classifications
+- tax_calculations
+- tax_calculation_items
+- fiscal_table_imports
+- fiscal_rule_approvals
+- fiscal_exceptions
+
+MÓDULO 13 — SIMPLES NACIONAL / PGDAS-D / DEFIS
+
+Se a empresa for optante pelo Simples Nacional, o módulo deve preparar relatórios auxiliares para apuração, conferência e declaração.
+
+Não transmitir PGDAS-D automaticamente sem integração oficial, permissão e validação. Gerar relatórios e exportações para o contador.
+
+Funcionalidades:
+- Receita bruta mensal por competência
+- Receita bruta mensal por caixa, se configurado
+- Separação por atividade/serviço
+- Separação por município, se necessário
+- Separação por plano/produto
+- Notas emitidas
+- Notas canceladas
+- Recebimentos
+- Inadimplência
+- Descontos
+- Reembolsos
+- Base para conferência PGDAS-D
+- Alertas de prazo
+- Exportação CSV/XLSX/PDF
+- Relatório para contador
+- Anexos de documentos
+- Status da apuração: aberta, em revisão, aprovada, declarada, paga
+- Controle de DAS: valor, vencimento, comprovante, status
+
+Entidade TaxObligation:
+- Tipo: PGDAS-D, DEFIS, DAS, ECD, ECF, EFD, DCTFWeb, outro
+- Empresa
+- Competência
+- Prazo
+- Status
+- Responsável
+- Valor estimado
+- Valor declarado
+- Valor pago
+- Comprovante
+- Observações
+- Anexos
+- Histórico
+
+MÓDULO 14 — SPED / ECD / ECF / EXPORTAÇÃO CONTÁBIL
+
+O módulo deve gerar base contábil confiável e exportável.
+
+Requisitos:
+- Escrituração contábil digital deve ser suportada como exportação/relatório, conforme aplicável ao regime e obrigação da empresa.
+- ECD envolve Livro Diário, Livro Razão e demonstrações.
+- ECF envolve informações fiscais para IRPJ/CSLL quando aplicável.
+- O módulo não deve afirmar que transmite SPED se não houver implementação completa, PVA, assinatura e validação oficial.
+- Criar exportações para contador/importação em sistemas contábeis.
+- Criar trilha de auditoria dos lançamentos.
+- Criar relatórios de balancete, razão, diário, DRE, balanço patrimonial e fluxo de caixa.
+
+Exportações:
+- CSV
+- XLSX
+- PDF
+- JSON
+- Formato de integração contábil configurável
+- Possível layout para sistemas contábeis externos
+- Arquivos para conferência por contador
+
+MÓDULO 15 — CONTABILIDADE EM PARTIDAS DOBRADAS
+
+Implementar motor contábil.
+
+Princípios:
+1. Toda transação contábil deve ter débito e crédito.
+2. Total de débitos deve ser igual ao total de créditos.
+3. Lançamentos postados não devem ser editados.
+4. Correções devem ser feitas por estorno ou ajuste.
+5. Lançamentos devem ter competência.
+6. Lançamentos devem ter data contábil.
+7. Lançamentos devem ter origem rastreável.
+8. Lançamentos manuais devem exigir permissão e justificativa.
+9. Períodos fechados devem bloquear lançamentos sem reabertura controlada.
+10. Deve existir plano de contas configurável.
+
+Entidade JournalEntry:
+- Número
+- Empresa
+- Data contábil
+- Competência
+- Descrição
+- Origem: fatura, pagamento, nota fiscal, despesa, manual, ajuste, fechamento
+- Referência origem
+- Status: rascunho, postado, estornado
+- Criado por
+- Aprovado por
+- Postado por
+- Data de postagem
+- Motivo
+- Anexos
+- Auditoria
+
+Entidade JournalEntryLine:
+- JournalEntry
+- Conta contábil
+- Débito
+- Crédito
+- Centro de custo
+- Cliente/fornecedor
+- Histórico
+- Referência
+- Dimensões gerenciais
+
+Contas sugeridas para SaaS:
+Ativo:
+- Caixa
+- Bancos
+- Clientes / Contas a Receber
+- Cartões a Receber
+- Pix a Compensar
+- Boletos a Receber
+- Impostos a Recuperar
+- Adiantamentos a Fornecedores
+
+Passivo:
+- Fornecedores
+- Contas a Pagar
+- Impostos a Recolher
+- Obrigações com Clientes
+- Receita Diferida / Adiantamento de Clientes
+- Empréstimos e Financiamentos
+
+Patrimônio Líquido:
+- Capital Social
+- Lucros/Prejuízos Acumulados
+- Resultado do Exercício
+
+Receitas:
+- Receita de Assinaturas
+- Receita Plano Básico
+- Receita Plano Pro
+- Receita Plano Enterprise
+- Receita de Serviços Avulsos
+- Juros Recebidos
+- Multas Recebidas
+
+Deduções da Receita:
+- Descontos Concedidos
+- Cancelamentos
+- Reembolsos
+- Chargebacks
+- Impostos sobre Receita
+
+Despesas:
+- Taxas de Gateway
+- Tarifas Bancárias
+- Infraestrutura
+- Marketing
+- Vendas
+- Suporte
+- Administrativo
+- Contabilidade
+- Jurídico
+- Impostos e Taxas
+- Despesas Financeiras
+
+Mapeamentos contábeis automáticos:
+
+A. Fatura emitida antes de receber, serviço já prestado:
+- Débito: Clientes / Contas a Receber
+- Crédito: Receita de Assinaturas ou Receita Diferida, conforme política de reconhecimento
+
+B. Pagamento recebido:
+- Débito: Banco / Gateway / Cartões a Receber
+- Crédito: Clientes / Contas a Receber
+
+C. Taxa de gateway:
+- Débito: Despesa com Taxas de Gateway
+- Crédito: Gateway / Banco / Contas a Receber
+
+D. Nota fiscal/impostos:
+- Débito: Deduções da Receita ou Despesa Tributária, conforme política contábil
+- Crédito: Impostos a Recolher
+
+E. Reembolso:
+- Débito: Cancelamentos/Reembolsos ou Receita
+- Crédito: Banco/Cliente
+- Criar estorno ou ajuste conforme período e status
+
+F. Receita antecipada:
+- No recebimento antecipado:
+  Débito: Banco
+  Crédito: Receita Diferida
+- No reconhecimento mensal:
+  Débito: Receita Diferida
+  Crédito: Receita de Assinaturas
+
+G. Despesa cadastrada:
+- Débito: Despesa/Custo
+- Crédito: Contas a Pagar
+
+H. Pagamento de despesa:
+- Débito: Contas a Pagar
+- Crédito: Banco
+
+I. Baixa por perda:
+- Débito: Perda com Créditos Incobráveis
+- Crédito: Clientes / Contas a Receber
+
+Todos os mapeamentos devem ser configuráveis por empresa, plano, produto, tipo de operação e regime.
+
+MÓDULO 16 — RECONHECIMENTO DE RECEITA
+
+Implementar reconhecimento de receita por competência.
+
+Para assinaturas:
+- Se o cliente paga mensalmente por serviço mensal, reconhecer no mês correspondente.
+- Se o cliente paga anual antecipado, reconhecer receita mês a mês ou conforme política validada.
+- Criar agenda de reconhecimento.
+- Criar receita diferida quando aplicável.
+- Permitir reprocessamento apenas em período aberto.
+- Criar relatório de receita reconhecida x recebida.
+- Criar relatório de receita diferida.
+- Criar impacto de cancelamentos, upgrades e downgrades.
+
+Entidade RevenueRecognitionSchedule:
+- Assinatura
+- Fatura
+- Valor total
+- Período de prestação
+- Parcelas de reconhecimento
+- Conta de receita
+- Conta de receita diferida
+- Status
+- Lançamentos gerados
+
+MÓDULO 17 — FLUXO DE CAIXA E TESOURARIA
+
+Criar painel de fluxo de caixa:
+
+- Saldo inicial
+- Entradas previstas
+- Saídas previstas
+- Entradas realizadas
+- Saídas realizadas
+- Saldo projetado
+- Saldo realizado
+- Contas a receber por vencimento
+- Contas a pagar por vencimento
+- Dívidas
+- Impostos previstos
+- Assinaturas recorrentes previstas
+- Inadimplência esperada
+- Cenários: conservador, provável, otimista
+
+Filtros:
+- Empresa
+- Conta bancária
+- Período
+- Centro de custo
+- Categoria
+- Plano
+- Cliente
+- Fornecedor
+- Status
+
+Funcionalidades:
+- Projeção diária/semanal/mensal
+- Alertas de caixa negativo
+- Calendário financeiro
+- Exportação
+- Gráficos
+- Comparativo realizado x previsto
+- Análise de liquidez
+
+MÓDULO 18 — RELATÓRIOS E DASHBOARDS
+
+Criar dashboards enterprise.
+
+Dashboard principal:
+- Receita bruta do mês
+- Receita líquida do mês
+- MRR
+- ARR
+- Novas vendas
+- Vendas por plano
+- Contas a receber
+- Contas vencidas
+- Inadimplência
+- Contas a pagar
+- Saldo bancário
+- Fluxo de caixa projetado
+- Notas fiscais emitidas
+- Notas rejeitadas
+- Boletos em aberto
+- Pix pendentes
+- Chargebacks
+- Reembolsos
+- Resultado do mês
+- Margem
+- Impostos estimados
+
+Relatórios financeiros:
+- Vendas por plano
+- Vendas por período
+- Receita por cliente
+- Receita por coorte
+- Receita recorrente
+- Inadimplência
+- Aging de contas a receber
+- Contas a pagar
+- Fluxo de caixa
+- Extrato financeiro
+- Taxas de gateway
+- Reembolsos
+- Chargebacks
+- Dívidas
+- Previsão de caixa
+
+Relatórios contábeis:
+- Livro diário
+- Livro razão
+- Balancete
+- DRE
+- Balanço patrimonial
+- Fluxo de caixa indireto/direto, se aplicável
+- Receita diferida
+- Lançamentos por centro de custo
+- Lançamentos por plano
+- Lançamentos por cliente
+- Fechamento mensal
+
+Relatórios fiscais:
+- NFS-e emitidas
+- NFS-e canceladas
+- NFS-e rejeitadas
+- Receita por município
+- Receita por código de serviço
+- ISS estimado
+- CBS/IBS informativo/estimado conforme regra vigente
+- Base PGDAS-D
+- Base DEFIS
+- Obrigações pendentes
+- Documentos fiscais sem cobrança
+- Cobranças sem documento fiscal, se aplicável
+- Divergências fiscais
+
+Relatórios para contador:
+- Pacote mensal ZIP contendo:
+  - Notas fiscais XML/PDF
+  - Extrato de vendas
+  - Recebimentos
+  - Despesas
+  - Comprovantes
+  - Relatórios de contas a pagar/receber
+  - Lançamentos contábeis
+  - Balancete
+  - DRE
+  - Base PGDAS-D/DEFIS, se Simples
+  - Relatório de divergências
+  - Logs de cancelamentos/estornos relevantes
+
+MÓDULO 19 — PORTAL DO CLIENTE
+
+Criar área para o cliente final:
+
+- Ver plano atual
+- Ver assinatura
+- Ver faturas
+- Ver boletos
+- Pagar por Pix
+- Pagar por cartão
+- Baixar nota fiscal
+- Ver histórico de pagamentos
+- Atualizar dados fiscais
+- Atualizar método de pagamento
+- Solicitar segunda via
+- Solicitar cancelamento, se política permitir
+- Solicitar reembolso, se política permitir
+- Ver pendências
+- Renegociar dívida, se habilitado
+- Receber notificações
+
+MÓDULO 20 — PORTAL DO CONTADOR
+
+Criar área ou perfil de acesso para contador:
+
+- Acesso somente leitura por padrão
+- Exportar relatórios
+- Consultar notas
+- Consultar faturas
+- Consultar recebimentos
+- Consultar despesas
+- Consultar lançamentos contábeis
+- Aprovar configurações fiscais
+- Marcar competência como revisada
+- Enviar observações
+- Baixar pacote mensal
+- Ver logs fiscais
+- Ver divergências
+- Receber alertas
+
+Permissões do contador devem ser configuráveis.
+
+MÓDULO 21 — PERMISSÕES E SEGREGAÇÃO DE FUNÇÕES
+
+Criar RBAC/ABAC.
+
+Papéis mínimos:
+- Super Admin
+- Admin da Empresa
+- Financeiro Gerencial
+- Financeiro Operacional
+- Fiscal
+- Contador
+- Auditor
+- Suporte
+- Leitura
+- Cliente
+
+Permissões críticas:
+- Criar cobrança
+- Cancelar cobrança
+- Dar baixa manual
+- Conceder desconto
+- Reembolsar
+- Aprovar despesa
+- Pagar despesa
+- Editar configuração fiscal
+- Emitir nota
+- Cancelar nota
+- Criar lançamento manual
+- Estornar lançamento
+- Fechar período
+- Reabrir período
+- Exportar dados
+- Ver dados sensíveis
+- Gerenciar integrações
+- Gerenciar certificados
+- Acessar logs
+
+Segregação:
+- Quem cria despesa não deve necessariamente aprovar.
+- Quem aprova não deve necessariamente executar pagamento.
+- Quem altera regra fiscal deve exigir aprovação do contador/admin.
+- Baixa manual deve exigir justificativa.
+- Cancelamento de nota deve exigir motivo.
+- Reabertura de período deve exigir permissão elevada e auditoria.
+
+MÓDULO 22 — LGPD, SEGURANÇA E COMPLIANCE
+
+Implementar segurança desde o design.
+
+Requisitos:
+1. Criptografia em trânsito.
+2. Criptografia em repouso para dados sensíveis.
+3. Segredos em secret manager.
+4. Nunca salvar certificado digital sem criptografia forte.
+5. Nunca salvar senha de certificado em texto puro.
+6. Logs não devem expor CPF completo, cartão, token, certificado, chave privada ou segredo.
+7. Mascarar CPF/CNPJ em telas quando perfil não tiver permissão.
+8. Controle de acesso por tenant.
+9. Garantir que um tenant nunca veja dados de outro.
+10. Auditoria de acessos.
+11. MFA para perfis administrativos, se o sistema suportar.
+12. Política de retenção de documentos fiscais e financeiros.
+13. Política de backup.
+14. Plano de recuperação.
+15. Registro de consentimentos quando necessário.
+16. Base legal LGPD por tipo de dado.
+17. Endpoint/processo para exportação de dados do titular quando aplicável.
+18. Processo para anonimização/exclusão quando permitido, sem violar obrigações legais/fiscais.
+19. Data minimization.
+20. Privacy by design.
+21. Security by design.
+22. Rate limit em endpoints críticos.
+23. Proteção contra CSRF/XSS/SQL injection.
+24. Validação de webhooks por assinatura/segredo.
+25. Idempotency keys.
+26. Trilha de auditoria imutável para eventos financeiros/fiscais.
+
+Log de auditoria deve registrar:
+- Quem fez
+- O que fez
+- Quando fez
+- IP
+- User agent
+- Tenant
+- Registro afetado
+- Valores anteriores e novos quando permitido
+- Motivo
+- Origem: web, API, job, webhook
+- Correlation ID
+
+MÓDULO 23 — INTEGRAÇÕES
+
+Criar adapter pattern para integrações.
+
+Tipos:
+- PaymentGatewayAdapter
+- BankAdapter
+- BoletoAdapter
+- PixAdapter
+- FiscalProviderAdapter
+- AccountingExportAdapter
+- NotificationAdapter
+
+Cada adapter deve ter:
+- Interface comum
+- Implementação fake/sandbox
+- Implementação real configurável
+- Retries
+- Timeouts
+- Circuit breaker
+- Logs sanitizados
+- Tratamento de erro
+- Mapeamento de status externo → status interno
+- Idempotência
+- Webhook handler
+- Testes de contrato
+
+Não acoplar regra de negócio diretamente ao provedor externo.
+
+Exemplos de provedores possíveis:
+- Bancos
+- PSPs
+- Gateways de pagamento
+- Provedores fiscais
+- API nacional NFS-e
+- Sistemas contábeis externos
+
+Não escolher provedor sem tornar configurável.
+
+MÓDULO 24 — NOTIFICAÇÕES E RÉGUA DE COBRANÇA
+
+Criar régua de cobrança configurável.
+
+Canais:
+- E-mail
+- WhatsApp, se houver integração autorizada
+- SMS, se houver integração
+- Notificação interna
+- Webhook
+
+Eventos:
+- Fatura criada
+- Boleto emitido
+- Pix gerado
+- Vencimento próximo
+- Vence hoje
+- Vencido há X dias
+- Segunda via
+- Pagamento confirmado
+- Falha no pagamento
+- Cartão recusado
+- Assinatura suspensa
+- Assinatura reativada
+- Nota fiscal emitida
+- Nota fiscal rejeitada
+
+Configurações:
+- Templates por evento
+- Variáveis dinâmicas
+- Horário de envio
+- Tentativas
+- Opt-out quando aplicável
+- Histórico de envio
+- Status de entrega
+- Log
+- LGPD/consentimento quando aplicável
+
+MÓDULO 25 — WORKFLOWS DE APROVAÇÃO
+
+Criar workflows configuráveis para:
+
+- Desconto acima de limite
+- Reembolso
+- Baixa manual
+- Perdão de dívida
+- Cancelamento fiscal
+- Alteração de regra fiscal
+- Alteração de plano de contas
+- Despesa acima de valor
+- Pagamento de fornecedor
+- Reabertura de período contábil
+- Exportação sensível
+
+Cada workflow:
+- Solicitante
+- Aprovador
+- Etapas
+- Motivo
+- Anexos
+- Status
+- SLA
+- Histórico
+- Auditoria
+
+MÓDULO 26 — FECHAMENTO MENSAL
+
+Criar rotina de fechamento mensal.
+
+Checklist:
+- Todas as faturas do mês revisadas
+- Todos os pagamentos conciliados
+- Todas as despesas registradas
+- Todas as notas fiscais emitidas/canceladas conferidas
+- Todas as notas rejeitadas tratadas
+- Todos os impostos estimados revisados
+- Todos os lançamentos contábeis balanceados
+- Todas as contas bancárias conciliadas
+- Relatórios gerados
+- Pacote do contador gerado
+- Aprovação do financeiro
+- Aprovação do contador
+- Período fechado
+
+Após fechamento:
+- Bloquear edição de lançamentos
+- Permitir apenas ajustes controlados
+- Gerar hash/resumo do período
+- Registrar responsável
+- Registrar data/hora
+- Permitir reabertura apenas com permissão e justificativa
+
+MÓDULO 27 — MODELO DE BANCO DE DADOS SUGERIDO
+
+Criar migrations para tabelas como:
+
+- companies
+- company_branches
+- fiscal_profiles
+- customers
+- suppliers
+- plans
+- plan_price_versions
+- subscriptions
+- subscription_events
+- invoices
+- invoice_items
+- receivables
+- payables
+- payment_methods
+- payment_transactions
+- boleto_charges
+- pix_charges
+- bank_accounts
+- bank_statements
+- bank_statement_lines
+- reconciliations
+- nfse_documents
+- fiscal_events
+- tax_rule_sets
+- tax_rule_versions
+- tax_codes
+- tax_calculations
+- tax_obligations
+- chart_of_accounts
+- cost_centers
+- accounting_periods
+- journal_entries
+- journal_entry_lines
+- revenue_recognition_schedules
+- revenue_recognition_items
+- debts
+- debt_installments
+- approval_workflows
+- approval_steps
+- audit_logs
+- attachments
+- integration_configs
+- webhook_events
+- notification_templates
+- notification_logs
+- accountant_exports
+- closing_checklists
+
+Cada tabela deve ter:
+- id
+- company_id/tenant_id quando aplicável
+- created_at
+- updated_at
+- created_by
+- updated_by
+- deleted_at apenas quando permitido
+- status
+- versionamento quando necessário
+
+Índices:
+- company_id
+- customer_id
+- subscription_id
+- invoice_id
+- status
+- due_date
+- competence_date
+- external_id
+- tax_document_number
+- cnpj/cpf normalizado
+- created_at
+- paid_at
+
+Garantir constraints:
+- Débito/crédito balanceado
+- Valores não negativos quando aplicável
+- Status válidos
+- Chaves únicas para idempotência
+- Não duplicar boleto ativo para mesma fatura sem permissão
+- Não duplicar nota fiscal autorizada para mesma fatura sem regra de substituição
+- Não misturar dados entre tenants
+
+MÓDULO 28 — API / ENDPOINTS
+
+Criar API REST ou GraphQL conforme padrão do projeto.
+
+Endpoints REST sugeridos:
+
+Dashboard:
+- GET /finance/dashboard
+- GET /finance/cash-flow
+- GET /finance/reports/sales-by-plan
+- GET /finance/reports/mrr
+- GET /finance/reports/accounts-receivable
+- GET /finance/reports/accounts-payable
+- GET /finance/reports/tax-summary
+
+Planos/assinaturas:
+- GET /billing/plans
+- POST /billing/plans
+- PATCH /billing/plans/{id}
+- GET /billing/subscriptions
+- POST /billing/subscriptions
+- PATCH /billing/subscriptions/{id}
+- POST /billing/subscriptions/{id}/cancel
+- POST /billing/subscriptions/{id}/change-plan
+
+Faturas:
+- GET /billing/invoices
+- POST /billing/invoices
+- GET /billing/invoices/{id}
+- POST /billing/invoices/{id}/issue
+- POST /billing/invoices/{id}/cancel
+- POST /billing/invoices/{id}/send
+- POST /billing/invoices/{id}/refund
+
+Contas a receber:
+- GET /receivables
+- POST /receivables
+- POST /receivables/{id}/settle
+- POST /receivables/{id}/write-off
+- POST /receivables/{id}/renegotiate
+
+Contas a pagar:
+- GET /payables
+- POST /payables
+- POST /payables/{id}/approve
+- POST /payables/{id}/reject
+- POST /payables/{id}/pay
+- POST /payables/{id}/cancel
+
+Boletos:
+- POST /charges/boleto
+- GET /charges/boleto/{id}
+- POST /charges/boleto/{id}/cancel
+- POST /charges/boleto/{id}/resend
+- POST /webhooks/boleto/{provider}
+
+Pix:
+- POST /charges/pix
+- GET /charges/pix/{id}
+- POST /charges/pix/{id}/cancel
+- POST /charges/pix/{id}/refund
+- POST /webhooks/pix/{provider}
+
+Fiscal/NFS-e:
+- GET /fiscal/nfse
+- POST /fiscal/nfse
+- GET /fiscal/nfse/{id}
+- POST /fiscal/nfse/{id}/issue
+- POST /fiscal/nfse/{id}/cancel
+- POST /fiscal/nfse/{id}/replace
+- POST /fiscal/nfse/{id}/sync
+- POST /webhooks/fiscal/{provider}
+
+Contabilidade:
+- GET /accounting/chart-of-accounts
+- POST /accounting/chart-of-accounts
+- GET /accounting/journal-entries
+- POST /accounting/journal-entries
+- POST /accounting/journal-entries/{id}/post
+- POST /accounting/journal-entries/{id}/reverse
+- GET /accounting/trial-balance
+- GET /accounting/general-ledger
+- GET /accounting/income-statement
+- GET /accounting/balance-sheet
+- POST /accounting/periods/{id}/close
+- POST /accounting/periods/{id}/reopen
+
+Conciliação:
+- POST /bank-statements/import
+- GET /bank-statements
+- GET /bank-statements/{id}
+- POST /bank-statements/{id}/auto-match
+- POST /reconciliations
+- DELETE /reconciliations/{id}
+
+Configurações:
+- GET /settings/fiscal
+- PATCH /settings/fiscal
+- GET /settings/payment-integrations
+- PATCH /settings/payment-integrations
+- GET /settings/accounting
+- PATCH /settings/accounting
+
+Auditoria:
+- GET /audit-logs
+
+MÓDULO 29 — TELAS NECESSÁRIAS
+
+Criar UI completa, responsiva, clara e segura.
+
+Telas:
+
+1. Dashboard financeiro
+- Cards principais
+- Gráficos
+- Alertas
+- Pendências
+- Atalhos
+
+2. Vendas por plano
+- Tabela
+- Gráfico
+- Filtros
+- Exportação
+- Comparativo
+
+3. Assinaturas
+- Listagem
+- Detalhe
+- Histórico
+- Ações
+- Status
+
+4. Faturas
+- Listagem
+- Criar fatura
+- Detalhe
+- Enviar cobrança
+- Gerar boleto/Pix
+- Emitir nota
+- Baixa manual
+- Cancelar
+
+5. Contas a receber
+- Aging
+- Filtros
+- Régua de cobrança
+- Renegociação
+- Baixa
+
+6. Contas a pagar
+- Agenda
+- Aprovação
+- Pagamento
+- Anexos
+
+7. Boletos
+- Emissão
+- Status
+- Segunda via
+- CNAB
+- Retorno
+
+8. Pix
+- QR Code
+- Copia e cola
+- Status
+- Webhook logs
+
+9. Notas fiscais
+- Emissão
+- Rejeições
+- XML/PDF
+- Cancelamento
+- Substituição
+- Configurações
+
+10. Conciliação bancária
+- Importar extrato
+- Sugestões
+- Match manual
+- Divergências
+
+11. Contabilidade
+- Plano de contas
+- Lançamentos
+- Razão
+- Diário
+- Balancete
+- DRE
+- Balanço
+- Fechamento
+
+12. Obrigações fiscais
+- PGDAS-D/DEFIS
+- DAS
+- SPED/ECD/ECF, quando aplicável
+- Calendário
+- Status
+- Anexos
+
+13. Dívidas
+- Clientes inadimplentes
+- Dívidas da empresa
+- Acordos
+- Parcelamentos
+
+14. Configurações financeiras
+- Contas bancárias
+- Gateways
+- Boletos
+- Pix
+- Taxas
+- Régua de cobrança
+
+15. Configurações fiscais
+- Empresa
+- Regime
+- CNAE
+- Município
+- NFS-e
+- CBS/IBS
+- Códigos fiscais
+- Aprovação contador
+
+16. Portal do cliente
+- Faturas
+- Pagamento
+- Notas
+- Dados fiscais
+
+17. Portal do contador
+- Relatórios
+- Exportações
+- Aprovações
+- Observações
+
+18. Auditoria
+- Logs
+- Filtros
+- Exportação
+
+MÓDULO 30 — VALIDAÇÕES IMPORTANTES
+
+Implementar validações:
+
+- CPF válido
+- CNPJ numérico válido
+- CNPJ alfanumérico válido conforme regras oficiais vigentes
+- E-mail
+- CEP
+- Município IBGE
+- UF
+- Valor monetário
+- Vencimento
+- Competência
+- Data de emissão
+- Código de serviço
+- Regime tributário
+- Inscrição municipal quando obrigatória
+- Conta contábil ativa
+- Centro de custo ativo
+- Configuração fiscal completa antes da emissão
+- Configuração bancária completa antes de gerar boleto/Pix
+- Permissão do usuário
+- Tenant correto
+- Idempotency key
+- Webhook signature
+- Duplicidade de documento
+
+MÓDULO 31 — TESTES
+
+Criar testes automatizados.
+
+Testes unitários:
+- Cálculo monetário
+- Arredondamento
+- Pró-rata
+- Juros/multa
+- Desconto
+- Receita recorrente
+- Reconhecimento de receita
+- Partidas dobradas
+- Fechamento de período
+- Validação CPF/CNPJ
+- CNPJ alfanumérico
+- Status de fatura
+- Status de boleto
+- Status de Pix
+- Cancelamento/reembolso
+- Regras de permissão
+
+Testes de integração:
+- Gateway fake
+- Boleto fake
+- Pix fake
+- NFS-e fake
+- Webhooks duplicados
+- CNAB import
+- OFX import
+- Conciliação
+- Exportação contábil
+- Emissão fiscal sandbox
+
+Testes E2E:
+1. Cliente compra plano mensal com cartão.
+2. Sistema cria assinatura.
+3. Sistema cria fatura.
+4. Pagamento é confirmado.
+5. Contas a receber é baixado.
+6. Lançamento contábil é criado.
+7. Nota fiscal é emitida conforme política.
+8. Dashboard atualiza venda por plano.
+
+2. Cliente compra plano anual com Pix.
+3. Pix é gerado.
+4. Cliente paga.
+5. Receita diferida é criada.
+6. Receita é reconhecida mensalmente.
+
+3. Cliente recebe boleto.
+4. Boleto vence.
+5. Régua de cobrança envia lembrete.
+6. Cliente paga depois do vencimento.
+7. Juros/multa são tratados.
+8. Fatura é baixada.
+9. Assinatura é reativada.
+
+4. Nota fiscal rejeitada.
+5. Sistema registra erro.
+6. Usuário corrige cadastro.
+7. Sistema reenvia.
+8. Nota é autorizada.
+
+5. Despesa é criada.
+6. Aprovação é solicitada.
+7. Aprovador aprova.
+8. Pagamento é registrado.
+9. Lançamento contábil é criado.
+10. Extrato é conciliado.
+
+6. Período é fechado.
+7. Tentativa de editar lançamento é bloqueada.
+8. Ajuste exige estorno ou reabertura com permissão.
+
+Testes de segurança:
+- Usuário de outro tenant não acessa dados
+- Usuário sem permissão não baixa fatura
+- Usuário sem permissão não emite nota
+- Logs não expõem segredo
+- Webhook inválido rejeitado
+- Rate limit funciona
+- Exportação exige permissão
+
+MÓDULO 32 — OBSERVABILIDADE
+
+Criar logs, métricas e alertas.
+
+Métricas:
+- Faturas criadas
+- Pagamentos confirmados
+- Pagamentos falhos
+- Boletos gerados
+- Pix gerados
+- NFS-e autorizadas
+- NFS-e rejeitadas
+- Webhooks processados
+- Webhooks falhos
+- Tempo médio de emissão fiscal
+- Tempo médio de confirmação de pagamento
+- Conciliações pendentes
+- Jobs falhos
+- Filas acumuladas
+
+Alertas:
+- Falha de emissão fiscal acima de limite
+- Webhook falhando
+- Gateway indisponível
+- Banco indisponível
+- Certificado próximo do vencimento
+- Notas rejeitadas
+- Boletos não registrados
+- Pagamentos sem conciliação
+- Período com fechamento atrasado
+- Obrigações fiscais próximas do prazo
+
+Usar correlation_id em todas as operações.
+
+MÓDULO 33 — PERFORMANCE E ESCALABILIDADE
+
+Requisitos:
+- Dashboards com queries otimizadas.
+- Usar materialized views/tabelas agregadas quando necessário.
+- Jobs assíncronos para emissão fiscal, envio de e-mails, conciliação e relatórios pesados.
+- Paginação em todas as listas.
+- Filtros indexados.
+- Exportações grandes devem rodar em background.
+- Webhooks devem responder rápido e processar em fila.
+- Evitar locks longos.
+- Garantir consistência transacional em eventos críticos.
+- Usar cache apenas onde não comprometer dados financeiros.
+- Relatórios devem indicar data/hora da última atualização.
+
+MÓDULO 34 — BACKUP, RETENÇÃO E RECUPERAÇÃO
+
+Implementar:
+- Backup automático
+- Teste de restauração
+- Retenção configurável
+- Armazenamento seguro de XML/PDF
+- Política de retenção fiscal
+- Logs de acesso a documentos
+- Exportação mensal
+- Plano de disaster recovery
+- Verificação de integridade
+- Hash de documentos críticos
+- Controle de versões
+
+MÓDULO 35 — MIGRAÇÃO DE DADOS
+
+Se já existir cobrança no sistema:
+
+1. Mapear dados atuais.
+2. Criar script de migração.
+3. Preservar IDs antigos em campo legacy_id.
+4. Validar totais antes/depois.
+5. Gerar relatório de migração.
+6. Criar rollback quando possível.
+7. Migrar assinaturas.
+8. Migrar planos.
+9. Migrar pagamentos.
+10. Migrar status.
+11. Migrar clientes.
+12. Não emitir notas retroativas automaticamente sem validação.
+13. Não gerar lançamentos contábeis retroativos sem aprovação.
+14. Criar modo de importação histórica.
+
+MÓDULO 36 — DOCUMENTAÇÃO
+
+Gerar documentação completa:
+
+1. Visão geral do módulo
+2. Arquitetura
+3. Fluxos financeiros
+4. Fluxos fiscais
+5. Fluxos contábeis
+6. Modelo de dados
+7. APIs
+8. Webhooks
+9. Permissões
+10. Como configurar empresa
+11. Como configurar NFS-e
+12. Como configurar boleto
+13. Como configurar Pix
+14. Como configurar plano de contas
+15. Como usar contas a receber
+16. Como usar contas a pagar
+17. Como fechar mês
+18. Como exportar para contador
+19. Como tratar rejeição de nota
+20. Como tratar chargeback
+21. Como tratar reembolso
+22. Como tratar inadimplência
+23. Runbook de incidentes
+24. Checklist fiscal
+25. Checklist contábil
+26. Checklist de homologação
+27. Variáveis de ambiente
+28. Tarefas agendadas
+29. Jobs
+30. Testes
+
+MÓDULO 37 — CRITÉRIOS DE ACEITE
+
+O módulo só será considerado pronto se:
+
+1. Permitir cadastrar empresa com regime fiscal.
+2. Permitir configurar plano de contas.
+3. Permitir cadastrar planos com mapeamento financeiro/fiscal/contábil.
+4. Permitir venda de plano.
+5. Criar assinatura.
+6. Criar fatura.
+7. Gerar contas a receber.
+8. Gerar cobrança Pix.
+9. Gerar cobrança boleto via adapter.
+10. Confirmar pagamento via webhook fake.
+11. Baixar contas a receber.
+12. Gerar lançamento contábil balanceado.
+13. Atualizar dashboard.
+14. Mostrar vendas por plano.
+15. Permitir emissão de NFS-e via adapter fake/sandbox.
+16. Salvar XML/PDF/protocolo quando autorizado.
+17. Tratar rejeição fiscal.
+18. Permitir contas a pagar.
+19. Permitir aprovação de despesas.
+20. Permitir pagamento de despesa.
+21. Permitir conciliação bancária.
+22. Gerar DRE.
+23. Gerar balancete.
+24. Gerar fluxo de caixa.
+25. Gerar relatório para contador.
+26. Controlar inadimplência.
+27. Controlar dívidas.
+28. Ter permissões.
+29. Ter auditoria.
+30. Ter testes.
+31. Ter documentação.
+32. Suportar CNPJ alfanumérico.
+33. Não usar float para dinheiro.
+34. Não permitir alteração silenciosa de lançamento postado.
+35. Não misturar dados entre tenants.
+36. Não expor dados sensíveis em logs.
+37. Ter feature flags para ativação gradual.
+38. Ter scripts de migração.
+39. Ter rollback ou plano de contingência.
+40. Ter validação explícita de que regras fiscais devem ser aprovadas por contador.
+
+MÓDULO 38 — FLUXOS PRINCIPAIS DETALHADOS
+
+Fluxo 1 — Venda de plano com Pix:
+1. Cliente escolhe plano.
+2. Sistema cria assinatura pendente.
+3. Sistema cria fatura.
+4. Sistema cria receivable.
+5. Sistema gera Pix QR Code.
+6. Cliente paga.
+7. PSP envia webhook.
+8. Sistema valida assinatura do webhook.
+9. Sistema verifica idempotência.
+10. Sistema registra pagamento.
+11. Sistema baixa receivable.
+12. Sistema ativa assinatura.
+13. Sistema cria lançamento contábil.
+14. Sistema dispara emissão fiscal conforme política.
+15. Sistema atualiza dashboards.
+16. Sistema envia comprovante e nota ao cliente.
+17. Sistema registra auditoria.
+
+Fluxo 2 — Venda de plano com boleto:
+1. Cliente escolhe plano.
+2. Sistema cria assinatura pendente.
+3. Sistema cria fatura.
+4. Sistema cria receivable.
+5. Sistema gera boleto via banco/PSP.
+6. Sistema envia boleto.
+7. Cliente paga.
+8. Banco/PSP confirma via webhook ou CNAB retorno.
+9. Sistema baixa fatura.
+10. Sistema ativa assinatura.
+11. Sistema gera lançamento contábil.
+12. Sistema emite nota conforme política.
+13. Sistema atualiza vendas por plano.
+
+Fluxo 3 — Inadimplência:
+1. Fatura vence.
+2. Sistema marca como vencida.
+3. Régua de cobrança envia aviso.
+4. Após X dias, assinatura pode ser suspensa conforme política.
+5. Dívida do cliente é atualizada.
+6. Cliente paga ou renegocia.
+7. Sistema baixa/renegocia.
+8. Assinatura é reativada quando aplicável.
+9. Tudo fica auditado.
+
+Fluxo 4 — Reembolso:
+1. Usuário solicita reembolso.
+2. Workflow exige aprovação.
+3. Aprovador aprova.
+4. Gateway executa reembolso.
+5. Sistema registra transação.
+6. Sistema ajusta fatura.
+7. Sistema gera lançamento contábil de estorno/ajuste.
+8. Sistema trata nota fiscal conforme regra fiscal.
+9. Sistema atualiza relatórios.
+
+Fluxo 5 — Fechamento mensal:
+1. Financeiro revisa contas.
+2. Sistema verifica pendências.
+3. Contador revisa fiscal.
+4. Sistema gera relatórios.
+5. Sistema fecha período.
+6. Lançamentos ficam bloqueados.
+7. Exportação mensal é gerada.
+8. Auditoria registra fechamento.
+
+MÓDULO 39 — ENTREGÁVEIS DA IA
+
+Você deve entregar:
+
+1. Diagnóstico da arquitetura atual.
+2. Proposta técnica.
+3. Plano de implementação por fases.
+4. Modelo de dados.
+5. Migrações.
+6. Backend.
+7. Frontend.
+8. Testes.
+9. Adapters fake/sandbox.
+10. Documentação.
+11. Scripts de seed.
+12. Relatórios.
+13. Permissões.
+14. Logs de auditoria.
+15. Guia de configuração.
+16. Guia de homologação.
+17. Checklist de produção.
+18. Lista de variáveis de ambiente.
+19. Lista de riscos.
+20. Pontos que exigem validação contábil/fiscal.
+
+FASES DE IMPLEMENTAÇÃO
+
+Fase 1 — Fundacional:
+- Entidades base
+- Plano de contas
+- Centros de custo
+- Clientes/fornecedores
+- Empresas/fiscal profile
+- Permissões
+- Auditoria
+
+Fase 2 — Billing e contas a receber:
+- Planos
+- Assinaturas
+- Faturas
+- Receivables
+- Vendas por plano
+- Dashboard inicial
+
+Fase 3 — Pagamentos:
+- Pix adapter
+- Boleto adapter
+- Gateway adapter
+- Webhooks
+- Idempotência
+- Baixa automática
+
+Fase 4 — Contas a pagar e tesouraria:
+- Payables
+- Aprovação
+- Pagamentos
+- Fluxo de caixa
+
+Fase 5 — Fiscal:
+- NFS-e adapter
+- Configurações fiscais
+- Notas
+- XML/PDF
+- Rejeições
+- CBS/IBS preparado
+- Relatórios fiscais
+
+Fase 6 — Contabilidade:
+- Journal entries
+- Partidas dobradas
+- Reconhecimento de receita
+- DRE
+- Balancete
+- Razão
+- Fechamento mensal
+
+Fase 7 — Conciliação:
+- Import OFX/CSV/CNAB
+- Match automático
+- Match manual
+- Divergências
+
+Fase 8 — Enterprise:
+- Portal contador
+- Pacote mensal
+- Workflows avançados
+- Observabilidade
+- Performance
+- Hardening de segurança
+
+Fase 9 — Homologação e produção:
+- Testes sandbox
+- Validação contador
+- Validação fiscal
+- Migração
+- Feature flag
+- Monitoramento
+- Rollback
+
+REGRAS DE IMPLEMENTAÇÃO
+
+1. Não implemente tudo em um arquivo.
+2. Use separação por domínio.
+3. Escreva código limpo.
+4. Siga padrões do projeto.
+5. Crie migrations atômicas.
+6. Crie seeds para plano de contas básico.
+7. Crie factories para testes.
+8. Crie mocks/adapters fake.
+9. Crie testes antes ou junto com regras críticas.
+10. Documente decisões.
+11. Não deixe TODOs críticos sem registrar.
+12. Não silencie erros fiscais/financeiros.
+13. Não ignore falhas de webhook.
+14. Não processe evento externo sem idempotência.
+15. Não exponha segredos.
+16. Não salve payload sensível sem sanitização.
+17. Não faça cálculo fiscal sem guardar versão da regra.
+18. Não faça baixa manual sem auditoria.
+19. Não permita exclusão física de nota/fatura/pagamento/lançamento.
+20. Não misture regime de caixa e competência sem configuração explícita.
+
+PERGUNTAS QUE VOCÊ DEVE RESPONDER ANTES DA IMPLEMENTAÇÃO
+
+Antes de codar, gere um relatório com as seguintes perguntas e, se a resposta não estiver disponível no repositório, assuma uma configuração segura e parametrizável:
+
+1. Qual é a stack backend?
+2. Qual é a stack frontend?
+3. Qual banco de dados?
+4. O sistema é multi-tenant?
+5. Como funciona autenticação?
+6. Como funcionam permissões?
+7. Como planos são cadastrados hoje?
+8. Como assinaturas funcionam hoje?
+9. Já existe gateway?
+10. Já existe emissão fiscal?
+11. Qual regime tributário da empresa?
+12. Qual CNAE?
+13. Qual município da empresa?
+14. Qual tipo de serviço vendido?
+15. Emite NFS-e?
+16. Usa Simples Nacional?
+17. Tem contador?
+18. Qual banco/PSP será usado?
+19. Qual provedor fiscal será usado?
+20. Há dados históricos para migrar?
+
+Se essas respostas não existirem, crie a arquitetura preparada para configuração posterior.
+
+SAÍDA ESPERADA
+
+Depois de analisar o projeto, responda com:
+
+1. Resumo do entendimento.
+2. Mapa dos domínios.
+3. Decisões arquiteturais.
+4. Modelo de dados proposto.
+5. Lista de migrations.
+6. Lista de APIs.
+7. Lista de telas.
+8. Plano de implementação por fases.
+9. Riscos legais/fiscais.
+10. Pontos que precisam de contador.
+11. Estratégia de testes.
+12. Estratégia de homologação.
+13. Depois implemente fase por fase, com código, testes e documentação.
+
+NÍVEL DE QUALIDADE
+
+Trate este módulo como se fosse para uma empresa enterprise que precisa ser auditada, crescer, receber investimento e passar por due diligence.
+
+O código deve ser seguro, testável, escalável, rastreável e preparado para mudanças fiscais brasileiras.
+
+Não entregue solução superficial. Não entregue apenas CRUD. Este módulo deve ser o coração financeiro, contábil e fiscal do sistema.

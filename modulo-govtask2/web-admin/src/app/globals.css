@@ -1,0 +1,182 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * Tokens de cor em triplas RGB, consumidas pelo Tailwind como
+ * rgb(var(--c-x) / alfa). Nenhum componente usa cor literal: trocar o tema
+ * é trocar este bloco.
+ */
+:root {
+  color-scheme: light;
+  --c-canvas: 243 245 249;
+  --c-paper: 255 255 255;
+  --c-elevated: 255 255 255;
+  --c-line: 226 231 239;
+  --c-line-strong: 203 212 225;
+  --c-ink: 17 26 43;
+  --c-ink-soft: 58 70 90;
+  --c-ink-muted: 98 110 130;
+  --c-ink-faint: 137 148 166;
+  --c-brand: 29 78 216;
+  --c-brand-50: 236 242 254;
+  --c-brand-100: 214 226 252;
+  --c-brand-200: 174 197 248;
+  --c-brand-600: 25 66 186;
+  --c-brand-700: 23 54 150;
+  --c-brand-800: 20 42 112;
+  --c-brand-900: 14 30 80;
+  --c-brass: 169 123 36;
+  --c-brass-50: 248 241 222;
+  --c-brass-100: 239 221 180;
+  --c-brass-600: 143 103 25;
+  --c-brass-700: 110 79 18;
+  --c-andamento: 169 123 36;
+  --c-externo: 90 107 120;
+  --c-concluido: 21 122 74;
+  --c-atrasado: 179 38 30;
+  --c-cancelado: 107 116 132;
+  --c-info: 14 116 144;
+  --c-ouro: 239 221 180;
+  --sombra-card: 0 1px 2px rgba(15, 30, 60, 0.05), 0 1px 1px rgba(15, 30, 60, 0.03);
+  --sombra-pop: 0 18px 40px -18px rgba(15, 30, 60, 0.3);
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --c-canvas: 9 13 22;
+  --c-paper: 15 21 33;
+  --c-elevated: 21 29 44;
+  --c-line: 32 42 60;
+  --c-line-strong: 48 61 84;
+  --c-ink: 232 237 245;
+  --c-ink-soft: 196 205 220;
+  --c-ink-muted: 145 156 175;
+  --c-ink-faint: 106 118 138;
+  --c-brand: 59 110 235;
+  --c-brand-50: 16 27 54;
+  --c-brand-100: 22 38 76;
+  --c-brand-200: 34 58 112;
+  --c-brand-600: 80 130 245;
+  --c-brand-700: 160 190 250;
+  --c-brand-800: 14 26 58;
+  --c-brand-900: 8 16 38;
+  --c-brass: 214 165 71;
+  --c-brass-50: 43 34 16;
+  --c-brass-100: 66 52 24;
+  --c-brass-600: 226 184 101;
+  --c-brass-700: 236 204 136;
+  --c-andamento: 214 165 71;
+  --c-externo: 146 166 182;
+  --c-concluido: 64 190 128;
+  --c-atrasado: 242 104 94;
+  --c-cancelado: 138 148 166;
+  --c-info: 96 190 220;
+  --sombra-card: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --sombra-pop: 0 24px 48px -16px rgba(0, 0, 0, 0.65);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  @apply bg-canvas text-ink-soft font-sans antialiased;
+  font-feature-settings: "cv05" 1, "ss01" 1;
+}
+
+::selection {
+  @apply bg-brand-100 text-brand-900;
+}
+
+:focus-visible {
+  outline: 2px solid rgb(var(--c-brand));
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+@layer components {
+  .cartao {
+    @apply bg-paper border border-line rounded-card shadow-card;
+  }
+
+  .rotulo {
+    @apply block text-[13px] font-medium text-ink-soft mb-1.5;
+  }
+
+  .campo {
+    @apply w-full rounded-field border border-line bg-paper px-3 py-2 text-sm
+           text-ink placeholder:text-ink-faint
+           focus:outline-none focus:ring-2 focus:ring-brand/25 focus:border-brand
+           disabled:bg-canvas disabled:text-ink-muted;
+  }
+
+  .botao {
+    @apply inline-flex items-center justify-center gap-2 rounded-btn px-3.5 py-2
+           text-sm font-medium transition-colors disabled:opacity-45
+           disabled:cursor-not-allowed;
+  }
+
+  .botao-primario {
+    @apply botao bg-brand text-white hover:bg-brand-600;
+  }
+
+  .botao-secundario {
+    @apply botao border border-line bg-paper text-ink hover:bg-canvas;
+  }
+
+  .botao-fantasma {
+    @apply botao text-ink-soft hover:bg-canvas hover:text-ink;
+  }
+
+  .botao-perigo {
+    @apply botao border border-estado-atrasado/25 bg-paper text-estado-atrasado
+           hover:bg-estado-atrasado/5;
+  }
+
+  .etiqueta {
+    @apply inline-flex items-center gap-1.5 rounded-pill px-2.5 py-1
+           text-xs font-medium;
+  }
+
+  .legenda {
+    @apply text-xs text-ink-muted;
+  }
+
+  .numero {
+    @apply font-mono text-xs tracking-tight text-ink-muted;
+  }
+
+  /* Faixa de título de seção: pequena, espaçada, discreta. */
+  .sobretitulo {
+    @apply text-[11px] font-semibold uppercase tracking-[0.14em] text-ink-faint;
+  }
+
+  /* Placeholder de carregamento. */
+  .esqueleto {
+    @apply rounded-btn bg-ink/[.06] animate-pulse;
+  }
+
+  .cartao-interativo {
+    @apply cartao transition-all duration-200 hover:-translate-y-0.5 hover:border-line-strong hover:shadow-pop;
+  }
+}
+
+@layer utilities {
+  .pb-seguro {
+    padding-bottom: calc(env(safe-area-inset-bottom) + 0.5rem);
+  }
+  .rolagem-fina {
+    scrollbar-width: thin;
+  }
+}

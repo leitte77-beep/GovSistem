@@ -1,0 +1,498 @@
+@page {
+  size: A4;
+  margin: 2.6cm 1.7cm 3.2cm 1.7cm;
+  @top-center {
+    content: element(institutional-header);
+    width: 100%;
+  }
+  @bottom-center {
+    content: element(authenticity-seal);
+    width: 100%;
+  }
+}
+
+@page :first {
+  @top-center { content: none; }
+}
+
+.page-institutional-header {
+  position: running(institutional-header);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6pt;
+  width: 100%;
+  padding: 2pt 0 4pt;
+  border-bottom: .8pt solid #b6c0cc;
+  color: #001b3f;
+  font: 8pt/1.15 "Liberation Sans", Arial, sans-serif;
+  text-align: left;
+}
+
+.page-institutional-header img { width: 22pt; height: 22pt; object-fit: contain; }
+.page-institutional-copy strong { display: block; font-size: 8pt; text-transform: uppercase; }
+.page-institutional-copy span { display: block; font-size: 6.5pt; }
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+.page-authenticity-seal { position: running(authenticity-seal); display: flex; align-items: center; width: 100%; height: 2.15cm; padding: 3pt 6pt; border: .8pt solid #002b5c; border-radius: 5pt; background: #fff; color: #001b3f; font: 5.5pt/1.18 "Liberation Sans", Arial, sans-serif; text-align: left; }
+.page-authenticity-seal img { width: 31pt; height: 31pt; margin-right: 7pt; object-fit: contain; }
+.page-authenticity-copy { flex: 1; min-width: 0; }
+.page-authenticity-copy strong, .page-authenticity-copy span { display: block; }
+.page-authenticity-copy strong { font-size: 8pt; }
+.page-authenticity-copy span { overflow-wrap: anywhere; }
+.page-authenticity-number::before { content: "PÁGINA " counter(page) "/" counter(pages); font-weight: 700; white-space: nowrap; }
+
+body {
+  font-family: "Liberation Sans", Arial, Helvetica, "DejaVu Sans", sans-serif;
+  font-size: 12pt;
+  line-height: 1.5;
+  color: #001b3f;
+  orphans: 2;
+  widows: 2;
+}
+
+.document {
+  width: 100%;
+}
+
+.template-metadata {
+  display: none;
+}
+
+.cover {
+  text-align: center;
+  padding: 18pt 0 28pt;
+  border-bottom: 2pt solid #002b5c;
+  margin-bottom: 30pt;
+}
+
+.coat-of-arms {
+  display: block;
+  width: 78pt;
+  height: 78pt;
+  object-fit: contain;
+  margin: 6pt auto 26pt;
+}
+
+.cover h1 {
+  font-size: 29pt;
+  line-height: 1.05;
+  margin: 0 0 6pt;
+  color: #001b3f;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.cover h2 {
+  font-size: 14pt;
+  color: #333;
+  margin: 0 0 30pt;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.subtitle {
+  margin-top: 10pt;
+  color: #536170;
+  font-size: 10pt;
+}
+
+.authenticity-block {
+  margin-top: 28pt;
+  padding: 10pt 13pt;
+  border: 1pt solid #9adcb4;
+  background: #d8f8e2;
+  color: #007543;
+  text-align: left;
+  font-size: 10pt;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.authenticity-copy span { display: block; margin-top: 3pt; }
+.verification-qr { width: 62pt; height: 62pt; object-fit: contain; }
+.validation-action { display: flex; align-items: center; gap: 12pt; margin-top: 10pt; }
+.validation-action p { overflow-wrap: anywhere; }
+
+.summary-page::after {
+  content: target-counter(attr(href), page, decimal-leading-zero);
+}
+
+.edition-strip {
+  display: table;
+  width: 100%;
+  border-top: 1pt solid #b6c0cc;
+  border-bottom: 1pt solid #b6c0cc;
+  color: #1f2f42;
+  font-size: 8pt;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.edition-strip > div {
+  display: table-cell;
+  padding: 8pt 0;
+  width: 33.33%;
+}
+
+.edition-strip > div:first-child {
+  text-align: left;
+  padding-left: 8pt;
+}
+
+.edition-strip > div:last-child {
+  border-right: 0;
+  text-align: right;
+  padding-right: 8pt;
+}
+
+.section {
+  margin: 16pt 0 20pt;
+  font-family: "Times New Roman", Times, serif;
+  color: #000;
+}
+
+.section h2 {
+  margin: 14pt 0 16pt;
+  padding: 3pt 8pt;
+  width: 100%;
+  border: 0;
+  background: #bfbfbf;
+  color: #000;
+  font-size: 15pt;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.matter {
+  margin-bottom: 22pt;
+  border-top: 0;
+  padding-top: 0;
+  page-break-inside: auto;
+}
+
+/* Fluxo contínuo: a matéria só quebra de página quando o conteúdo não cabe,
+   em vez de forçar cada ato a começar numa nova página (desperdício de papel e
+   "atos pulando página"). */
+.matter + .matter {
+  break-before: page;
+  page-break-before: always;
+}
+
+.matter-title {
+  margin: 12pt 0 18pt;
+  padding: 3pt 8pt;
+  width: 100%;
+  border: 0;
+  background: #d2d0d0;
+  color: #000;
+  font-size: 12.5pt;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+  page-break-after: avoid;
+}
+
+.matter-summary {
+  margin: 16pt 46pt 18pt;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 11.5pt;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+  line-height: 1.25;
+}
+
+.matter-image-content .matter-title {
+  margin-bottom: 10pt;
+}
+
+.matter-image-content .matter-summary {
+  margin: 8pt 28pt 10pt;
+  font-size: 10.5pt;
+  line-height: 1.18;
+}
+
+.matter-image-content .matter-content p {
+  margin: 0;
+  text-indent: 0;
+  text-align: center !important;
+  page-break-inside: avoid;
+}
+
+.matter-image-content .matter-content img {
+  display: block;
+  max-width: 100%;
+  max-height: 225mm;
+  width: auto;
+  height: auto;
+  margin: 0 auto;
+  object-fit: contain;
+}
+
+/* CONTEÚDO DO EDITOR (TipTap) — preserva a formatação autoral.
+   Não impõe justificação, recuo, tamanho ou família: respeita os estilos
+   inline produzidos pelo editor. Regras abaixo são defaults "soft" que não
+   usam !important e podem ser sobrescritas por estilos inline. */
+.matter-content {
+  color: #000;
+  font-family: "Liberation Sans", Arial, Helvetica, "DejaVu Sans", sans-serif;
+}
+
+.matter-content p {
+  margin: 0 0 7pt 0;
+  min-height: 1.2em;
+  text-align: start;
+}
+
+.matter-content p:empty::before {
+  content: "\00a0";
+}
+
+/* Corpo de ato oficial no modo legado (HTML colado): garante o recuo de
+   primeira linha e o alinhamento justificado do modelo jurídico. Parágrafos
+   centralizados (assinaturas, "RESOLVE:", fecho) e conteúdo tabular/lista
+   permanecem intactos. O estilo inline continua tendo precedência sobre
+   text-align, então nada que já foi centralizado é deslocado. */
+.matter-content > p:not([style*="center"]):not(:empty) {
+  text-align: justify;
+  text-indent: 1.25cm;
+}
+
+/* Preserve the alignment authored in the matter, including table cells and
+   signatures, when this layout is converted to PDF. */
+.matter-content :is(p, td, th)[align="center"],
+.matter-content :is(p, td, th)[style*="text-align:center"],
+.matter-content :is(p, td, th)[style*="text-align: center"] { text-align: center !important; }
+.matter-content :is(p, td, th)[align="right"],
+.matter-content :is(p, td, th)[style*="text-align:right"],
+.matter-content :is(p, td, th)[style*="text-align: right"] { text-align: right !important; }
+
+.matter-content strong,
+.matter-content b {
+  font-weight: 700;
+}
+
+.matter-content em,
+.matter-content i {
+  font-style: italic;
+}
+
+.matter-content u {
+  text-decoration: underline;
+}
+
+.matter-content s,
+.matter-content del {
+  text-decoration: line-through;
+}
+
+.summary {
+  margin: 18pt 0 22pt;
+  font-family: "Times New Roman", Times, serif;
+  color: #000;
+  page-break-inside: avoid;
+  page-break-after: always;
+}
+
+.section-title {
+  display: block;
+  width: 100%;
+  margin-bottom: 4pt;
+  padding: 3pt 0;
+  background: #bfbfbf;
+}
+
+.section-title span {
+  display: block;
+  width: 100%;
+  color: #000;
+  font-weight: 700;
+  font-size: 17pt;
+  text-align: center;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.summary-row {
+  display: table;
+  width: 100%;
+  margin: 4pt 0;
+  color: #000;
+  font-size: 11.5pt;
+  line-height: 1.25;
+  page-break-inside: avoid;
+}
+
+.summary-row > div,
+.summary-row > span,
+.summary-row > strong {
+  display: table-cell;
+  vertical-align: bottom;
+}
+
+.summary-row > div {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.summary-row > div > strong {
+  white-space: nowrap;
+  font-weight: 400;
+}
+
+.summary-row a {
+  color: #000;
+  text-decoration: none;
+}
+
+.summary-row > strong {
+  width: 22pt;
+  text-align: right;
+  font-weight: 400;
+}
+
+.summary-row small {
+  display: inline;
+  margin-top: 2pt;
+  color: #000;
+  font-size: 11.5pt;
+  white-space: nowrap;
+}
+
+.summary-row small:before {
+  content: " ";
+}
+
+.summary-dots {
+  width: 100%;
+  border-bottom: 1.2pt dotted #000;
+}
+
+.matter-content h1,
+.matter-content h2,
+.matter-content h3,
+.matter-content h4 {
+  margin: 12pt 0 8pt;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+  page-break-after: avoid;
+  font-family: "Times New Roman", Times, serif;
+}
+
+.matter-content h1 { font-size: 16pt; }
+.matter-content h2 { font-size: 15pt; }
+.matter-content h3,
+.matter-content h4 { font-size: 14pt; }
+
+/* Tabelas do editor: cabem na área útil; colspan/rowspan e alinhamento são
+   preservados, enquanto larguras autorais cedem ao layout fixo de impressão. */
+.matter-content table {
+  width: 100% !important;
+  max-width: 100% !important;
+  table-layout: auto;
+  border-collapse: collapse;
+  border-spacing: 0;
+  margin: 8pt 0;
+  page-break-inside: auto;
+  border: 1px solid #333;
+}
+
+.matter-content tr { page-break-inside: avoid; break-inside: avoid; }
+.matter-content thead { display: table-header-group !important; }
+.matter-content tbody { display: table-row-group; }
+
+.matter-content th,
+.matter-content td {
+  border: 0.8pt solid #333;
+  padding: 3pt 5pt;
+  vertical-align: top;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+/* Células curtas/numéricas nunca quebram (evita "35,4000" virar "35,4000 0"). */
+.matter-content td p,
+.matter-content th p { overflow-wrap: inherit; word-break: inherit; }
+
+.matter-content img { display: block; max-width: 100% !important; max-height: 225mm; width: auto !important; height: auto !important; object-fit: contain; page-break-inside: avoid; break-inside: avoid; }
+
+.matter-content th {
+  background: #eee;
+  font-weight: 700;
+}
+
+.matter-content ul,
+.matter-content ol {
+  margin: 6pt 0;
+  padding-left: 2em;
+}
+
+.matter-content li {
+  margin: 3pt 0;
+}
+
+.validation-box {
+  margin-top: 32pt;
+  padding: 14pt;
+  border: 1pt solid #b6c0cc;
+  color: #001b3f;
+  page-break-inside: avoid;
+}
+
+.validation-box h3 {
+  margin: 0 0 12pt;
+  font-size: 10pt;
+}
+
+.validation-grid {
+  display: table;
+  width: 100%;
+}
+
+.validation-grid > div {
+  display: table-cell;
+  width: 50%;
+  padding-right: 12pt;
+}
+
+.validation-grid span {
+  display: block;
+  color: #68778a;
+  font-size: 8pt;
+  font-weight: 700;
+}
+
+.validation-grid code {
+  display: block;
+  padding: 5pt;
+  margin-top: 4pt;
+  border: 1pt solid #c7d0dc;
+  background: #f8fafc;
+  color: #1f2f42;
+  font-size: 8pt;
+  word-break: break-all;
+}
+
+.validation-box p {
+  margin-top: 10pt;
+  color: #536170;
+  font-size: 8pt;
+}
+
+/* Editorial pagination: never orphan a matter title/summary. */
+.matter-title,
+.matter-summary {
+  break-after: avoid;
+  page-break-after: avoid;
+}
+.matter {
+  break-inside: auto;
+  page-break-inside: auto;
+}
+.matter--long-table { break-before: page; page-break-before: always; }

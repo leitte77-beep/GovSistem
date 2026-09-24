@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>DOE {{ edition.year }}/{{ edition.number }}</title>
+<link rel="stylesheet" href="{{ css_path }}">
+<style>{{ extra_css | safe }}</style>
+</head>
+<body>
+{% set effective_verification_code = verification_code|default(preliminary_code|default(""), true) %}
+{% set institution = institution|default({}, true) %}
+
+<header class="page-institutional-header" aria-hidden="true">
+  <img src="{{ logo_path }}" alt="">
+  <div class="page-institutional-copy">
+    <strong>{{ institution.name }}</strong>
+    {% if institution.cnpj %}<span>CNPJ: {{ institution.cnpj }}</span>{% endif %}
+  </div>
+</header>
+
+<aside class="page-authenticity-seal" aria-label="Selo de autenticidade">
+  <img src="{{ qr_code_uri }}" alt="">
+  <div class="page-authenticity-copy">
+    <strong>IDENTIFICAÇÃO E VERIFICAÇÃO DO DOCUMENTO</strong>
+    <span>{{ organ_name }} · Edição {{ edition.number }} · {{ publication_date }}</span>
+    <span>Código de verificação: {{ effective_verification_code }}</span>
+    <span>SHA-256 do conteúdo canônico: {{ content_manifest_hash }}</span>
+    <span>{{ verification_url }}/{{ effective_verification_code }}</span>
+    {% if institution.address %}<span>{{ institution.address }}</span>{% endif %}
+    {% if institution.contact %}<span>{{ institution.contact }}</span>{% endif %}
+  </div>
+  <div class="page-authenticity-number"></div>
+</aside>
+
+<article class="document">
+  <div class="template-metadata">{{ organ_name }} {{ edition.title }} {{ edition_type_label }} {{ publication_date }}</div>
+
+  <!-- CAPA -->
+  <header class="cover">
+    <img class="coat-of-arms" src="{{ logo_path }}" alt="Brasão">
+    <h1>DIÁRIO OFICIAL</h1>
+    <h2>{{ organ_name }}</h2>
+
+    <div class="edition-strip">
+      <div>Edição {{ edition.number }}</div>
+      <div>{{ header_date }}</div>
+      <div>Páginas: {{ total_pages }}</div>
+    </div>
+
+    {% if edition.subtitle %}
+    <p class="subtitle">{{ edition.subtitle }}</p>
+    {% endif %}
+
+    <div class="signature-banner">
+      CÓDIGO DE VERIFICAÇÃO: {{ effective_verification_code }}
+    </div>
+  </header>
+
+  <!-- SUMÁRIO -->
+  {% if summary_items is defined and summary_items %}
+  <section class="summary">
+    <div class="section-title"><span>SUMÁRIO</span></div>
+    {% for item in summary_items %}
+    <div class="summary-row">
+      <div>
+        <a href="#{{ item.anchor }}">
+          <strong>{{ item.title }}</strong>
+          {% if item.metadata %}<small>{{ item.metadata }}</small>{% endif %}
+        </a>
+      </div>
+      <a class="summary-dots" href="#{{ item.anchor }}"></a>
+      <strong><a class="summary-page" href="#{{ item.anchor }}"></a></strong>
+    </div>
+    {% endfor %}
+  </section>
+  {% elif sections %}
+  <section class="summary">
+    <div class="section-title"><span>SUMÁRIO</span></div>
+    {% for section in sections %}
+      {% for matter in section.matters %}
+      <div class="summary-row">
+        <div>
+          <a href="#matter-{{ matter.id }}">
+            <strong>{{ matter.title }}</strong>
+            <small>{{ [matter.act_type, matter.org_unit, section.title]|select|join(" · ") }}</small>
+          </a>
+        </div>
+        <a class="summary-dots" href="#matter-{{ matter.id }}"></a>
+        <strong><a class="summary-page" href="#matter-{{ matter.id }}"></a></strong>
+      </div>
+      {% endfor %}
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  <!-- CONTEÚDO -->
+  {% for section in sections %}
+  <div class="section">
+    {% if section.title %}
+    <h2>{{ section.title }}</h2>
+    {% endif %}
+
+    {% for matter in section.matters %}
+    <div class="matter{% if matter.is_pdf_image_content %} matter-image-content{% endif %}{% if matter.has_large_table %} matter--long-table{% endif %}" id="matter-{{ matter.id }}">
+      <div class="matter-title">{{ matter.title }}</div>
+
+      {% if matter.summary and not matter.has_semantic_content %}
+      <div class="matter-summary">{{ matter.summary }}</div>
+      {% endif %}
+
+      <div class="matter-content doc-body">
+        {{ matter.content_html | safe }}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% endfor %}
+
+  <!-- VALIDAÇÃO -->
+  <footer class="validation-box">
+    <h3>VALIDAÇÃO</h3>
+    <div class="validation-grid">
+      <div>
+        <span>CÓDIGO DE VERIFICAÇÃO</span>
+        <code>{{ effective_verification_code }}</code>
+      </div>
+</div>
+    <p>Verifique em: {{ verification_url }}/{{ effective_verification_code }}</p>
+  </footer>
+</article>
+
+</body>
+</html>

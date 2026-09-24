@@ -1,0 +1,113 @@
+@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-[#F8F9FF] text-[#181C22] antialiased font-sans;
+    font-feature-settings: "tnum" 1;
+  }
+
+  * {
+    @apply border-[#E4E7EC];
+  }
+
+  ::selection {
+    background: rgba(29, 91, 214, 0.18);
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: #c3c6d1;
+    border-radius: 8px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: #737781;
+  }
+}
+
+@layer components {
+  .btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-btn font-medium transition-all duration-150 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-primary {
+    @apply btn bg-[#1D5BD6] text-white hover:bg-[#1E40AF] focus-visible:ring-[#1D5BD6] px-5 py-2.5 text-body-sm;
+  }
+  .btn-secondary {
+    @apply btn bg-white text-[#1D5BD6] border border-[#C3C6D1] hover:bg-[#EFF4FF] px-5 py-2.5 text-body-sm shadow-card;
+  }
+  .btn-ghost {
+    @apply btn bg-transparent text-[#424750] hover:bg-[#EFF4FF] px-4 py-2 text-body-sm;
+  }
+  .btn-danger {
+    @apply btn bg-[#BA1A1A] text-white hover:bg-[#912018] focus-visible:ring-[#BA1A1A] px-5 py-2.5 text-body-sm;
+  }
+  .btn-sm {
+    @apply px-3 py-1.5 text-meta;
+  }
+  .btn-lg {
+    @apply px-6 py-3 text-body;
+  }
+
+  .input {
+    @apply w-full rounded-btn border border-[#C3C6D1] bg-white px-3 py-2.5 text-body-sm text-[#181C22] placeholder:text-[#737781] focus:outline-none focus:border-[#1D5BD6] focus:ring-1 focus:ring-[#1D5BD6] transition-colors;
+  }
+  .input-error {
+    @apply border-[#BA1A1A] focus:border-[#BA1A1A] focus:ring-[#BA1A1A];
+  }
+
+  .status-pill {
+    @apply inline-flex items-center gap-1.5 rounded-pill px-3 py-1 text-meta font-medium whitespace-nowrap;
+  }
+
+  .tab {
+    @apply px-4 py-3 text-body-sm font-medium border-b-2 transition-colors;
+  }
+  .tab-active {
+    @apply border-[#1D5BD6] text-[#1D5BD6];
+  }
+  .tab-inactive {
+    @apply border-transparent text-[#737781] hover:text-[#424750] hover:border-[#C3C6D1];
+  }
+
+  .skeleton {
+    @apply animate-pulse bg-[#E3ECFF] rounded;
+  }
+}
+
+@layer utilities {
+  .tabular-nums {
+    font-feature-settings: "tnum" 1;
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: #E4E7EC transparent;
+  }
+
+  /* ── Premium primitives ───────────────────────────────── */
+  .bg-gradient-primary {
+    background-image: linear-gradient(135deg, #2563eb 0%, #4f46e5 55%, #7c3aed 100%);
+  }
+  .bg-gradient-subtle {
+    background-image: linear-gradient(160deg, #eff6ff 0%, #eef2ff 55%, #f5f3ff 100%);
+  }
+  .ring-focus {
+    @apply focus:outline-none focus-visible:ring-2 focus-visible:ring-[#2563EB]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white;
+  }
+  .card-hover-lift {
+    @apply transition-all duration-200 hover:-translate-y-0.5 hover:shadow-elevated hover:border-[#2563EB]/30;
+  }
+  .soft-blob {
+    background: radial-gradient(circle at 20% 20%, rgba(37,99,235,0.28), transparent 45%),
+                radial-gradient(circle at 80% 70%, rgba(124,58,237,0.22), transparent 45%);
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "GovTask — Gabinete digital",
+  "short_name": "GovTask",
+  "description": "Obras, aquisições e pedidos do gabinete, em tempo real.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F3F6F3",
+  "theme_color": "#0C5C45",
+  "lang": "pt-BR",
+  "icons": [
+    { "src": "/icone-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/icone-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}

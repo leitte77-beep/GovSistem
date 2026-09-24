@@ -1,0 +1,297 @@
+# Staging Docker Compose
+# Usage: docker compose -p sistemaweb-staging -f infra/docker-compose.staging.yml up -d --build
+#
+# Acessar: http://<SERVER_IP>:8080 para o portal público
+#          http://<SERVER_IP>:8081 para o admin
+
+x-logging: &default-logging
+  driver: "json-file"
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-restart: &restart-policy
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    <<: [*restart-policy]
+    logging: *default-logging
+    environment:
+      POSTGRES_DB: ${STG_POSTGRES_DB:-doe_staging}
+      POSTGRES_USER: ${STG_POSTGRES_USER:-doe_user}
+      POSTGRES_PASSWORD: ${STG_POSTGRES_PASSWORD:-staging_password}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${STG_POSTGRES_USER:-doe_user} -d ${STG_POSTGRES_DB:-doe_staging}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: redis:7-alpine
+    <<: [*restart-policy]
+    logging: *default-logging
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redisdata:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    <<: [*restart-policy]
+    logging: *default-logging
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${STG_MINIO_ROOT_USER:-minio_admin}
+      MINIO_ROOT_PASSWORD: ${STG_MINIO_ROOT_PASSWORD:-minio_password}
+    volumes:
+      - miniodata:/data
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  minio-init:
+    image: minio/mc:latest
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mc alias set myminio http://minio:9000 ${STG_MINIO_ROOT_USER:-minio_admin} ${STG_MINIO_ROOT_PASSWORD:-minio_password}
+        mc mb myminio/${STG_MINIO_BUCKET:-doe-publicacoes-staging} --with-lock --ignore-existing
+        exit 0
+    depends_on:
+      minio:
+        condition: service_healthy
+    networks:
+      - internal
+
+  api:
+    build:
+      context: ../apps/api
+      dockerfile: Dockerfile.prod
+    <<: [*restart-policy]
+    logging: *default-logging
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${STG_POSTGRES_DB:-doe_staging}
+      POSTGRES_USER: ${STG_POSTGRES_USER:-doe_user}
+      POSTGRES_PASSWORD: ${STG_POSTGRES_PASSWORD:-staging_password}
+      REDIS_HOST: redis
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${STG_MINIO_ROOT_USER:-minio_admin}
+      MINIO_SECRET_KEY: ${STG_MINIO_ROOT_PASSWORD:-minio_password}
+      MINIO_BUCKET: ${STG_MINIO_BUCKET:-doe-publicacoes-staging}
+      MINIO_SECURE: "false"
+      SIGNER_URL: http://signer:8100
+      INTERNAL_API_KEY: ${STG_INTERNAL_API_KEY:-staging-internal-key-123}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash}
+      CORS_ORIGINS: '["http://localhost:8080","http://localhost:8081"]'
+      PUBLIC_URL: http://localhost:8080
+      PDF_API_BASE_URL: http://localhost:8080
+      DEBUG: "true"
+      SECRET_KEY: ${STG_SECRET_KEY:-staging-secret-key-change-me}
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - internal
+      - public
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  worker:
+    build:
+      context: ../apps/worker
+      dockerfile: Dockerfile.prod
+    <<: [*restart-policy]
+    logging: *default-logging
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${STG_POSTGRES_DB:-doe_staging}
+      POSTGRES_USER: ${STG_POSTGRES_USER:-doe_user}
+      POSTGRES_PASSWORD: ${STG_POSTGRES_PASSWORD:-staging_password}
+      REDIS_HOST: redis
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${STG_MINIO_ROOT_USER:-minio_admin}
+      MINIO_SECRET_KEY: ${STG_MINIO_ROOT_PASSWORD:-minio_password}
+      MINIO_BUCKET: ${STG_MINIO_BUCKET:-doe-publicacoes-staging}
+      MINIO_SECURE: "false"
+      SIGNER_URL: http://signer:8100
+      API_URL: http://api:8000
+      INTERNAL_API_KEY: ${STG_INTERNAL_API_KEY:-staging-internal-key-123}
+    volumes:
+      - uploads:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.worker inspect ping || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  beat:
+    build:
+      context: ../apps/worker
+      dockerfile: Dockerfile.prod
+    <<: [*restart-policy]
+    logging: *default-logging
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${STG_POSTGRES_DB:-doe_staging}
+      POSTGRES_USER: ${STG_POSTGRES_USER:-doe_user}
+      POSTGRES_PASSWORD: ${STG_POSTGRES_PASSWORD:-staging_password}
+      REDIS_HOST: redis
+      API_URL: http://api:8000
+      INTERNAL_API_KEY: ${STG_INTERNAL_API_KEY:-staging-internal-key-123}
+    command: celery -A app.worker beat --loglevel=info --schedule /tmp/celerybeat-schedule
+    depends_on:
+      redis:
+        condition: service_healthy
+      api:
+        condition: service_healthy
+    networks:
+      - internal
+
+  signer:
+    build:
+      context: ../apps/signer
+      dockerfile: Dockerfile.prod
+    <<: [*restart-policy]
+    logging: *default-logging
+    environment:
+      SIGNER_PROVIDER: ${SIGNER_PROVIDER:-a1}
+      SIGNER_A1_PFX_PATH: /certs/cert.pfx
+      SIGNER_A1_PASSWORD: ${STG_SIGNER_A1_PASSWORD:-}
+    volumes:
+      - ${SIGNER_CERTS_DIR:-./certs}:/certs:ro
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/api/v1/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  web-admin:
+    build:
+      context: ../apps/web-admin
+      dockerfile: Dockerfile.prod
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8081/api/v1
+    <<: [*restart-policy]
+    logging: *default-logging
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      API_URL: http://api:8000/api/v1
+      NEXT_PUBLIC_API_URL: http://localhost:8081/api/v1
+    networks:
+      - internal
+      - public
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  web-public:
+    build:
+      context: ../apps/web-public
+      dockerfile: Dockerfile.prod
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8080/api/v1
+        NEXT_PUBLIC_ADMIN_URL: http://localhost:8081
+    <<: [*restart-policy]
+    logging: *default-logging
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      API_URL: http://api:8000/api/v1
+      NEXT_PUBLIC_API_URL: http://localhost:8080/api/v1
+      NEXT_PUBLIC_ADMIN_URL: http://localhost:8081
+    networks:
+      - internal
+      - public
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  nginx:
+    image: nginx:1.25-alpine
+    <<: [*restart-policy]
+    logging: *default-logging
+    ports:
+      - "8080:80"
+      - "8081:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./nginx/sites-staging:/etc/nginx/sites:ro
+    depends_on:
+      - api
+      - web-admin
+      - web-public
+    networks:
+      - public
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 60s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  pgdata:
+    driver: local
+  redisdata:
+    driver: local
+  miniodata:
+    driver: local
+  uploads:
+    driver: local
+
+networks:
+  internal:
+    driver: bridge
+    internal: true
+  public:
+    driver: bridge

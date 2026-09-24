@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git rm *)",
+      "Bash(sed 's/ *$//')",
+      "Bash(awk -F: '{s+=$2} END {print s\" endpoints\"}')",
+      "Bash(python3 -c ' *)",
+      "Bash(timeout 120 python3 -m pip install --quiet pywebpush)",
+      "Bash(python3 -c \"import pywebpush, py_vapid; print\\('pywebpush ok'\\)\")",
+      "Bash(timeout 300 python3 -m pytest tests/test_demandas.py -q)",
+      "Bash(timeout 300 python3 -m pytest tests/test_notificacoes_canais.py tests/test_email_outbox.py -q)",
+      "Bash(ALEMBIC_SKIP=1 python3 -c ' *)",
+      "Bash(timeout 60 python3 -m alembic heads)",
+      "Bash(timeout 600 python3 -m pytest tests/test_notificacoes_canais.py tests/test_email_outbox.py tests/test_demandas.py tests/test_gestao_avancada.py -q)",
+      "Bash(timeout 900 python3 -m pytest tests/test_indicadores.py -q)",
+      "Bash(timeout 900 python3 -m pytest tests/test_indicadores.py::test_exportacao_respeita_sigilo_da_demanda -q)",
+      "Bash(timeout 900 python3 -m pytest tests/test_canais_whatsapp_push.py -q)",
+      "Bash(timeout 600 python3 -m pytest tests/test_canais_whatsapp_push.py::test_push_entrega_a_cada_dispositivo -q)",
+      "Bash(tail -6 /tmp/claude-1001/-home-ubuntu-sistemaweb/64352040-6140-4783-98f6-97691b46b06b/scratchpad/pytest2.txt; grep -c \"^\\\\.\" /dev/null; grep -oE \"[0-9]+ \\(passed|failed|skipped|error\\)\" /tmp/claude-1001/-home-ubuntu-sistemaweb/64352040-6140-4783-98f6-97691b46b06b/scratchpad/pytest2.txt)",
+      "Read(//dev/**)",
+      "Bash(timeout 120 python3 -c ' *)",
+      "Bash(python3 -m ruff check app tests)",
+      "Bash(python3 -m ruff check app tests --output-format concise)"
+    ]
+  }
+}

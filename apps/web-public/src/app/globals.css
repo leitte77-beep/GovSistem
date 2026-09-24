@@ -1,0 +1,217 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  font-family: 'Inter', sans-serif;
+  background-color: #f7f9fb;
+}
+
+.material-symbols-outlined {
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  vertical-align: middle;
+}
+
+.active-nav-border {
+  position: relative;
+}
+
+.active-nav-border::after {
+  content: '';
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  width: 100%;
+  height: 2px;
+  background-color: currentColor;
+}
+
+/* ========== Acessibilidade ========== */
+html.a11y-font-large {
+  font-size: 120%;
+}
+html.a11y-font-xlarge {
+  font-size: 150%;
+}
+html.a11y-high-contrast {
+  filter: contrast(1.4);
+}
+html.a11y-high-contrast a,
+html.a11y-high-contrast button {
+  text-decoration: underline !important;
+}
+html.a11y-grayscale {
+  filter: grayscale(1);
+}
+html.a11y-invert-colors {
+  filter: invert(1) hue-rotate(180deg);
+}
+html.a11y-invert-colors img,
+html.a11y-invert-colors video {
+  filter: invert(1) hue-rotate(180deg);
+}
+html.a11y-highlight-links a:not(.no-a11y-underline) {
+  text-decoration: underline !important;
+  text-underline-offset: 2px;
+  color: #0016b3 !important;
+}
+html.a11y-highlight-links a.material-symbols-outlined {
+  text-decoration: none !important;
+}
+html.a11y-text-spacing *:not(.material-symbols-outlined) {
+  letter-spacing: 0.12em !important;
+  word-spacing: 0.16em !important;
+  line-height: 1.8 !important;
+}
+html.a11y-stop-animations *,
+html.a11y-stop-animations *::before,
+html.a11y-stop-animations *::after {
+  animation-duration: 0s !important;
+  animation-delay: 0s !important;
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+}
+
+/* Hide article content on screen when PDF is available */
+.print-only {
+  display: none;
+}
+
+@media print {
+  @page {
+    size: A4;
+    margin: 8mm 12mm;
+  }
+
+  html, body {
+    background: #fff !important;
+  }
+
+  /* Hide Navbar (header), Footer, toolbar, iframe */
+  body > header, nav, footer, .no-print {
+    display: none !important;
+  }
+
+  /* Show the article content during print even if hidden on screen */
+  .print-only {
+    display: flex !important;
+  }
+
+  /* Reset all main containers */
+  main {
+    display: block !important;
+    max-width: none !important;
+    min-height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  /* Edition article — remove card styling */
+  article {
+    box-shadow: none !important;
+    border: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: none !important;
+    min-height: auto !important;
+  }
+
+  /* Document header */
+  article > header {
+    margin-bottom: 6mm !important;
+    padding-bottom: 4mm !important;
+  }
+
+  article > header h2 {
+    font-size: 18pt !important;
+  }
+
+  article > header .grid {
+    font-size: 8pt !important;
+  }
+
+  /* Summary section */
+  section.mb-12 {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin-bottom: 5mm !important;
+  }
+
+  section.mb-12 ul {
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 1mm 4mm !important;
+  }
+
+  section.mb-12 li {
+    font-size: 9pt !important;
+    line-height: 1.2 !important;
+  }
+
+  /* Signature banner */
+  [class*="bg-secondary-container"] {
+    margin: 2mm 0 4mm !important;
+    padding: 1.5mm 2mm !important;
+    color: #000 !important;
+    background: #fff !important;
+    border: 1px solid #999 !important;
+    font-size: 8.5pt !important;
+  }
+
+  /* Content sections */
+  .space-y-16 > section {
+    break-inside: auto;
+    page-break-inside: auto;
+    padding-top: 3mm !important;
+    border-top: none !important;
+  }
+
+  .space-y-16 > section .prose {
+    max-width: none !important;
+    font-size: 10pt !important;
+  }
+
+  .space-y-16 > section .prose p {
+    margin: 2mm 0 !important;
+  }
+
+  /* Content section titles */
+  .space-y-16 > section h2,
+  .space-y-16 > section > div {
+    font-size: 10pt !important;
+    margin-bottom: 3mm !important;
+  }
+
+  /* Document footer validation */
+  .space-y-16 + footer {
+    break-before: page !important;
+    page-break-before: always !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    margin: 0 !important;
+    padding: 4mm 0 !important;
+    border-top: 1px solid #999 !important;
+  }
+
+  a {
+    color: inherit !important;
+    text-decoration: none !important;
+  }
+
+  .prose {
+    max-width: none !important;
+  }
+
+  .scroll-mt-24 {
+    scroll-margin-top: 0 !important;
+  }
+
+  img {
+    max-height: 60mm !important;
+  }
+}

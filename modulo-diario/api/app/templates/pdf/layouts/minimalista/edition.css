@@ -1,0 +1,480 @@
+@page {
+  size: A4;
+  margin: 2.6cm 1.8cm 3.2cm 1.8cm;
+  @top-center {
+    content: element(institutional-header);
+    width: 100%;
+  }
+  @bottom-center {
+    content: element(authenticity-seal);
+    width: 100%;
+  }
+}
+
+@page :first {
+  @top-center { content: none; }
+}
+
+.page-institutional-header {
+  position: running(institutional-header);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6pt;
+  width: 100%;
+  padding: 2pt 0 4pt;
+  border-bottom: .8pt solid #b6c0cc;
+  color: #000;
+  font: 8pt/1.15 "Liberation Sans", Arial, sans-serif;
+  text-align: left;
+}
+
+.page-institutional-header img { width: 22pt; height: 22pt; object-fit: contain; }
+.page-institutional-copy strong { display: block; font-size: 8pt; text-transform: uppercase; }
+.page-institutional-copy span { display: block; font-size: 6.5pt; }
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+.page-authenticity-seal { position: running(authenticity-seal); display: flex; align-items: center; width: 100%; height: 2.15cm; padding: 3pt 6pt; border: .8pt solid #000; border-radius: 5pt; background: #fff; color: #000; font: 5.5pt/1.18 "Liberation Sans", Arial, sans-serif; text-align: left; }
+.page-authenticity-seal img { width: 31pt; height: 31pt; margin-right: 7pt; object-fit: contain; }
+.page-authenticity-copy { flex: 1; min-width: 0; }
+.page-authenticity-copy strong, .page-authenticity-copy span { display: block; }
+.page-authenticity-copy strong { font-size: 8pt; }
+.page-authenticity-copy span { overflow-wrap: anywhere; }
+.page-authenticity-number::before { content: "PÁGINA " counter(page) "/" counter(pages); font-weight: 700; white-space: nowrap; }
+
+body {
+  font-family: "Liberation Serif", "Times New Roman", "DejaVu Serif", serif;
+  font-size: 11pt;
+  line-height: 1.45;
+  color: #000;
+  orphans: 2;
+  widows: 2;
+}
+
+.document {
+  width: 100%;
+}
+
+.template-metadata {
+  display: none;
+}
+
+/* ── CAPA MINIMAL ── */
+.cover {
+  text-align: center;
+  padding: 14pt 0 18pt;
+  border-bottom: 1pt solid #000;
+  margin-bottom: 20pt;
+}
+
+.coat-of-arms {
+  display: block;
+  width: 52pt;
+  height: 52pt;
+  object-fit: contain;
+  margin: 0 auto 12pt;
+  filter: grayscale(100%);
+}
+
+.cover h1 {
+  font-size: 22pt;
+  line-height: 1.05;
+  margin: 0 0 2pt;
+  color: #000;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1pt;
+}
+
+.cover h2 {
+  font-size: 11pt;
+  color: #000;
+  margin: 0 0 16pt;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 2pt;
+}
+
+.subtitle {
+  margin-top: 6pt;
+  color: #000;
+  font-size: 9pt;
+  font-style: italic;
+}
+
+.signature-banner {
+  margin-top: 18pt;
+  padding: 6pt 10pt;
+  border: 0.5pt solid #000;
+  color: #000;
+  text-align: center;
+  font-size: 8.5pt;
+  font-family: monospace;
+}
+
+.edition-strip {
+  display: table;
+  width: 100%;
+  border-top: 0.5pt solid #000;
+  border-bottom: 0.5pt solid #000;
+  color: #000;
+  font-size: 7.5pt;
+  font-weight: 400;
+  text-align: center;
+  text-transform: uppercase;
+  font-family: monospace;
+}
+
+.edition-strip > div {
+  display: table-cell;
+  padding: 6pt 0;
+  width: 33.33%;
+}
+
+.edition-strip > div:first-child {
+  text-align: left;
+  padding-left: 4pt;
+}
+
+.edition-strip > div:last-child {
+  text-align: right;
+  padding-right: 4pt;
+}
+
+/* ── SEÇÕES ── */
+.section {
+  margin: 10pt 0 14pt;
+  color: #000;
+}
+
+.section h2 {
+  margin: 10pt 0 12pt;
+  padding: 3pt 0;
+  border-bottom: 0.5pt solid #000;
+  color: #000;
+  font-size: 13pt;
+  font-weight: 700;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 1pt;
+}
+
+/* ── MATÉRIAS ── */
+.matter {
+  margin-bottom: 16pt;
+  border-top: 0.5pt dotted #999;
+  padding-top: 12pt;
+  page-break-inside: auto;
+}
+
+/* Fluxo contínuo: a matéria só quebra quando não cabe (não a cada ato). */
+.matter + .matter {
+  break-before: page;
+  page-break-before: always;
+}
+
+.matter-title {
+  margin: 8pt 0 14pt;
+  padding: 3pt 0;
+  border-bottom: 1pt solid #000;
+  color: #000;
+  font-size: 11.5pt;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 1pt;
+  page-break-after: avoid;
+}
+
+.matter-summary {
+  margin: 12pt 36pt 14pt;
+  font-size: 10pt;
+  font-weight: 400;
+  text-align: center;
+  line-height: 1.2;
+  font-style: italic;
+}
+
+.matter-image-content .matter-title {
+  margin-bottom: 6pt;
+}
+
+.matter-image-content .matter-summary {
+  margin: 4pt 20pt 6pt;
+  font-size: 9pt;
+}
+
+.matter-image-content .matter-content p {
+  margin: 0;
+  text-indent: 0;
+  text-align: center !important;
+  page-break-inside: avoid;
+}
+
+.matter-image-content .matter-content img {
+  display: block;
+  max-width: 100%;
+  max-height: 220mm;
+  width: auto;
+  height: auto;
+  margin: 0 auto;
+  object-fit: contain;
+}
+
+.matter-content {
+  color: #000;
+}
+
+.matter-content p {
+  margin: 0 0 5pt 0;
+  min-height: 1.2em;
+  text-align: start;
+}
+
+.matter-content p:empty::before {
+  content: "\00a0";
+}
+
+/* Corpo de ato oficial no modo legado: recuo de primeira linha + justificado.
+   Parágrafos centralizados e conteúdo tabular/lista permanecem intactos. */
+.matter-content > p:not([style*="center"]):not(:empty) {
+  text-align: justify;
+  text-indent: 1.25cm;
+}
+
+/* Preserve alignment explicitly authored in the administrative editor. */
+.matter-content :is(p, td, th)[align="center"],
+.matter-content :is(p, td, th)[style*="text-align:center"],
+.matter-content :is(p, td, th)[style*="text-align: center"] { text-align: center !important; }
+.matter-content :is(p, td, th)[align="right"],
+.matter-content :is(p, td, th)[style*="text-align:right"],
+.matter-content :is(p, td, th)[style*="text-align: right"] { text-align: right !important; }
+
+.matter-content em,
+.matter-content i { font-style: italic; }
+.matter-content u { text-decoration: underline; }
+.matter-content s, .matter-content del { text-decoration: line-through; }
+
+.matter-content strong,
+.matter-content b {
+  font-weight: 700;
+}
+
+/* ── SUMÁRIO ── */
+.summary {
+  margin: 12pt 0 16pt;
+  color: #000;
+  page-break-inside: avoid;
+  page-break-after: always;
+}
+
+.section-title {
+  display: block;
+  width: 100%;
+  margin-bottom: 4pt;
+  padding: 3pt 0;
+  border-bottom: 1pt solid #000;
+}
+
+.section-title span {
+  display: block;
+  width: 100%;
+  color: #000;
+  font-weight: 700;
+  font-size: 15pt;
+  text-align: center;
+  letter-spacing: 2pt;
+  text-transform: uppercase;
+}
+
+.summary-row {
+  display: table;
+  width: 100%;
+  margin: 3pt 0;
+  color: #000;
+  font-size: 10.5pt;
+  line-height: 1.2;
+  page-break-inside: avoid;
+}
+
+.summary-row > div,
+.summary-row > span,
+.summary-row > strong {
+  display: table-cell;
+  vertical-align: bottom;
+}
+
+.summary-row > div {
+  width: 1%;
+  white-space: nowrap;
+}
+
+.summary-row > div > strong {
+  white-space: nowrap;
+  font-weight: 400;
+}
+
+.summary-row a {
+  color: #000;
+  text-decoration: none;
+}
+
+/* Real printed page number, resolved by WeasyPrint during pagination. */
+.summary-page::after {
+  content: target-counter(attr(href), page, decimal-leading-zero);
+}
+
+.summary-row > strong {
+  width: 18pt;
+  text-align: right;
+  font-weight: 400;
+}
+
+.summary-row small {
+  display: inline;
+  margin-top: 2pt;
+  color: #000;
+  font-size: 10pt;
+  white-space: nowrap;
+}
+
+.summary-row small:before {
+  content: " ";
+}
+
+.summary-dots {
+  width: 100%;
+  border-bottom: 1pt dotted #000;
+}
+
+/* Tabelas são limitadas à área útil. O layout fixo distribui colunas largas,
+   preservando colspan/rowspan; linhas que cabem numa página não são partidas. */
+.matter-content h1,
+.matter-content h2,
+.matter-content h3,
+.matter-content h4 {
+  margin: 8pt 0 6pt;
+  font-weight: 700;
+  text-align: center;
+  text-transform: uppercase;
+  page-break-after: avoid;
+}
+
+.matter-content h1 { font-size: 14pt; }
+.matter-content h2 { font-size: 13pt; }
+.matter-content h3 { font-size: 12pt; }
+.matter-content h4 { font-size: 11pt; }
+
+.matter-content table {
+  width: 100% !important;
+  max-width: 100% !important;
+  table-layout: auto;
+  border-collapse: collapse;
+  border-spacing: 0;
+  margin: 6pt 0;
+  page-break-inside: auto;
+}
+
+.matter-content tr { page-break-inside: avoid; break-inside: avoid; }
+.matter-content thead { display: table-header-group !important; }
+.matter-content tbody { display: table-row-group; }
+
+.matter-content th,
+.matter-content td {
+  border: 0.5pt solid #000;
+  padding: 2pt 4pt;
+  vertical-align: top;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+
+.matter-content img { display: block; max-width: 100% !important; max-height: 225mm; width: auto !important; height: auto !important; object-fit: contain; page-break-inside: avoid; break-inside: avoid; }
+
+.matter-content th {
+  background: #ddd;
+  font-weight: 700;
+}
+
+.matter-content td p,
+.matter-content th p {
+  margin: 0;
+  text-indent: 0;
+  text-align: inherit;
+}
+
+.matter-content ul,
+.matter-content ol {
+  margin: 4pt 0;
+  padding-left: 2em;
+}
+
+.matter-content li {
+  margin: 2pt 0;
+}
+
+/* ── VALIDAÇÃO ── */
+.validation-box {
+  margin-top: 24pt;
+  padding: 8pt 10pt;
+  border: 0.5pt solid #000;
+  color: #000;
+  page-break-inside: avoid;
+}
+
+.validation-box h3 {
+  margin: 0 0 8pt;
+  font-size: 9pt;
+  text-transform: uppercase;
+  letter-spacing: 1pt;
+}
+
+.validation-grid {
+  display: table;
+  width: 100%;
+}
+
+.validation-grid > div {
+  display: table-cell;
+  width: 50%;
+  padding-right: 8pt;
+}
+
+.validation-grid span {
+  display: block;
+  color: #000;
+  font-size: 7pt;
+  font-weight: 700;
+  letter-spacing: 1pt;
+}
+
+.validation-grid code {
+  display: block;
+  padding: 3pt;
+  margin-top: 2pt;
+  border: 0.5pt solid #000;
+  background: #f8f8f8;
+  color: #000;
+  font-size: 7pt;
+  word-break: break-all;
+  font-family: monospace;
+}
+
+.validation-box p {
+  margin-top: 6pt;
+  color: #000;
+  font-size: 7.5pt;
+  font-family: monospace;
+}
+
+/* Editorial pagination: never orphan a matter title/summary. */
+.matter-title,
+.matter-summary {
+  break-after: avoid;
+  page-break-after: avoid;
+}
+.matter {
+  break-inside: auto;
+  page-break-inside: auto;
+}
+.matter--long-table { break-before: page; page-break-before: always; }

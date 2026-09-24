@@ -1,0 +1,339 @@
+from enum import Enum
+
+
+class MatterStatus(str, Enum):
+    DRAFT = "draft"
+    REVIEW = "review"
+    APPROVED = "approved"
+    PUBLISHED = "published"
+    ARCHIVED = "archived"
+    REJECTED = "rejected"
+
+    @classmethod
+    def valid_transitions(cls) -> dict[str, list[str]]:
+        return {
+            cls.DRAFT: [cls.REVIEW, cls.ARCHIVED],
+            cls.REVIEW: [cls.APPROVED, cls.REJECTED, cls.DRAFT],
+            cls.APPROVED: [cls.PUBLISHED, cls.DRAFT],
+            cls.PUBLISHED: [cls.ARCHIVED],
+            cls.ARCHIVED: [],
+            cls.REJECTED: [cls.DRAFT, cls.REVIEW],
+        }
+
+    def can_transition_to(self, target: "MatterStatus") -> bool:
+        if self == target:
+            return True
+        allowed = self.valid_transitions().get(self, [])
+        return target in allowed
+
+    def assert_transition(self, target: "MatterStatus") -> None:
+        if not self.can_transition_to(target):
+            raise ValueError(
+                f"Status transition from '{self.value}' to '{target.value}' "
+                f"is not allowed for Matter"
+            )
+
+    @classmethod
+    def can_edit(cls, status: "MatterStatus") -> bool:
+        return status in (cls.DRAFT, cls.REVIEW, cls.REJECTED)
+
+
+class MatterWorkflowStatus(str, Enum):
+    """Estados do fluxo de criação/revisão de um documento oficial.
+
+    Complementa (não substitui) o ``MatterStatus`` editorial. Captura a jornada
+    desde a geração por IA até a publicação, inclusive as etapas de assinatura
+    que, no sistema, ocorrem no nível da edição.
+    """
+
+    RASCUNHO = "rascunho"
+    EM_ELABORACAO = "em_elaboracao"
+    GERADO_PELA_IA = "gerado_pela_ia"
+    AGUARDANDO_REVISAO = "aguardando_revisao"
+    EM_REVISAO = "em_revisao"
+    AGUARDANDO_APROVACAO = "aguardando_aprovacao"
+    APROVADO = "aprovado"
+    AGUARDANDO_PUBLICACAO = "aguardando_publicacao"
+    INSERIDA_EM_EDICAO = "inserida_em_edicao"
+    AGUARDANDO_ASSINATURA = "aguardando_assinatura"
+    ASSINADO = "assinado"
+    PUBLICADO = "publicado"
+    DEVOLVIDA_PARA_CORRECAO = "devolvida_para_correcao"
+    RETIFICADA = "retificada"
+    SUBSTITUIDA = "substituida"
+    CANCELADO = "cancelado"
+
+    @classmethod
+    def valid_transitions(cls) -> dict["MatterWorkflowStatus", list["MatterWorkflowStatus"]]:
+        return {
+            cls.RASCUNHO: [
+                cls.EM_ELABORACAO, cls.GERADO_PELA_IA, cls.EM_REVISAO, cls.CANCELADO,
+            ],
+            cls.EM_ELABORACAO: [
+                cls.RASCUNHO, cls.EM_REVISAO, cls.CANCELADO,
+            ],
+            cls.GERADO_PELA_IA: [
+                cls.RASCUNHO, cls.EM_ELABORACAO, cls.EM_REVISAO, cls.CANCELADO,
+            ],
+            cls.AGUARDANDO_REVISAO: [
+                cls.EM_REVISAO, cls.DEVOLVIDA_PARA_CORRECAO, cls.CANCELADO,
+            ],
+            cls.EM_REVISAO: [
+                cls.APROVADO, cls.AGUARDANDO_APROVACAO, cls.AGUARDANDO_REVISAO,
+                cls.DEVOLVIDA_PARA_CORRECAO, cls.RASCUNHO, cls.CANCELADO,
+            ],
+            cls.AGUARDANDO_APROVACAO: [
+                cls.APROVADO, cls.DEVOLVIDA_PARA_CORRECAO, cls.CANCELADO,
+            ],
+            cls.APROVADO: [
+                cls.AGUARDANDO_PUBLICACAO, cls.INSERIDA_EM_EDICAO,
+                cls.AGUARDANDO_ASSINATURA, cls.EM_REVISAO, cls.CANCELADO,
+            ],
+            cls.AGUARDANDO_PUBLICACAO: [
+                cls.INSERIDA_EM_EDICAO, cls.PUBLICADO, cls.CANCELADO,
+            ],
+            cls.INSERIDA_EM_EDICAO: [
+                cls.PUBLICADO, cls.AGUARDANDO_PUBLICACAO, cls.CANCELADO,
+            ],
+            cls.AGUARDANDO_ASSINATURA: [cls.ASSINADO, cls.CANCELADO],
+            cls.ASSINADO: [cls.PUBLICADO, cls.CANCELADO],
+            cls.PUBLICADO: [cls.RETIFICADA, cls.SUBSTITUIDA],
+            cls.DEVOLVIDA_PARA_CORRECAO: [
+                cls.RASCUNHO, cls.EM_ELABORACAO, cls.EM_REVISAO, cls.CANCELADO,
+            ],
+            cls.RETIFICADA: [],
+            cls.SUBSTITUIDA: [],
+            cls.CANCELADO: [],
+        }
+
+    def can_transition_to(self, target: "MatterWorkflowStatus") -> bool:
+        if self == target:
+            return True
+        return target in self.valid_transitions().get(self, [])
+
+    def assert_transition(self, target: "MatterWorkflowStatus") -> None:
+        if not self.can_transition_to(target):
+            raise ValueError(
+                f"Workflow transition from '{self.value}' to '{target.value}' is not allowed"
+            )
+
+
+class EditionType(str, Enum):
+    NORMAL = "normal"
+    EXTRA = "extra"
+    SUPLEMENTAR = "suplementar"
+
+
+class EditionStatus(str, Enum):
+    DRAFT = "draft"
+    REVIEWING = "reviewing"
+    SCHEDULED = "scheduled"
+    CLOSED = "closed"
+    PDF_GENERATED = "pdf_generated"
+    SIGNED = "signed"
+    PUBLISHED = "published"
+    CANCELLED = "cancelled"
+
+    @classmethod
+    def valid_transitions(cls) -> dict[str, list[str]]:
+        return {
+            cls.DRAFT: [cls.REVIEWING, cls.CLOSED, cls.CANCELLED],
+            cls.REVIEWING: [cls.SCHEDULED, cls.CLOSED, cls.DRAFT, cls.CANCELLED],
+            cls.SCHEDULED: [cls.CLOSED, cls.DRAFT, cls.CANCELLED],
+            cls.CLOSED: [cls.PDF_GENERATED, cls.DRAFT, cls.CANCELLED],
+            cls.PDF_GENERATED: [cls.SIGNED, cls.CLOSED, cls.CANCELLED, cls.DRAFT],
+            cls.SIGNED: [cls.PUBLISHED, cls.CANCELLED],
+            cls.PUBLISHED: [],
+            cls.CANCELLED: [],
+        }
+
+    def can_transition_to(self, target: "EditionStatus") -> bool:
+        if self == target:
+            return True
+        allowed = self.valid_transitions().get(self, [])
+        return target in allowed
+
+    def assert_transition(self, target: "EditionStatus") -> None:
+        if not self.can_transition_to(target):
+            raise ValueError(
+                f"Status transition from '{self.value}' to '{target.value}' "
+                f"is not allowed for Edition"
+            )
+
+    @classmethod
+    def can_edit(cls, status: "EditionStatus") -> bool:
+        status = cls(status)
+        return status in (cls.DRAFT, cls.REVIEWING, cls.SCHEDULED)
+
+    @classmethod
+    def can_add_items(cls, status: "EditionStatus") -> bool:
+        status = cls(status)
+        return status in (cls.DRAFT, cls.REVIEWING, cls.SCHEDULED)
+
+    @classmethod
+    def can_reopen(cls, status: "EditionStatus") -> bool:
+        status = cls(status)
+        return status in (cls.CLOSED, cls.PDF_GENERATED)
+
+    @classmethod
+    def can_sign(cls, status: "EditionStatus") -> bool:
+        status = cls(status)
+        return status == cls.PDF_GENERATED
+
+    @classmethod
+    def can_publish(cls, status: "EditionStatus") -> bool:
+        status = cls(status)
+        return status == cls.SIGNED
+
+
+class MatterRelationType(str, Enum):
+    """Structured, auditable relationship between two published matters.
+
+    Semantics (source acts upon target):
+      RECTIFIES    → source corrects target (target stays published; source is the erratum)
+      REPUBLISHES  → source re-publishes target's content (e.g. after a defect)
+      CANCELS      → source formally cancels target (target stays available)
+      REVOKES      → source revokes the legal effect of target (target text stays)
+      AMENDS       → source alters target (laws/decrees/portarias)
+      SUPERSEDES   → source replaces target
+      COMPLEMENTS  → source supplements target
+    """
+
+    RECTIFIES = "rectifies"
+    REPUBLISHES = "republishes"
+    CANCELS = "cancels"
+    REVOKES = "revokes"
+    AMENDS = "amends"
+    SUPERSEDES = "supersedes"
+    COMPLEMENTS = "complements"
+
+    @property
+    def label(self) -> str:
+        return _RELATION_LABELS.get(self, self.value)
+
+    @property
+    def inverse(self) -> str:
+        """When displayed from the target side ('X was ... by source')."""
+        return _RELATION_INVERSE.get(self, self.value)
+
+
+_RELATION_LABELS = {
+    MatterRelationType.RECTIFIES: "Retifica",
+    MatterRelationType.REPUBLISHES: "Republica",
+    MatterRelationType.CANCELS: "Cancela",
+    MatterRelationType.REVOKES: "Revoga",
+    MatterRelationType.AMENDS: "Altera",
+    MatterRelationType.SUPERSEDES: "Substitui",
+    MatterRelationType.COMPLEMENTS: "Complementa",
+}
+
+_RELATION_INVERSE = {
+    MatterRelationType.RECTIFIES: "Retificada",
+    MatterRelationType.REPUBLISHES: "Republicada",
+    MatterRelationType.CANCELS: "Cancelada",
+    MatterRelationType.REVOKES: "Revogada",
+    MatterRelationType.AMENDS: "Alterada",
+    MatterRelationType.SUPERSEDES: "Substituída",
+    MatterRelationType.COMPLEMENTS: "Complementada",
+}
+
+
+class AttachmentType(str, Enum):
+    ANNEX = "annex"
+    APPENDIX = "appendix"
+    REFERENCE = "reference"
+    OTHER = "other"
+
+
+class SignatureProviderType(str, Enum):
+    A1 = "a1"
+    A3 = "a3"
+    HSM = "hsm"
+    CLOUD = "cloud"
+    SEAL = "seal"
+
+
+class ValidationStatus(str, Enum):
+    """Consistent validation states for signatures and timestamps.
+
+    Adopted instead of the limited ``valid|invalid|not_validated`` so that a
+    signature/timestamp can be in an explicitly pending or indeterminate
+    state until full cryptographic + chain validation completes.
+    """
+
+    PENDING_VALIDATION = "pending_validation"
+    VALID = "valid"
+    INVALID = "invalid"
+    INDETERMINATE = "indeterminate"
+
+
+class AiExecutionKind(str, Enum):
+    """Business operation performed against the shared DeepSeek integration.
+
+    Kept enum-typed so future AI operations (document-model authoring) reuse a
+    single execution/audit trail without free-form strings.
+    """
+
+    TEST_CONNECTION = "test_connection"
+    CHAT = "chat"
+    IDENTIFY_MODEL = "identify_model"
+    EXTRACT_FIELDS = "extract_fields"
+    ANALYZE_EXAMPLES = "analyze_examples"
+    PROPOSE_STRUCTURE = "propose_structure"
+    DRAFT_BLOCKS = "draft_blocks"
+
+
+class AiExecutionStatus(str, Enum):
+    RUNNING = "running"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+    CANCELLED = "cancelled"
+
+
+class AuditAction(str, Enum):
+    MATTER_CREATED = "matter.created"
+    MATTER_UPDATED = "matter.updated"
+    MATTER_STATUS_CHANGED = "matter.status_changed"
+    MATTER_WORKFLOW_STATUS_CHANGED = "matter.workflow_status_changed"
+    MATTER_PUBLISHED = "matter.published"
+    MATTER_RELATION_CREATED = "matter.relation.created"
+    MATTER_RELATION_DELETED = "matter.relation.deleted"
+    EDITION_CREATED = "edition.created"
+    EDITION_UPDATED = "edition.updated"
+    EDITION_STATUS_CHANGED = "edition.status_changed"
+    EDITION_PUBLISHED = "edition.published"
+    EDITION_SIGNED = "edition.signed"
+    EDITION_CANCELLED = "edition.cancelled"
+    USER_CREATED = "user.created"
+    USER_UPDATED = "user.updated"
+    USER_ROLE_CHANGED = "user.role_changed"
+    CREDENTIAL_CREATED = "credential.created"
+    CREDENTIAL_UPDATED = "credential.updated"
+    FILE_UPLOADED = "file.uploaded"
+    FILE_DELETED = "file.deleted"
+    LOGIN = "auth.login"
+    LOGIN_FAILED = "auth.login_failed"
+    LOGOUT = "auth.logout"
+    AI_CONFIG_UPDATED = "ai.config.updated"
+    AI_KEY_REPLACED = "ai.config.key_replaced"
+    AI_KEY_REMOVED = "ai.config.key_removed"
+    AI_CONFIG_DISABLED = "ai.config.disabled"
+    AI_CONFIG_TESTED = "ai.config.tested"
+    AI_EXECUTION = "ai.execution"
+    DOCUMENT_MODEL_CREATED = "document_model.created"
+    DOCUMENT_MODEL_UPDATED = "document_model.updated"
+    DOCUMENT_MODEL_VERSIONED = "document_model.versioned"
+    DOCUMENT_MODEL_SUBMITTED = "document_model.submitted"
+    DOCUMENT_MODEL_APPROVED = "document_model.approved"
+    DOCUMENT_MODEL_ARCHIVED = "document_model.archived"
+    DOCUMENT_MODEL_DELETED = "document_model.deleted"
+    DOCUMENT_MODEL_ACTIVATED = "document_model.activated"
+    DOCUMENT_MODEL_DEACTIVATED = "document_model.deactivated"
+    DOCUMENT_MODEL_BLOCK_CREATED = "document_model.block.created"
+    DOCUMENT_MODEL_BLOCK_UPDATED = "document_model.block.updated"
+    DOCUMENT_MODEL_BLOCK_DELETED = "document_model.block.deleted"
+    DOCUMENT_MODEL_TRAINING_FILE_ADDED = "document_model.training_file.added"
+    DOCUMENT_MODEL_TRAINING_FILE_REMOVED = "document_model.training_file.removed"
+    DOCUMENT_MODEL_MATERIAL_CREATED = "document_model.material.created"
+    INSTITUTIONAL_PROFILE_UPDATED = "organization.institutional_updated"
+    ACT_NUMBER_ISSUED = "act.number.issued"

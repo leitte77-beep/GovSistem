@@ -1,0 +1,6 @@
+
+Running 1 test using 1 worker
+
+  ✓  1 [desktop] › e2e/edition-a11y.spec.ts:66:7 › Página pública da edição (snapshot) › roda axe-core sem violações critical/serious (3.1s)
+
+  1 passed (4.7s)

@@ -1,0 +1,97 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - develop
+      - master
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: "20"
+
+jobs:
+  # ── Testes (sempre roda) ───────────────────────────────────────────────────
+  test:
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
+  # ── Deploy Staging (branch develop) ─────────────────────────────────────────
+  deploy-staging:
+    if: github.ref_name == 'develop'
+    needs: [test]
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.STAGING_SSH_KEY }}
+
+      - name: Adicionar host conhecido
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.STAGING_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy no staging
+        run: |
+          ssh ${{ secrets.STAGING_USER }}@${{ secrets.STAGING_HOST }} << 'EOF'
+            cd ~/sistemaweb
+            git fetch origin
+            git reset --hard origin/develop
+
+            export STG_POSTGRES_PASSWORD="${{ secrets.STG_POSTGRES_PASSWORD }}"
+            export STG_SECRET_KEY="${{ secrets.STG_SECRET_KEY }}"
+
+            docker compose \
+              -p sistemaweb-staging \
+              -f infra/docker-compose.staging.yml \
+              up -d --build --remove-orphans
+
+            docker system prune -f
+          EOF
+
+  # ── Deploy Produção (branch master/main) ────────────────────────────────────
+  deploy-production:
+    if: github.ref_name == 'master' || github.ref_name == 'main'
+    needs: [test]
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.PRODUCTION_SSH_KEY }}
+
+      - name: Adicionar host conhecido
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H ${{ secrets.PRODUCTION_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy na produção
+        run: |
+          ssh ${{ secrets.PRODUCTION_USER }}@${{ secrets.PRODUCTION_HOST }} << 'EOF'
+            cd ~/sistemaweb
+            git fetch origin
+            git reset --hard origin/master
+
+            export POSTGRES_PASSWORD="${{ secrets.PROD_POSTGRES_PASSWORD }}"
+            export MINIO_ROOT_PASSWORD="${{ secrets.PROD_MINIO_PASSWORD }}"
+            export SECRET_KEY="${{ secrets.PROD_SECRET_KEY }}"
+            export INTERNAL_API_KEY="${{ secrets.PROD_INTERNAL_API_KEY }}"
+            export SIGNER_A1_PASSWORD="${{ secrets.PROD_SIGNER_PASSWORD }}"
+
+            docker compose \
+              -f infra/docker-compose.prod.yml \
+              up -d --build --remove-orphans
+
+            docker system prune -f
+          EOF

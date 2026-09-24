@@ -1,0 +1,25 @@
+{
+  "name": "govinfra",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GovInfra — gestão dos serviços, equipamentos e atendimentos da Secretaria Municipal de Infraestrutura",
+  "type": "module",
+  "scripts": {
+    "ports": "node scripts/resolve-ports.mjs",
+    "ports:check": "node scripts/resolve-ports.mjs --check",
+    "setup": "node scripts/setup.mjs",
+    "dev": "node scripts/dev.mjs",
+    "govinfra:dev": "node scripts/dev.mjs",
+    "dev:api": "node scripts/dev.mjs --apenas api",
+    "dev:web": "node scripts/dev.mjs --apenas web",
+    "seed": "node scripts/seed.mjs",
+    "test": "node scripts/test.mjs",
+    "lint": "node scripts/lint.mjs",
+    "docker:up": "node scripts/docker.mjs up",
+    "docker:down": "node scripts/docker.mjs down",
+    "docker:logs": "node scripts/docker.mjs logs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

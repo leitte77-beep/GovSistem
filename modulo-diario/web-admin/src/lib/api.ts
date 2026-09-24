@@ -1,0 +1,1100 @@
+/**
+ * Token storage policy:
+ * - access_token: stored in sessionStorage (cleared on tab close, reduces XSS persistence window)
+ * - refresh_token: stored in localStorage (needed for cross-tab refresh; acceptable
+ *   risk because refresh tokens are short-lived and can be revoked server-side)
+ *
+ * TODO: Migrate to httpOnly cookies + CSRF tokens for defense-in-depth.
+ * This requires backend changes to set cookies on /auth/login, /auth/refresh, etc.
+ */
+import type {
+  ActType,
+  ActTypeAdmin,
+  ApiError,
+  Attachment,
+  AuditEvent,
+  Authority,
+  Matter,
+  MatterListItem,
+  MatterWorkflowHistoryEntry,
+  OrgUnit,
+} from "@/types/matter";
+import type { User, UserCreateRequest, UserUpdateRequest } from "@/types/user";
+import type { SystemSetting } from "@/types/setting";
+import type {
+  AiConfigMetadata,
+  AiExtractResult,
+  AiTestResult,
+  DocumentModelBlock,
+  DocumentModelBlockContent,
+  DocumentModelConfig,
+  DocumentModelDetail,
+  DocumentModelHistoryEntry,
+  DocumentModelSummary,
+  DocumentLayout,
+  InstitutionalProfile,
+  LearnProposal,
+  MaterialCreated,
+  MaterialsResult,
+  NumberIssue,
+  PreviewResult,
+  TrainingFile,
+  VersionDetail,
+  VersionSummary,
+} from "@/types/document_model";
+
+export interface MatterRelation {
+  id: string;
+  source_matter_id: string;
+  target_matter_id: string;
+  source_title?: string | null;
+  target_title?: string | null;
+  relation_type: string;
+  label: string;
+  notes?: string | null;
+  created_at?: string | null;
+}
+
+const BASE_URL = "/api/v1";
+
+export const SAAS_URL =
+  process.env.NEXT_PUBLIC_SAAS_URL || "https://app.govsistem.com.br";
+
+class AuthError extends Error {
+  constructor() {
+    super("Not authenticated");
+    this.name = "AuthError";
+  }
+}
+
+function getToken(): string | null {
+  if (typeof window === "undefined") return null;
+  bootstrapTokenFromQuery();
+  return sessionStorage.getItem("access_token");
+}
+
+export function bootstrapTokenFromQuery(): string | null {
+  if (typeof window === "undefined") return null;
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlToken = urlParams.get("token");
+  if (urlToken) {
+    sessionStorage.setItem("access_token", urlToken);
+    window.history.replaceState({}, "", window.location.pathname);
+    return urlToken;
+  }
+  return null;
+}
+
+function getHeaders(isFormData = false): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (!isFormData) headers["Content-Type"] = "application/json";
+  const token = getToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  return headers;
+}
+
+function mergeHeaders(
+  base: Record<string, string>,
+  extra: HeadersInit | undefined
+): Record<string, string> {
+  if (!extra) return base;
+  if (Array.isArray(extra)) {
+    for (const [k, v] of extra) base[k] = v;
+  } else if (extra instanceof Headers) {
+    extra.forEach((v, k) => { base[k] = v; });
+  } else {
+    for (const [k, v] of Object.entries(extra)) base[k] = v;
+  }
+  return base;
+}
+
+let refreshPromise: Promise<boolean> | null = null;
+
+async function tryRefreshToken(): Promise<boolean> {
+  const refreshToken = localStorage.getItem("refresh_token");
+  if (!refreshToken) return false;
+
+  if (refreshPromise) return refreshPromise;
+
+  refreshPromise = (async () => {
+    try {
+      const res = await fetch(`${BASE_URL}/auth/refresh`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+      if (!res.ok) {
+        sessionStorage.removeItem("access_token");
+        localStorage.removeItem("refresh_token");
+        window.dispatchEvent(new Event("auth:logout"));
+        return false;
+      }
+      const data = await res.json();
+      sessionStorage.setItem("access_token", data.access_token);
+      localStorage.setItem("refresh_token", data.refresh_token);
+      return true;
+    } catch {
+      sessionStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+      window.dispatchEvent(new Event("auth:logout"));
+      return false;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+}
+
+function formatApiError(err: unknown, status: number): string {
+  const detail = (err as { detail?: unknown } | null)?.detail;
+  if (Array.isArray(detail)) {
+    const parts = detail.map((item) => {
+      const d = item as { loc?: unknown[]; msg?: unknown };
+      const loc = Array.isArray(d.loc) ? d.loc.filter((p) => p !== "body").join(".") : "";
+      const msg = typeof d.msg === "string" ? d.msg : "valor inválido";
+      return loc ? `${loc}: ${msg}` : msg;
+    });
+    if (parts.length) return parts.join("; ");
+  }
+  if (typeof detail === "string" && detail) return detail;
+  return `HTTP ${status}`;
+}
+
+async function request<T>(
+  path: string,
+  options: RequestInit = {},
+  retry = true
+): Promise<T> {
+  const isFormData = options.body instanceof FormData;
+  const res = await fetch(`${BASE_URL}${path}`, {
+    ...options,
+    headers: { ...getHeaders(isFormData), ...mergeHeaders({}, options.headers) },
+  });
+  if (res.status === 401 && retry) {
+    const refreshed = await tryRefreshToken();
+    if (refreshed) {
+      return request<T>(path, options, false);
+    }
+    throw new AuthError();
+  }
+  if (res.status === 401) throw new AuthError();
+  if (!res.ok) {
+    const err: ApiError & { status?: number } = await res.json().catch(() => ({ detail: "Unknown error" }));
+    err.status = res.status;
+    const error = new Error(formatApiError(err, res.status)) as Error & { status?: number };
+    error.status = res.status;
+    throw error;
+  }
+  if (res.status === 204) return null as T;
+  return res.json();
+}
+
+async function requestBlob(path: string, options: RequestInit = {}, retry = true): Promise<Blob> {
+  const res = await fetch(`${BASE_URL}${path}`, {
+    ...options,
+    headers: { ...getHeaders(false), ...mergeHeaders({}, options.headers) },
+  });
+  if (res.status === 401 && retry) {
+    const refreshed = await tryRefreshToken();
+    if (refreshed) return requestBlob(path, options, false);
+    throw new AuthError();
+  }
+  if (!res.ok) {
+    const err: ApiError & { status?: number } = await res
+      .json()
+      .catch(() => ({ detail: "Unknown error" }));
+    err.status = res.status;
+    const error = new Error(formatApiError(err, res.status)) as Error & { status?: number };
+    error.status = res.status;
+    throw error;
+  }
+  return res.blob();
+}
+
+export interface BackupFile {
+  filename: string;
+  size_bytes: number;
+  created_at: string;
+}
+
+export const api = {
+  // Auth
+  login(email: string, password: string) {
+    return request<{ access_token: string; refresh_token: string }>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    });
+  },
+
+  refresh(refresh_token: string) {
+    return request<{ access_token: string; refresh_token: string }>("/auth/refresh", {
+      method: "POST",
+      body: JSON.stringify({ refresh_token }),
+    });
+  },
+
+  me() {
+    return request<{
+      id: string;
+      email: string;
+      name: string;
+      roles: { id: string; name: string; label: string }[];
+      organization_id: string;
+    }>("/auth/me");
+  },
+
+  listOrganizations() {
+    return request<{ id: string; name: string; slug: string; is_active: boolean }[]>("/auth/organizations");
+  },
+
+  switchOrganization(organization_id: string) {
+    return request<{ access_token: string; refresh_token: string }>("/auth/switch-organization", {
+      method: "POST",
+      body: JSON.stringify({ organization_id }),
+    });
+  },
+
+  // Matters
+  listMatters(params?: {
+    status?: string;
+    search?: string;
+    skip?: number;
+    limit?: number;
+    act_type_id?: string;
+    org_unit_id?: string;
+    sort?: string;
+    order?: "asc" | "desc";
+  }) {
+    const q = new URLSearchParams();
+    if (params?.status) q.set("status", params.status);
+    if (params?.search) q.set("search", params.search);
+    if (params?.skip) q.set("skip", String(params.skip));
+    if (params?.limit) q.set("limit", String(params.limit));
+    if (params?.act_type_id) q.set("act_type_id", params.act_type_id);
+    if (params?.org_unit_id) q.set("org_unit_id", params.org_unit_id);
+    if (params?.sort) q.set("sort", params.sort);
+    if (params?.order) q.set("order", params.order);
+    const qs = q.toString();
+    return request<MatterListItem[]>(`/matters${qs ? `?${qs}` : ""}`);
+  },
+
+  countMatters(params?: {
+    status?: string;
+    search?: string;
+    act_type_id?: string;
+    org_unit_id?: string;
+  }) {
+    const q = new URLSearchParams();
+    if (params?.status) q.set("status", params.status);
+    if (params?.search) q.set("search", params.search);
+    if (params?.act_type_id) q.set("act_type_id", params.act_type_id);
+    if (params?.org_unit_id) q.set("org_unit_id", params.org_unit_id);
+    const qs = q.toString();
+    return request<{ total: number }>(`/matters/count${qs ? `?${qs}` : ""}`);
+  },
+
+  listMatterStats() {
+    return request<{
+      total: number;
+      published: number;
+      draft: number;
+      review: number;
+      approved: number;
+      archived: number;
+      rejected: number;
+    }>(`/matters/stats`);
+  },
+
+  getMatter(id: string) {
+    return request<Matter>(`/matters/${id}`);
+  },
+
+  updateMatterWorkflow(id: string, status: string, note?: string) {
+    return request<Matter>(`/matters/${id}/workflow-status`, {
+      method: "POST",
+      body: JSON.stringify({ status, note }),
+    });
+  },
+
+  getMatterWorkflowHistory(id: string) {
+    return request<MatterWorkflowHistoryEntry[]>(`/matters/${id}/workflow-history`);
+  },
+
+  archiveMatter(id: string) {
+    return request<{ status: string }>(`/matters/${id}/archive`, { method: "POST" });
+  },
+
+  /** Cria uma retificação de matéria publicada (matéria + relação, atômico). */
+  rectifyMatter(
+    id: string,
+    data?: { title?: string; summary?: string; content_html?: string; notes?: string }
+  ) {
+    return request<Matter>(`/matters/${id}/rectify`, {
+      method: "POST",
+      body: JSON.stringify(data ?? {}),
+    });
+  },
+
+  deleteMatter(id: string) {
+    return request<void>(`/matters/${id}`, { method: "DELETE" });
+  },
+
+  getNextMatterTitle(actTypeId: string) {
+    const q = new URLSearchParams({ act_type_id: actTypeId });
+    return request<{ title: string; next_number: number; last_number: number; year: number; advisory: boolean; reserved: boolean }>(
+      `/matters/next-title?${q.toString()}`
+    );
+  },
+
+  /** Interpreta uma colagem (Word/HTML/texto) antes de a matéria existir. */
+  analyzeMatter(data: {
+    plain?: string;
+    html?: string;
+    title?: string;
+    summary?: string;
+    document_type?: string;
+  }) {
+    return request<import("../types/edition").MatterAnalysis>("/matters/analyze", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  createMatter(data: {
+    title: string;
+    summary?: string;
+    act_type_id: string;
+    org_unit_id?: string;
+    content_html: string;
+    content_json?: Record<string, unknown>;
+    content_mode?: string;
+    act_number?: string;
+    act_year?: number;
+    act_date?: string;
+    responsible_name?: string;
+    responsible_role?: string;
+    responsible_id?: string;
+    metadata?: Record<string, unknown>;
+    publication_type?: string;
+    references_matter_id?: string;
+  }) {
+    return request<Matter>("/matters", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  updateMatter(id: string, data: Partial<{
+    title: string;
+    summary: string;
+    act_type_id: string;
+    org_unit_id: string;
+    content_html: string;
+    content_json: Record<string, unknown>;
+    content_mode: string;
+    act_number: string;
+    act_year: number;
+    act_date: string;
+    responsible_name: string;
+    responsible_role: string;
+    responsible_id: string;
+    metadata: Record<string, unknown>;
+    publication_type: string;
+    references_matter_id: string;
+  }>) {
+    return request<Matter>(`/matters/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+
+  submitReview(id: string) {
+    return request<Matter>(`/matters/${id}/submit-review`, { method: "POST" });
+  },
+
+  approve(id: string) {
+    return request<Matter>(`/matters/${id}/approve`, { method: "POST" });
+  },
+
+  reject(id: string, reason?: string) {
+    return request<Matter>(`/matters/${id}/reject`, {
+      method: "POST",
+      body: JSON.stringify({ reason: reason ?? null }),
+    });
+  },
+
+  // Attachments
+  uploadAttachment(matterId: string, file: File) {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request<Attachment>(`/matters/${matterId}/attachments`, {
+      method: "POST",
+      body: fd,
+    });
+  },
+
+  uploadContentPdf(matterId: string, file: File) {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request<Matter>(`/matters/${matterId}/content-pdf`, {
+      method: "POST",
+      body: fd,
+    });
+  },
+
+  formatContentWithAI(data: { content: string; act_type?: string; title?: string; summary?: string }) {
+    return request<{ structured_html: string; model: string; notes: string[] }>("/ai/format-content", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  deleteAttachment(matterId: string, attachmentId: string) {
+    return request<void>(`/matters/${matterId}/attachments/${attachmentId}`, {
+      method: "DELETE",
+    });
+  },
+
+  // Act types
+  listActTypes() {
+    return request<ActType[]>("/act-types");
+  },
+
+  // Act types — admin (friendly config, validated server-side)
+  adminListActTypes(includeInactive = false) {
+    const q = includeInactive ? "?include_inactive=true" : "";
+    return request<ActTypeAdmin[]>("/admin/act-types" + q);
+  },
+  adminCreateActType(data: { name: string; description?: string; config: Record<string, unknown> }) {
+    return request<ActTypeAdmin>("/admin/act-types", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  adminUpdateActType(id: string, data: { name?: string; description?: string; is_active?: boolean; config?: Record<string, unknown> }) {
+    return request<ActTypeAdmin>(`/admin/act-types/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+  adminDeleteActType(id: string) {
+    return request<void>(`/admin/act-types/${id}`, { method: "DELETE" });
+  },
+
+  // Authorities (signatários/responsáveis institucionais)
+  listAuthorities(params?: { active_only?: boolean; search?: string }) {
+    const q = new URLSearchParams();
+    if (params?.active_only) q.set("active_only", "true");
+    if (params?.search) q.set("search", params.search);
+    const qs = q.toString();
+    return request<Authority[]>(`/authorities${qs ? `?${qs}` : ""}`);
+  },
+  createAuthority(data: Partial<{
+    name: string; role: string; org_unit_id: string; is_active: boolean;
+    valid_from: string; valid_until: string; notes: string;
+  }>) {
+    return request<Authority>("/authorities", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  updateAuthority(id: string, data: Partial<{
+    name: string; role: string; org_unit_id: string; is_active: boolean;
+    valid_from: string; valid_until: string; notes: string;
+  }>) {
+    return request<Authority>(`/authorities/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+  deleteAuthority(id: string) {
+    return request<void>(`/authorities/${id}`, { method: "DELETE" });
+  },
+
+  // Org units
+  listOrgUnits() {
+    return request<OrgUnit[]>("/org-units");
+  },
+
+  // Audit
+  listMatterAudit(matterId: string) {
+    return request<AuditEvent[]>(`/matters/${matterId}/audit`);
+  },
+
+  // Editions
+  listEditions(params?: { year?: number; status?: string }) {
+    const q = new URLSearchParams();
+    if (params?.year) q.set("year", String(params.year));
+    if (params?.status) q.set("status", params.status);
+    const qs = q.toString();
+    return request<import("../types/edition").EditionListItem[]>(`/editions${qs ? `?${qs}` : ""}`);
+  },
+
+  /** Editions that still accept matters (draft/reviewing/scheduled). */
+  listOpenEditions() {
+    return request<{
+      id: string;
+      number: number;
+      year: number;
+      title: string;
+      publication_date: string;
+      status: string;
+      item_count: number;
+    }[]>("/editions/open");
+  },
+
+  getEdition(id: string) {
+    return request<import("../types/edition").Edition>(`/editions/${id}`);
+  },
+
+  createEdition(data: {
+    number?: number; year: number; type: string;
+    title?: string; subtitle?: string; publication_date: string;
+    auto_fill_approved?: boolean; queue_date?: string;
+  }) {
+    return request<import("../types/edition").Edition>("/editions", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  /** Matérias aprovadas aguardando publicação (fila). */
+  getPublicationQueue(targetDate?: string) {
+    const q = targetDate ? `?target_date=${targetDate}` : "";
+    return request<import("../types/edition").PublicationQueue>(
+      `/editions/publication-queue${q}`
+    );
+  },
+
+  autoFillEdition(id: string, targetDate?: string) {
+    const q = targetDate ? `?target_date=${targetDate}` : "";
+    return request<import("../types/edition").Edition>(
+      `/editions/${id}/auto-fill${q}`,
+      { method: "POST" }
+    );
+  },
+
+  autoOrderEdition(id: string) {
+    return request<import("../types/edition").Edition>(
+      `/editions/${id}/auto-order`,
+      { method: "POST" }
+    );
+  },
+
+  getEditionValidation(id: string) {
+    return request<import("../types/edition").EditionValidation>(
+      `/editions/${id}/validation`
+    );
+  },
+
+  /** Checklist central de publicação (bloqueia se houver erro). */
+  getPublicationGate(id: string) {
+    return request<import("../types/edition").PublicationGate>(
+      `/editions/${id}/publication-gate`
+    );
+  },
+
+  /** Reinspeciona o PDF gerado (âncoras, fontes, assinatura, páginas). */
+  inspectEdition(id: string) {
+    return request<import("../types/edition").EditionInspectionReport>(
+      `/editions/${id}/inspect`,
+      { method: "POST" }
+    );
+  },
+
+  previewEdition(id: string) {
+    return requestBlob(`/editions/${id}/preview`, { method: "POST" });
+  },
+
+  getNextEditionNumber(params?: { year?: number; type?: string }) {
+    const q = new URLSearchParams();
+    if (params?.year) q.set("year", String(params.year));
+    if (params?.type) q.set("type", params.type);
+    const qs = q.toString();
+    return request<{ year: number; type: string; next_number: number; auto_numbering: boolean }>(
+      `/editions/next-number${qs ? `?${qs}` : ""}`
+    );
+  },
+
+  updateEdition(id: string, data: Partial<{ title: string; subtitle: string; publication_date: string }>) {
+    return request<import("../types/edition").Edition>(`/editions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+
+  addEditionItem(editionId: string, matterId: string, sectionTitle?: string) {
+    return request<import("../types/edition").Edition>(`/editions/${editionId}/items`, {
+      method: "POST",
+      body: JSON.stringify({ matter_id: matterId, section_title: sectionTitle }),
+    });
+  },
+
+  reorderEditionItems(editionId: string, items: { id: string; position: number }[]) {
+    return request<import("../types/edition").EditionItem[]>(`/editions/${editionId}/items/reorder`, {
+      method: "PATCH",
+      body: JSON.stringify({ items }),
+    });
+  },
+
+  removeEditionItem(editionId: string, itemId: string) {
+    return request<void>(`/editions/${editionId}/items/${itemId}`, { method: "DELETE" });
+  },
+
+  closeEdition(id: string) {
+    return request<import("../types/edition").Edition>(`/editions/${id}/close`, { method: "POST" });
+  },
+
+  deleteEdition(id: string) {
+    return request<void>(`/editions/${id}`, { method: "DELETE" });
+  },
+
+  reopenEdition(id: string) {
+    return request<import("../types/edition").Edition>(`/editions/${id}/reopen`, { method: "POST" });
+  },
+
+  generatePdf(id: string) {
+    return request<import("../types/edition").Edition>(`/editions/${id}/generate-pdf`, { method: "POST" });
+  },
+
+  signEdition(id: string, data: { signing_credential_id?: string; pfx_base64?: string; pfx_password?: string; reason?: string; location?: string }) {
+    return request<{ verification_code: string; signed_pdf_hash: string; certificate_subject: string; certificate_serial: string; signed_at: string }>(`/editions/${id}/sign`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  publishEdition(id: string) {
+    return request<import("../types/edition").Edition>(`/editions/${id}/publish`, { method: "POST" });
+  },
+
+  // Users
+  listUsers() {
+    return request<User[]>("/users");
+  },
+
+  getUser(id: string) {
+    return request<User>(`/users/${id}`);
+  },
+
+  createUser(data: UserCreateRequest) {
+    return request<User>("/users", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  updateUser(id: string, data: UserUpdateRequest) {
+    return request<User>(`/users/${id}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+  deleteUser(id: string) {
+    return request<void>(`/users/${id}`, { method: "DELETE" });
+  },
+
+  listRoles() {
+    return request<import("@/types/user").Role[]>("/roles");
+  },
+
+  // System Settings
+  listSettings(category?: string) {
+    const qs = category ? `?category=${category}` : "";
+    return request<SystemSetting[]>(`/settings${qs}`);
+  },
+
+  getSetting(id: string) {
+    return request<SystemSetting>(`/settings/${id}`);
+  },
+
+  updateSetting(id: string, data: { value?: string; description?: string }) {
+    return request<SystemSetting>(`/settings/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+
+  // PDF Layout
+  listPdfLayouts() {
+    return request<{ layouts: { id: string; name: string; description: string }[] }>("/settings/pdf-layouts");
+  },
+
+  getOrgPdfLayout() {
+    return request<{ layout: string; available: string[] }>("/settings/organization/pdf-layout");
+  },
+
+  updateOrgPdfLayout(layout: string) {
+    return request<{ layout: string; message: string }>("/settings/organization/pdf-layout", {
+      method: "PATCH",
+      body: JSON.stringify({ layout }),
+    });
+  },
+
+  // Signing Credentials
+  listSigningCredentials() {
+    return request<any[]>("/signing-credentials");
+  },
+
+  uploadSigningCredential(formData: FormData) {
+    return request<any>("/signing-credentials", {
+      method: "POST",
+      body: formData,
+    });
+  },
+
+  deleteSigningCredential(id: string) {
+    return request<void>(`/signing-credentials/${id}`, { method: "DELETE" });
+  },
+
+  // Backup
+  createBackup() {
+    return request<{ filename: string; size_bytes: number; created_at: string; message: string }>("/backup", {
+      method: "POST",
+    });
+  },
+
+  downloadBackupUrl(filename: string) {
+    return `${BASE_URL}/backup/download/${filename}`;
+  },
+
+  listBackups() {
+    return request<BackupFile[]>("/backup/files");
+  },
+
+  deleteBackup(filename: string) {
+    return request<void>(`/backup/files/${encodeURIComponent(filename)}`, {
+      method: "DELETE",
+    });
+  },
+
+  restoreBackup(file: File) {
+    const fd = new FormData();
+    fd.append("file", file);
+    return request<{ message: string }>("/backup/restore", {
+      method: "POST",
+      body: fd,
+    });
+  },
+
+  restoreBackupFromServer(filename: string) {
+    return request<{ message: string }>(`/backup/restore/${encodeURIComponent(filename)}`, {
+      method: "POST",
+    });
+  },
+
+  // Generic request (for operations dashboard)
+  getRaw<T = any>(path: string) {
+    return request<T>(path);
+  },
+
+  post<T = any>(path: string, body?: any, headers?: Record<string, string>) {
+    return request<T>(path, {
+      method: "POST",
+      body: body ? JSON.stringify(body) : undefined,
+      headers,
+    });
+  },
+
+  put<T = any>(path: string, body?: any, headers?: Record<string, string>) {
+    return request<T>(path, {
+      method: "PUT",
+      body: body ? JSON.stringify(body) : undefined,
+      headers,
+    });
+  },
+
+  patch<T = any>(path: string, body?: any) {
+    return request<T>(path, {
+      method: "PATCH",
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  },
+
+  // ── Matter relations (Fase 2) ─────────────────────────────────────────
+  listMatterRelations(matterId: string) {
+    return request<{
+      outgoing: MatterRelation[];
+      incoming: MatterRelation[];
+    }>(`/matter-relations?matter_id=${encodeURIComponent(matterId)}`);
+  },
+
+  searchPublishedMatters(q: string) {
+    return request<
+      Array<{
+        id: string;
+        title: string;
+        summary: string | null;
+        act_number: string | null;
+        act_year: number | null;
+        published_at: string | null;
+      }>
+    >(`/matter-relations/search-matters?q=${encodeURIComponent(q)}`);
+  },
+
+  createMatterRelation(data: {
+    source_matter_id: string;
+    target_matter_id: string;
+    relation_type: string;
+    notes?: string;
+  }) {
+    return request<MatterRelation>("/matter-relations", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  deleteMatterRelation(id: string) {
+    return request<void>(`/matter-relations/${id}`, { method: "DELETE" });
+  },
+
+  // ── Document models (modelos documentais) ─────────────────────────────
+  listDocumentModels(params?: { document_type?: string; status?: string }) {
+    const q = new URLSearchParams();
+    if (params?.document_type) q.set("document_type", params.document_type);
+    if (params?.status) q.set("status_filter", params.status);
+    const qs = q.toString();
+    return request<DocumentModelSummary[]>(`/document-models${qs ? `?${qs}` : ""}`);
+  },
+  listMaterials(params?: {
+    document_type?: string;
+    editorial?: string;
+    signature?: string;
+    publication?: string;
+    search?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const q = new URLSearchParams();
+    if (params?.document_type) q.set("document_type", params.document_type);
+    if (params?.editorial) q.set("editorial", params.editorial);
+    if (params?.signature) q.set("signature", params.signature);
+    if (params?.publication) q.set("publication", params.publication);
+    if (params?.search) q.set("search", params.search);
+    if (params?.page) q.set("page", String(params.page));
+    if (params?.limit) q.set("limit", String(params.limit));
+    const qs = q.toString();
+    return request<MaterialsResult>(`/document-models/materials${qs ? `?${qs}` : ""}`);
+  },
+  getDocumentModel(id: string) {
+    return request<DocumentModelDetail>(`/document-models/${id}`);
+  },
+  getVersion(modelId: string, version: number) {
+    return request<VersionDetail>(`/document-models/${modelId}/versions/${version}`);
+  },
+  createDocumentModel(data: {
+    name: string;
+    slug: string;
+    config: DocumentModelConfig;
+    layout?: DocumentLayout;
+    parent_model_id?: string | null;
+  }) {
+    return request<DocumentModelSummary>("/document-models", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  getInstitution() {
+    return request<InstitutionalProfile>("/settings/institution");
+  },
+  updateInstitution(data: Partial<InstitutionalProfile>) {
+    return request<InstitutionalProfile>("/settings/institution", {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+  createModelVersion(modelId: string, data: { config: DocumentModelConfig; layout?: DocumentLayout; change_reason?: string }) {
+    return request<VersionDetail>(`/document-models/${modelId}/versions`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  updateModelVersion(
+    modelId: string,
+    version: number,
+    data: { config?: DocumentModelConfig; layout?: DocumentLayout; change_reason?: string }
+  ) {
+    return request<VersionDetail>(`/document-models/${modelId}/versions/${version}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+  submitModelVersion(modelId: string, version: number) {
+    return request<VersionDetail>(`/document-models/${modelId}/versions/${version}/submit`, {
+      method: "POST",
+    });
+  },
+  approveModelVersion(modelId: string, version: number) {
+    return request<VersionDetail>(`/document-models/${modelId}/versions/${version}/approve`, {
+      method: "POST",
+    });
+  },
+  archiveDocumentModel(modelId: string) {
+    return request<DocumentModelSummary>(`/document-models/${modelId}/archive`, {
+      method: "POST",
+    });
+  },
+  deactivateDocumentModel(modelId: string) {
+    return request<DocumentModelSummary>(`/document-models/${modelId}/deactivate`, {
+      method: "POST",
+    });
+  },
+  reactivateDocumentModel(modelId: string) {
+    return request<DocumentModelSummary>(`/document-models/${modelId}/reactivate`, {
+      method: "POST",
+    });
+  },
+  duplicateDocumentModel(modelId: string, data?: { name?: string; slug?: string }) {
+    return request<DocumentModelSummary>(`/document-models/${modelId}/duplicate`, {
+      method: "POST",
+      body: JSON.stringify(data ?? {}),
+    });
+  },
+  getDocumentModelHistory(modelId: string) {
+    return request<DocumentModelHistoryEntry[]>(`/document-models/${modelId}/history`);
+  },
+  listDocumentModelBlocks(includeInactive = false) {
+    return request<DocumentModelBlock[]>(
+      `/document-model-blocks${includeInactive ? "?include_inactive=true" : ""}`
+    );
+  },
+  createDocumentModelBlock(data: {
+    name: string;
+    kind: string;
+    description?: string;
+    content_json: DocumentModelBlockContent;
+    is_active?: boolean;
+  }) {
+    return request<DocumentModelBlock>("/document-model-blocks", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  updateDocumentModelBlock(
+    blockId: string,
+    data: Partial<{
+      name: string;
+      kind: string;
+      description: string | null;
+      content_json: DocumentModelBlockContent;
+      is_active: boolean;
+    }>
+  ) {
+    return request<DocumentModelBlock>(`/document-model-blocks/${blockId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+  deleteDocumentModelBlock(blockId: string) {
+    return request<void>(`/document-model-blocks/${blockId}`, { method: "DELETE" });
+  },
+  deleteDocumentModel(modelId: string) {
+    return request<void>(`/document-models/${modelId}`, {
+      method: "DELETE",
+    });
+  },
+  previewVersion(modelId: string, version: number, values: Record<string, string>) {
+    return request<PreviewResult>(`/document-models/${modelId}/versions/${version}/preview`, {
+      method: "POST",
+      body: JSON.stringify({ values }),
+    });
+  },
+  renderVersionHtml(modelId: string, version: number, values: Record<string, string>) {
+    return request<{
+      html: string;
+      complete: boolean;
+      pending: { code: string; message: string; field?: string | null }[];
+      canonical_text: string;
+    }>(`/document-models/${modelId}/versions/${version}/render`, {
+      method: "POST",
+      body: JSON.stringify({ values }),
+    });
+  },
+  renderVersionPdf(modelId: string, version: number, values: Record<string, string>) {
+    return requestBlob(`/document-models/${modelId}/versions/${version}/render-pdf`, {
+      method: "POST",
+      body: JSON.stringify({ values }),
+    });
+  },
+  listTrainingFiles(modelId: string) {
+    return request<TrainingFile[]>(`/document-models/${modelId}/training-files`);
+  },
+  uploadTrainingFile(modelId: string, file: File) {
+    const form = new FormData();
+    form.append("file", file);
+    return request<TrainingFile>(`/document-models/${modelId}/training-files`, {
+      method: "POST",
+      body: form,
+    });
+  },
+  updateTrainingFile(modelId: string, fileId: string, data: { used_by_ai: boolean }) {
+    return request<TrainingFile>(`/document-models/${modelId}/training-files/${fileId}`, {
+      method: "PATCH",
+      body: JSON.stringify(data),
+    });
+  },
+  deleteTrainingFile(modelId: string, fileId: string) {
+    return request<void>(`/document-models/${modelId}/training-files/${fileId}`, {
+      method: "DELETE",
+    });
+  },
+  proposeFromTrainingFiles(modelId: string) {
+    return request<LearnProposal>(`/document-models/${modelId}/training-files/propose`, {
+      method: "POST",
+    });
+  },
+  aiExtract(data: { prompt: string; document_type?: string | null; model_id?: string | null }) {
+    return request<AiExtractResult>("/document-models/ai/extract", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  aiCompose(data: { prompt: string; document_type?: string | null }) {
+    return request<import("@/types/document_model").AiComposeResult>("/document-models/ai/compose", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  createMaterialFromModel(modelId: string, version: number, data: { act_type_id: string; values: Record<string, string>; title_override?: string }) {
+    return request<MaterialCreated>(`/document-models/${modelId}/versions/${version}/material`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  issueNumber(data: { matter_id: string; year?: number }) {
+    return request<NumberIssue>("/numbering/issue", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+
+  // ── IA configuration (Configurações → Inteligência artificial) ───────
+  getAiConfig() {
+    return request<AiConfigMetadata>("/ai/config");
+  },
+  saveAiConfig(data: Partial<{ enabled: boolean; api_key: string; timeout_seconds: number; max_tokens: number; max_concurrency: number }>) {
+    return request<AiConfigMetadata>("/ai/config", { method: "PUT", body: JSON.stringify(data) });
+  },
+  replaceAiKey(api_key: string) {
+    return request<AiConfigMetadata>("/ai/config/key", {
+      method: "POST",
+      body: JSON.stringify({ api_key }),
+    });
+  },
+  removeAiKey() {
+    return request<void>("/ai/config/key", { method: "DELETE" });
+  },
+  disableAi() {
+    return request<AiConfigMetadata>("/ai/config/disable", { method: "POST" });
+  },
+  testAiConnection(api_key?: string) {
+    return request<AiTestResult>("/ai/config/test-connection", {
+      method: "POST",
+      body: JSON.stringify({ api_key: api_key ?? null }),
+    });
+  },
+};
+
+export { AuthError };

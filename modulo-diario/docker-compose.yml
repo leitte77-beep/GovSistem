@@ -1,0 +1,255 @@
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    logging: *default-logging
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-modulo_diario}
+      POSTGRES_USER: ${POSTGRES_USER:-diario_user}
+      # Fail closed: never start with a hard-coded/default password.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env}
+    # Nunca expor o banco em todas as interfaces: acesso só pelo host local
+    # (ou pela rede interna do compose).
+    ports:
+      - "127.0.0.1:9632:5432"
+    volumes:
+      - modulo_diario_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-diario_user} -d ${POSTGRES_DB:-modulo_diario}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - diario-network
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    logging: *default-logging
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    # Redis sem autenticação: nunca expor em todas as interfaces.
+    ports:
+      - "127.0.0.1:9579:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - diario-network
+    restart: unless-stopped
+
+  minio:
+    # Fixado por digest (imutável) em vez de :latest — evita atualizações
+    # silenciosas que quebram o serviço ou introduzem regressões.
+    image: minio/minio@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
+    logging: *default-logging
+    command: server /data --console-address ":9001"
+    environment:
+      # Reaproveita as credenciais de acesso já exigidas pelo serviço de API
+      # quando as credenciais de root não forem definidas explicitamente.
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-${MINIO_ACCESS_KEY:?Defina MINIO_ACCESS_KEY no .env}}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-${MINIO_SECRET_KEY:?Defina MINIO_SECRET_KEY no .env}}
+    ports:
+      - "127.0.0.1:9990:9000"
+      - "127.0.0.1:9991:9001"
+    volumes:
+      - modulo_diario_miniodata:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - diario-network
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    logging: *default-logging
+    environment:
+      APP_NAME: "Modulo Diario API"
+      DEBUG: ${DEBUG:-false}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-modulo_diario}
+      POSTGRES_USER: ${POSTGRES_USER:-diario_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?Defina MINIO_ACCESS_KEY no .env}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?Defina MINIO_SECRET_KEY no .env}
+      MINIO_BUCKET: ${MINIO_BUCKET:-doe-publicacoes}
+      MINIO_SECURE: "false"
+      SIGNER_URL: http://signer:8100
+      PUBLIC_URL: ${PUBLIC_URL:-https://diario.govsistem.com.br}
+      TSA_URL: ${TSA_URL:-}
+      TSA_TRUST_ROOTS_PATH: ${TSA_TRUST_ROOTS_PATH:-}
+      TSA_INTERMEDIATES_PATH: ${TSA_INTERMEDIATES_PATH:-}
+      TSA_CRL_PATH: ${TSA_CRL_PATH:-}
+      TSA_POLICY_OID: ${TSA_POLICY_OID:-}
+      TSA_REVOCATION_MODE: ${TSA_REVOCATION_MODE:-soft-fail}
+      TSA_ALLOW_FETCHING: ${TSA_ALLOW_FETCHING:-false}
+      TSA_REQUIRED_FOR_PUBLICATION: ${TSA_REQUIRED_FOR_PUBLICATION:-false}
+      SECRET_KEY: ${SECRET_KEY:?Defina SECRET_KEY no .env}
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Defina INTERNAL_API_KEY no .env}
+      CORS_ORIGINS: '["http://localhost:9202","http://localhost:9200","http://127.0.0.1:9200","http://127.0.0.1:9202","https://farol.govsistem.com.br","https://diario.govsistem.com.br","https://doe-admin.govsistem.com.br","https://app.govsistem.com.br","https://admin.govsistem.com.br"]'
+      ENVIRONMENT: ${ENVIRONMENT:-development}
+    ports:
+      - "9203:8000"
+    volumes:
+      - modulo_diario_uploads:/app/uploads
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - diario-network
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+    logging: *default-logging
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-modulo_diario}
+      POSTGRES_USER: ${POSTGRES_USER:-diario_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env}
+      REDIS_HOST: redis
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?Defina MINIO_ACCESS_KEY no .env}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?Defina MINIO_SECRET_KEY no .env}
+      MINIO_BUCKET: ${MINIO_BUCKET:-doe-publicacoes}
+      SIGNER_URL: http://signer:8100
+      API_URL: http://api:8000
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Defina INTERNAL_API_KEY no .env}
+      SECRET_KEY: ${SECRET_KEY:?Defina SECRET_KEY no .env}
+    command: celery -A app.worker worker --loglevel=info --concurrency=4 --beat
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - diario-network
+    restart: unless-stopped
+
+  signer:
+    build:
+      context: ./signer
+      dockerfile: Dockerfile
+    logging: *default-logging
+    environment:
+      SIGNER_PROVIDER: ${SIGNER_PROVIDER:-a1}
+      VERIFICATION_BASE_URL: https://farol.govsistem.com.br/verificar
+      INTERNAL_API_KEY: ${INTERNAL_API_KEY:?Defina INTERNAL_API_KEY no .env}
+      # Raízes oficiais ICP-Brasil (AC-Raiz). Sem elas a cadeia é honestamente
+      # reportada como não confiável (trusted=false).
+      ICP_BRASIL_ROOTS_PATH: /certs/icp-brasil-roots.pem
+      REVOCATION_MODE: ${REVOCATION_MODE:-off}
+      # ACT (RFC 3161) e política PAdES. Vazios = desligados.
+      TSA_URL: ${TSA_URL:-}
+      TSA_POLICY_OID: ${TSA_POLICY_OID:-}
+      SIGNER_POLICY_OID: ${SIGNER_POLICY_OID:-}
+      SIGNER_POLICY_HASH: ${SIGNER_POLICY_HASH:-}
+      SIGNER_POLICY_URI: ${SIGNER_POLICY_URI:-}
+    volumes:
+      - ./signer/certs:/certs:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/api/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - diario-network
+    restart: unless-stopped
+
+  web-admin:
+    build:
+      context: ./web-admin
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: /api/v1
+        NEXT_PUBLIC_ADMIN_URL: https://diario.govsistem.com.br
+        NEXT_PUBLIC_SAAS_URL: https://app.govsistem.com.br
+    logging: *default-logging
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      API_URL: http://api:8000/api/v1
+      NEXT_PUBLIC_API_URL: /api/v1
+      NEXT_PUBLIC_ADMIN_URL: https://diario.govsistem.com.br
+      NEXT_PUBLIC_SAAS_URL: https://app.govsistem.com.br
+    ports:
+      - "9202:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - diario-network
+    restart: unless-stopped
+
+  web-public:
+    build:
+      context: ./web-public
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
+        NEXT_PUBLIC_ADMIN_URL: ${NEXT_PUBLIC_ADMIN_URL:-https://diario.govsistem.com.br}
+    logging: *default-logging
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      HOSTNAME: 0.0.0.0
+      API_URL: http://api:8000/api/v1
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-/api/v1}
+      NEXT_PUBLIC_ADMIN_URL: ${NEXT_PUBLIC_ADMIN_URL:-https://diario.govsistem.com.br}
+    ports:
+      - "9200:3000"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    networks:
+      - diario-network
+    restart: unless-stopped
+
+networks:
+  diario-network:
+    driver: bridge
+
+volumes:
+  modulo_diario_pgdata:
+    driver: local
+  modulo_diario_miniodata:
+    driver: local
+  modulo_diario_uploads:
+    driver: local

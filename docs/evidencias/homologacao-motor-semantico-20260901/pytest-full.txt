@@ -1,0 +1,175 @@
+........................................................................ [ 17%]
+...............FFFFFFFFFFFFFFFFFFFFFFFFFFFFF.FFFFFFFFFFF...FFFF........F [ 35%]
+F.....................................FFFFFFFFFFFFF..................... [ 52%]
+............................................F.....F..FF.F.F.F.........FF [ 70%]
+FFFF.......................................................FFFFFFFFFFFFF [ 88%]
+FFFFFFFFFFFFFFFFFFFFFF...........F..............                         [100%]
+=============================== warnings summary ===============================
+app/main.py:189: 1 warning
+tests/test_editions.py: 29 warnings
+tests/test_health.py: 1 warning
+tests/test_imports_api.py: 4 warnings
+tests/test_metrics_api.py: 6 warnings
+tests/test_mfa_api.py: 8 warnings
+tests/test_public_v1.py: 12 warnings
+tests/test_roles_org_units_act_types.py: 6 warnings
+tests/test_settings_api.py: 10 warnings
+tests/test_signing_credentials_api.py: 14 warnings
+tests/test_users.py: 11 warnings
+  /home/ubuntu/sistemaweb/modulo-diario/api/app/main.py:189: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("startup")
+
+../../../.local/lib/python3.10/site-packages/fastapi/applications.py:4598: 2 warnings
+tests/test_editions.py: 58 warnings
+tests/test_health.py: 2 warnings
+tests/test_imports_api.py: 8 warnings
+tests/test_metrics_api.py: 12 warnings
+tests/test_mfa_api.py: 16 warnings
+tests/test_public_v1.py: 24 warnings
+tests/test_roles_org_units_act_types.py: 12 warnings
+tests/test_settings_api.py: 20 warnings
+tests/test_signing_credentials_api.py: 28 warnings
+tests/test_users.py: 22 warnings
+  /home/ubuntu/.local/lib/python3.10/site-packages/fastapi/applications.py:4598: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    return self.router.on_event(event_type)  # ty: ignore[deprecated]
+
+app/main.py:193: 1 warning
+tests/test_editions.py: 29 warnings
+tests/test_health.py: 1 warning
+tests/test_imports_api.py: 4 warnings
+tests/test_metrics_api.py: 6 warnings
+tests/test_mfa_api.py: 8 warnings
+tests/test_public_v1.py: 12 warnings
+tests/test_roles_org_units_act_types.py: 6 warnings
+tests/test_settings_api.py: 10 warnings
+tests/test_signing_credentials_api.py: 14 warnings
+tests/test_users.py: 11 warnings
+  /home/ubuntu/sistemaweb/modulo-diario/api/app/main.py:193: DeprecationWarning: 
+          on_event is deprecated, use lifespan event handlers instead.
+  
+          Read more about it in the
+          [FastAPI docs for Lifespan Events](https://fastapi.tiangolo.com/advanced/events/).
+          
+    @app.on_event("shutdown")
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ============================
+FAILED tests/test_editions.py::test_create_edition[asyncio] - assert 401 == 201
+FAILED tests/test_editions.py::test_create_edition_duplicate[asyncio] - asser...
+FAILED tests/test_editions.py::test_list_editions[asyncio] - assert 401 == 200
+FAILED tests/test_editions.py::test_list_editions_filtered[asyncio] - assert ...
+FAILED tests/test_editions.py::test_get_edition[asyncio] - assert 401 == 200
+FAILED tests/test_editions.py::test_get_edition_not_found[asyncio] - assert 4...
+FAILED tests/test_editions.py::test_update_edition[asyncio] - assert 401 == 200
+FAILED tests/test_editions.py::test_update_edition_not_editable[asyncio] - as...
+FAILED tests/test_editions.py::test_list_items[asyncio] - assert 401 == 200
+FAILED tests/test_editions.py::test_add_item_to_edition[asyncio] - assert 401...
+FAILED tests/test_editions.py::test_add_item_matter_not_found[asyncio] - asse...
+FAILED tests/test_editions.py::test_add_item_edition_not_editable[asyncio] - ...
+FAILED tests/test_editions.py::test_reorder_items[asyncio] - assert 401 == 200
+FAILED tests/test_editions.py::test_reorder_items_not_editable[asyncio] - ass...
+FAILED tests/test_editions.py::test_remove_item[asyncio] - assert 401 == 204
+FAILED tests/test_editions.py::test_remove_item_not_found[asyncio] - assert 4...
+FAILED tests/test_editions.py::test_close_edition[asyncio] - assert 401 == 200
+FAILED tests/test_editions.py::test_reopen_edition[asyncio] - assert 401 == 200
+FAILED tests/test_editions.py::test_reopen_edition_with_signatures[asyncio]
+FAILED tests/test_editions.py::test_reopen_edition_not_closed[asyncio] - asse...
+FAILED tests/test_editions.py::test_generate_edition_pdf[asyncio] - assert 40...
+FAILED tests/test_editions.py::test_generate_pdf_not_closed[asyncio] - assert...
+FAILED tests/test_editions.py::test_generate_pdf_already_generated[asyncio]
+FAILED tests/test_editions.py::test_sign_edition[asyncio] - assert 401 == 200
+FAILED tests/test_editions.py::test_sign_edition_not_pdf_generated[asyncio]
+FAILED tests/test_editions.py::test_validate_signature[asyncio] - assert 401 ...
+FAILED tests/test_editions.py::test_validate_signature_no_signatures[asyncio]
+FAILED tests/test_editions.py::test_publish_edition[asyncio] - assert 401 == 200
+FAILED tests/test_editions.py::test_publish_edition_not_signed[asyncio] - ass...
+FAILED tests/test_imports.py::TestDocxImport::test_docx_converts_to_html[asyncio]
+FAILED tests/test_imports.py::TestDocxImport::test_docx_file_hash_is_sha256[asyncio]
+FAILED tests/test_imports.py::TestDocxImport::test_docx_table_conversion[asyncio]
+FAILED tests/test_imports.py::TestXlsxImport::test_xlsx_returns_sheets[asyncio]
+FAILED tests/test_imports.py::TestXlsxImport::test_xlsx_has_columns[asyncio]
+FAILED tests/test_imports.py::TestXlsxImport::test_xlsx_converts_to_html_table[asyncio]
+FAILED tests/test_imports.py::TestCsvImport::test_csv_converts_to_table[asyncio]
+FAILED tests/test_imports.py::TestCsvImport::test_csv_has_plain_text[asyncio]
+FAILED tests/test_imports.py::TestPdfImport::test_pdf_with_text_extracted[asyncio]
+FAILED tests/test_imports.py::TestPdfImport::test_scanned_pdf_marked_ocr[asyncio]
+FAILED tests/test_imports.py::TestPdfImport::test_pdf_has_pages[asyncio] - Ty...
+FAILED tests/test_imports_api.py::test_upload_docx[asyncio] - assert 401 == 200
+FAILED tests/test_imports_api.py::test_upload_xlsx[asyncio] - assert 401 == 200
+FAILED tests/test_imports_api.py::test_upload_csv[asyncio] - assert 401 == 200
+FAILED tests/test_imports_api.py::test_upload_pdf[asyncio] - assert 401 == 200
+FAILED tests/test_legacy_import.py::TestValidateItems::test_validate_mixed[asyncio]
+FAILED tests/test_legacy_import.py::TestImportWithFakePdfs::test_validate_three_pdfs[asyncio]
+FAILED tests/test_metrics_api.py::test_operations_health[asyncio] - assert 0 ...
+FAILED tests/test_metrics_api.py::test_operations_health_db_error[asyncio] - ...
+FAILED tests/test_metrics_api.py::test_operations_dashboard[asyncio] - assert...
+FAILED tests/test_metrics_api.py::test_queue_status[asyncio] - assert 401 == 200
+FAILED tests/test_metrics_api.py::test_queue_status_error[asyncio] - assert 4...
+FAILED tests/test_mfa_api.py::test_setup_mfa[asyncio] - assert 401 == 200
+FAILED tests/test_mfa_api.py::test_verify_mfa_setup[asyncio] - assert 401 == 200
+FAILED tests/test_mfa_api.py::test_verify_mfa_invalid_token[asyncio] - assert...
+FAILED tests/test_mfa_api.py::test_verify_mfa_not_setup[asyncio] - assert 401...
+FAILED tests/test_mfa_api.py::test_mfa_qrcode[asyncio] - assert 401 == 200
+FAILED tests/test_mfa_api.py::test_mfa_qrcode_not_setup[asyncio] - assert 401...
+FAILED tests/test_mfa_api.py::test_mfa_status_enabled[asyncio] - assert 401 =...
+FAILED tests/test_mfa_api.py::test_mfa_status_disabled[asyncio] - assert 401 ...
+FAILED tests/test_pdf_generation.py::TestTemplateRendering::test_template_with_landscape_content
+FAILED tests/test_public_v1.py::test_v1_list_editions[asyncio] - assert 0 == 1
+FAILED tests/test_public_v1.py::test_v1_get_edition[asyncio] - assert 404 == 200
+FAILED tests/test_public_v1.py::test_v1_get_edition_by_year_number[asyncio]
+FAILED tests/test_public_v1.py::test_v1_list_matters[asyncio] - assert 0 == 1
+FAILED tests/test_public_v1.py::test_v1_get_matter[asyncio] - assert 404 == 200
+FAILED tests/test_public_v1.py::test_v1_verify_valid[asyncio] - assert False ...
+FAILED tests/test_roles_org_units_act_types.py::test_list_roles[asyncio] - as...
+FAILED tests/test_roles_org_units_act_types.py::test_list_roles_empty[asyncio]
+FAILED tests/test_roles_org_units_act_types.py::test_list_org_units[asyncio]
+FAILED tests/test_roles_org_units_act_types.py::test_list_org_units_empty[asyncio]
+FAILED tests/test_roles_org_units_act_types.py::test_list_act_types[asyncio]
+FAILED tests/test_roles_org_units_act_types.py::test_list_act_types_empty[asyncio]
+FAILED tests/test_settings_api.py::test_list_settings[asyncio] - assert 401 =...
+FAILED tests/test_settings_api.py::test_list_settings_by_category[asyncio] - ...
+FAILED tests/test_settings_api.py::test_get_setting[asyncio] - assert 401 == 200
+FAILED tests/test_settings_api.py::test_get_setting_not_found[asyncio] - asse...
+FAILED tests/test_settings_api.py::test_create_setting[asyncio] - assert 401 ...
+FAILED tests/test_settings_api.py::test_create_setting_duplicate_key[asyncio]
+FAILED tests/test_settings_api.py::test_update_setting[asyncio] - assert 401 ...
+FAILED tests/test_settings_api.py::test_update_setting_not_found[asyncio] - a...
+FAILED tests/test_settings_api.py::test_delete_setting[asyncio] - assert 401 ...
+FAILED tests/test_settings_api.py::test_delete_setting_not_found[asyncio] - a...
+FAILED tests/test_signing_credentials_api.py::test_inspect_credential[asyncio]
+FAILED tests/test_signing_credentials_api.py::test_inspect_credential_bad_password[asyncio]
+FAILED tests/test_signing_credentials_api.py::test_inspect_credential_empty_file[asyncio]
+FAILED tests/test_signing_credentials_api.py::test_list_credentials[asyncio]
+FAILED tests/test_signing_credentials_api.py::test_list_credentials_empty[asyncio]
+FAILED tests/test_signing_credentials_api.py::test_get_credential[asyncio] - ...
+FAILED tests/test_signing_credentials_api.py::test_get_credential_not_found[asyncio]
+FAILED tests/test_signing_credentials_api.py::test_upload_credential[asyncio]
+FAILED tests/test_signing_credentials_api.py::test_upload_credential_empty_file[asyncio]
+FAILED tests/test_signing_credentials_api.py::test_sign_pdf[asyncio] - assert...
+FAILED tests/test_signing_credentials_api.py::test_delete_credential[asyncio]
+FAILED tests/test_signing_credentials_api.py::test_delete_credential_not_found[asyncio]
+FAILED tests/test_signing_credentials_api.py::test_verify_pdf_signature[asyncio]
+FAILED tests/test_signing_credentials_api.py::test_verify_pdf_missing_base64[asyncio]
+FAILED tests/test_users.py::test_list_users[asyncio] - assert 401 == 200
+FAILED tests/test_users.py::test_list_users_empty[asyncio] - assert 401 == 200
+FAILED tests/test_users.py::test_get_user[asyncio] - assert 401 == 200
+FAILED tests/test_users.py::test_get_user_not_found[asyncio] - assert 401 == 404
+FAILED tests/test_users.py::test_create_user[asyncio] - assert 401 == 201
+FAILED tests/test_users.py::test_create_user_duplicate_email[asyncio] - asser...
+FAILED tests/test_users.py::test_update_user[asyncio] - assert 401 == 200
+FAILED tests/test_users.py::test_update_user_not_found[asyncio] - assert 401 ...
+FAILED tests/test_users.py::test_delete_user[asyncio] - assert 401 == 204
+FAILED tests/test_users.py::test_delete_self[asyncio] - assert 401 == 400
+FAILED tests/test_users.py::test_delete_user_not_found[asyncio] - assert 401 ...
+FAILED tests/test_xss.py::TestJavaScriptProtocol::test_data_href_removed - as...
+108 failed, 300 passed, 408 warnings in 74.87s (0:01:14)

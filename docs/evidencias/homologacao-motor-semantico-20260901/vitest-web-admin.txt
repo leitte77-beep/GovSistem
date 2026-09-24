@@ -1,0 +1,9 @@
+
+ RUN  v4.1.9 /home/ubuntu/sistemaweb/modulo-diario/web-admin
+
+
+ Test Files  8 passed (8)
+      Tests  70 passed (70)
+   Start at  23:49:45
+   Duration  6.05s (transform 732ms, setup 953ms, import 749ms, tests 538ms, environment 12.28s)
+

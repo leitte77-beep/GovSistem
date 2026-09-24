@@ -1,0 +1,2618 @@
+import { Server } from 'socket.io';
+import { verifyToken } from '../auth/jwt.js';
+import { operadorFromToken } from '../auth/middleware.js';
+import { setTenantContext } from '../db.js';
+import db from '../db.js';
+import { v4 as uuidv4 } from 'uuid';
+import { config } from '../config.js';
+import { downloadMediaMessage } from '@whiskeysockets/baileys';
+import { processarMensagem } from '../services/chatbot.js';
+import { processarComIris } from '../services/iris.js';
+import { getOuGerarProtocolo, encerrarProtocolo } from '../services/protocolo.js';
+import { criarPesquisaNPS } from '../services/nps.js';
+import { atualizarPresenca } from '../services/presenca.js';
+import {
+  editarMensagem, excluirMensagem, encaminharMensagem,
+  fixarMensagem, desafixarMensagem, adicionarReacao, removerReacao,
+  marcarLido, assertMembroCanal, ehMembroCanal
+} from '../services/mensagens.js';
+import { criarNotificacao } from '../services/notificacoes.js';
+import { transitionConversation } from '../services/status-transitions.js';
+import { normalizePhone } from '../domain/phone.js';
+import { montarMensagemChamada, resolverNomeOrgao, resolverTelefoneOrgao } from '../services/chamadas.js';
+import { montarMenuDepartamentos, interpretarEscolhaMenu, MENSAGEM_OPCAO_INVALIDA } from '../services/menu-departamentos.js';
+import { extrairContatosCompartilhados } from '../domain/contato-compartilhado.js';
+import { createStorage } from '../storage/index.js';
+
+const salas = {
+  tenant: (id) => `tenant:${id}`,
+  conversa: (id) => `conversa:${id}`,
+  operador: (id) => `operador:${id}`,
+  canal: (id) => `canal:${id}`,
+};
+
+// Mapeia `${tenantId}:${jid}` -> convId para repassar presença ("digitando...")
+// do cidadão para a sala da conversa correta.
+const convPorJid = new Map();
+
+// Logs verbosos de persistência só quando WA_DEBUG=1.
+const WA_DEBUG_GATEWAY = process.env.WA_DEBUG === '1' || process.env.WA_DEBUG === 'true';
+
+// Prefixa o texto enviado ao WhatsApp com o nome do atendente, para que
+// o destinatário saiba qual operador respondeu (linha única compartilhada).
+// Controlado por tenant_config.assinatura_ativa / assinatura_modo.
+function assinarTexto(op, texto, cfg, departamentos = []) {
+  if (!texto || !op?.nome) return texto;
+  if (cfg && cfg.assinatura_ativa === false) return texto;
+  const nome = cfg?.assinatura_modo === 'primeiro' ? op.nome.trim().split(/\s+/)[0] : op.nome;
+  const deps = departamentos.map((d) => d.nome).filter(Boolean);
+  const assinatura = deps.length > 0 ? `${nome} (${deps.slice(0, 2).join(', ')})` : nome;
+  return `*${assinatura}*\n${texto}`;
+}
+
+async function obterConfigAssinatura(tenantId) {
+  return db.oneOrNone(
+    'SELECT assinatura_ativa, assinatura_modo FROM tenant_config WHERE tenant_id = $1',
+    [tenantId]
+  );
+}
+
+async function obterOperadorPayload(tenantId, operadorId, fallbackNome = null) {
+  const operador = operadorId
+    ? await db.oneOrNone(
+        'SELECT id, nome FROM operadores WHERE id = $1 AND tenant_id = $2',
+        [operadorId, tenantId]
+      )
+    : await db.oneOrNone(
+        `SELECT id, nome
+         FROM operadores
+         WHERE tenant_id = $1
+         ORDER BY CASE WHEN papel = 'admin' THEN 0 WHEN papel = 'supervisor' THEN 1 ELSE 2 END,
+                  criado_em ASC
+         LIMIT 1`,
+        [tenantId]
+      );
+
+  if (!operador) {
+    return { id: null, nome: fallbackNome || null, departamentos: [] };
+  }
+
+  const departamentos = await db.manyOrNone(
+    `SELECT d.nome, d.cor
+     FROM operador_departamentos od
+     JOIN departamentos d ON d.id = od.departamento_id
+     WHERE od.operador_id = $1 AND od.tenant_id = $2
+     ORDER BY d.nome`,
+    [operador.id, tenantId]
+  );
+
+  return {
+    id: operador.id,
+    nome: operador.nome || fallbackNome || null,
+    departamentos,
+  };
+}
+
+// Normaliza nome de departamento (minúsculo, sem acentos) para comparar "recepção".
+function _normalizarNome(s) {
+  return (s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+}
+
+// Rótulo amigável para mensagens de mídia (usado no corpo da notificação desktop).
+function _rotuloMensagem(mensagem) {
+  const tipo = mensagem?.tipo;
+  if (tipo === 'texto') return (mensagem?.conteudo || '').slice(0, 120);
+  const caption = (mensagem?.conteudo || '').trim();
+  const rotulos = {
+    imagem: '📷 Imagem',
+    figurinha: '🖼️ Figurinha',
+    sticker: '🖼️ Figurinha',
+    audio: '🎤 Áudio',
+    ptt: '🎤 Mensagem de voz',
+    video: '🎥 Vídeo',
+    documento: '📄 Documento',
+    arquivo: '📄 Documento',
+    local: '📍 Localização',
+    localizacao: '📍 Localização',
+    contato: '👤 Contato',
+  };
+  const base = rotulos[tipo] || '📎 Anexo';
+  // Se houver legenda/nome, mostra junto.
+  if (tipo === 'contato' && caption) {
+    try {
+      const contatos = JSON.parse(caption);
+      const nomes = contatos.map((contato) => contato.nome).filter(Boolean);
+      if (nomes.length) return `${base} — ${nomes.slice(0, 2).join(', ')}`;
+    } catch {}
+  }
+  if (caption && !caption.startsWith('[') && tipo !== 'contato') return `${base} — ${caption.slice(0, 90)}`;
+  if (mensagem?.media_nome) return `${base} — ${mensagem.media_nome}`;
+  return base;
+}
+
+/**
+ * Emite a notificação de "nova mensagem recebida" (som + desktop) para os
+ * operadores responsáveis — somente DEPOIS que a Iris já encaminhou a conversa
+ * para um setor real (ou um operador assumiu). Enquanto a conversa está em
+ * triagem na Recepção (onde a Iris responde), não notifica.
+ * Entrega via salas de operador (que o socket sempre ingressa ao conectar),
+ * então funciona mesmo que o operador não esteja com a conversa aberta.
+ */
+async function emitirNotificacaoMensagem(tenantId, conversaId, mensagem, io) {
+  try {
+    const info = await db.oneOrNone(
+      `SELECT c.departamento_id, c.operador_id, c.departamento_sugerido,
+              co.nome AS contato_nome, co.telefone AS contato_telefone,
+              d.nome AS departamento_nome
+         FROM conversas c
+         JOIN contatos co ON co.id = c.contato_id
+         LEFT JOIN departamentos d ON d.id = c.departamento_id
+        WHERE c.id = $1 AND c.tenant_id = $2`,
+      [conversaId, tenantId]
+    );
+    if (!info) return;
+
+    const ehRecepcao = _normalizarNome(info.departamento_nome) === 'recepcao';
+    // "Já encaminhou para o setor" (inclui a Recepção, que é humana). Sinais:
+    //  - operador assumiu a conversa; OU
+    //  - a Iris tomou uma decisão de encaminhamento (departamento_sugerido só é
+    //    gravado quando ela encaminha — fica null enquanto ela ainda pergunta); OU
+    //  - a conversa está num setor real (não Recepção/triagem).
+    // Enquanto a Iris está fazendo perguntas na triagem (Recepção, sem sugerido),
+    // não notifica.
+    const posTriagem =
+      !!info.operador_id ||
+      !!info.departamento_sugerido ||
+      (!!info.departamento_id && !ehRecepcao);
+    if (!posTriagem) return;
+
+    // Descobre quais operadores devem ser avisados.
+    let alvos = [];
+    if (info.operador_id) {
+      alvos = [info.operador_id];
+    } else if (info.departamento_id) {
+      const ops = await db.manyOrNone(
+        'SELECT operador_id FROM operador_departamentos WHERE departamento_id = $1 AND tenant_id = $2',
+        [info.departamento_id, tenantId]
+      );
+      alvos = ops.map((o) => o.operador_id).filter(Boolean);
+    }
+    if (alvos.length === 0) return;
+
+    const payload = {
+      conversa_id: conversaId,
+      contato_nome: info.contato_nome || null,
+      contato_telefone: info.contato_telefone || null,
+      tipo: mensagem?.tipo || 'texto',
+      trecho: _rotuloMensagem(mensagem),
+      departamento_id: info.departamento_id || null,
+    };
+
+    for (const oid of alvos) {
+      io.to(salas.operador(oid)).emit('mensagem:recebida', payload);
+    }
+  } catch (e) {
+    console.error('[Notif] Erro ao emitir notificação de mensagem:', e.message);
+  }
+}
+
+function ehGestor(op) {
+  return op.papel === 'admin' || op.papel === 'supervisor';
+}
+
+function normalizarTelefoneWhatsApp(telefone) {
+  const digits = String(telefone || '').replace(/\D/g, '');
+  if ((digits.length === 10 || digits.length === 11) && !digits.startsWith('55')) {
+    return `55${digits}`;
+  }
+  return digits;
+}
+
+function variantesTelefoneBrasil(telefone) {
+  const digits = normalizarTelefoneWhatsApp(telefone);
+  const variantes = new Set();
+  if (digits) variantes.add(digits);
+  if (digits.startsWith('55') && digits.length === 13 && digits[4] === '9') {
+    variantes.add(`${digits.slice(0, 4)}${digits.slice(5)}`);
+  }
+  if (digits.startsWith('55') && digits.length === 12) {
+    variantes.add(`${digits.slice(0, 4)}9${digits.slice(4)}`);
+  }
+  return [...variantes];
+}
+
+function jidEhLid(jid) {
+  return String(jid || '').endsWith('@lid');
+}
+
+async function obterJidDaConversa(tenantId, convId, jidInformado) {
+  const contato = await db.oneOrNone(
+    `SELECT co.id, co.telefone, co.wa_jid,
+            (
+              SELECT alias_jid
+              FROM contato_aliases
+              WHERE tenant_id = co.tenant_id
+                AND contato_id = co.id
+                AND alias_jid LIKE '%@lid'
+              ORDER BY criado_em DESC
+              LIMIT 1
+            ) AS alias_lid
+     FROM conversas c
+     JOIN contatos co ON co.id = c.contato_id
+     WHERE c.id = $1 AND c.tenant_id = $2`,
+    [convId, tenantId]
+  );
+
+  if (!contato) return jidInformado;
+
+  // Envia no endereço da sessão Signal correta: se o cidadão usa @lid, é nele que
+  // temos as chaves. Converter para PN cria sessão divergente -> "Aguardando mensagem".
+  if (contato.wa_jid?.endsWith('@lid')) return contato.wa_jid;
+  if (contato.alias_lid) return contato.alias_lid;
+  if (jidInformado?.endsWith('@lid')) return jidInformado;
+
+  // Contato legado sem @lid: usa o telefone real em formato @s.whatsapp.net.
+  const base = String(contato.wa_jid || jidInformado || '').split('@')[0];
+  const digits = normalizarTelefoneWhatsApp(contato.telefone || base);
+  if (!digits) return jidInformado;
+  return `${digits}@s.whatsapp.net`;
+}
+
+async function atualizarContatoDaConversaComJidResolvido(tenantId, convId, resolvedJid) {
+  if (!resolvedJid) return;
+  const isLid = resolvedJid.endsWith('@lid');
+  const isSnet = resolvedJid.includes('@s.whatsapp.net');
+  if (!isLid && !isSnet) return;
+
+  const digits = isSnet ? resolvedJid.split('@')[0]?.replace(/\D/g, '') : null;
+
+  const contato = await db.oneOrNone(
+    `SELECT co.id, co.wa_jid
+     FROM conversas c
+     JOIN contatos co ON co.id = c.contato_id
+     WHERE c.id = $1 AND c.tenant_id = $2`,
+    [convId, tenantId]
+  );
+  if (!contato) return;
+
+  if (isLid) {
+    // Salva @lid como alias para envios futuros (obterJidDaConversa prefere @lid)
+    await db.none(
+      `INSERT INTO contato_aliases (tenant_id, contato_id, alias_jid)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (tenant_id, alias_jid) DO NOTHING`,
+      [tenantId, contato.id, resolvedJid]
+    );
+    return;
+  }
+
+  // @s.whatsapp.net — atualiza wa_jid e telefone
+  if (contato.wa_jid === resolvedJid) return;
+
+  const outro = await db.oneOrNone(
+    'SELECT id FROM contatos WHERE tenant_id = $1 AND wa_jid = $2 AND id <> $3',
+    [tenantId, resolvedJid, contato.id]
+  );
+  if (outro) return;
+
+  if (digits) {
+    await db.none(
+      'UPDATE contatos SET wa_jid = $1, telefone = $2 WHERE id = $3 AND tenant_id = $4',
+      [resolvedJid, digits, contato.id, tenantId]
+    );
+  }
+}
+
+// Mesmo critério de visibilidade do index.js (privacidade de conversas).
+// Conversa excluída administrativamente não é visível para ninguém.
+async function podeVerConversa(op, convId) {
+  if (ehGestor(op)) {
+    const r = await db.oneOrNone(
+      'SELECT 1 FROM conversas WHERE id = $1 AND tenant_id = $2 AND deleted_at IS NULL',
+      [convId, op.tenantId]
+    );
+    return !!r;
+  }
+    const r = await db.oneOrNone(
+    `SELECT 1 FROM conversas c WHERE c.id = $1 AND c.tenant_id = $2 AND c.deleted_at IS NULL AND (
+       EXISTS (SELECT 1 FROM conversa_participantes p WHERE p.conversa_id = c.id AND p.operador_id = $3 AND p.tenant_id = $2)
+       OR (c.status = 'fila' AND (
+         c.departamento_id IS NULL
+         OR EXISTS (
+           SELECT 1 FROM operador_departamentos od
+           JOIN departamentos d ON d.id = od.departamento_id AND d.ativo = true
+           WHERE od.operador_id = $3 AND od.departamento_id = c.departamento_id
+         )
+         OR (
+           EXISTS (
+             SELECT 1 FROM departamentos dd WHERE dd.id = c.departamento_id AND LOWER(dd.nome) = 'recepcao' AND dd.ativo = true
+           )
+           AND EXISTS (
+             SELECT 1 FROM operador_departamentos od
+             JOIN departamentos d ON d.id = od.departamento_id AND d.ativo = true
+             WHERE od.operador_id = $3 AND LOWER(d.nome) = 'recepcao'
+           )
+         )
+       ))
+     )`,
+    [convId, op.tenantId, op.id]
+  );
+  return !!r;
+}
+
+export function iniciarGateway(httpServer, wa, storage) {
+
+  const io = new Server(httpServer, {
+    cors: {
+      origin: config.corsOrigin || '*',
+      methods: ['GET', 'POST'],
+      credentials: true,
+    },
+    pingTimeout: 60000,
+    pingInterval: 25000,
+    // Payload de mídia vai em base64 (~+33%) dentro do evento; o limite de
+    // negócio é 16 MB (ver MAX_MIDIA_BYTES no frontend), então o buffer do
+    // transporte precisa cobrir 16 MB * 4/3 + folga do envelope JSON. O
+    // default do socket.io (1 MB) derrubava a conexão em silêncio — sem
+    // nenhum log — para qualquer arquivo acima de ~750 KB, e o cliente só via
+    // isso como timeout do ack 30s depois.
+    maxHttpBufferSize: 24 * 1024 * 1024,
+  });
+
+  io.use(async (socket, next) => {
+    try {
+      const token = socket.handshake.auth.token;
+      if (!token) return next(new Error('Token não fornecido'));
+      const decoded = verifyToken(token);
+      const operador = operadorFromToken(decoded);
+      if (!operador.tenantId) return next(new Error('Token sem organização/tenant'));
+      await setTenantContext(operador.tenantId);
+      socket.data.operador = operador;
+      next();
+    } catch (err) {
+      next(new Error('Token inválido'));
+    }
+  });
+
+  // Heartbeat de presença: renova `ultimo_visto` de quem tem socket aberto. Sem
+  // isso, "online" só é escrito no connect/disconnect e mente sempre que o
+  // processo cai — e a Iris passaria a prometer atendente que não está lá.
+  const HEARTBEAT_MS = 60_000;
+  const heartbeat = setInterval(async () => {
+    try {
+      const conectados = new Map();
+      for (const s of io.sockets.sockets.values()) {
+        const o = s.data?.operador;
+        if (o?.id && o?.tenantId) conectados.set(o.id, o.tenantId);
+      }
+      if (conectados.size === 0) return;
+      for (const [tenantId, ids] of agruparPorTenant(conectados)) {
+        await setTenantContext(tenantId);
+        await db.none(
+          `UPDATE operadores SET online = true, ultimo_visto = now()
+           WHERE tenant_id = $1 AND id = ANY($2::uuid[])`,
+          [tenantId, ids]
+        );
+      }
+    } catch (err) {
+      console.error('[Socket] heartbeat de presença:', err.message);
+    }
+  }, HEARTBEAT_MS);
+  heartbeat.unref?.();
+
+  io.on('connection', async (socket) => {
+    const op = socket.data.operador;
+
+    socket.join(salas.tenant(op.tenantId));
+    socket.join(salas.operador(op.id));
+
+    (async () => {
+      try {
+        await setTenantContext(op.tenantId);
+        await _setOnline(op.tenantId, op.id, true);
+        io.to(salas.tenant(op.tenantId)).emit('operador:presenca', {
+          opId: op.id,
+          online: true,
+        });
+      } catch (err) {
+        console.error('[Socket] operador:presenca error:', err.message);
+      }
+    })();
+
+    socket.on('conversa:abrir', async (convId) => {
+      try {
+        await setTenantContext(op.tenantId);
+        if (!(await podeVerConversa(op, convId))) {
+          socket.emit('conversa:negada', { convId });
+          return;
+        }
+        socket.join(salas.conversa(convId));
+        await db.none(
+          'UPDATE conversas SET nao_lidas = 0 WHERE id = $1 AND tenant_id = $2',
+          [convId, op.tenantId]
+        );
+        // Notifica o sidebar para atualizar o contador de não lidas
+        io.to(salas.tenant(op.tenantId)).emit('conversa:atualizada', { convId });
+        // Assina a presença do contato para receber "digitando..."/online dele.
+        try {
+          const jid = await obterJidDaConversa(op.tenantId, convId, null);
+          if (jid) {
+            await wa.subscribePresence(op.tenantId, jid);
+            convPorJid.set(`${op.tenantId}:${jid}`, convId);
+          }
+        } catch {}
+      } catch (err) {
+        console.error('[Socket] conversa:abrir error:', err.message);
+      }
+    });
+
+    socket.on('conversa:fechar', (convId) => {
+      socket.leave(salas.conversa(convId));
+    });
+
+    socket.on('conversa:atribuir', async ({ convId, departamentoId, operadorId }) => {
+      try {
+        await setTenantContext(op.tenantId);
+        // Encaminhar para outro departamento: a conversa sai do setor atual e
+        // entra na FILA do setor de destino (sem dono). O operadorId enviado é
+        // ignorado — quem escolheu encaminhar não continua como responsável.
+        const dono = null;
+        await db.none(
+          `UPDATE conversas SET departamento_id = $1, operador_id = NULL,
+             status = 'fila', status_operacional = 'NA_FILA'
+           WHERE id = $2 AND tenant_id = $3`,
+          [departamentoId, convId, op.tenantId]
+        );
+        // Remove todos os participantes dono: a conversa volta a ser de ninguém
+        // e fica visível na fila do setor de destino.
+        await db.none(
+          `DELETE FROM conversa_participantes WHERE conversa_id = $1 AND tenant_id = $2`,
+          [convId, op.tenantId]
+        );
+        await _auditar(op.tenantId, op.id, 'conversa.atribuida', {
+          conversaId: convId,
+          departamentoId,
+          operadorId: dono,
+        });
+        io.to(salas.tenant(op.tenantId)).emit('conversa:atualizada', { convId });
+      } catch (err) {
+        console.error('[Socket] conversa:atribuir error:', err.message);
+      }
+    });
+
+    // Assumir uma conversa (vira dono). Trava anti-corrida: só assume se ainda não tem dono.
+    socket.on('conversa:assumir', async (convId, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        const r = await db.oneOrNone(
+          `UPDATE conversas SET operador_id = $1, status = 'aberta',
+             status_operacional = 'EM_ATENDIMENTO'
+           WHERE id = $2 AND tenant_id = $3 AND operador_id IS NULL
+           RETURNING id`,
+          [op.id, convId, op.tenantId]
+        );
+        if (!r) {
+          const dono = await db.oneOrNone(
+            `SELECT o.nome FROM conversas c LEFT JOIN operadores o ON o.id = c.operador_id
+             WHERE c.id = $1 AND c.tenant_id = $2`,
+            [convId, op.tenantId]
+          );
+          if (ack) ack({ ok: false, erro: dono?.nome ? `Conversa já assumida por ${dono.nome}.` : 'Conversa já foi assumida.' });
+          return;
+        }
+        await db.none(
+          `INSERT INTO conversa_participantes (conversa_id, operador_id, papel, adicionado_por, tenant_id)
+           VALUES ($1, $2, 'dono', $2, $3)
+           ON CONFLICT (conversa_id, operador_id) DO UPDATE SET papel = 'dono'`,
+          [convId, op.id, op.tenantId]
+        );
+        await _auditar(op.tenantId, op.id, 'conversa.assumida', { conversaId: convId });
+        io.to(salas.tenant(op.tenantId)).emit('conversa:atualizada', { convId });
+        if (ack) ack({ ok: true });
+      } catch (err) {
+        console.error('[Socket] conversa:assumir error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    // Devolver a conversa para a fila do setor (libera o dono).
+    socket.on('conversa:devolver', async (convId, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        const conv = await db.oneOrNone('SELECT operador_id FROM conversas WHERE id = $1 AND tenant_id = $2', [convId, op.tenantId]);
+        if (!conv) { if (ack) ack({ ok: false, erro: 'Conversa não encontrada' }); return; }
+        if (!ehGestor(op) && conv.operador_id !== op.id) {
+          if (ack) ack({ ok: false, erro: 'Apenas o atendente responsável pode devolver a conversa.' });
+          return;
+        }
+        await db.none(`UPDATE conversas SET operador_id = NULL, status = 'fila',
+          status_operacional = 'NA_FILA' WHERE id = $1 AND tenant_id = $2`, [convId, op.tenantId]);
+        await db.none('DELETE FROM conversa_participantes WHERE conversa_id = $1 AND tenant_id = $2', [convId, op.tenantId]);
+        await db.none(`UPDATE conversa_transferencias SET status = 'cancelada', resolvido_em = now() WHERE conversa_id = $1 AND tenant_id = $2 AND status = 'pendente'`, [convId, op.tenantId]);
+        await _auditar(op.tenantId, op.id, 'conversa.devolvida', { conversaId: convId });
+        io.to(salas.tenant(op.tenantId)).emit('conversa:atualizada', { convId });
+        if (ack) ack({ ok: true });
+      } catch (err) {
+        console.error('[Socket] conversa:devolver error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    // Solicitar transferência para um colega específico (cria transferência pendente).
+    socket.on('conversa:transferir', async ({ convId, paraOperadorId, motivo }, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        if (!paraOperadorId || paraOperadorId === op.id) { if (ack) ack({ ok: false, erro: 'Selecione outro atendente.' }); return; }
+        const conv = await db.oneOrNone('SELECT operador_id FROM conversas WHERE id = $1 AND tenant_id = $2', [convId, op.tenantId]);
+        if (!conv) { if (ack) ack({ ok: false, erro: 'Conversa não encontrada' }); return; }
+        if (!ehGestor(op) && conv.operador_id !== op.id) {
+          if (ack) ack({ ok: false, erro: 'Apenas o responsável pode transferir a conversa.' });
+          return;
+        }
+        const alvo = await db.oneOrNone('SELECT id, nome FROM operadores WHERE id = $1 AND tenant_id = $2', [paraOperadorId, op.tenantId]);
+        if (!alvo) { if (ack) ack({ ok: false, erro: 'Atendente inválido.' }); return; }
+        // Cancela qualquer pendência anterior e cria a nova.
+        await db.none(`UPDATE conversa_transferencias SET status = 'cancelada', resolvido_em = now() WHERE conversa_id = $1 AND tenant_id = $2 AND status = 'pendente'`, [convId, op.tenantId]);
+        const transf = await db.one(
+          `INSERT INTO conversa_transferencias (tenant_id, conversa_id, de_operador_id, para_operador_id, motivo)
+           VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+          [op.tenantId, convId, op.id, paraOperadorId, motivo || null]
+        );
+        // Dá visibilidade ao alvo (anexado) para avaliar a conversa antes de aceitar.
+        await db.none(
+          `INSERT INTO conversa_participantes (conversa_id, operador_id, papel, adicionado_por, tenant_id)
+           VALUES ($1, $2, 'anexado', $3, $4) ON CONFLICT (conversa_id, operador_id) DO NOTHING`,
+          [convId, paraOperadorId, op.id, op.tenantId]
+        );
+        await criarNotificacao(op.tenantId, paraOperadorId, 'transferencia', 'Transferência de conversa', `${op.nome} quer transferir uma conversa para você.`, `/atendimento?conversa=${convId}`).catch(() => {});
+        io.to(salas.operador(paraOperadorId)).emit('transferencia:nova', { convId, transferenciaId: transf.id, de: op.nome, motivo: motivo || null });
+        io.to(salas.operador(paraOperadorId)).emit('conversa:atualizada', { convId });
+        io.to(salas.tenant(op.tenantId)).emit('conversa:atualizada', { convId });
+        await _auditar(op.tenantId, op.id, 'conversa.transferida.solicitada', { conversaId: convId, paraOperadorId });
+        if (ack) ack({ ok: true });
+      } catch (err) {
+        console.error('[Socket] conversa:transferir error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    // Responder a uma transferência pendente (aceitar ou recusar).
+    socket.on('conversa:transferencia-responder', async ({ transferenciaId, aceitar, motivo }, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        const t = await db.oneOrNone('SELECT * FROM conversa_transferencias WHERE id = $1 AND tenant_id = $2', [transferenciaId, op.tenantId]);
+        if (!t || t.status !== 'pendente') { if (ack) ack({ ok: false, erro: 'Transferência não está mais pendente.' }); return; }
+        if (t.para_operador_id !== op.id) { if (ack) ack({ ok: false, erro: 'Esta transferência não é para você.' }); return; }
+
+        if (aceitar) {
+          await db.none(`UPDATE conversas SET operador_id = $1, status = 'aberta',
+            status_operacional = 'EM_ATENDIMENTO' WHERE id = $2 AND tenant_id = $3`, [op.id, t.conversa_id, op.tenantId]);
+          await db.none(
+            `INSERT INTO conversa_participantes (conversa_id, operador_id, papel, adicionado_por, tenant_id)
+             VALUES ($1, $2, 'dono', $3, $4) ON CONFLICT (conversa_id, operador_id) DO UPDATE SET papel = 'dono'`,
+            [t.conversa_id, op.id, t.de_operador_id, op.tenantId]
+          );
+          if (t.de_operador_id) {
+            await db.none('DELETE FROM conversa_participantes WHERE conversa_id = $1 AND operador_id = $2 AND tenant_id = $3', [t.conversa_id, t.de_operador_id, op.tenantId]);
+          }
+          await db.none(`UPDATE conversa_transferencias SET status = 'aceita', resolvido_em = now() WHERE id = $1`, [transferenciaId]);
+          if (t.de_operador_id) {
+            await criarNotificacao(op.tenantId, t.de_operador_id, 'transferencia', 'Transferência aceita', `${op.nome} aceitou a conversa transferida.`, `/atendimento`).catch(() => {});
+            io.to(salas.operador(t.de_operador_id)).emit('conversa:atualizada', { convId: t.conversa_id });
+          }
+          await _auditar(op.tenantId, op.id, 'conversa.transferida.aceita', { conversaId: t.conversa_id, transferenciaId });
+        } else {
+          // Recusa: o alvo perde a visibilidade (anexado) e o dono anterior permanece.
+          await db.none('DELETE FROM conversa_participantes WHERE conversa_id = $1 AND operador_id = $2 AND tenant_id = $3', [t.conversa_id, op.id, op.tenantId]);
+          await db.none(`UPDATE conversa_transferencias SET status = 'rejeitada', motivo = COALESCE($2, motivo), resolvido_em = now() WHERE id = $1`, [transferenciaId, motivo || null]);
+          if (t.de_operador_id) {
+            await criarNotificacao(op.tenantId, t.de_operador_id, 'transferencia', 'Transferência recusada', `${op.nome} recusou a transferência${motivo ? ': ' + motivo : ''}.`, `/atendimento?conversa=${t.conversa_id}`).catch(() => {});
+            io.to(salas.operador(t.de_operador_id)).emit('conversa:atualizada', { convId: t.conversa_id });
+          }
+          await _auditar(op.tenantId, op.id, 'conversa.transferida.rejeitada', { conversaId: t.conversa_id, transferenciaId });
+        }
+        io.to(salas.tenant(op.tenantId)).emit('conversa:atualizada', { convId: t.conversa_id });
+        if (ack) ack({ ok: true });
+      } catch (err) {
+        console.error('[Socket] conversa:transferencia-responder error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    // Anexar atendentes a uma conversa (gestor ou dono).
+    socket.on('conversa:anexar', async ({ convId, operadorIds }, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        const ehDono = await db.oneOrNone(
+          `SELECT 1 FROM conversa_participantes WHERE conversa_id = $1 AND operador_id = $2 AND papel = 'dono' AND tenant_id = $3`,
+          [convId, op.id, op.tenantId]
+        );
+        if (!ehGestor(op) && !ehDono) {
+          if (ack) ack({ ok: false, erro: 'Sem permissão para anexar' });
+          return;
+        }
+        const ids = [...new Set(operadorIds || [])];
+        for (const oid of ids) {
+          const mesmoTenant = await db.oneOrNone(
+            'SELECT 1 FROM operadores WHERE id = $1 AND tenant_id = $2',
+            [oid, op.tenantId]
+          );
+          if (!mesmoTenant) continue;
+          await db.none(
+            `INSERT INTO conversa_participantes (conversa_id, operador_id, papel, adicionado_por, tenant_id)
+             VALUES ($1, $2, 'anexado', $3, $4) ON CONFLICT DO NOTHING`,
+            [convId, oid, op.id, op.tenantId]
+          );
+          io.to(salas.operador(oid)).emit('conversa:atualizada', { convId });
+        }
+        await _auditar(op.tenantId, op.id, 'conversa.anexados', { conversaId: convId, operadorIds: ids });
+        io.to(salas.tenant(op.tenantId)).emit('conversa:atualizada', { convId });
+        if (ack) ack({ ok: true });
+      } catch (err) {
+        console.error('[Socket] conversa:anexar error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    socket.on('conversa:resolver', async (convId, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        // Conversa ainda na fila não tem dono, e a máquina de estados exige um
+        // responsável para resolver. Quem clicou assume a autoria do
+        // encerramento — é o que os relatórios por atendente esperam.
+        const assumida = await db.oneOrNone(
+          `UPDATE conversas SET operador_id = $1
+            WHERE id = $2 AND tenant_id = $3 AND operador_id IS NULL AND deleted_at IS NULL
+            RETURNING id`,
+          [op.id, convId, op.tenantId]
+        );
+        if (assumida) {
+          await db.none(
+            `INSERT INTO conversa_participantes (conversa_id, operador_id, papel, adicionado_por, tenant_id)
+             VALUES ($1, $2, 'dono', $2, $3)
+             ON CONFLICT (conversa_id, operador_id) DO UPDATE SET papel = 'dono'`,
+            [convId, op.id, op.tenantId]
+          );
+        }
+        await transitionConversation({
+          tenantId: op.tenantId,
+          conversaId: convId,
+          targetStatus: 'RESOLVIDA',
+          operadorId: op.id,
+          origem: 'usuario',
+        });
+
+        const conv = await db.oneOrNone('SELECT * FROM conversas WHERE id = $1', [convId]);
+
+        if (conv?.protocolo_id) {
+          try {
+            await encerrarProtocolo(conv.protocolo_id, op.tenantId, 'Atendimento encerrado', op.id);
+            await criarPesquisaNPS(op.tenantId, conv.protocolo_id, convId, conv.departamento_id, op.id);
+            io.to(salas.tenant(op.tenantId)).emit('protocolo:atualizado', { id: conv.protocolo_id, numero: null, status: 'CONCLUIDO' });
+          } catch (e) {
+            console.error('[Socket] conversa:resolver protocolo/nps error:', e.message);
+          }
+        }
+
+        io.to(salas.tenant(op.tenantId)).emit('conversa:atualizada', { convId });
+        if (ack) ack({ ok: true });
+      } catch (err) {
+        console.error('[Socket] conversa:resolver error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    socket.on('mensagem:enviar', async ({ convId, jid, texto, tipo, mediaBase64, mediaMime, mediaNome, respondendoA, idempotencyKey }, ack) => {
+      let envioReservadoId = null;
+      try {
+        // Bloqueia extensões de arquivo maliciosas (camada de segurança no backend)
+        const EXTENSOES_PROIBIDAS = ['exe','bat','cmd','msi','vbs','ps1','scr','com','sh','dll','pif','cpl','wsf','wsh','hta','jar','reg','scf','lnk'];
+        const MIMES_PROIBIDOS = ['application/x-msdownload','application/x-msdos-program','application/x-bat'];
+        if (mediaNome) {
+          const ext = (mediaNome || '').split('.').pop()?.toLowerCase();
+          if (ext && EXTENSOES_PROIBIDAS.includes(ext)) {
+            if (ack) ack({ ok: false, erro: `Arquivo .${ext} não é permitido por segurança.` });
+            return;
+          }
+        }
+        if (mediaMime && MIMES_PROIBIDOS.includes(mediaMime.toLowerCase())) {
+          if (ack) ack({ ok: false, erro: 'Tipo de arquivo não permitido por segurança.' });
+          return;
+        }
+
+        await setTenantContext(op.tenantId);
+        const conversaEnvio = await db.oneOrNone(
+          `SELECT id, operador_id, status, status_operacional, bloqueada, deleted_at
+           FROM conversas WHERE id = $1 AND tenant_id = $2`,
+          [convId, op.tenantId]
+        );
+        if (!conversaEnvio) throw new Error('Conversa não encontrada');
+        if (conversaEnvio.deleted_at) throw new Error('Esta conversa foi excluída e não aceita novas mensagens');
+        if (conversaEnvio.bloqueada) throw new Error('Conversa bloqueada para novas interações');
+        if (conversaEnvio.status_operacional === 'ARQUIVADA' || conversaEnvio.status === 'arquivada') {
+          throw new Error('Restaure a conversa arquivada antes de responder');
+        }
+        const chaveEnvio = String(idempotencyKey || uuidv4()).slice(0, 200);
+        envioReservadoId = uuidv4();
+        const reserva = await db.oneOrNone(
+          `INSERT INTO mensagens
+             (id, tenant_id, conversa_id, direcao, operador_id, tipo, conteudo,
+              media_mime, media_nome, respondendo_a, status, idempotency_key,
+              origem, tentativas, criado_em)
+           VALUES ($1, $2, $3, 'saida', $4, $5, $6, $7, $8, $9,
+                   'processando', $10, 'atendente', 1, now())
+           ON CONFLICT (tenant_id, idempotency_key) WHERE idempotency_key IS NOT NULL
+           DO NOTHING RETURNING id`,
+          [
+            envioReservadoId, op.tenantId, convId, op.id, tipo || 'texto',
+            texto || null, mediaMime || null, mediaNome || null,
+            respondendoA || null, chaveEnvio,
+          ]
+        );
+        if (!reserva) {
+          const existente = await db.oneOrNone(
+            `SELECT * FROM mensagens WHERE tenant_id = $1 AND idempotency_key = $2`,
+            [op.tenantId, chaveEnvio]
+          );
+          if (ack) ack({
+            ok: existente?.status === 'enviado',
+            duplicada: true,
+            processando: existente?.status === 'processando',
+            id: existente?.id,
+            mensagem: existente,
+            erro: existente?.status === 'falhou' ? 'A tentativa anterior falhou; use a ação de nova tentativa.' : undefined,
+          });
+          return;
+        }
+        const destinoJid = await obterJidDaConversa(op.tenantId, convId, jid);
+        const cfgAssinatura = await obterConfigAssinatura(op.tenantId);
+        const operadorPayload = await obterOperadorPayload(op.tenantId, op.id, op.nome);
+
+        // Responder citando: monta o objeto `quoted` do Baileys a partir da
+        // mensagem original (precisa do wa_message_id para o WhatsApp linkar a citação).
+        let quoted;
+        if (respondendoA) {
+          const orig = await db.oneOrNone(
+            `SELECT wa_message_id, direcao, conteudo, tipo FROM mensagens
+             WHERE id = $1 AND tenant_id = $2 AND conversa_id = $3`,
+            [respondendoA, op.tenantId, convId]
+          );
+          if (orig?.wa_message_id) {
+            const textoCitado = orig.conteudo || (orig.tipo && orig.tipo !== 'texto' ? `[${orig.tipo}]` : '');
+            quoted = {
+              key: { remoteJid: destinoJid, fromMe: orig.direcao === 'saida', id: orig.wa_message_id },
+              message: { conversation: textoCitado || ' ' },
+            };
+          }
+        }
+
+        if (texto) {
+          await wa.setTyping(op.tenantId, destinoJid, true);
+        }
+
+        let result;
+        let mediaUrl = null;
+        let msgTipo = tipo || 'texto';
+        let mimeFinal = null;
+
+        if (mediaBase64) {
+          // Limite de tamanho (anti-abuso/OOM): ~16 MB após decodificar base64.
+          if (mediaBase64.length * 0.75 > 16 * 1024 * 1024) {
+            if (ack) ack({ ok: false, erro: 'Arquivo muito grande (máx. 16 MB).' });
+            return;
+          }
+          const buffer = Buffer.from(mediaBase64, 'base64');
+          result = await wa.sendMedia(op.tenantId, destinoJid, {
+            tipo: msgTipo,
+            buffer,
+            mimetype: mediaMime || 'application/octet-stream',
+            fileName: mediaNome,
+            caption: texto ? assinarTexto({ nome: operadorPayload.nome }, texto, cfgAssinatura, operadorPayload.departamentos) : undefined,
+          }, { quoted });
+          // sendMedia pode transcodificar áudio (webm→ogg) — usa o resultado final
+          // para persistir o arquivo correto no storage.
+          const bufFinal = result?.__mediaBufferFinal || buffer;
+          // Atribui à mimeFinal do escopo externo (não redeclarar) para que o INSERT
+          // persista a mime real pós-transcodificação (ex.: audio/ogg) — antes, o
+          // shadowing deixava a externa em null e o banco gravava o webm original.
+          mimeFinal = result?.__mediaMimeFinal || mediaMime || 'application/octet-stream';
+          if (msgTipo === 'audio' && mimeFinal !== (mediaMime || '')) {
+            console.log(`[mensagem:enviar] áudio transcoded ${mediaMime || '?'} → ${mimeFinal} (convId=${convId})`);
+          }
+          mediaUrl = await storage.salvar(bufFinal, mimeFinal, op.tenantId);
+        } else if (texto) {
+          result = await wa.sendText(op.tenantId, destinoJid, assinarTexto({ nome: operadorPayload.nome }, texto, cfgAssinatura, operadorPayload.departamentos), { quoted });
+        } else {
+          if (ack) ack({ ok: false, erro: 'Texto ou mídia obrigatórios' });
+          return;
+        }
+
+        await wa.setTyping(op.tenantId, destinoJid, false);
+
+        const waMessageId = result?.key?.id;
+        await atualizarContatoDaConversaComJidResolvido(op.tenantId, convId, result?.key?.remoteJid);
+        const msgId = envioReservadoId;
+        const msg = await db.one(
+          `UPDATE mensagens SET
+             wa_message_id = $1, tipo = $2, conteudo = $3, media_url = $4,
+             media_mime = $5, media_nome = $6, status = 'enviado',
+             falha_codigo = NULL, falha_detalhe = NULL
+           WHERE id = $7 AND tenant_id = $8 RETURNING *`,
+          [waMessageId, msgTipo, texto || null, mediaUrl, mimeFinal || mediaMime || null, mediaNome || null, msgId, op.tenantId]
+        );
+        const msgComOperador = {
+          ...msg,
+          operador_nome: operadorPayload.nome,
+          operador_departamentos: operadorPayload.departamentos,
+        };
+
+        await db.none(
+          `UPDATE conversas SET ultima_mensagem = $1, ultima_mensagem_em = now()
+           WHERE id = $2 AND tenant_id = $3`,
+          [texto || `[${msgTipo}]` || '[mensagem]', convId, op.tenantId]
+        );
+
+        io.to(salas.conversa(convId)).emit('mensagem:nova', msgComOperador);
+        io.to(salas.tenant(op.tenantId)).emit('conversa:atualizada', { convId });
+
+        if (ack) ack({ ok: true, id: msgId, mensagem: msgComOperador });
+
+        await _auditar(op.tenantId, op.id, 'mensagem.enviada', {
+          conversaId: convId,
+          mensagemId: msgId,
+          waMessageId,
+        });
+      } catch (err) {
+        console.error('[Socket] mensagem:enviar error:', err.message);
+        if (envioReservadoId) {
+          await db.none(
+            `UPDATE mensagens SET status = 'falhou', falha_codigo = $1, falha_detalhe = $2
+             WHERE id = $3 AND tenant_id = $4 AND status = 'processando'`,
+            [err.code || 'ENVIO_FALHOU', String(err.message || 'Falha no envio').slice(0, 1000), envioReservadoId, op.tenantId]
+          ).catch(() => {});
+        }
+        try { await wa.setTyping(op.tenantId, jid, false); } catch {}
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    // Reagir (ou remover reação com emoji vazio) a uma mensagem do atendimento.
+    // Sincroniza com o WhatsApp do cidadão e persiste em mensagens.reacao.
+    socket.on('conversa:reagir', async ({ convId, msgId, emoji }, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        const msg = await db.oneOrNone(
+          `SELECT id, wa_message_id, direcao FROM mensagens
+           WHERE id = $1 AND conversa_id = $2 AND tenant_id = $3`,
+          [msgId, convId, op.tenantId]
+        );
+        if (!msg) {
+          if (ack) ack({ ok: false, erro: 'Mensagem não encontrada' });
+          return;
+        }
+        if (msg.wa_message_id) {
+          const destinoJid = await obterJidDaConversa(op.tenantId, convId, null);
+          await wa.sendReaction(op.tenantId, destinoJid, msg.wa_message_id, msg.direcao === 'saida', emoji || '');
+        }
+        await db.none(
+          `UPDATE mensagens SET reacao = $1 WHERE id = $2 AND tenant_id = $3`,
+          [emoji || null, msgId, op.tenantId]
+        );
+        io.to(salas.conversa(convId)).emit('mensagem:reacao', { mensagemId: msgId, emoji: emoji || null });
+        if (ack) ack({ ok: true });
+      } catch (err) {
+        console.error('[Socket] conversa:reagir error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    socket.on('interno:abrir', async (canalId) => {
+      try {
+        await setTenantContext(op.tenantId);
+        // Só participantes (ou administrador) podem acompanhar o canal em
+        // tempo real — outros usuários não podem ver a conversa.
+        if (op.papel !== 'admin') {
+          const ehMembro = await ehMembroCanal(op.tenantId, canalId, op.id);
+          if (!ehMembro) return;
+        }
+        socket.join(salas.canal(canalId));
+      } catch (err) {
+        console.error('[Socket] interno:abrir error:', err.message);
+      }
+    });
+
+    socket.on('interno:enviar', async ({ canalId, conteudo, tipo, mediaUrl, mediaMime, mediaBase64, mediaNome, respondendoA }, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        // Admin pode enviar em qualquer canal que vê; demais só onde participam.
+        if (op.papel !== 'admin') {
+          await assertMembroCanal(op.tenantId, canalId, op.id);
+        }
+        const conteudoNorm = conteudo == null ? null : String(conteudo).trim();
+        if (conteudoNorm && conteudoNorm.length > 8000) {
+          if (ack) ack({ ok: false, erro: 'Mensagem muito longa' });
+          return;
+        }
+
+        // Se veio mídia em base64, decodifica e persiste via storage.
+        let mediaUrlFinal = mediaUrl || null;
+        let mediaMimeFinal = mediaMime || null;
+        if (mediaBase64) {
+          if (mediaBase64.length * 0.75 > 16 * 1024 * 1024) {
+            if (ack) ack({ ok: false, erro: 'Arquivo muito grande (m\u00e1x. 16 MB).' });
+            return;
+          }
+          const buffer = Buffer.from(mediaBase64, 'base64');
+          const storage = createStorage();
+          mediaUrlFinal = await storage.salvar(buffer, mediaMime || 'application/octet-stream', op.tenantId);
+          mediaMimeFinal = mediaMime || 'application/octet-stream';
+        }
+
+        if (!conteudoNorm && !mediaUrlFinal) {
+          if (ack) ack({ ok: false, erro: 'Mensagem vazia' });
+          return;
+        }
+
+        const msgId = uuidv4();
+        const msg = await db.one(
+          `INSERT INTO mensagens_internas (id, tenant_id, canal_id, remetente_id, tipo, conteudo, media_url, media_mime, media_nome, respondendo_a, criado_em)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+           RETURNING *`,
+          [msgId, op.tenantId, canalId, op.id, tipo || 'texto', conteudoNorm || null, mediaUrlFinal, mediaMimeFinal, mediaNome || null, respondendoA || null]
+        );
+
+        io.to(salas.canal(canalId)).emit('interno:nova', {
+          ...msg,
+          remetente_nome: op.nome,
+          respondendo_a: respondendoA || null,
+        });
+        if (ack) ack({ ok: true, mensagem: msg });
+      } catch (err) {
+        console.error('[Socket] interno:enviar error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    const lastTypingAt = new Map();
+    socket.on('interno:digitando', ({ canalId }) => {
+      const key = `${op.id}:${canalId}`;
+      const now = Date.now();
+      const last = lastTypingAt.get(key) || 0;
+      if (now - last < 1500) return;
+      lastTypingAt.set(key, now);
+      socket.to(salas.canal(canalId)).emit('interno:digitando', {
+        opId: op.id,
+        canalId,
+        nome: op.nome,
+      });
+    });
+
+    socket.on('interno:digitando:parou', ({ canalId }) => {
+      socket.to(salas.canal(canalId)).emit('interno:digitando:parou', {
+        opId: op.id,
+        canalId,
+      });
+    });
+
+    socket.on('whatsapp:solicitarQR', async () => {
+      try {
+        if (!op.tenantId) {
+          socket.emit('whatsapp:erro', { msg: 'Token sem organização/tenant' });
+          return;
+        }
+        if (op.papel !== 'admin') {
+          socket.emit('whatsapp:erro', { msg: 'Apenas administradores podem conectar o WhatsApp' });
+          return;
+        }
+        await wa.start(op.tenantId);
+      } catch (err) {
+        socket.emit('whatsapp:erro', { msg: 'Erro ao iniciar WhatsApp' });
+      }
+    });
+
+    socket.on('whatsapp:logout', async () => {
+      try {
+        if (op.papel !== 'admin') {
+          socket.emit('whatsapp:erro', { msg: 'Apenas administradores podem desconectar o WhatsApp' });
+          return;
+        }
+        await wa.logout(op.tenantId);
+      } catch (err) {
+        socket.emit('whatsapp:erro', { msg: 'Erro ao desconectar WhatsApp' });
+      }
+    });
+
+    // === NOVOS EVENTOS (imp.md) ===
+
+    socket.on('nota:adicionar', async ({ convId, conteudo }, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        if (!(await podeVerConversa(op, convId))) {
+          if (ack) ack({ ok: false, erro: 'Sem permissão' });
+          return;
+        }
+        const nota = await db.one(
+          `INSERT INTO notas_internas (tenant_id, conversa_id, operador_id, conteudo, criado_em)
+           VALUES ($1, $2, $3, $4, now()) RETURNING *`,
+          [op.tenantId, convId, op.id, conteudo]
+        );
+        io.to(salas.conversa(convId)).emit('nota:nova', { ...nota, operador_nome: op.nome });
+        if (ack) ack({ ok: true, id: nota.id });
+      } catch (err) {
+        console.error('[Socket] nota:adicionar error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    socket.on('etiqueta:adicionar', async ({ convId, etiquetaId }, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        await db.none(
+          `INSERT INTO conversa_etiquetas (conversa_id, etiqueta_id, tenant_id)
+           VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+          [convId, etiquetaId, op.tenantId]
+        );
+        io.to(salas.tenant(op.tenantId)).emit('conversa:atualizada', { convId });
+        if (ack) ack({ ok: true });
+      } catch (err) {
+        console.error('[Socket] etiqueta:adicionar error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    socket.on('etiqueta:remover', async ({ convId, etiquetaId }, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        await db.none(
+          'DELETE FROM conversa_etiquetas WHERE conversa_id = $1 AND etiqueta_id = $2 AND tenant_id = $3',
+          [convId, etiquetaId, op.tenantId]
+        );
+        io.to(salas.tenant(op.tenantId)).emit('conversa:atualizada', { convId });
+        if (ack) ack({ ok: true });
+      } catch (err) {
+        console.error('[Socket] etiqueta:remover error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    socket.on('atendente:status', async ({ status, capacidade }, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        const campos = ['status_atendente = $1'];
+        const vals = [status];
+        if (capacidade !== undefined) {
+          campos.push('capacidade_maxima = $2');
+          vals.push(capacidade);
+        }
+        vals.push(op.id, op.tenantId);
+        await db.none(
+          `UPDATE operadores SET ${campos.join(', ')} WHERE id = $${vals.length - 1} AND tenant_id = $${vals.length}`,
+          vals
+        );
+        io.to(salas.tenant(op.tenantId)).emit('atendente:status:atualizado', {
+          opId: op.id,
+          status,
+          capacidade,
+        });
+        if (ack) ack({ ok: true });
+      } catch (err) {
+        console.error('[Socket] atendente:status error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    // === EVOLUÇÕES: Presença e Status (interno.md Prioridade 1) ===
+
+    socket.on('presenca:atualizar', async ({ status, mensagem }, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        await atualizarPresenca(op.tenantId, op.id, status, mensagem || null);
+        io.to(salas.tenant(op.tenantId)).emit('presenca:atualizada', {
+          opId: op.id,
+          status,
+          mensagem: mensagem || null,
+        });
+        if (ack) ack({ ok: true });
+      } catch (err) {
+        console.error('[Socket] presenca:atualizar error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    // === EVOLUÇÕES: Editar/Excluir mensagens internas ===
+
+    socket.on('mensagem:editar', async ({ canalId, msgId, conteudo }, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        const msg = await editarMensagem(op.tenantId, msgId, op.id, conteudo);
+        if (!msg) {
+          if (ack) ack({ ok: false, erro: 'Mensagem não encontrada ou prazo de edição expirado (24h)' });
+          return;
+        }
+        io.to(salas.canal(canalId)).emit('mensagem:editada', {
+          ...msg,
+          remetente_nome: op.nome,
+        });
+        if (ack) ack({ ok: true, mensagem: msg });
+      } catch (err) {
+        console.error('[Socket] mensagem:editar error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    // Map para undo de exclusão: msgId -> setTimeout
+    const exclusaoTimers = new Map();
+
+    socket.on('mensagem:excluir', async ({ canalId, msgId }, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        io.to(salas.canal(canalId)).emit('mensagem:excluida', {
+          msgId,
+          canalId,
+          remetente_nome: op.nome,
+        });
+        if (ack) ack({ ok: true });
+
+        // Delay de 5s antes de persistir o soft-delete
+        const timer = setTimeout(async () => {
+          exclusaoTimers.delete(msgId);
+          try {
+            await setTenantContext(op.tenantId);
+            await excluirMensagem(op.tenantId, msgId, op.id);
+          } catch (e) {
+            console.error('[Socket] excluirMensagem delayed error:', e.message);
+          }
+        }, 5000);
+        exclusaoTimers.set(msgId, timer);
+      } catch (err) {
+        console.error('[Socket] mensagem:excluir error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    socket.on('mensagem:desfazerExclusao', async ({ canalId, msgId }, ack) => {
+      try {
+        const timer = exclusaoTimers.get(msgId);
+        if (timer) {
+          clearTimeout(timer);
+          exclusaoTimers.delete(msgId);
+          // Emite evento para restaurar a mensagem em todos os clientes
+          io.to(salas.canal(canalId)).emit('mensagem:exclusaoDesfeita', { msgId, canalId });
+          if (ack) ack({ ok: true });
+        } else {
+          if (ack) ack({ ok: false, erro: 'Prazo de desfazer expirado' });
+        }
+      } catch (err) {
+        console.error('[Socket] mensagem:desfazerExclusao error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    // === EVOLUÇÕES: Reações ===
+
+    socket.on('mensagem:reagir', async ({ canalId, msgId, emoji }, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        await assertMembroCanal(op.tenantId, canalId, op.id);
+        await adicionarReacao(op.tenantId, msgId, op.id, emoji);
+        io.to(salas.canal(canalId)).emit('mensagem:reacao', {
+          msgId,
+          canalId,
+          operadorId: op.id,
+          operadorNome: op.nome,
+          emoji,
+          acao: 'adicionar',
+        });
+        if (ack) ack({ ok: true });
+      } catch (err) {
+        console.error('[Socket] mensagem:reagir error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    socket.on('mensagem:desreagir', async ({ canalId, msgId, emoji }, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        await assertMembroCanal(op.tenantId, canalId, op.id);
+        await removerReacao(op.tenantId, msgId, op.id, emoji);
+        io.to(salas.canal(canalId)).emit('mensagem:reacao', {
+          msgId,
+          canalId,
+          operadorId: op.id,
+          operadorNome: op.nome,
+          emoji,
+          acao: 'remover',
+        });
+        if (ack) ack({ ok: true });
+      } catch (err) {
+        console.error('[Socket] mensagem:desreagir error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    // === EVOLUÇÕES: Fixar/Desafixar mensagens ===
+
+    socket.on('mensagem:fixar', async ({ canalId, msgId }, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        const r = await fixarMensagem(op.tenantId, canalId, msgId, op.id);
+        io.to(salas.canal(canalId)).emit('canais:fixada', { canalId, msgId });
+        if (ack) ack({ ok: !!r });
+      } catch (err) {
+        console.error('[Socket] mensagem:fixar error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    socket.on('mensagem:desafixar', async ({ canalId, msgId }, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        await assertMembroCanal(op.tenantId, canalId, op.id);
+        await desafixarMensagem(op.tenantId, canalId, msgId);
+        io.to(salas.canal(canalId)).emit('canais:desafixada', { canalId, msgId });
+        if (ack) ack({ ok: true });
+      } catch (err) {
+        console.error('[Socket] mensagem:desafixar error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    // === EVOLUÇÕES: Encaminhar mensagem ===
+
+    socket.on('mensagem:encaminhar', async ({ msgId, canalDestinoId }, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        const msg = await encaminharMensagem(op.tenantId, msgId, canalDestinoId, op.id);
+        if (!msg) {
+          if (ack) ack({ ok: false, erro: 'Mensagem não encontrada' });
+          return;
+        }
+        io.to(salas.canal(canalDestinoId)).emit('interno:nova', {
+          ...msg,
+          remetente_nome: op.nome,
+        });
+        if (ack) ack({ ok: true });
+      } catch (err) {
+        console.error('[Socket] mensagem:encaminhar error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    // === EVOLUÇÕES: Confirmar leitura ===
+
+    socket.on('mensagem:ler', async ({ canalId }, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        await marcarLido(op.tenantId, canalId, op.id);
+        io.to(salas.canal(canalId)).emit('mensagem:lida', {
+          canalId,
+          operadorId: op.id,
+        });
+        if (ack) ack({ ok: true });
+      } catch (err) {
+        console.error('[Socket] mensagem:ler error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    // === EVOLUÇÕES: Thread / Responder mensagem ===
+
+    socket.on('interno:responder', async ({ canalId, conteudo, respondendoA, tipo, mediaUrl, mediaMime, mediaNome }, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        await assertMembroCanal(op.tenantId, canalId, op.id);
+        const conteudoNorm = conteudo == null ? null : String(conteudo).trim();
+        if (conteudoNorm && conteudoNorm.length > 8000) {
+          if (ack) ack({ ok: false, erro: 'Mensagem muito longa' });
+          return;
+        }
+        const msgId = uuidv4();
+        const msg = await db.one(
+          `INSERT INTO mensagens_internas (id, tenant_id, canal_id, remetente_id, tipo, conteudo, media_url, media_mime, media_nome, respondendo_a, criado_em)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+           RETURNING *`,
+          [msgId, op.tenantId, canalId, op.id, tipo || 'texto', conteudoNorm || null, mediaUrl || null, mediaMime || null, mediaNome || null, respondendoA || null]
+        );
+        io.to(salas.canal(canalId)).emit('interno:nova', {
+          ...msg,
+          remetente_nome: op.nome,
+          respondendo_a: respondendoA || null,
+        });
+        if (ack) ack({ ok: true, mensagem: msg });
+      } catch (err) {
+        console.error('[Socket] interno:responder error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    // === EVOLUÇÕES: Notificações ===
+
+    socket.on('notificacao:marcar-lida', async ({ notificacaoId }, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        await db.none(
+          'UPDATE notificacoes SET lida = true WHERE id = $1 AND operador_id = $2 AND tenant_id = $3',
+          [notificacaoId, op.id, op.tenantId]
+        );
+        if (ack) ack({ ok: true });
+      } catch (err) {
+        console.error('[Socket] notificacao:marcar-lida error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    socket.on('conversa:arquivar', async (convId, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        await transitionConversation({
+          tenantId: op.tenantId,
+          conversaId: convId,
+          targetStatus: 'ARQUIVADA',
+          operadorId: op.id,
+          origem: 'usuario',
+        });
+        io.to(salas.tenant(op.tenantId)).emit('conversa:atualizada', { convId });
+        if (ack) ack({ ok: true });
+      } catch (err) {
+        console.error('[Socket] conversa:arquivar error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    socket.on('conversa:desarquivar', async (convId, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        const conv = await db.oneOrNone('SELECT operador_id FROM conversas WHERE id = $1 AND tenant_id = $2', [convId, op.tenantId]);
+        await transitionConversation({
+          tenantId: op.tenantId,
+          conversaId: convId,
+          targetStatus: conv?.operador_id ? 'EM_ATENDIMENTO' : 'NA_FILA',
+          operadorId: op.id,
+          justificativa: 'Conversa restaurada',
+          origem: 'usuario',
+        });
+        io.to(salas.tenant(op.tenantId)).emit('conversa:atualizada', { convId });
+        if (ack) ack({ ok: true });
+      } catch (err) {
+        console.error('[Socket] conversa:desarquivar error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    socket.on('conversa:excluir', async (payload, ack) => {
+      try {
+        await setTenantContext(op.tenantId);
+        const convId = typeof payload === 'object' ? payload?.convId : payload;
+        const motivo = typeof payload === 'object' ? String(payload?.motivo || '').trim() : '';
+        if (op.papel !== 'admin') throw new Error('Exclusão administrativa restrita a administradores');
+        if (!motivo) throw new Error('Motivo obrigatório para exclusão administrativa');
+        const removida = await db.oneOrNone(
+          `UPDATE conversas
+           SET deleted_at = now(), deleted_by = $1, delete_reason = $2,
+               status_operacional = 'ARQUIVADA', status = 'arquivada', arquivada_em = now()
+           WHERE id = $3 AND tenant_id = $4 AND deleted_at IS NULL
+           RETURNING id`,
+          [op.id, motivo, convId, op.tenantId]
+        );
+        if (!removida) throw new Error('Conversa não encontrada');
+        await _auditar(op.tenantId, op.id, 'conversa.exclusao_logica', { conversaId: convId, motivo });
+        io.to(salas.tenant(op.tenantId)).emit('conversa:removida', { convId });
+        if (ack) ack({ ok: true });
+      } catch (err) {
+        console.error('[Socket] conversa:excluir error:', err.message);
+        if (ack) ack({ ok: false, erro: err.message });
+      }
+    });
+
+    socket.on('disconnect', async () => {
+      try {
+        await setTenantContext(op.tenantId);
+        await _setOnline(op.tenantId, op.id, false);
+        io.to(salas.tenant(op.tenantId)).emit('operador:presenca', {
+          opId: op.id,
+          online: false,
+        });
+      } catch {}
+      // Limpa timers de exclusão pendentes deste socket
+      for (const [msgId, timer] of exclusaoTimers.entries()) {
+        clearTimeout(timer);
+      }
+      exclusaoTimers.clear();
+    });
+  });
+
+  wa.on('qr', ({ tenantId, qr, qrRaw }) => {
+    io.to(salas.tenant(tenantId)).emit('whatsapp:qr', { qr, qrRaw });
+  });
+
+  wa.on('connected', ({ tenantId, numero }) => {
+    io.to(salas.tenant(tenantId)).emit('whatsapp:conectado', { numero });
+  });
+
+  wa.on('logout', ({ tenantId }) => {
+    io.to(salas.tenant(tenantId)).emit('whatsapp:desconectado');
+    db.manyOrNone(
+      `SELECT id FROM operadores WHERE tenant_id = $1 AND papel IN ('admin','supervisor') AND ativo = true`,
+      [tenantId]
+    ).then((ops) => Promise.all(ops.map((operador) =>
+      criarNotificacao(
+        tenantId, operador.id, 'canal_desconectado', 'Canal WhatsApp desconectado',
+        'O canal perdeu a conexão. Abra Conexões para executar o diagnóstico.',
+        '/configuracoes?secao=conexoes'
+      )
+    ))).catch((err) => console.error('[Notif Canal] logout:', err.message));
+  });
+
+  // Reconexão esgotou as tentativas: avisa o tenant para reescanear o QR.
+  wa.on('falha-conexao', ({ tenantId, tentativas }) => {
+    io.to(salas.tenant(tenantId)).emit('whatsapp:falha', {
+      msg: `Não foi possível reconectar o WhatsApp após ${tentativas} tentativas. Reconecte escaneando o QR.`,
+    });
+    db.manyOrNone(
+      `SELECT id FROM operadores WHERE tenant_id = $1 AND papel IN ('admin','supervisor') AND ativo = true`,
+      [tenantId]
+    ).then((ops) => Promise.all(ops.map((operador) =>
+      criarNotificacao(
+        tenantId, operador.id, 'canal_desconectado', 'Falha ao reconectar o WhatsApp',
+        `A reconexão falhou após ${tentativas} tentativas.`,
+        '/configuracoes?secao=conexoes'
+      )
+    ))).catch((err) => console.error('[Notif Canal] falha:', err.message));
+  });
+
+  // Presença do cidadão (digitando/online) -> repassa para a sala da conversa.
+  wa.on('presence', ({ tenantId, id, presences }) => {
+    try {
+      const convId = convPorJid.get(`${tenantId}:${id}`);
+      if (!convId) return;
+      const estado = presences?.[id]?.lastKnownPresence;
+      const digitando = estado === 'composing' || estado === 'recording';
+      io.to(salas.conversa(convId)).emit('cliente:presenca', {
+        convId,
+        digitando,
+        estado: estado || null,
+      });
+    } catch {}
+  });
+
+  wa.on('message', async ({ tenantId, msg }) => {
+    try {
+      await setTenantContext(tenantId);
+      await persistirEntrada(tenantId, msg, io, wa, storage);
+    } catch (err) {
+      console.error('[Socket] message handler error:', err.message);
+    }
+  });
+
+  // Ligação recebida: encerra e responde com o telefone do órgão.
+  wa.on('call', async ({ tenantId, call }) => {
+    try {
+      await setTenantContext(tenantId);
+      await tratarChamadaRecebida(tenantId, call, io, wa);
+    } catch (err) {
+      console.error('[Socket] call handler error:', err.message);
+    }
+  });
+
+  wa.on('message-status', async ({ tenantId, updates }) => {
+    try {
+      await setTenantContext(tenantId);
+      console.log(`[Status] recebidos ${updates.length} updates de status para tenant ${tenantId}`);
+      for (const update of updates) {
+        const msgId = update?.key?.id;
+        if (!msgId) continue;
+        const status = update?.update?.status;
+        if (!status) continue;
+        console.log(`[Status] wa_id=${msgId} status=${status}`);
+        // O Baileys envia o status como enum numérico (proto.WebMessageInfo.Status):
+        // 0=ERROR, 1=PENDING, 2=SERVER_ACK, 3=DELIVERY_ACK, 4=READ, 5=PLAYED.
+        // Versões antigas podiam mandar o nome em string — tratamos os dois casos.
+        let mappedStatus = 'enviado';
+        if (status === 0 || status === 'ERROR') mappedStatus = 'erro';
+        else if (status === 3 || status === 'DELIVERY_ACK') mappedStatus = 'entregue';
+        else if (status === 4 || status === 5 || status === 'READ' || status === 'PLAYED') mappedStatus = 'lido';
+        else mappedStatus = 'enviado'; // 1=PENDING, 2=SERVER_ACK → um tique
+
+        // O WhatsApp/Baileys pode mandar updates fora de ordem (ex.: SERVER_ACK
+        // chegando depois de READ). Só promovemos o status — nunca rebaixamos —
+        // exceto 'erro', que sempre prevalece. O rank é calculado em SQL e a
+        // atualização só ocorre quando há promoção real (rowCount > 0).
+        const rank = "CASE %s WHEN 'lido' THEN 3 WHEN 'entregue' THEN 2 WHEN 'enviado' THEN 1 WHEN 'erro' THEN 4 ELSE 0 END";
+        const updated = await db.result(
+          `UPDATE mensagens m SET status = $1
+             FROM conversas c
+            WHERE m.conversa_id = c.id
+              AND m.wa_message_id = $2 AND m.tenant_id = $3
+              AND ($1 = 'erro' OR (${rank.replace('%s', "$1")}) > (${rank.replace('%s', 'm.status')}))
+           RETURNING c.id AS conv_id`,
+          [mappedStatus, msgId, tenantId],
+          (r) => r
+        );
+        if (updated.rowCount > 0) {
+          const convId = updated.rows[0].conv_id;
+          io.to(salas.conversa(convId)).emit('mensagem:status', {
+            waMessageId: msgId,
+            status: mappedStatus,
+          });
+        }
+      }
+    } catch (err) {
+      console.error('[Socket] message-status handler error:', err.message);
+    }
+  });
+
+  return io;
+}
+
+// Intervalo mínimo entre duas consultas de foto para o mesmo contato.
+const AVATAR_REPETIR_APOS_MS = 7 * 24 * 60 * 60 * 1000;
+
+// Busca e salva a foto de perfil do WhatsApp de um contato, em background.
+// Só faz a requisição se o avatar_url ainda estiver nulo no banco.
+// A imagem é baixada e persistida no storage local, pois as URLs do CDN do
+// WhatsApp (pps.whatsapp.net) são temporárias e expiram (retornam 403).
+export async function buscarAvatarContato(wa, tenantId, contatoId) {
+  try {
+    const row = await db.oneOrNone(
+      `SELECT avatar_url, wa_jid, avatar_tentado_em
+         FROM contatos WHERE id = $1 AND tenant_id = $2`,
+      [contatoId, tenantId]
+    );
+    if (!row || !row.wa_jid) return;
+    if (row.avatar_url) {
+      console.log(`[Avatar] contato ${contatoId} já tem avatar, pulando`);
+      return;
+    }
+
+    // Só busca foto para JID de telefone (@s.whatsapp.net), não para @lid.
+    const jidAlvo = row.wa_jid;
+    if (!jidAlvo.endsWith('@s.whatsapp.net')) {
+      console.log(`[Avatar] contato ${contatoId} JID não é @s.whatsapp.net (${jidAlvo}), pulando`);
+      return;
+    }
+
+    // A maioria dos contatos restringe a foto a "meus contatos" — o WhatsApp
+    // responde not-authorized e nunca vai mudar enquanto a privacidade for essa.
+    // Sem esta janela, cada mensagem recebida disparava uma consulta nova.
+    if (row.avatar_tentado_em && Date.now() - new Date(row.avatar_tentado_em).getTime() < AVATAR_REPETIR_APOS_MS) {
+      return;
+    }
+    await db.none(
+      'UPDATE contatos SET avatar_tentado_em = now() WHERE id = $1 AND tenant_id = $2',
+      [contatoId, tenantId]
+    );
+
+    console.log(`[Avatar] buscando foto para contato ${contatoId} JID=${jidAlvo}`);
+    const ppUrl = await wa.fetchProfilePicture(tenantId, jidAlvo);
+    if (!ppUrl) {
+      console.log(`[Avatar] contato ${contatoId} sem foto acessível (privacidade ou sem foto)`);
+      return;
+    }
+
+    // Baixa a imagem enquanto a URL temporária ainda é válida e persiste localmente.
+    const resp = await fetch(ppUrl, { signal: AbortSignal.timeout(15000) });
+    if (!resp.ok) {
+      console.error(`[Avatar] download falhou para contato ${contatoId}: HTTP ${resp.status}`);
+      return;
+    }
+    const buffer = Buffer.from(await resp.arrayBuffer());
+    const mime = resp.headers.get('content-type') || 'image/jpeg';
+    const storage = createStorage();
+    const localUrl = await storage.salvar(buffer, mime, tenantId);
+
+    await db.none(
+      'UPDATE contatos SET avatar_url = $1 WHERE id = $2 AND tenant_id = $3',
+      [localUrl, contatoId, tenantId]
+    );
+    console.log(`[Avatar] foto salva para contato ${contatoId} em ${localUrl}`);
+  } catch (err) {
+    console.error(`[Avatar] erro ao buscar foto do contato ${contatoId}:`, err.message);
+  }
+}
+
+async function persistirEntrada(tenantId, msg, io, wa, storage) {
+  const jid = msg.key.remoteJid;
+  // Quando o WhatsApp entrega via @lid, o telefone real (formato 55...@s.whatsapp.net)
+  // vem em senderPn. Sem isso não há como descobrir o número do cidadão a partir do @lid.
+  const senderPn = msg.key.senderPn || null;
+  const pushName = msg.pushName || null;
+  const jidParaTelefone = jidEhLid(jid) ? senderPn : jid;
+  const telefone = jidParaTelefone?.split('@')[0] || null;
+  const direcao = msg.key.fromMe ? 'saida' : 'entrada';
+
+  // Diagnóstico: contato novo que fica só com o número vem de pushName ausente.
+  if (direcao === 'entrada' && !pushName) {
+    console.warn(`[Contato] mensagem de entrada sem pushName jid=${jid} senderPn=${senderPn ?? '-'}`);
+  }
+
+  // Ignora mensagens de números bloqueados pelo órgão.
+  if (telefone) {
+    let phoneE164;
+    try { phoneE164 = normalizePhone(telefone).phoneE164; } catch { phoneE164 = `+${telefone.replace(/\D/g, '')}`; }
+    const bloqueado = await db.oneOrNone(
+      `SELECT id FROM contatos_bloqueados
+       WHERE tenant_id = $1 AND ativo = true
+         AND (phone_e164 = $2 OR telefone = $3)
+         AND (expira_em IS NULL OR expira_em > now())`,
+      [tenantId, phoneE164, telefone.replace(/\D/g, '')]
+    );
+    if (bloqueado) {
+      await db.tx(async (t) => {
+        await t.none('UPDATE contatos_bloqueados SET tentativas = tentativas + 1 WHERE id = $1', [bloqueado.id]);
+        await t.none(
+          `INSERT INTO bloqueio_tentativas (tenant_id, bloqueio_id, phone_e164, provider_message_id)
+           VALUES ($1,$2,$3,$4)`,
+          [tenantId, bloqueado.id, phoneE164, msg.key.id || null]
+        );
+      });
+      return;
+    }
+  }
+  const msgId = msg.key.id;
+  const msgTimestamp = msg.messageTimestamp ? new Date(msg.messageTimestamp * 1000) : new Date();
+  // Mensagem de saída que chega pelo sync foi digitada FORA do painel (celular ou
+  // WhatsApp Web) e o protocolo não diz qual pessoa a enviou. Antes carimbávamos o
+  // primeiro admin do tenant como autor: a bolha exibia um nome errado e os
+  // relatórios creditavam tudo a ele. Fica sem operador e a origem 'whatsapp' faz o
+  // painel mostrar o selo "pelo WhatsApp" no lugar de um nome inventado.
+  const origemMensagem = direcao === 'saida' ? 'whatsapp' : 'cidadao';
+
+  // Dedupe: o Baileys pode disparar messages.upsert mais de uma vez para o
+  // mesmo wa_message_id. Sai cedo para não duplicar bolha/contador/mídia/bot.
+  if (msgId) {
+    const jaProcessada = await db.oneOrNone(
+      'SELECT 1 FROM mensagens WHERE tenant_id = $1 AND wa_message_id = $2',
+      [tenantId, msgId]
+    );
+    if (jaProcessada) {
+      console.log(`[Persist] mensagem duplicada ignorada wa_message_id=${msgId}`);
+      return;
+    }
+  }
+
+  let tipo = 'texto';
+  let conteudo = null;
+  let mediaUrl = null;
+  let mediaMime = null;
+  let mediaNome = null;
+
+  const messageContent = extrairConteudoMensagem(msg.message);
+
+  // Reação (👍 ❤️ ...) a uma mensagem existente: não é uma mensagem nova.
+  // Atualiza o alvo e avisa o painel; texto vazio = reação removida.
+  if (messageContent?.reactionMessage) {
+    const alvoWaId = messageContent.reactionMessage.key?.id;
+    const emoji = messageContent.reactionMessage.text || null;
+    if (alvoWaId) {
+      const alvo = await db.oneOrNone(
+        `UPDATE mensagens SET reacao = $1
+         WHERE wa_message_id = $2 AND tenant_id = $3
+         RETURNING id, conversa_id`,
+        [emoji, alvoWaId, tenantId]
+      );
+      if (alvo) {
+        io.to(salas.conversa(alvo.conversa_id)).emit('mensagem:reacao', {
+          mensagemId: alvo.id,
+          waMessageId: alvoWaId,
+          emoji,
+        });
+      }
+    }
+    return;
+  }
+
+  // Mensagens de sistema/protocolo (revogação, etc.) não têm conteúdo útil: ignora com segurança.
+  if (messageContent?.protocolMessage || messageContent?.senderKeyDistributionMessage) {
+    if (WA_DEBUG_GATEWAY) console.log(`[Persist] mensagem de sistema ignorada wa_message_id=${msgId}`);
+    return;
+  }
+
+  if (messageContent?.conversation) {
+    conteudo = messageContent.conversation;
+  } else if (messageContent?.extendedTextMessage?.text) {
+    conteudo = messageContent.extendedTextMessage.text;
+  } else if (messageContent?.imageMessage) {
+    tipo = 'imagem';
+    mediaMime = 'image/jpeg';
+    conteudo = messageContent.imageMessage.caption || null;
+    try {
+      const buffer = await downloadMediaMessage(msg, 'buffer', {});
+      mediaUrl = await storage.salvar(buffer, 'image/jpeg', tenantId);
+    } catch (e) {
+      console.error('[Persist] media download error:', e.message);
+    }
+  } else if (messageContent?.videoMessage) {
+    tipo = 'video';
+    mediaMime = 'video/mp4';
+    conteudo = messageContent.videoMessage.caption || null;
+    try {
+      const buffer = await downloadMediaMessage(msg, 'buffer', {});
+      mediaUrl = await storage.salvar(buffer, 'video/mp4', tenantId);
+    } catch {}
+  } else if (messageContent?.audioMessage) {
+    tipo = 'audio';
+    mediaMime = 'audio/ogg';
+    try {
+      const buffer = await downloadMediaMessage(msg, 'buffer', {});
+      mediaUrl = await storage.salvar(buffer, 'audio/ogg', tenantId);
+    } catch {}
+  } else if (messageContent?.documentMessage) {
+    tipo = 'documento';
+    mediaMime = messageContent.documentMessage.mimetype || 'application/octet-stream';
+    mediaNome = messageContent.documentMessage.fileName || null;
+    conteudo = messageContent.documentMessage.caption || null;
+    try {
+      const buffer = await downloadMediaMessage(msg, 'buffer', {});
+      mediaUrl = await storage.salvar(buffer, mediaMime, tenantId);
+    } catch {}
+  } else if (messageContent?.contactMessage || messageContent?.contactsArrayMessage) {
+    const contatos = extrairContatosCompartilhados(messageContent);
+    if (contatos.length === 0) {
+      console.log(`[Persist] contato sem dados ignorado wa_message_id=${msgId}`);
+      return;
+    }
+    tipo = 'contato';
+    conteudo = JSON.stringify(contatos);
+  } else if (messageContent?.locationMessage) {
+    tipo = 'local';
+    conteudo = JSON.stringify({
+      lat: messageContent.locationMessage.degreesLatitude,
+      lng: messageContent.locationMessage.degreesLongitude,
+    });
+  } else {
+    console.log(`[Persist] tipo de mensagem ignorado wa_message_id=${msgId} keys=${Object.keys(messageContent || {}).join(',')}`);
+    return;
+  }
+
+  let contatoRow = await db.oneOrNone(
+    `SELECT c.id
+     FROM contato_aliases a
+     JOIN contatos c ON c.id = a.contato_id
+     WHERE a.tenant_id = $1 AND a.alias_jid = $2`,
+    [tenantId, jid]
+  );
+
+  // LID com senderPn: resolve direto para o telefone real do cidadão.
+  // Cria/atualiza o contato com o JID de telefone (@s.whatsapp.net) e registra o alias
+  // do @lid, garantindo que o envio (bot ou operador) vá para o número correto.
+  if (!contatoRow && jidEhLid(jid) && senderPn) {
+    const digitsReal = normalizarTelefoneWhatsApp(senderPn.split('@')[0]);
+    if (digitsReal) {
+      const jidReal = `${digitsReal}@s.whatsapp.net`;
+      const variantes = variantesTelefoneBrasil(digitsReal);
+      contatoRow = await db.oneOrNone(
+        `SELECT co.id
+         FROM contatos co
+         LEFT JOIN conversas c ON c.contato_id = co.id
+         WHERE co.tenant_id = $1
+           AND (co.telefone = ANY($2) OR co.wa_jid = ANY($3))
+         ORDER BY CASE WHEN c.status IN ('aberta', 'fila') THEN 0 ELSE 1 END,
+                  c.ultima_mensagem_em DESC NULLS LAST
+         LIMIT 1`,
+        [tenantId, variantes, variantes.map((n) => `${n}@s.whatsapp.net`)]
+      );
+      if (contatoRow) {
+        // Corrige contatos que tinham sido criados apenas com o @lid (sem telefone real).
+        await db.none(
+          `UPDATE contatos SET wa_jid = $1, telefone = COALESCE(telefone, $2)
+           WHERE id = $3 AND tenant_id = $4 AND wa_jid LIKE '%@lid'`,
+          [jidReal, digitsReal, contatoRow.id, tenantId]
+        );
+      } else {
+        contatoRow = await db.one(
+          `INSERT INTO contatos (tenant_id, wa_jid, nome, telefone)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (tenant_id, wa_jid) DO UPDATE
+             SET nome = COALESCE(contatos.nome, EXCLUDED.nome),
+                 telefone = COALESCE(contatos.telefone, EXCLUDED.telefone)
+           RETURNING id`,
+          [tenantId, jidReal, pushName, digitsReal]
+        );
+      }
+      // Registra os aliases (@lid e @s.whatsapp.net) apontando para o contato real.
+      for (const alias of [jid, jidReal]) {
+        await db.none(
+          `INSERT INTO contato_aliases (tenant_id, contato_id, alias_jid)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (tenant_id, alias_jid) DO UPDATE SET contato_id = EXCLUDED.contato_id`,
+          [tenantId, contatoRow.id, alias]
+        );
+      }
+    }
+  }
+
+  if (!contatoRow && jid?.endsWith('@lid')) {
+    const conhecido = await db.oneOrNone(
+      `SELECT c.nome, c.telefone, c.wa_jid
+       FROM contato_aliases a
+       JOIN contatos c ON c.id = a.contato_id
+       WHERE a.alias_jid = $1
+         AND c.wa_jid LIKE '%@s.whatsapp.net'
+         AND c.telefone IS NOT NULL
+         AND c.telefone !~ '^[0-9]{14,}$'
+       ORDER BY c.criado_em ASC
+       LIMIT 1`,
+      [jid]
+    );
+    if (conhecido?.telefone || conhecido?.wa_jid) {
+      const base = conhecido.telefone || conhecido.wa_jid.split('@')[0];
+      const variantes = variantesTelefoneBrasil(base);
+      contatoRow = await db.oneOrNone(
+        `SELECT co.id
+         FROM contatos co
+         LEFT JOIN conversas c ON c.contato_id = co.id
+         WHERE co.tenant_id = $1
+           AND (co.telefone = ANY($2) OR co.wa_jid = ANY($3))
+         ORDER BY CASE WHEN c.status IN ('aberta', 'fila') THEN 0 ELSE 1 END,
+                  c.ultima_mensagem_em DESC NULLS LAST
+         LIMIT 1`,
+        [tenantId, variantes, variantes.map((n) => `${n}@s.whatsapp.net`)]
+      );
+      if (!contatoRow) {
+        const telefoneReal = variantes[0] || base;
+        const jidReal = conhecido.wa_jid || `${telefoneReal}@s.whatsapp.net`;
+        contatoRow = await db.one(
+          `INSERT INTO contatos (tenant_id, wa_jid, nome, telefone)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (tenant_id, wa_jid) DO UPDATE
+             SET nome = COALESCE(contatos.nome, EXCLUDED.nome),
+                 telefone = COALESCE(contatos.telefone, EXCLUDED.telefone)
+           RETURNING id`,
+          [tenantId, jidReal, pushName || conhecido.nome || null, telefoneReal]
+        );
+      }
+      await db.none(
+        `INSERT INTO contato_aliases (tenant_id, contato_id, alias_jid)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (tenant_id, alias_jid) DO UPDATE SET contato_id = EXCLUDED.contato_id`,
+        [tenantId, contatoRow.id, jid]
+      );
+    }
+  }
+
+  if (!contatoRow) {
+    const variantes = variantesTelefoneBrasil(telefone);
+    if (variantes.length > 0) {
+      contatoRow = await db.oneOrNone(
+        `SELECT co.id
+         FROM contatos co
+         LEFT JOIN conversas c ON c.contato_id = co.id
+         WHERE co.tenant_id = $1
+           AND (
+             co.telefone = ANY($2)
+             OR co.wa_jid = ANY($3)
+           )
+         ORDER BY
+           CASE WHEN c.status IN ('aberta', 'fila') THEN 0 ELSE 1 END,
+           c.ultima_mensagem_em DESC NULLS LAST
+         LIMIT 1`,
+        [tenantId, variantes, variantes.map((n) => `${n}@s.whatsapp.net`)]
+      );
+    }
+  }
+
+  if (!contatoRow) {
+    contatoRow = await db.oneOrNone(
+       `INSERT INTO contatos (tenant_id, wa_jid, nome, telefone)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (tenant_id, wa_jid) DO UPDATE
+          SET telefone = COALESCE(EXCLUDED.telefone, contatos.telefone)
+        RETURNING id`,
+      [tenantId, jid, pushName, jidEhLid(jid) ? null : telefone]
+    );
+  }
+
+  // O nome só era gravado no INSERT do contato. Quando a primeira mensagem
+  // chegava sem pushName (acontece com frequência em contato novo), o contato
+  // nascia só com o número e nunca mais era corrigido, porque as mensagens
+  // seguintes encontram o contato por SELECT e não passam pelo INSERT.
+  // Aqui toda mensagem recebida reoferece o pushName para preencher o vazio.
+  if (pushName) {
+    await db.none(
+      `UPDATE contatos SET nome = $1
+        WHERE id = $2 AND tenant_id = $3 AND (nome IS NULL OR nome = '')`,
+      [pushName, contatoRow.id, tenantId]
+    );
+  }
+  if (telefone) {
+    try {
+      const phone = normalizePhone(telefone);
+      await db.none(
+        `UPDATE contatos SET phone_e164 = $1, phone_display = $2, country_code = $3,
+           area_code = $4, local_number = $5
+         WHERE id = $6 AND tenant_id = $7`,
+        [phone.phoneE164, phone.phoneDisplay, phone.countryCode, phone.areaCode, phone.localNumber, contatoRow.id, tenantId]
+      );
+    } catch { /* JIDs técnicos/LID não representam telefone E.164 */ }
+  }
+
+  // Busca foto de perfil do WhatsApp se o contato ainda não tiver avatar.
+  // Executa em background (não bloqueia a entrega da mensagem).
+  buscarAvatarContato(wa, tenantId, contatoRow.id).catch(() => {});
+
+  // O ON CONFLICT mira o índice parcial (migração 022): conversa excluída não
+  // conta como conflito, então o cidadão que volta a escrever depois de uma
+  // exclusão administrativa abre um atendimento novo em vez de ressuscitar —
+  // e ficar preso em — o histórico apagado.
+  const conversaRow = await db.oneOrNone(
+    `INSERT INTO conversas (tenant_id, contato_id, status, status_operacional, nao_lidas, ultima_mensagem, ultima_mensagem_em)
+     VALUES ($1, $2, $5, CASE WHEN $7 = 'saida' THEN 'EM_ATENDIMENTO' ELSE 'NOVA' END, $6, $3, $4)
+      ON CONFLICT (tenant_id, contato_id) WHERE deleted_at IS NULL DO UPDATE
+        SET nao_lidas = CASE
+              WHEN $7 = 'saida' THEN conversas.nao_lidas
+              WHEN conversas.status = 'resolvida' THEN 1
+              ELSE conversas.nao_lidas + 1
+            END,
+            status = CASE
+              WHEN conversas.status IN ('resolvida', 'arquivada') AND $7 = 'entrada' THEN 'fila'
+              ELSE conversas.status
+            END,
+            status_operacional = CASE
+              WHEN conversas.status IN ('resolvida', 'arquivada') AND $7 = 'entrada' THEN 'NOVA'
+              ELSE conversas.status_operacional
+            END,
+            operador_id = CASE
+              WHEN conversas.status IN ('resolvida', 'arquivada') AND $7 = 'entrada' THEN NULL
+              ELSE conversas.operador_id
+            END,
+            departamento_id = CASE
+              WHEN conversas.status IN ('resolvida', 'arquivada') AND $7 = 'entrada' THEN NULL
+              ELSE conversas.departamento_id
+            END,
+            protocolo_id = CASE
+              WHEN conversas.status IN ('resolvida', 'arquivada') AND $7 = 'entrada' THEN NULL
+              ELSE conversas.protocolo_id
+            END,
+            ultima_mensagem = $3,
+            ultima_mensagem_em = $4
+     RETURNING id, status, protocolo_id, departamento_id, operador_id, menu_enviado_em`,
+    [
+      tenantId,
+      contatoRow.id,
+      tipo === 'contato' ? '[Contato]' : (conteudo || `[${tipo}]`),
+      msgTimestamp,
+      direcao === 'saida' ? 'aberta' : 'fila',
+      direcao === 'saida' ? 0 : 1,
+      direcao,
+    ]
+  );
+
+  if (!conversaRow.protocolo_id) {
+    try {
+      await getOuGerarProtocolo(tenantId, conversaRow.id, contatoRow.id);
+    } catch (e) {
+      console.error('[Protocolo] Erro ao gerar:', e.message);
+    }
+  }
+
+  const novaMensagem = await db.oneOrNone(
+    `INSERT INTO mensagens (tenant_id, conversa_id, wa_message_id, direcao, operador_id, tipo, conteudo, media_url, media_mime, media_nome, status, origem, criado_em)
+     VALUES ($1, $2, $3, $4, NULL, $5, $6, $7, $8, $9, $10, $11, $12)
+     ON CONFLICT (tenant_id, wa_message_id) WHERE wa_message_id IS NOT NULL DO NOTHING
+     RETURNING *`,
+    [
+      tenantId,
+      conversaRow.id,
+      msgId,
+      direcao,
+      tipo,
+      conteudo,
+      mediaUrl,
+      mediaMime,
+      mediaNome,
+      direcao === 'saida' ? 'enviado' : 'entregue',
+      origemMensagem,
+      msgTimestamp,
+    ]
+  );
+  // Se houve conflito (corrida), a mensagem já foi processada por outra execução: não re-emite.
+  if (!novaMensagem) {
+    console.log(`[Persist] insert em corrida ignorado wa_message_id=${msgId}`);
+    return;
+  }
+
+  io.to(salas.conversa(conversaRow.id)).emit('mensagem:nova', novaMensagem);
+  io.to(salas.tenant(tenantId)).emit('conversa:atualizada', { convId: conversaRow.id });
+
+  // Foto, áudio, vídeo ou documento numa conversa sem destino: devolve o menu
+  // de setores. Contato e localização ficam de fora — chegam no meio de um
+  // assunto em andamento, não abrem um pedido novo.
+  if (direcao === 'entrada' && ['imagem', 'video', 'audio', 'documento'].includes(tipo)) {
+    try {
+      await tratarMidiaSemDestino(tenantId, { conversaRow, jid }, io, wa);
+    } catch (err) {
+      console.error('[Menu] erro ao enviar menu de setores:', err.message);
+    }
+  }
+
+  // A resposta ao menu vem antes do bot: se o cidadão digitou o número do
+  // setor, a Iris não pode responder por cima e engolir o encaminhamento.
+  let respostaDeMenu = false;
+  if (direcao === 'entrada' && tipo === 'texto' && conteudo) {
+    try {
+      respostaDeMenu = await tratarEscolhaMenu(tenantId, { conversaRow, jid, texto: conteudo }, io, wa);
+    } catch (err) {
+      console.error('[Menu] erro ao tratar escolha do cidadão:', err.message);
+    }
+  }
+
+  if (!respostaDeMenu && direcao === 'entrada' && tipo === 'texto' && conteudo) {
+    try {
+      const jidEnvio = jid;
+
+      const irisCfg = await db.oneOrNone(
+        'SELECT * FROM config_iris WHERE tenant_id = $1 AND ativo = true',
+        [tenantId]
+      );
+
+      // Detecta primeiro contato.
+      const msgCountResult = await db.one(
+        'SELECT COUNT(*)::int as cnt FROM mensagens WHERE conversa_id = $1 AND tenant_id = $2',
+        [conversaRow.id, tenantId]
+      );
+      const isFirstContact = msgCountResult.cnt === 1;
+
+      const enviarBotMsg = async (textoResposta, origem = 'bot') => {
+        // Barra também respostas sem conteúdo real ("{", "...", só emoji de
+        // pontuação): já aconteceu de um JSON truncado do provedor virar
+        // mensagem "🤖 {" no WhatsApp do cidadão.
+        if (!textoResposta || String(textoResposta).replace(/[^\p{L}\p{N}]/gu, '').length < 2) {
+          console.log('[Chatbot] Resposta sem conteúdo, ignorando envio:', JSON.stringify(textoResposta)?.slice(0, 60));
+          return;
+        }
+        // Emite evento "bot digitando..." antes de enviar
+        io.to(salas.conversa(conversaRow.id)).emit('cliente:presenca', {
+          convId: conversaRow.id,
+          digitando: false,
+          estado: 'bot_digitando',
+          bot: origem,
+        });
+
+        const botMsgId = uuidv4();
+        const botMsg = await db.one(
+          `INSERT INTO mensagens (id, tenant_id, conversa_id, direcao, tipo, conteudo, status, origem, criado_em)
+           VALUES ($1, $2, $3, 'saida', 'texto', $4, 'enviado', 'bot', now())
+           RETURNING *`,
+          [botMsgId, tenantId, conversaRow.id, `🤖 ${textoResposta}`]
+        );
+        const sendResult = await wa.sendText(tenantId, jidEnvio, textoResposta);
+        if (sendResult?.key?.id) {
+          await db.none(
+            'UPDATE mensagens SET wa_message_id = $1 WHERE id = $2 AND tenant_id = $3',
+            [sendResult.key.id, botMsgId, tenantId]
+          );
+        }
+        await db.none(
+          `UPDATE conversas SET ultima_mensagem = $1, ultima_mensagem_em = now()
+           WHERE id = $2 AND tenant_id = $3`,
+          [textoResposta.slice(0, 200), conversaRow.id, tenantId]
+        );
+        io.to(salas.conversa(conversaRow.id)).emit('mensagem:nova', botMsg);
+        io.to(salas.tenant(tenantId)).emit('conversa:atualizada', { convId: conversaRow.id });
+
+        // Limpa o "bot digitando" apos enviar
+        io.to(salas.conversa(conversaRow.id)).emit('cliente:presenca', {
+          convId: conversaRow.id,
+          digitando: false,
+          estado: null,
+        });
+      };
+
+      let departamentoAlvo = null;
+      let operadorAlvo = null;
+
+      // O bot (Iris/chatbot) so atua na triagem: enquanto nenhum operador humano assumiu
+      let botPodeResponder = !conversaRow.operador_id;
+      if (botPodeResponder && conversaRow.departamento_id) {
+        const dep = await db.oneOrNone(
+          "SELECT LOWER(nome) = 'recepção' AS eh_recepcao FROM departamentos WHERE id = $1 AND tenant_id = $2",
+          [conversaRow.departamento_id, tenantId]
+        );
+        botPodeResponder = dep?.eh_recepcao === true;
+      }
+
+      // Nada de "resgate de conversa abandonada" aqui. A regra antiga soltava o
+      // bot quando o atendente estava offline e não escrevia havia 10 minutos, e
+      // o efeito prático era a Iris responder por cima de um atendimento humano
+      // em curso: o atendente mandava um documento, saía, e a resposta do cidadão
+      // meia hora depois caía na IA. Conversa com responsável é assunto dele — a
+      // mensagem fica como não lida no painel até ele voltar.
+
+      if (botPodeResponder && irisCfg) {
+        // Emite "Iris esta digitando" para o painel
+        io.to(salas.conversa(conversaRow.id)).emit('cliente:presenca', {
+          convId: conversaRow.id,
+          digitando: false,
+          estado: 'bot_digitando',
+          bot: 'iris',
+        });
+
+        // Modo Iris — IA 24h com DeepSeek ou OpenAI
+        const resultado = await processarComIris(tenantId, conversaRow.id, conteudo);
+        if (resultado && resultado.respondido) {
+          await enviarBotMsg(resultado.resposta, 'iris');
+          if (resultado.departamento_id) {
+            departamentoAlvo = resultado.departamento_id;
+          }
+          if (resultado.operador_id) {
+            operadorAlvo = resultado.operador_id;
+          }
+          if (resultado.confianca) {
+            console.log(`[Iris] Confianca: ${resultado.confianca} | Depto: ${departamentoAlvo || 'nenhum'} | Atendente: ${operadorAlvo || 'nenhum'}`);
+          }
+        } else {
+          io.to(salas.conversa(conversaRow.id)).emit('cliente:presenca', {
+            convId: conversaRow.id,
+            digitando: false,
+            estado: null,
+          });
+        }
+      } else if (botPodeResponder) {
+        io.to(salas.conversa(conversaRow.id)).emit('cliente:presenca', {
+          convId: conversaRow.id,
+          digitando: false,
+          estado: 'bot_digitando',
+          bot: 'chatbot',
+        });
+
+        // Modo Chatbot tradicional
+        const cfg = await db.oneOrNone(
+          'SELECT * FROM config_chatbot WHERE tenant_id = $1',
+          [tenantId]
+        );
+
+        if (isFirstContact && cfg && cfg.ativo && cfg.mensagem_boas_vindas) {
+          await enviarBotMsg(cfg.mensagem_boas_vindas, 'chatbot');
+        }
+
+        if (cfg && cfg.ativo) {
+          const resultado = await processarMensagem(tenantId, conversaRow.id, contatoRow.id, conteudo);
+          if (resultado && resultado.respondido) {
+            await enviarBotMsg(resultado.resposta, 'chatbot');
+            if (resultado.departamento_id) {
+              departamentoAlvo = resultado.departamento_id;
+            }
+          } else if (cfg.mensagem_fallback) {
+            await enviarBotMsg(cfg.mensagem_fallback, 'chatbot');
+          }
+        } else {
+          io.to(salas.conversa(conversaRow.id)).emit('cliente:presenca', {
+            convId: conversaRow.id,
+            digitando: false,
+            estado: null,
+          });
+        }
+      }
+
+      // O cidadão pediu por um atendente e a Iris confirmou que ele está online
+      // e com vaga: a conversa já entra com dono, como uma transferência.
+      // A corrida com um humano que assumiu no meio do caminho é resolvida pelo
+      // `operador_id IS NULL` no UPDATE — quem chegou primeiro fica.
+      if (!conversaRow.operador_id && operadorAlvo) {
+        const atribuida = await db.oneOrNone(
+          `UPDATE conversas SET operador_id = $1, status = 'aberta', status_operacional = 'EM_ATENDIMENTO'
+           WHERE id = $2 AND tenant_id = $3 AND operador_id IS NULL AND deleted_at IS NULL
+           RETURNING id`,
+          [operadorAlvo, conversaRow.id, tenantId]
+        );
+        if (atribuida) {
+          // Sem o registro de participante o atendente não enxerga a conversa
+          // (o filtro de visibilidade olha conversa_participantes).
+          await db.none(
+            `INSERT INTO conversa_participantes (conversa_id, operador_id, papel, adicionado_por, tenant_id)
+             VALUES ($1, $2, 'dono', $2, $3)
+             ON CONFLICT (conversa_id, operador_id) DO UPDATE SET papel = 'dono'`,
+            [conversaRow.id, operadorAlvo, tenantId]
+          );
+          // Alinha o setor da conversa ao do atendente, quando ele tem um só.
+          const setor = await db.oneOrNone(
+            `SELECT od.departamento_id FROM operador_departamentos od
+             JOIN departamentos d ON d.id = od.departamento_id AND d.ativo = true
+             WHERE od.operador_id = $1 AND od.tenant_id = $2
+             LIMIT 2`,
+            [operadorAlvo, tenantId]
+          );
+          if (setor?.departamento_id && !departamentoAlvo) {
+            await db.none(
+              'UPDATE conversas SET departamento_id = $1 WHERE id = $2 AND tenant_id = $3',
+              [setor.departamento_id, conversaRow.id, tenantId]
+            );
+          }
+          conversaRow.operador_id = operadorAlvo;
+          await criarNotificacao(
+            tenantId, operadorAlvo, 'conversa_atribuida', 'Atendimento direcionado pela Iris',
+            'O cidadão pediu para falar com você.', `/?conversa=${conversaRow.id}`
+          ).catch(() => {});
+          io.to(salas.tenant(tenantId)).emit('conversa:atualizada', { convId: conversaRow.id });
+          console.log(`[Iris] Conversa ${conversaRow.id} atribuída ao atendente ${operadorAlvo}`);
+        } else {
+          console.log('[Iris] Atendente indicado, mas a conversa já tinha dono — atribuição ignorada.');
+        }
+      }
+
+      // Auto-encaminha para o departamento indicado pelo bot ou para a Recepcao.
+      if (!conversaRow.operador_id) {
+        let deptId = departamentoAlvo;
+        if (!deptId && !conversaRow.departamento_id) {
+          const recepcao = await db.oneOrNone(
+            "SELECT id FROM departamentos WHERE tenant_id = $1 AND LOWER(nome) = 'recepção' AND ativo = true",
+            [tenantId]
+          );
+          deptId = recepcao?.id;
+        }
+        if (deptId && deptId !== conversaRow.departamento_id) {
+          await db.none(
+            'UPDATE conversas SET departamento_id = $1 WHERE id = $2 AND tenant_id = $3',
+            [deptId, conversaRow.id, tenantId]
+          );
+          io.to(salas.tenant(tenantId)).emit('conversa:atualizada', { convId: conversaRow.id });
+        }
+
+        // Salva departamento_sugerido para contexto em mensagens futuras
+        if (departamentoAlvo) {
+          await db.none(
+            'UPDATE conversas SET departamento_sugerido = $1 WHERE id = $2 AND tenant_id = $3',
+            [departamentoAlvo, conversaRow.id, tenantId]
+          );
+        }
+      }
+    } catch (e) {
+      console.error('[Chatbot] Erro ao processar:', e.message);
+    }
+  }
+
+  // Notifica os operadores responsáveis (som/desktop) — para texto e mídia.
+  // Roda após a triagem da Iris, então a conversa já reflete o setor de destino.
+  if (direcao === 'entrada') {
+    await emitirNotificacaoMensagem(tenantId, conversaRow.id, novaMensagem, io);
+  }
+}
+
+// Envia uma mensagem automática e a registra na conversa, para o atendente ver
+// no painel exatamente o que o cidadão recebeu. `registro` permite gravar no
+// histórico um texto diferente do enviado (usado no aviso de chamada).
+async function enviarMensagemSistema(tenantId, { conversaId, jid, texto, registro }, io, wa) {
+  const msgId = uuidv4();
+  const linha = await db.one(
+    `INSERT INTO mensagens (id, tenant_id, conversa_id, direcao, tipo, conteudo, status, origem, criado_em)
+     VALUES ($1, $2, $3, 'saida', 'texto', $4, 'enviado', 'bot', now())
+     RETURNING *`,
+    [msgId, tenantId, conversaId, registro ?? texto]
+  );
+
+  let entregue = true;
+  try {
+    const envio = await wa.sendText(tenantId, jid, texto);
+    if (envio?.key?.id) {
+      await db.none(
+        'UPDATE mensagens SET wa_message_id = $1 WHERE id = $2 AND tenant_id = $3',
+        [envio.key.id, msgId, tenantId]
+      );
+    }
+  } catch (err) {
+    entregue = false;
+    console.error(`[Sistema] falha ao enviar (tenant=${tenantId}):`, err.message);
+    await db.none(
+      "UPDATE mensagens SET status = 'erro' WHERE id = $1 AND tenant_id = $2",
+      [msgId, tenantId]
+    );
+  }
+
+  io.to(salas.conversa(conversaId)).emit('mensagem:nova', linha);
+  io.to(salas.tenant(tenantId)).emit('conversa:atualizada', { convId: conversaId });
+  return entregue;
+}
+
+// Rajada de mídia (o cidadão manda oito fotos seguidas) gera um menu só.
+const MENU_REENVIO_MS = 10 * 60 * 1000;
+// Depois disso um número solto volta a ser conversa comum, não escolha de menu.
+const MENU_VALIDADE_MS = 24 * 60 * 60 * 1000;
+
+async function carregarMenuDepartamentos(tenantId) {
+  const cfg = await db.oneOrNone(
+    'SELECT menu_midia_ativo, menu_midia_cabecalho FROM tenant_config WHERE tenant_id = $1',
+    [tenantId]
+  );
+  if (cfg?.menu_midia_ativo === false) return null;
+
+  const departamentos = await db.manyOrNone(
+    `SELECT id, nome, menu_numero FROM departamentos
+      WHERE tenant_id = $1 AND ativo = true AND menu_numero IS NOT NULL
+      ORDER BY menu_numero`,
+    [tenantId]
+  );
+  if (!departamentos.length) return null;
+
+  return { cabecalho: cfg?.menu_midia_cabecalho, departamentos };
+}
+
+// Mídia numa conversa sem atendente e sem setor: devolve a lista numerada para
+// o próprio cidadão dizer para onde vai. Sem isto a foto fica no painel sem
+// destino, que é o que acontecia depois que o atendente resolvia a conversa.
+async function tratarMidiaSemDestino(tenantId, { conversaRow, jid }, io, wa) {
+  if (conversaRow.operador_id || conversaRow.departamento_id) return;
+
+  const enviadoEm = conversaRow.menu_enviado_em ? new Date(conversaRow.menu_enviado_em).getTime() : 0;
+  if (enviadoEm && Date.now() - enviadoEm < MENU_REENVIO_MS) return;
+
+  const menu = await carregarMenuDepartamentos(tenantId);
+  if (!menu) return;
+
+  const texto = montarMenuDepartamentos(menu);
+  await enviarMensagemSistema(tenantId, { conversaId: conversaRow.id, jid, texto }, io, wa);
+  await db.none(
+    'UPDATE conversas SET menu_enviado_em = now() WHERE id = $1 AND tenant_id = $2',
+    [conversaRow.id, tenantId]
+  );
+  conversaRow.menu_enviado_em = new Date();
+  console.log(`[Menu] enviado tenant=${tenantId} conversa=${conversaRow.id}`);
+}
+
+/**
+ * Interpreta a resposta do cidadão ao menu. Devolve true quando consumiu a
+ * mensagem — o chamador então não aciona Iris/chatbot, senão o "4" viraria
+ * assunto para a IA e o encaminhamento se perderia.
+ */
+async function tratarEscolhaMenu(tenantId, { conversaRow, jid, texto }, io, wa) {
+  if (!conversaRow.menu_enviado_em) return false;
+  if (conversaRow.operador_id) return false;
+  if (Date.now() - new Date(conversaRow.menu_enviado_em).getTime() > MENU_VALIDADE_MS) return false;
+
+  const escolha = interpretarEscolhaMenu(texto);
+  if (escolha === null) return false;
+
+  const menu = await carregarMenuDepartamentos(tenantId);
+  if (!menu) return false;
+
+  const destino = menu.departamentos.find((d) => d.menu_numero === escolha);
+  if (!destino) {
+    await enviarMensagemSistema(tenantId, {
+      conversaId: conversaRow.id,
+      jid,
+      texto: montarMenuDepartamentos({ ...menu, cabecalho: MENSAGEM_OPCAO_INVALIDA }),
+    }, io, wa);
+    return true;
+  }
+
+  // Mesmo destino do encaminhamento manual: fila do setor, sem dono.
+  await db.none(
+    `UPDATE conversas
+        SET departamento_id = $1, operador_id = NULL,
+            status = 'fila', status_operacional = 'NA_FILA',
+            menu_enviado_em = NULL
+      WHERE id = $2 AND tenant_id = $3`,
+    [destino.id, conversaRow.id, tenantId]
+  );
+  conversaRow.departamento_id = destino.id;
+  conversaRow.menu_enviado_em = null;
+
+  await enviarMensagemSistema(tenantId, {
+    conversaId: conversaRow.id,
+    jid,
+    texto: `Pronto! Sua mensagem foi encaminhada para ${destino.nome}. Em breve você será atendido.`,
+  }, io, wa);
+
+  console.log(`[Menu] conversa=${conversaRow.id} encaminhada para ${destino.nome} (opção ${escolha})`);
+  return true;
+}
+
+// Cooldown do aviso de chamada, por órgão e por número. Quem liga e cai
+// costuma insistir várias vezes seguidas; sem isso o cidadão receberia o mesmo
+// texto a cada toque e o painel encheria de mensagens repetidas.
+const AVISO_CHAMADA_COOLDOWN_MS = 30 * 60 * 1000;
+const avisosChamadaEnviados = new Map();
+
+function podeAvisarChamada(chave) {
+  const agora = Date.now();
+  // O backend fica semanas no ar: limpa o que já venceu antes de crescer.
+  if (avisosChamadaEnviados.size > 500) {
+    for (const [k, ts] of avisosChamadaEnviados) {
+      if (agora - ts > AVISO_CHAMADA_COOLDOWN_MS) avisosChamadaEnviados.delete(k);
+    }
+  }
+  const ultimo = avisosChamadaEnviados.get(chave);
+  if (ultimo && agora - ultimo < AVISO_CHAMADA_COOLDOWN_MS) return false;
+  avisosChamadaEnviados.set(chave, agora);
+  return true;
+}
+
+// Recusa a ligação e responde ao cidadão com o telefone do órgão.
+async function tratarChamadaRecebida(tenantId, call, io, wa) {
+  const jid = call.from;
+  if (!jid) return;
+
+  const cfg = await db.oneOrNone(
+    `SELECT c.chamadas_recusar_ativo, c.chamadas_nome_exibicao, c.chamadas_telefone,
+            c.chamadas_mensagem, t.nome AS tenant_nome, s.numero AS numero_sessao
+       FROM tenants t
+       LEFT JOIN tenant_config c ON c.tenant_id = t.id
+       LEFT JOIN whatsapp_sessoes s ON s.tenant_id = t.id
+      WHERE t.id = $1`,
+    [tenantId]
+  );
+  // Sem linha em tenant_config o órgão ainda não abriu as configurações — e é
+  // exatamente ali que o telefone toca à toa. Só não recusa quem desligou.
+  if (cfg?.chamadas_recusar_ativo === false) return;
+
+  try {
+    await wa.rejectCall(tenantId, call.id, jid);
+    console.log(`[Chamada] recusada tenant=${tenantId} de=${jid} video=${!!call.isVideo}`);
+  } catch (err) {
+    console.error(`[Chamada] falha ao recusar (tenant=${tenantId}):`, err.message);
+    // Segue para o aviso mesmo assim: a ligação pode ter caído sozinha e o
+    // cidadão continua sem saber por que ninguém atendeu.
+  }
+
+  const telefone = jidEhLid(jid) ? null : jid.split('@')[0];
+
+  // Número bloqueado pelo órgão: a chamada cai, mas ninguém recebe resposta.
+  if (telefone) {
+    let phoneE164;
+    try { phoneE164 = normalizePhone(telefone).phoneE164; } catch { phoneE164 = `+${telefone.replace(/\D/g, '')}`; }
+    const bloqueado = await db.oneOrNone(
+      `SELECT id FROM contatos_bloqueados
+        WHERE tenant_id = $1 AND ativo = true
+          AND (phone_e164 = $2 OR telefone = $3)
+          AND (expira_em IS NULL OR expira_em > now())`,
+      [tenantId, phoneE164, telefone.replace(/\D/g, '')]
+    );
+    if (bloqueado) return;
+  }
+
+  if (!podeAvisarChamada(`${tenantId}:${jid}`)) return;
+
+  const orgao = resolverNomeOrgao({
+    nomeExibicao: cfg?.chamadas_nome_exibicao,
+    nomeTenant: cfg?.tenant_nome,
+  });
+  const telefoneOrgao = resolverTelefoneOrgao({
+    telefoneConfigurado: cfg?.chamadas_telefone,
+    numeroSessao: cfg?.numero_sessao,
+  });
+  // Sem telefone o aviso mandaria o cidadão ligar para lugar nenhum ("📞" solto).
+  // A chamada já foi recusada; melhor calar do que orientar errado.
+  if (!telefoneOrgao) {
+    console.warn(`[Chamada] aviso não enviado (tenant=${tenantId}): sem telefone configurado nem número de sessão`);
+    return;
+  }
+
+  const texto = montarMensagemChamada({
+    template: cfg?.chamadas_mensagem,
+    orgao,
+    telefone: telefoneOrgao,
+  });
+
+  // O WhatsApp entrega a chamada com JID @lid, que não é telefone. O alias
+  // gravado por conversas anteriores leva ao contato real: sem consultá-lo, a
+  // ligação abre um contato duplicado — sem nome nem número — e o aviso não
+  // aparece na conversa que o atendente já conhece.
+  let contatoRow = await db.oneOrNone(
+    `SELECT c.id
+       FROM contato_aliases a
+       JOIN contatos c ON c.id = a.contato_id
+      WHERE a.tenant_id = $1 AND a.alias_jid = $2`,
+    [tenantId, jid]
+  );
+
+  // Sem alias, tenta pelo próprio número (chamada que já veio como telefone),
+  // cobrindo a variação do nono dígito.
+  if (!contatoRow && telefone) {
+    const digits = normalizarTelefoneWhatsApp(telefone);
+    if (digits) {
+      const variantes = variantesTelefoneBrasil(digits);
+      contatoRow = await db.oneOrNone(
+        `SELECT co.id
+           FROM contatos co
+           LEFT JOIN conversas c ON c.contato_id = co.id
+          WHERE co.tenant_id = $1
+            AND (co.telefone = ANY($2) OR co.wa_jid = ANY($3))
+          ORDER BY CASE WHEN c.status IN ('aberta', 'fila') THEN 0 ELSE 1 END,
+                   c.ultima_mensagem_em DESC NULLS LAST
+          LIMIT 1`,
+        [tenantId, variantes, variantes.map((n) => `${n}@s.whatsapp.net`)]
+      );
+    }
+  }
+
+  // Cidadão que nunca escreveu: aí sim nasce um contato, com o que se tem.
+  if (!contatoRow) {
+    contatoRow = await db.one(
+      `INSERT INTO contatos (tenant_id, wa_jid, telefone)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (tenant_id, wa_jid) DO UPDATE
+         SET telefone = COALESCE(EXCLUDED.telefone, contatos.telefone)
+       RETURNING id`,
+      [tenantId, jid, telefone]
+    );
+  }
+
+  // Abre (ou reaproveita) a conversa para que a tentativa de ligação fique
+  // visível no painel — senão o atendente nunca fica sabendo que o cidadão
+  // tentou falar. Entra como 'fila'/'NOVA', igual a uma mensagem recebida.
+  const resumo = '[Chamada recusada]';
+  const conversaRow = await db.one(
+    `INSERT INTO conversas (tenant_id, contato_id, status, status_operacional, nao_lidas, ultima_mensagem, ultima_mensagem_em)
+     VALUES ($1, $2, 'fila', 'NOVA', 0, $3, now())
+      ON CONFLICT (tenant_id, contato_id) WHERE deleted_at IS NULL DO UPDATE
+        SET ultima_mensagem = $3, ultima_mensagem_em = now()
+     RETURNING id`,
+    [tenantId, contatoRow.id, resumo]
+  );
+
+  const entregue = await enviarMensagemSistema(tenantId, {
+    conversaId: conversaRow.id,
+    jid,
+    texto,
+    registro: `📞 ${call.isVideo ? 'Chamada de vídeo' : 'Chamada'} recusada — aviso enviado:\n\n${texto}`,
+  }, io, wa);
+
+  // Cidadão que não recebeu nada merece nova chance no próximo toque.
+  if (!entregue) avisosChamadaEnviados.delete(`${tenantId}:${jid}`);
+}
+
+function extrairConteudoMensagem(message) {
+  let atual = message;
+  for (let i = 0; i < 5; i++) {
+    if (!atual) return atual;
+    if (atual.ephemeralMessage?.message) {
+      atual = atual.ephemeralMessage.message;
+      continue;
+    }
+    if (atual.viewOnceMessage?.message) {
+      atual = atual.viewOnceMessage.message;
+      continue;
+    }
+    if (atual.viewOnceMessageV2?.message) {
+      atual = atual.viewOnceMessageV2.message;
+      continue;
+    }
+    if (atual.documentWithCaptionMessage?.message) {
+      atual = atual.documentWithCaptionMessage.message;
+      continue;
+    }
+    if (atual.editedMessage?.message?.protocolMessage?.editedMessage) {
+      atual = atual.editedMessage.message.protocolMessage.editedMessage;
+      continue;
+    }
+    return atual;
+  }
+  return atual;
+}
+
+// `ultimo_visto` é atualizado nos dois sentidos: ao conectar vira o marco inicial
+// do sinal de vida (renovado pelo heartbeat), ao desconectar vira o "visto por
+// último". Quem lê presença confia na dupla online + ultimo_visto recente, então
+// uma queda do processo não deixa ninguém eternamente "online".
+async function _setOnline(tenantId, operadorId, online) {
+  await db.none(
+    `UPDATE operadores SET online = $1, ultimo_visto = now()
+     WHERE id = $2 AND tenant_id = $3`,
+    [online, operadorId, tenantId]
+  );
+}
+
+// Map<operadorId, tenantId> -> [[tenantId, [operadorId, ...]], ...]
+function agruparPorTenant(conectados) {
+  const porTenant = new Map();
+  for (const [opId, tenantId] of conectados) {
+    if (!porTenant.has(tenantId)) porTenant.set(tenantId, []);
+    porTenant.get(tenantId).push(opId);
+  }
+  return porTenant;
+}
+
+async function _auditar(tenantId, operadorId, acao, detalhe) {
+  try {
+    // Quando a ação é sobre uma conversa, gravamos também entidade/entidade_id:
+    // é assim que o histórico de movimentações encontra os registros sem varrer
+    // o JSON de todo o tenant.
+    const conversaId = detalhe?.conversaId || null;
+    await db.none(
+      `INSERT INTO auditoria (tenant_id, operador_id, acao, detalhe, entidade, entidade_id, criado_em)
+       VALUES ($1, $2, $3, $4, $5, $6, now())`,
+      [tenantId, operadorId, acao, detalhe, conversaId ? 'conversa' : null, conversaId]
+    );
+  } catch (err) {
+    console.error('[Auditoria] Error:', err.message);
+  }
+}

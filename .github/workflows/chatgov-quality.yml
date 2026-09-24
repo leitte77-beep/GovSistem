@@ -1,0 +1,79 @@
+name: ChatGov quality
+
+on:
+  pull_request:
+    paths:
+      - "modulo-chatgov/backend/**"
+      - "modulo-chatgov/frontend/**"
+      - "modulo-chatgov/scripts/**"
+      - ".github/workflows/chatgov-quality.yml"
+  push:
+    branches: ["dev", "develop"]
+  workflow_dispatch:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: chatgov_ci
+          POSTGRES_USER: chatgov_ci
+          POSTGRES_PASSWORD: chatgov_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U chatgov_ci -d chatgov_ci"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      NODE_ENV: development
+      PORT: 3050
+      DATABASE_URL: postgres://chatgov_ci:chatgov_ci@127.0.0.1:5432/chatgov_ci
+      JWT_SECRETS: chatgov-ci-secret-with-at-least-32-characters
+      JWT_SECRET: chatgov-ci-secret-with-at-least-32-characters
+      ENABLE_DEV_E2E_AUTH: "true"
+      ENABLE_DEV_SAAS_AUTH: "true"
+      VITE_ENABLE_SAAS_LOGIN: "true"
+      CHATGOV_E2E_URL: http://127.0.0.1:5173
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            modulo-chatgov/backend/package-lock.json
+            modulo-chatgov/frontend/package-lock.json
+      - name: Backend
+        working-directory: modulo-chatgov/backend
+        run: |
+          npm ci
+          npm test
+          npm audit --audit-level=high
+      - name: Frontend
+        working-directory: modulo-chatgov/frontend
+        run: |
+          npm ci
+          npm run build
+          npm audit --audit-level=high
+          npx playwright install --with-deps chromium firefox webkit
+      - name: Iniciar aplicação de teste
+        working-directory: modulo-chatgov
+        run: |
+          (cd backend && node src/index.js > /tmp/chatgov-backend.log 2>&1 &)
+          (cd frontend && npm run dev -- --host 127.0.0.1 > /tmp/chatgov-frontend.log 2>&1 &)
+          for i in {1..30}; do curl -fsS http://127.0.0.1:3050/health && break; sleep 1; done
+          for i in {1..30}; do curl -fsS http://127.0.0.1:5173/ && break; sleep 1; done
+      - name: E2E multibrowser
+        working-directory: modulo-chatgov/frontend
+        run: npm run test:e2e
+      - name: Logs em caso de falha
+        if: failure()
+        run: |
+          tail -n 200 /tmp/chatgov-backend.log || true
+          tail -n 200 /tmp/chatgov-frontend.log || true
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-results
+          path: modulo-chatgov/frontend/test-results

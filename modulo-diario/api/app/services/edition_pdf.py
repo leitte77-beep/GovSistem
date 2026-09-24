@@ -1,0 +1,831 @@
+"""PDF generation for editions - single source of truth."""
+
+import base64
+import io
+import logging
+import os
+import re
+import uuid
+from pathlib import Path
+from urllib.parse import unquote, urlsplit
+
+from jinja2 import Environment, FileSystemLoader
+from pypdf import PdfReader
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+
+from app.core.config import settings
+from app.core.database import get_sync_db
+from app.document_model.body_html import DOCUMENT_BODY_CSS
+from app.models.enums import EditionStatus
+from app.semantic.snapshot import verify_snapshot
+from app.services.pdf_utils import compute_hash, format_date
+from app.services.publication_title import display_title
+
+TEMPLATE_DIR = Path(__file__).parent.parent / "templates" / "pdf"
+LAYOUTS_DIR = TEMPLATE_DIR / "layouts"
+OUTPUT_DIR = Path(settings.UPLOAD_DIR)
+AVAILABLE_LAYOUTS = ["classico", "moderno", "minimalista"]
+WEEKDAYS_PT = [
+    "SEGUNDA-FEIRA", "TERCA-FEIRA", "QUARTA-FEIRA", "QUINTA-FEIRA",
+    "SEXTA-FEIRA", "SABADO", "DOMINGO",
+]
+MONTHS_PT_UPPER = [
+    "JANEIRO", "FEVEREIRO", "MARCO", "ABRIL", "MAIO", "JUNHO",
+    "JULHO", "AGOSTO", "SETEMBRO", "OUTUBRO", "NOVEMBRO", "DEZEMBRO",
+]
+MATTER_IMAGE_URL_RE = re.compile(
+    r'<img\s+src="https?://[^"/]+(?:/[^"/]*)*/matter-content/'
+    r'([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12})/'
+    r'(page_[0-9]+\.(?:png|jpg|jpeg))"'
+)
+
+logger = logging.getLogger(__name__)
+
+
+def _path_is_within(path: Path, root: Path) -> bool:
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
+
+
+def _check_allowed_url(url: str) -> None:
+    """Allow embedded data and trusted local PDF assets; deny network fetches."""
+    parsed = urlsplit(url)
+    if parsed.scheme == "data":
+        return
+    if parsed.scheme != "file":
+        raise ValueError(f"External resource blocked while rendering PDF: {parsed.scheme}")
+
+    requested = Path(unquote(parsed.path)).resolve()
+    allowed_roots = (
+        TEMPLATE_DIR.resolve(),
+        (Path(settings.UPLOAD_DIR).resolve() / "matter-content").resolve(),
+    )
+    if not any(_path_is_within(requested, root) for root in allowed_roots):
+        raise ValueError("Local resource outside trusted PDF directories")
+
+
+try:  # WeasyPrint >= 68 exposes the URLFetcher class (default_url_fetcher removed in 70).
+    from weasyprint.urls import URLFetcher as _WeasyPrintURLFetcher
+except ImportError:  # pragma: no cover - older WeasyPrint (< 68)
+    _WeasyPrintURLFetcher = None
+
+
+if _WeasyPrintURLFetcher is not None:
+
+    class _RestrictedURLFetcher(_WeasyPrintURLFetcher):
+        """Restrict WeasyPrint resource loading to trusted local assets."""
+
+        def fetch(self, url, headers=None):
+            _check_allowed_url(url)
+            return super().fetch(url, headers=headers)
+
+    _restricted_url_fetcher = _RestrictedURLFetcher()
+
+else:  # pragma: no cover - older WeasyPrint (< 68) used a plain callable.
+
+    def _restricted_url_fetcher(url):  # type: ignore[misc]
+        from weasyprint import default_url_fetcher  # type: ignore[attr-defined]
+
+        _check_allowed_url(url)
+        return default_url_fetcher(url)
+
+
+def _localize_matter_images(content_html: str) -> str:
+    root = (Path(settings.UPLOAD_DIR).resolve() / "matter-content").resolve()
+
+    def replace(match: re.Match[str]) -> str:
+        image_path = (root / match.group(1) / match.group(2)).resolve()
+        if not _path_is_within(image_path, root):
+            raise ValueError("Matter image resolved outside trusted storage")
+        return f'<img src="{image_path.as_uri()}"'
+
+    return MATTER_IMAGE_URL_RE.sub(replace, content_html)
+
+
+def _institution_context(organization) -> dict:
+    """Institutional identity for the per-page header/footer.
+
+    The legal act must carry the municipality's identity on every page, so the
+    address/CNPJ/phone are rendered together with (not instead of) the
+    authenticity/verification block. Fields that are not configured are simply
+    omitted; nothing is invented.
+    """
+    if organization is None:
+        return {"name": "", "address": "", "cnpj": "", "contact": ""}
+
+    address_parts = [
+        organization.address_street,
+        organization.address_number,
+        organization.address_district,
+        organization.address_city,
+        organization.state,
+    ]
+    address = ", ".join(str(p).strip() for p in address_parts if p and str(p).strip())
+    postal = (organization.address_postal_code or "").strip()
+    if postal:
+        address = f"{address} — CEP {postal}" if address else f"CEP {postal}"
+
+    contact_parts = []
+    if organization.phone:
+        contact_parts.append(f"Tel: {organization.phone}")
+    if organization.email:
+        contact_parts.append(str(organization.email))
+    if organization.site:
+        contact_parts.append(str(organization.site))
+
+    return {
+        "name": organization.name or "",
+        "address": address,
+        "cnpj": organization.cnpj or "",
+        "contact": " · ".join(contact_parts),
+    }
+
+
+def _resolve_logo_uri(organization, template_dir: Path) -> str:
+    """Per-tenant coat of arms, falling back to the bundled brasão.
+
+    Accepts only safe sources: ``data:image/*`` and local files inside the
+    uploads directory. External URLs are ignored (the PDF fetcher blocks
+    network access), so a misconfigured tenant never breaks PDF generation.
+    """
+    fallback = (template_dir / "brasao.png").as_uri()
+    if organization is None:
+        return fallback
+    layout = getattr(organization, "institutional_layout", None) or {}
+    candidate = None
+    if isinstance(layout, dict):
+        candidate = layout.get("coat_of_arms_url") or layout.get("logo_url")
+    candidate = candidate or getattr(organization, "logo_url", None)
+    if not candidate:
+        return fallback
+    candidate = str(candidate).strip()
+    if candidate.startswith("data:image/"):
+        return candidate
+    if candidate.startswith("file://"):
+        return candidate
+    try:
+        parsed = urlsplit(candidate)
+        path = parsed.path if parsed.scheme else candidate
+        if not path:
+            return fallback
+        local = Path(unquote(path))
+        if not local.is_absolute():
+            local = Path(settings.UPLOAD_DIR) / local
+        resolved = local.resolve()
+        uploads = Path(settings.UPLOAD_DIR).resolve()
+        if _path_is_within(resolved, uploads) and resolved.exists():
+            return resolved.as_uri()
+    except Exception:  # noqa: BLE001 - never fail the edition over a logo
+        return fallback
+    return fallback
+
+
+def _normalize_for_summary(value: str) -> str:
+    return re.sub(r"\s+", " ", value or "").strip().casefold()
+
+
+def _summary_metadata(title: str, act_type: str, org_unit: str, section_title: str | None) -> str:
+    title_normalized = _normalize_for_summary(title)
+    metadata_parts = []
+
+    for item in [act_type, org_unit, section_title or ""]:
+        item = (item or "").strip()
+        if not item:
+            continue
+
+        if item == act_type and title_normalized.startswith(_normalize_for_summary(item)):
+            continue
+
+        metadata_parts.append(item)
+
+    return " • ".join(metadata_parts)
+
+
+def _render_semantic_content(item: dict) -> str | None:
+    """Render a frozen semantic document with the SAME renderer used publicly.
+
+    When a snapshot item carries a canonical ``semantic`` document, the PDF must
+    derive from it — not from a separately stored ``content_html`` — so the
+    official PDF and the public HTML can never diverge. Returns ``None`` when
+    there is no semantic document (legacy matters fall back to ``content_html``).
+    """
+    semantic = item.get("semantic")
+    if not semantic:
+        return None
+    try:
+        from app.semantic.renderer import render_document
+        from app.semantic.schemas import SemanticDocument
+        from app.semantic.templates import default_config_for
+
+        doc = SemanticDocument.model_validate(semantic)
+        try:
+            config = default_config_for(doc.document_type or "outros")
+        except Exception:  # noqa: BLE001 - unknown type: render with defaults
+            config = None
+        return render_document(
+            doc,
+            config,
+            media="print",
+            include_style=True,
+            include_page_rules=False,
+            # The PDF template already prints <h2 class="matter-title">.
+            include_title=False,
+        )
+    except Exception:  # noqa: BLE001 - never fail the edition on render
+        logger.warning(
+            "Semantic render failed for snapshot item %s; falling back to legacy content_html",
+            item.get("id"),
+            exc_info=True,
+        )
+        return None
+
+
+def _item_has_large_table(item: dict) -> bool:
+    """Whether an item needs a clean page start for an extended table.
+
+    A long procurement/accounting table is difficult to attribute when it
+    begins below the preceding act's signature and then continues for pages.
+    This is deliberately selective: ordinary short matters still share a
+    page, as required by the editorial flow.
+    """
+    semantic = item.get("semantic") or {}
+    for block in semantic.get("blocks", []) if isinstance(semantic, dict) else []:
+        if block.get("type") != "table":
+            continue
+        if len(block.get("rows") or []) >= 12:
+            return True
+        if len(block.get("headers") or []) >= 8:
+            return True
+    # Legacy HTML has no structured rows. A conservative row count avoids
+    # applying a page break to ordinary layout tables.
+    return (item.get("content_html") or "").lower().count("<tr") >= 13
+
+
+def _save_to_storage(
+    filename: str, content: bytes, tenant_slug: str | None = None
+) -> str:
+    """Persist the unsigned PDF, tenant-isolated when configured.
+
+    ``read_public_file`` resolves ``base/{tenant}/pdf/{filename}``, so writing
+    there keeps the download working while preventing cross-tenant reads of the
+    raw (pre-signature) file.
+    """
+    target_dir = OUTPUT_DIR
+    if settings.STORAGE_TENANT_ISOLATION and tenant_slug:
+        target_dir = OUTPUT_DIR / tenant_slug / "pdf"
+    os.makedirs(str(target_dir), exist_ok=True)
+    path = str(target_dir / filename)
+    with open(path, "wb") as f:
+        f.write(content)
+    return filename
+
+
+def _keep_rules_css() -> str:
+    """Editorial keep rules (typographic orphans/widows + atomic elements).
+
+    Professional typesetting never leaves a title alone at the bottom of a page,
+    splits a signature, or cuts a table row. WeasyPrint honors these CSS Paged
+    Media properties deterministically for identical input.
+    """
+    before = max(int(getattr(settings, "PDF_MIN_LINES_BEFORE_BREAK", 2) or 2), 1)
+    after = max(int(getattr(settings, "PDF_MIN_LINES_AFTER_BREAK", 2) or 2), 1)
+    return f"""
+    p, li, .doe-document p {{ orphans: {before}; widows: {after}; }}
+    .matter-title {{ break-after: avoid-page; page-break-after: avoid; }}
+    .matter-title + .matter-summary,
+    .matter-title + .matter-content {{ break-before: avoid-page; page-break-before: avoid; }}
+    .doe-block--signature, .doe-signature, .doc-signature {{
+        break-inside: avoid; page-break-inside: avoid;
+    }}
+    .matter-content img, .doe-document img {{ break-inside: avoid; page-break-inside: avoid; }}
+    table {{ break-inside: auto; }}
+    thead {{ display: table-header-group; }}
+    tr {{ break-inside: avoid; page-break-inside: avoid; }}
+    """
+
+
+def _institutional_css(organization) -> str:
+    """Apply the tenant's master layout (fonts, margins, colors) to the PDF.
+
+    The Diário keeps a single graphic standard: the operator never changes the
+    font/size/colour per matter. Only the explicitly configured institutional
+    layout is applied; nothing is invented when it is absent.
+    """
+    layout = getattr(organization, "institutional_layout", None)
+    if not isinstance(layout, dict) or not layout:
+        return ""
+    try:
+        from app.document_model.layout import DocumentLayout
+
+        doc = DocumentLayout.model_validate(layout)
+    except Exception:  # noqa: BLE001 - never fail the edition over a layout
+        logger.warning("Invalid institutional_layout; ignoring", exc_info=True)
+        return ""
+
+    m = doc.margins
+    orientation = "" if doc.orientation == "portrait" else f" {doc.orientation}"
+    body = doc.body_font
+    return f"""
+    @page {{
+        size: {doc.page_size}{orientation};
+        margin: {m.top}mm {m.right}mm {m.bottom}mm {m.left}mm;
+    }}
+    body, .doc-body, .doe-document, .doe-document p, .matter-content {{
+        font-family: "{body.family}", "Times New Roman", serif;
+        font-size: {body.size}pt;
+        line-height: {body.line_height};
+        color: {body.color};
+    }}
+    .document {{ background: {doc.background_color}; }}
+    .document h1, .document h2, .document h3, .doe-block--heading {{ color: {doc.accent_color}; }}
+    """
+
+
+def _qr_data_uri(url: str) -> str:
+    """Generate the verification QR locally; no citizen data reaches a third party."""
+    import qrcode
+
+    image = qrcode.make(url)
+    output = io.BytesIO()
+    image.save(output, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(output.getvalue()).decode("ascii")
+
+
+def _render_publication_pdf(
+    *,
+    edition,
+    items: list[dict],
+    content_manifest_hash: str,
+    template_dir: Path,
+    organ_name: str | None,
+    verification_base_url: str,
+    verification_code: str,
+    organization,
+    preliminary: bool = False,
+) -> bytes:
+    """Render the edition PDF from a canonical manifest item list.
+
+    This is the single composition/rendering path shared by the official edition
+    and the pre-publication preview. ``items`` must be manifest dicts (the same
+    shape stored in the publication snapshot).
+    """
+    sections_map: dict[str, list] = {}
+    for item in sorted(items, key=lambda i: i["position"]):
+        section_key = item.get("section_title") or "Geral"
+        sections_map.setdefault(section_key, [])
+        semantic_html = _render_semantic_content(item)
+        if semantic_html is not None:
+            content_html = semantic_html
+        else:
+            content_html = item.get("content_html") or ""
+        content_html = _localize_matter_images(content_html)
+        sections_map[section_key].append({
+            "id": item["id"],
+            "title": display_title(item),
+            "summary": None if semantic_html is not None else item.get("summary"),
+            "content_html": content_html,
+            "act_type": (item.get("metadata") or {}).get("act_type_name", ""),
+            "org_unit": (item.get("metadata") or {}).get("org_unit_name", ""),
+            "author": (item.get("responsible") or {}).get("name", ""),
+            "is_pdf_image_content": (
+                "matter-content" in content_html and "<img" in content_html.lower()
+            ),
+            "has_large_table": _item_has_large_table(item),
+        })
+
+    sections = [
+        {"title": key if key != "Geral" else None, "matters": matters}
+        for key, matters in sections_map.items()
+    ]
+    summary_items = []
+    for section in sections:
+        for matter in section["matters"]:
+            summary_items.append({
+                "id": matter["id"],
+                "anchor": f"matter-{matter['id']}",
+                "title": matter["title"],
+                "section_title": section["title"],
+                "metadata": _summary_metadata(
+                    matter["title"],
+                    matter["act_type"],
+                    matter["org_unit"],
+                    section["title"],
+                ),
+                "position": len(summary_items) + 1,
+            })
+
+    type_labels = {"normal": "Normal", "extra": "Extra", "suplementar": "Suplementar"}
+    institution = _institution_context(organization)
+    env = Environment(loader=FileSystemLoader(str(template_dir)))
+    template = env.get_template("edition.html")
+    css_path = str(template_dir / "edition.css")
+    logo_uri = _resolve_logo_uri(organization, template_dir)
+
+    def _render_html(total_pages: str = "") -> str:
+        verification_target = f"{verification_base_url.rstrip('/')}/{verification_code}"
+        return template.render(
+            organ_name=organ_name,
+            edition=edition,
+            edition_type_label=type_labels.get(edition.type, "Normal"),
+            publication_date=format_date(edition.publication_date),
+            header_date=(
+                f"{WEEKDAYS_PT[edition.publication_date.weekday()]}, "
+                f"{edition.publication_date.day:02d} DE "
+                f"{MONTHS_PT_UPPER[edition.publication_date.month - 1]} DE "
+                f"{edition.publication_date.year}"
+            ),
+            edition_year_label=f"ANO: {edition.year}",
+            logo_path=logo_uri,
+            verification_code=verification_code,
+            is_preliminary=preliminary,
+            verification_url=verification_base_url,
+            summary_items=summary_items,
+            sections=sections,
+            css_path=css_path,
+            extra_css=DOCUMENT_BODY_CSS + _keep_rules_css() + _institutional_css(organization),
+            total_pages=total_pages,
+            total_matters=len(summary_items),
+            qr_code_uri=_qr_data_uri(verification_target),
+            institution=institution,
+            content_manifest_hash=content_manifest_hash,
+        )
+
+    from weasyprint import CSS, HTML  # noqa: N811
+
+    pdf_bytes = HTML(
+        string=_render_html(),
+        base_url=str(template_dir),
+        url_fetcher=_restricted_url_fetcher,
+    ).write_pdf(stylesheets=[CSS(filename=css_path)])
+
+    total_pages = str(len(PdfReader(io.BytesIO(pdf_bytes)).pages))
+    pdf_bytes = HTML(
+        string=_render_html(total_pages=total_pages),
+        base_url=str(template_dir),
+        url_fetcher=_restricted_url_fetcher,
+    ).write_pdf(stylesheets=[CSS(filename=css_path)])
+
+    final_page_count = len(PdfReader(io.BytesIO(pdf_bytes)).pages)
+    if final_page_count != int(total_pages):
+        total_pages = str(final_page_count)
+        pdf_bytes = HTML(
+            string=_render_html(total_pages=total_pages),
+            base_url=str(template_dir),
+            url_fetcher=_restricted_url_fetcher,
+        ).write_pdf(stylesheets=[CSS(filename=css_path)])
+        if len(PdfReader(io.BytesIO(pdf_bytes)).pages) != int(total_pages):
+            raise ValueError("PDF pagination did not converge")
+
+    return pdf_bytes
+
+
+def _record_artifact(
+    db,
+    *,
+    snapshot_id,
+    artifact_type: str,
+    storage_path: str,
+    sha256: str,
+    size_bytes: int,
+    renderer: str | None = None,
+    renderer_version: str | None = None,
+    mime_type: str = "application/pdf",
+    is_preview: bool = False,
+) -> None:
+    """Upsert the immutable artifact registry entry for a snapshot."""
+    from datetime import datetime, timezone
+
+    from app.models.publication_artifact import PublicationArtifact
+
+    existing = db.execute(
+        select(PublicationArtifact).where(
+            PublicationArtifact.snapshot_id == snapshot_id,
+            PublicationArtifact.artifact_type == artifact_type,
+        )
+    ).scalar_one_or_none()
+    now = datetime.now(timezone.utc)
+    if existing is None:
+        db.add(PublicationArtifact(
+            snapshot_id=snapshot_id,
+            artifact_type=artifact_type,
+            storage_path=storage_path,
+            sha256=sha256,
+            size_bytes=size_bytes,
+            mime_type=mime_type,
+            generated_at=now,
+            renderer=renderer,
+            renderer_version=renderer_version,
+            validation_status="ok",
+            is_preview=is_preview,
+        ))
+    else:
+        existing.storage_path = storage_path
+        existing.sha256 = sha256
+        existing.size_bytes = size_bytes
+        existing.generated_at = now
+        existing.validation_status = "ok"
+
+
+def _resolve_item_page_numbers(pdf_bytes: bytes) -> dict[str, int]:
+    """Map ``matter-<edition_item_id>`` anchors to 1-based page numbers."""
+    pages: dict[str, int] = {}
+    try:
+        reader = PdfReader(io.BytesIO(pdf_bytes))
+        for name, dest in (reader.named_destinations or {}).items():
+            try:
+                page_index = reader.get_destination_page_number(dest)
+            except Exception:  # noqa: BLE001 - a malformed dest must not fail
+                continue
+            pages[str(name)] = page_index + 1
+    except Exception:  # noqa: BLE001 - page numbering is best-effort
+        logger.warning("Could not resolve edition item page numbers", exc_info=True)
+    return pages
+
+
+def generate_edition_pdf_sync(
+    edition_id: str,
+    organ_name: str | None = None,
+    verification_base_url: str | None = None,
+    layout: str = "classico",
+) -> dict:
+    if not verification_base_url:
+        verification_base_url = settings.VERIFICATION_BASE_URL
+
+    db = get_sync_db()
+
+    if layout not in AVAILABLE_LAYOUTS:
+        layout = "classico"
+
+    template_dir = LAYOUTS_DIR / layout
+    if not template_dir.exists():
+        template_dir = LAYOUTS_DIR / "classico"
+    try:
+        from app.models.edition import Edition
+        from app.models.edition_item import EditionItem
+        from app.models.edition_publication_snapshot import EditionPublicationSnapshot
+
+        result = db.execute(
+            select(Edition)
+            .where(Edition.id == uuid.UUID(edition_id))
+            .options(
+                selectinload(Edition.items).selectinload(EditionItem.matter),
+                selectinload(Edition.organization),
+            )
+        )
+        edition = result.scalar_one_or_none()
+        if edition is None:
+            raise ValueError(f"Edition {edition_id} not found")
+
+        if organ_name is None:
+            organ_name = edition.organization.name
+
+        if not edition.verification_code:
+            edition.generate_verification_code()
+
+        verification_code = edition.verification_code
+        db.commit()
+
+        snapshot = db.execute(
+            select(EditionPublicationSnapshot)
+            .where(
+                EditionPublicationSnapshot.edition_id == edition.id,
+                EditionPublicationSnapshot.is_valid.is_(True),
+            )
+            .order_by(EditionPublicationSnapshot.frozen_at.desc())
+            .limit(1)
+        ).scalar_one_or_none()
+        if snapshot is None:
+            raise ValueError("Canonical publication snapshot is required before PDF generation")
+        snapshot_ok, snapshot_reason = verify_snapshot(snapshot.content)
+        if not snapshot_ok:
+            raise ValueError(f"Invalid canonical publication snapshot: {snapshot_reason}")
+        verified_manifest_hash = snapshot.content["content_manifest_hash"]
+        if (
+            snapshot.content_manifest_hash
+            and snapshot.content_manifest_hash != verified_manifest_hash
+        ):
+            raise ValueError("Snapshot manifest hash column differs from verified content")
+
+        pdf_bytes = _render_publication_pdf(
+            edition=edition,
+            items=snapshot.content.get("items", []),
+            content_manifest_hash=verified_manifest_hash,
+            template_dir=template_dir,
+            organ_name=organ_name,
+            verification_base_url=verification_base_url,
+            verification_code=verification_code,
+            organization=edition.organization,
+        )
+
+        # ── PDF Inspector ────────────────────────────────────────────────
+        # The generated PDF is re-opened and inspected. An official edition
+        # fails closed: every matter in the snapshot MUST resolve to a real
+        # page (anchor), otherwise the sumário page numbers would be a promise
+        # we cannot keep.
+        from app.services.edition_pdf_inspector import inspect_edition_pdf
+
+        expected_matter_ids = [str(item.matter_id) for item in (edition.items or [])]
+        report = inspect_edition_pdf(
+            pdf_bytes,
+            expected_matter_ids=expected_matter_ids,
+            expect_signature=False,
+        )
+        page_numbers = report.get("page_number_by_anchor", {})
+        for item in edition.items or []:
+            # Anchors are keyed by the matter id (the snapshot item id).
+            page = page_numbers.get(f"matter-{item.matter_id}")
+            if page is not None:
+                item.page_number = page
+
+        if not report["ok"]:
+            messages = "; ".join(e["message"] for e in report["errors"])
+            raise ValueError(f"PDF inspection failed: {messages}")
+
+        missing_pages = [
+            str(item.matter_id) for item in (edition.items or [])
+            if item.page_number is None
+        ]
+        if missing_pages:
+            raise ValueError(
+                "PDF inspection failed: matérias sem página resolvida: "
+                + ", ".join(missing_pages)
+            )
+
+        pdf_hash = compute_hash(pdf_bytes)
+        filename = f"edition_{edition.year}_{edition.number}_{uuid.uuid4().hex[:8]}.pdf"
+        tenant_slug = getattr(edition.organization, "slug", None)
+        _save_to_storage(filename, pdf_bytes, tenant_slug=tenant_slug)
+
+        _record_artifact(
+            db,
+            snapshot_id=snapshot.id,
+            artifact_type="source_pdf",
+            storage_path=filename,
+            sha256=pdf_hash,
+            size_bytes=len(pdf_bytes),
+            renderer="weasyprint",
+            renderer_version=layout,
+        )
+
+        # Preserve the inspection report as an immutable artifact.
+        import json as _json
+
+        report_bytes = _json.dumps(report, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        report_filename = (
+            f"edition_{edition.year}_{edition.number}_{uuid.uuid4().hex[:8]}_inspection.json"
+        )
+        _save_to_storage(report_filename, report_bytes, tenant_slug=tenant_slug)
+        _record_artifact(
+            db,
+            snapshot_id=snapshot.id,
+            artifact_type="validation_report",
+            storage_path=report_filename,
+            sha256=compute_hash(report_bytes),
+            size_bytes=len(report_bytes),
+            mime_type="application/json",
+            renderer="pdf-inspector",
+            renderer_version="1.0",
+        )
+
+        # Composition manifest: everything needed to audit/reproduce the edition.
+        from datetime import datetime as _dt
+        from datetime import timezone as _tz
+
+        try:
+            import weasyprint as _weasy
+
+            weasy_version = getattr(_weasy, "__version__", "unknown")
+        except Exception:  # noqa: BLE001
+            weasy_version = "unknown"
+
+        sections_manifest: list[dict] = []
+        for item in sorted(snapshot.content.get("items", []), key=lambda i: i["position"]):
+            section_title = item.get("section_title")
+            bucket = next(
+                (s for s in sections_manifest if s["title"] == section_title), None
+            )
+            if bucket is None:
+                bucket = {"title": section_title, "matter_ids": []}
+                sections_manifest.append(bucket)
+            bucket["matter_ids"].append(str(item.get("id")))
+
+        manifest = {
+            "schema": "edition_composition_manifest",
+            "schema_version": 1,
+            "edition": {
+                "year": edition.year,
+                "number": edition.number,
+                "type": getattr(edition.type, "value", str(edition.type)),
+            },
+            "snapshot_hash": verified_manifest_hash,
+            "renderer": "weasyprint",
+            "renderer_version": weasy_version,
+            "layout": layout,
+            "matter_count": len(edition.items or []),
+            "page_count": report["page_count"],
+            "generated_at": _dt.now(_tz.utc).isoformat(),
+            "sections": sections_manifest,
+        }
+        manifest_bytes = _json.dumps(manifest, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        manifest_filename = (
+            f"edition_{edition.year}_{edition.number}_{uuid.uuid4().hex[:8]}_manifest.json"
+        )
+        _save_to_storage(manifest_filename, manifest_bytes, tenant_slug=tenant_slug)
+        _record_artifact(
+            db,
+            snapshot_id=snapshot.id,
+            artifact_type="manifest",
+            storage_path=manifest_filename,
+            sha256=compute_hash(manifest_bytes),
+            size_bytes=len(manifest_bytes),
+            mime_type="application/json",
+            renderer="composition-manifest",
+            renderer_version="1.0",
+        )
+
+        edition.pdf_path = filename
+        edition.pdf_hash = pdf_hash
+        edition.source_pdf_hash = pdf_hash
+        edition.content_manifest_hash = verified_manifest_hash
+        edition.verification_code = verification_code
+        edition.status = EditionStatus.PDF_GENERATED
+        db.commit()
+
+        return {
+            "edition_id": edition_id,
+            "filename": filename,
+            "sha256": pdf_hash,
+            "size_bytes": len(pdf_bytes),
+            "verification_code": verification_code,
+        }
+    finally:
+        db.close()
+
+
+def preview_edition_pdf_sync(edition_id: str, layout: str | None = None) -> bytes:
+    """Render an ephemeral preview PDF from the LIVE items (no snapshot needed).
+
+    Used before closing an edition so the operator sees exactly how it will look
+    without freezing/persisting anything. The bytes are returned, never stored.
+    """
+    db = get_sync_db()
+    try:
+        from app.models.edition import Edition
+        from app.models.edition_item import EditionItem
+        from app.models.matter import Matter
+        from app.semantic.snapshot import build_publication_snapshot, verify_snapshot
+
+        result = db.execute(
+            select(Edition)
+            .where(Edition.id == uuid.UUID(edition_id))
+            .options(
+                selectinload(Edition.items)
+                .selectinload(EditionItem.matter)
+                .selectinload(Matter.act_type),
+                selectinload(Edition.items)
+                .selectinload(EditionItem.matter)
+                .selectinload(Matter.org_unit),
+                selectinload(Edition.organization),
+            )
+        )
+        edition = result.scalar_one_or_none()
+        if edition is None:
+            raise ValueError(f"Edition {edition_id} not found")
+
+        if layout is None:
+            layout = getattr(edition.organization, "pdf_layout", None) or "classico"
+        if layout not in AVAILABLE_LAYOUTS:
+            layout = "classico"
+        template_dir = LAYOUTS_DIR / layout
+        if not template_dir.exists():
+            template_dir = LAYOUTS_DIR / "classico"
+
+        matters = [
+            (item.matter, item.position, item.section_title)
+            for item in sorted(edition.items or [], key=lambda i: i.position)
+            if item.matter is not None
+        ]
+        manifest = build_publication_snapshot(
+            edition, matters, renderer_version="semantic-renderer/1.0"
+        )
+        ok, reason = verify_snapshot(manifest)
+        if not ok:
+            raise ValueError(f"Invalid preview manifest: {reason}")
+
+        return _render_publication_pdf(
+            edition=edition,
+            items=manifest["items"],
+            content_manifest_hash=manifest["content_manifest_hash"],
+            template_dir=template_dir,
+            organ_name=edition.organization.name if edition.organization else None,
+            verification_base_url=settings.VERIFICATION_BASE_URL,
+            verification_code=edition.verification_code or "PREVIA",
+            organization=edition.organization,
+            preliminary=True,
+        )
+    finally:
+        db.close()

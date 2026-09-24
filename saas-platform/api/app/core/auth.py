@@ -1,0 +1,141 @@
+import logging
+import uuid
+from datetime import datetime, timezone
+from typing import Annotated, Optional
+
+from fastapi import Depends, Header, HTTPException, Request, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
+
+from app.core.config import settings
+from app.core.database import get_db
+from app.core.security import decode_token
+from app.models.user import User
+
+logger = logging.getLogger("saas.auth")
+
+bearer_scheme = HTTPBearer(auto_error=False)
+
+
+async def require_internal_key(
+    x_internal_key: Annotated[str | None, Header()] = None,
+) -> None:
+    internal_key = settings.INTERNAL_API_KEY.get_secret_value()
+    if not internal_key:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Internal API not configured",
+        )
+    if x_internal_key != internal_key:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid internal key",
+        )
+
+
+async def get_current_user(
+    request: Request,
+    credentials: Annotated[
+        HTTPAuthorizationCredentials | None, Depends(bearer_scheme)
+    ] = None,
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+        )
+    try:
+        payload = decode_token(credentials.credentials)
+    except Exception:
+        logger.warning("Token decode failed", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+        )
+
+    if payload.get("type") not in ("access", "module_access"):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token type",
+        )
+
+    user_id = payload.get("sub")
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token payload",
+        )
+
+    result = await db.execute(
+        select(User).where(User.id == uuid.UUID(user_id))
+    )
+    user = result.scalar_one_or_none()
+
+    if user is None or user.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Inactive user",
+        )
+    if user.locked_until and user.locked_until > datetime.now(timezone.utc):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account locked",
+        )
+
+    return user
+
+
+async def get_current_platform_admin(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """Acesso ao painel central (admin.govsistem.com.br) exige condição
+    interna inequívoca: SUPER_ADMIN, is_platform_admin, ou membership ORG_ADMIN
+    na organização interna da plataforma. A label platform_role=SUPPORT, por si,
+    NÃO concede acesso."""
+    from app.services.membership import is_platform_internal
+
+    if user.is_platform_admin or user.platform_role == "SUPER_ADMIN":
+        return user
+    if user.platform_role and user.platform_role != "SUPPORT":
+        # Roles BILLING_MANAGER / PLATFORM_ADMIN / AUDITOR já são contas internas
+        if user.platform_role in ("PLATFORM_ADMIN", "BILLING_MANAGER", "AUDITOR"):
+            return user
+    if await is_platform_internal(db, user):
+        return user
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Platform admin access required",
+    )
+
+
+def require_platform_role(*roles: str):
+    async def _check(user: User = Depends(get_current_user)) -> User:
+        if user.platform_role not in roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Insufficient platform permissions",
+            )
+        return user
+
+    return _check
+
+
+def get_client_info(request: Request) -> dict:
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        ip = forwarded.split(",")[0].strip()
+    else:
+        ip = request.client.host if request.client else "unknown"
+    return {
+        "ip_address": ip,
+        "user_agent": request.headers.get("user-agent", ""),
+    }

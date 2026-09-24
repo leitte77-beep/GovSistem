@@ -1,0 +1,89 @@
+"use client";
+
+import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import { api, bootstrapTokenFromQuery, SAAS_URL } from "./api";
+
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  roles: { id: string; name: string; label: string }[];
+  organization_id: string;
+}
+
+interface AuthContextType {
+  user: User | null;
+  loading: boolean;
+  login: (email: string, password: string) => Promise<void>;
+  logout: () => void;
+  switchOrganization: (orgId: string) => Promise<void>;
+}
+
+const AuthContext = createContext<AuthContextType | null>(null);
+
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchUser = useCallback(async () => {
+    const token = bootstrapTokenFromQuery() || sessionStorage.getItem("access_token");
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+    try {
+      const u = await api.me();
+      setUser(u);
+    } catch {
+      sessionStorage.removeItem("access_token");
+      localStorage.removeItem("refresh_token");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { fetchUser(); }, [fetchUser]);
+
+  useEffect(() => {
+    const handleForceLogout = () => {
+      setUser(null);
+    };
+    window.addEventListener("auth:logout", handleForceLogout);
+    return () => window.removeEventListener("auth:logout", handleForceLogout);
+  }, []);
+
+  const login = async (email: string, password: string) => {
+    const tokens = await api.login(email, password);
+    sessionStorage.setItem("access_token", tokens.access_token);
+    localStorage.setItem("refresh_token", tokens.refresh_token);
+    const u = await api.me();
+    setUser(u);
+  };
+
+  const logout = () => {
+    sessionStorage.removeItem("access_token");
+    localStorage.removeItem("refresh_token");
+    setUser(null);
+    window.location.href = SAAS_URL;
+  };
+
+  const switchOrganization = async (orgId: string) => {
+    const tokens = await api.switchOrganization(orgId);
+    sessionStorage.setItem("access_token", tokens.access_token);
+    localStorage.setItem("refresh_token", tokens.refresh_token);
+    const u = await api.me();
+    setUser(u);
+  };
+
+  return (
+    <AuthContext.Provider value={{ user, loading, login, logout, switchOrganization }}>
+      {children}
+    </AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error("useAuth must be inside AuthProvider");
+  return ctx;
+}

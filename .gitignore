@@ -1,0 +1,81 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+*.egg
+dist/
+build/
+
+# Node
+node_modules/
+.next/
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+.env.dev
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project
+*.pdf
+*.pfx
+*.p12
+certs/
+
+# Uploads
+**/uploads/
+
+# SSL / certs
+infra/nginx/ssl/
+
+# Clone/backup
+modulo-diario-clone/
+backups/
+
+# Test
+.coverage
+htmlcov/
+.pytest_cache/
+
+# Modulos ChatGov / GovSocial
+backups/
+test-results/
+modulo-chatgov/backend/uploads/
+modulo-govsocial/api/uploads/
+modulo-govsocial/web/dist-build/
+apps/api/uploads/
+
+# EXCECAO ao `dist/` acima: o fonte do frontend do GovSocial se perdeu.
+# O fonte do ChatGov foi recuperado; o dist continua versionado como artefato
+# de contingencia da versao atualmente publicada.
+!modulo-govsocial/web/dist/
+!modulo-chatgov/frontend/dist/
+
+# Backups de producao (dumps, volumes, .env) — nunca versionar
+backup-prod/
+
+# Backup obrigatorio do projeto multi-tenant (backfar) — nao versionar, nao servir pela web
+backfar/
+
+# Sensitive env backups / junk
+.env.bak*
+.env.audit-bak*
+.env.*.bak-*
+# Any dotted backup of an env file (e.g. .env.backup.20260617_172108), anywhere.
+.env.backup*
+.env.*.backup*
+*.env.backup*
+infra/.env
+xxx/
