@@ -42,6 +42,7 @@ export default function NovoPedido() {
   const [emenda, setEmenda] = useState("");
   const [valor, setValor] = useState("");
   const [descricao, setDescricao] = useState("");
+  const ehOutro = tipo === "OUTRO";
 
   async function enviar(evento: React.FormEvent) {
     evento.preventDefault();
@@ -51,9 +52,9 @@ export default function NovoPedido() {
         titulo,
         tipo,
         origem,
-        origem_nome: origemNome || null,
+        origem_nome: ehOutro ? null : origemNome || null,
         emenda: emenda.trim() || null,
-        valor_previsto: valor || null,
+        valor_previsto: ehOutro ? null : valor || null,
         descricao: descricao || null,
       });
       toast.success(`Pedido ${pedido.numero} aberto.`);
@@ -143,7 +144,7 @@ export default function NovoPedido() {
             </div>
           </fieldset>
 
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className={ehOutro ? "" : "grid gap-4 sm:grid-cols-2"}>
             <div>
               <label className="rotulo" htmlFor="origem">
                 Veio de onde?
@@ -161,19 +162,21 @@ export default function NovoPedido() {
                 ))}
               </select>
             </div>
-            <div>
-              <label className="rotulo" htmlFor="origem_nome">
-                Nome de quem conseguiu
-              </label>
-              <input
-                id="origem_nome"
-                className="campo"
-                maxLength={180}
-                placeholder="Ex.: Deputado Fulano de Tal"
-                value={origemNome}
-                onChange={(e) => setOrigemNome(e.target.value)}
-              />
-            </div>
+            {!ehOutro && (
+              <div>
+                <label className="rotulo" htmlFor="origem_nome">
+                  Nome de quem conseguiu
+                </label>
+                <input
+                  id="origem_nome"
+                  className="campo"
+                  maxLength={180}
+                  placeholder="Ex.: Deputado Fulano de Tal"
+                  value={origemNome}
+                  onChange={(e) => setOrigemNome(e.target.value)}
+                />
+              </div>
+            )}
           </div>
 
           {(origem === "DEPUTADO" || origem === "VEREADOR") && (
@@ -192,17 +195,19 @@ export default function NovoPedido() {
             </div>
           )}
 
-          <div>
-            <label className="rotulo" htmlFor="valor">
-              Valor previsto (R$)
-            </label>
-            <CampoMoeda
-              id="valor"
-              valor={valor}
-              aoMudar={setValor}
-              className="campo sm:max-w-xs"
-            />
-          </div>
+          {!ehOutro && (
+            <div>
+              <label className="rotulo" htmlFor="valor">
+                Valor previsto (R$)
+              </label>
+              <CampoMoeda
+                id="valor"
+                valor={valor}
+                aoMudar={setValor}
+                className="campo sm:max-w-xs"
+              />
+            </div>
+          )}
 
           <div>
             <label className="rotulo" htmlFor="descricao">
