@@ -104,7 +104,7 @@
         .composer textarea {
           flex: 1 1 auto; min-width: 0; width: 100%;
           resize: none;
-          min-height: 40px; max-height: 120px;
+          min-height: 40px; max-height: 120px; /* o JS recalcula conforme a altura do painel */
           line-height: 1.25rem;
           padding: .5rem .75rem;
           font-size: 16px;
@@ -112,6 +112,15 @@
           scrollbar-width: none;
         }
         .composer textarea::-webkit-scrollbar { display: none; }
+        /* No computador, quando o texto passa da altura máxima, a rolagem precisa
+           aparecer: escondida, o atendente não sabe que há mais texto. */
+        @media (hover: hover) and (pointer: fine) {
+          .composer textarea.rolando { scrollbar-width: thin; }
+          .composer textarea.rolando::-webkit-scrollbar { display: block; width: 8px; }
+          .composer textarea.rolando::-webkit-scrollbar-thumb { background: rgba(127,127,127,0.45); border-radius: 8px; }
+          .composer textarea.rolando::-webkit-scrollbar-track { background: transparent; margin: 10px 0; }
+        }
+        .composer .composer-ampliar:hover { background: rgba(127,127,127,0.15) !important; }
         .composer textarea::placeholder { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         @media (max-width: 480px) {
           .composer .icon-emoji { display: none; }

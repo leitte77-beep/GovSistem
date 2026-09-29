@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { Send, Paperclip, Smile, ShieldCheck, Clock, User, UserPlus, CheckCircle2, Building2, MessageSquare, Tag, StickyNote, ChevronDown, ChevronRight, Archive, Trash2, ArrowRightLeft, Undo2, UserCheck, X, MoreVertical, ArrowDown, Loader2, Mic, Square, Play, Pause, RotateCcw, Images, Mail, Search, ArrowLeft, CalendarPlus, Printer, FileText } from 'lucide-react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
+import { Send, Paperclip, Smile, ShieldCheck, Clock, User, UserPlus, CheckCircle2, Building2, MessageSquare, Tag, StickyNote, ChevronDown, ChevronRight, Archive, Trash2, ArrowRightLeft, Undo2, UserCheck, X, MoreVertical, ArrowDown, Loader2, Mic, Square, Play, Pause, RotateCcw, Images, Mail, Search, ArrowLeft, CalendarPlus, Printer, FileText, Maximize2 } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { BolhaConversa } from './BolhaConversa';
 import { DeptBadge } from './DeptBadge';
@@ -8,6 +8,7 @@ import { ModalTransferir } from './ModalTransferir';
 import { MediaPreview, MediaLightbox, urlVisualizavel } from './MediaPreview';
 import { GaleriaMidias } from './GaleriaMidias';
 import { PainelCidadao } from './PainelCidadao';
+import { EditorMensagemAmpliado } from './EditorMensagemAmpliado';
 import { useSocket } from '../context/SocketContext';
 import { useAuth } from '../context/AuthContext';
 import { fetchMensagens, fetchDepartamentos, fetchTemplates, fetchEtiquetas, fetchEtiquetasConversa, fetchNotasInternas, editarContato, fetchTransferenciaPendente, excluirMensagemConversa, fetchMidiasConversa, marcarConversaNaoLida, criarContato, iniciarConversa, criarProtocolo } from '../api';
@@ -21,6 +22,11 @@ import { T } from '../theme';
 const EMOJIS_RAPIDOS = ['😀', '😅', '👍', '🙏', '❤️', '😊', '👏', '✅', '⚠️', '📎'];
 const PERTO_DO_FIM_PX = 120;
 const MAX_MIDIA_BYTES = 16 * 1024 * 1024; // 16 MB (limite prático do WhatsApp)
+const MAX_TEXTO = 4000;
+// O campo de mensagem cresce com o texto até esta fração da altura do painel
+// (mínimo de 120px); passando disso, rola. Mesmo comportamento do WhatsApp Web.
+const COMPOSER_FRACAO_MAX = 0.45;
+const COMPOSER_ALTURA_MIN_MAX = 120;
 // Largura da coluna de leitura das mensagens. Acima disso as bolhas ficariam
 // nas beiradas de um monitor grande, forçando o olho a varrer a tela inteira.
 
@@ -130,6 +136,34 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
   const areaMensagensRef = useRef(null);
   const rolarParaMensagemRef = useRef(null);
   const inputRef = useRef(null);
+  const painelRef = useRef(null);
+  const [editorAberto, setEditorAberto] = useState(false);
+  const [composerMultilinha, setComposerMultilinha] = useState(false);
+  const [composerRolando, setComposerRolando] = useState(false);
+
+  // Ajusta a altura do campo ao conteúdo. Zera para 'auto' antes de medir, senão
+  // o scrollHeight nunca diminui quando o texto é apagado ou enviado.
+  const ajustarAlturaComposer = useCallback(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const alturaPainel = painelRef.current?.clientHeight || 0;
+    const max = Math.max(COMPOSER_ALTURA_MIN_MAX, Math.round(alturaPainel * COMPOSER_FRACAO_MAX));
+    el.style.height = 'auto';
+    const alvo = el.scrollHeight + 2; // + bordas (box-sizing: border-box)
+    el.style.height = `${Math.min(alvo, max)}px`;
+    el.style.maxHeight = `${max}px`;
+    setComposerRolando(alvo > max);
+    setComposerMultilinha(alvo > 46);
+  }, []);
+  useLayoutEffect(() => { ajustarAlturaComposer(); }, [texto, editorAberto, conversa?.id, ajustarAlturaComposer]);
+  useEffect(() => {
+    const painel = painelRef.current;
+    if (!painel || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => ajustarAlturaComposer());
+    ro.observe(painel);
+    return () => ro.disconnect();
+  }, [ajustarAlturaComposer, !!conversa]);
+  useEffect(() => { setEditorAberto(false); }, [conversa?.id]);
   const fileRef = useRef(null);
   const pertoDoFimRef = useRef(true);
   const dragCounterRef = useRef(0);
@@ -1162,6 +1196,8 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
   }
 
   const nome = conversa.contato_nome || conversa.contato_telefone || 'Desconhecido';
+  // Com áudio ou arquivo pendente o campo vira legenda; o editor ampliado é só para texto.
+  const podeAmpliar = !gravando && !audioBlob && !previewArquivo;
   const isNumber = !conversa.contato_nome;
 
   // Item do menu de ações (bottom-sheet) usado no celular/tablet.
@@ -1171,6 +1207,7 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
   }, React.createElement(Icone, { size: 20, style: { flexShrink: 0 } }), label);
 
   return React.createElement('div', {
+    ref: painelRef,
     style: { flex: 1, display: 'flex', flexDirection: 'column', height: '100%', background: T.bg, position: 'relative' },
     onDragEnter: handleDragEnter,
     onDragLeave: handleDragLeave,
@@ -1889,21 +1926,28 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
       React.createElement('div', { className: 'composer-textarea', style: { flex: 1, position: 'relative', minWidth: 0 } },
         React.createElement('textarea', {
           ref: inputRef, value: texto, onChange: (e) => setTexto(e.target.value),
+          className: composerRolando ? 'rolando' : undefined,
           placeholder: gravando ? 'Gravando áudio...' : previewArquivo ? 'Digite uma legenda e pressione Enter para enviar...' : audioBlob ? 'Adicione uma legenda (opcional)...' : 'Digite sua mensagem…',
           rows: 1,
           'aria-label': 'Mensagem',
-          maxLength: 4000,
+          maxLength: MAX_TEXTO,
           disabled: gravando,
           onPaste: handlePaste,
           onKeyDown: (e) => {
             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); enviar(e); }
             else if (e.key === 'Escape' && respondendoA) { setRespondendoA(null); }
           },
-          style: { width: '100%', boxSizing: 'border-box', background: T.surfaceMuted, border: `1px solid ${T.border}`, borderRadius: 22, paddingRight: 40, color: T.text, outline: 'none', fontFamily: 'inherit', opacity: gravando ? 0.5 : 1 },
+          style: { width: '100%', boxSizing: 'border-box', background: T.surfaceMuted, border: `1px solid ${T.border}`, borderRadius: composerMultilinha ? 14 : 22, paddingRight: podeAmpliar ? 44 : 40, color: T.text, outline: 'none', fontFamily: 'inherit', opacity: gravando ? 0.5 : 1, transition: 'border-radius 0.15s ease' },
         }),
-        texto.length > 0 && React.createElement('span', {
-          style: { position: 'absolute', right: 12, bottom: 6, fontSize: 10, color: texto.length > 3800 ? T.danger : T.textMuted },
-        }, `${texto.length}/4000`),
+        podeAmpliar && React.createElement('button', {
+          type: 'button', onClick: () => setEditorAberto(true), className: 'composer-ampliar',
+          title: 'Abrir editor ampliado (para textos longos)', 'aria-label': 'Abrir editor ampliado',
+          style: { position: 'absolute', right: 6, top: 6, width: 28, height: 28, display: 'grid', placeItems: 'center', border: 'none', borderRadius: 8, background: 'transparent', color: T.textMuted, cursor: 'pointer' },
+        }, React.createElement(Maximize2, { size: 16 })),
+        // O contador só aparece com várias linhas: numa linha só ele cobria o fim do texto.
+        composerMultilinha && React.createElement('span', {
+          style: { position: 'absolute', right: composerRolando ? 16 : 12, bottom: 6, fontSize: 10, color: texto.length > MAX_TEXTO - 200 ? T.danger : T.textMuted, pointerEvents: 'none' },
+        }, `${texto.length}/${MAX_TEXTO}`),
       ),
       // Botão de microfone (vira stop durante gravação)
       !audioBlob && React.createElement('button', {
@@ -1935,6 +1979,14 @@ export function PainelAtendimento({ conversa, onConversaUpdated, breakpoint, onV
         ? React.createElement(Loader2, { size: 20, color: '#fff', className: 'spin' })
         : React.createElement(Send, { size: 20, color: (texto.trim() || audioBlob) && !enviando && !gravando ? '#fff' : T.textMuted })),
     ),
+
+    editorAberto && React.createElement(EditorMensagemAmpliado, {
+      texto, setTexto, maxLength: MAX_TEXTO,
+      nomeContato: nome, respondendoA, enviando, compacto: ehCompacto,
+      podeEnviar: !!texto.trim() && !enviando && connected,
+      onFechar: () => { setEditorAberto(false); requestAnimationFrame(() => inputRef.current?.focus()); },
+      onEnviar: () => { setEditorAberto(false); enviar(); },
+    }),
 
     // ===== Bottom-sheets do celular/tablet (substituem os dropdowns do header) =====
     ehCompacto && showAcoes && React.createElement(BottomSheet, { titulo: nome, onClose: () => setShowAcoes(false) },
