@@ -99,6 +99,8 @@ export function VeiculoFormDrawer({
   const [previewFoto, setPreviewFoto] = useState<string | null>(null);
   const [erroPlaca, setErroPlaca] = useState<string | null>(null);
   const [erros, setErros] = useState<Record<string, string>>({});
+  // Veículo que já usa a placa/RENAVAM/chassi digitado (conferido ao sair do campo).
+  const [duplicados, setDuplicados] = useState<Record<string, { id: string; placa: string } | undefined>>({});
   const inputFotoRef = useRef<HTMLInputElement>(null);
 
   const novoForm = (v: Veiculo | null) => ({
@@ -154,6 +156,7 @@ export function VeiculoFormDrawer({
       setPreviewFoto(null);
       setErroPlaca(null);
       setErros({});
+      setDuplicados({});
       setSalvando(false);
       const aux = (veiculo?.tanques ?? []).filter((t) => t.tank_type === "AUXILIARY");
       setPossuiAuxiliar(aux.length > 0);
@@ -235,8 +238,30 @@ export function VeiculoFormDrawer({
     return Object.keys(e).length === 0;
   }
 
-  function avancar() {
-    if (validarEtapa(etapa)) setEtapa((n) => Math.min(n + 1, ETAPAS.length - 1));
+  async function verificarDuplicado(campo: "placa" | "renavam" | "chassi"): Promise<boolean> {
+    const valor = campo === "placa" ? normalizarPlaca(form.placa) : String(form[campo] ?? "");
+    if (!valor) {
+      setDuplicados((d) => ({ ...d, [campo]: undefined }));
+      return false;
+    }
+    try {
+      const res = await api.verificarDuplicidadeVeiculo(campo, valor, veiculo?.id);
+      const dup = res.duplicado && res.veiculo_id ? { id: res.veiculo_id, placa: res.placa ?? "" } : undefined;
+      setDuplicados((d) => ({ ...d, [campo]: dup }));
+      return !!dup;
+    } catch {
+      // Falha na consulta não trava o usuário; a API confere de novo ao salvar.
+      return false;
+    }
+  }
+
+  async function avancar() {
+    if (!validarEtapa(etapa)) return;
+    if (etapa === 0) {
+      const achados = await Promise.all((["placa", "renavam", "chassi"] as const).map(verificarDuplicado));
+      if (achados.some(Boolean)) return;
+    }
+    setEtapa((n) => Math.min(n + 1, ETAPAS.length - 1));
   }
 
   function irPara(i: number) {
@@ -437,11 +462,14 @@ export function VeiculoFormDrawer({
                     maxLength={8}
                     onChange={(e) => {
                       atualizar("placa", e.target.value.toUpperCase());
+                      setDuplicados((d) => ({ ...d, placa: undefined }));
                       setErroPlaca(null);
                     }}
-                    className={`input font-mono text-lg font-semibold uppercase tracking-[0.2em] placeholder:font-normal placeholder:tracking-[0.2em] ${erroPlaca ? "input-error" : ""}`}
+                    onBlur={() => placaValida(normalizarPlaca(form.placa)) && verificarDuplicado("placa")}
+                    className={`input font-mono text-lg font-semibold uppercase tracking-[0.2em] placeholder:font-normal placeholder:tracking-[0.2em] ${erroPlaca || duplicados.placa ? "input-error" : ""}`}
                   />
                   {erroPlaca && <span className="text-meta text-[#B42318]">{erroPlaca}</span>}
+                  <AvisoDuplicado dup={duplicados.placa} />
                 </Label>
                 <Label texto="Código interno">
                   <input {...campo("codigo_interno")} placeholder="EX.: VH-0001" />
@@ -455,18 +483,28 @@ export function VeiculoFormDrawer({
                     inputMode="numeric"
                     maxLength={11}
                     placeholder="11 dígitos"
-                    onChange={(e) => atualizar("renavam", soDigitos(e.target.value).slice(0, 11))}
-                    className={`input ${erros.renavam ? "input-error" : ""}`}
+                    onChange={(e) => {
+                      atualizar("renavam", soDigitos(e.target.value).slice(0, 11));
+                      setDuplicados((d) => ({ ...d, renavam: undefined }));
+                    }}
+                    onBlur={() => verificarDuplicado("renavam")}
+                    className={`input ${erros.renavam || duplicados.renavam ? "input-error" : ""}`}
                   />
+                  <AvisoDuplicado dup={duplicados.renavam} />
                 </Label>
                 <Label texto="Chassi" classe="sm:col-span-2" erro={erros.chassi}>
                   <input
                     {...campo("chassi")}
                     maxLength={17}
                     placeholder="17 caracteres"
-                    onChange={(e) => atualizar("chassi", normalizarChassi(e.target.value))}
-                    className={`input font-mono uppercase placeholder:font-sans placeholder:normal-case ${erros.chassi ? "input-error" : ""}`}
+                    onChange={(e) => {
+                      atualizar("chassi", normalizarChassi(e.target.value));
+                      setDuplicados((d) => ({ ...d, chassi: undefined }));
+                    }}
+                    onBlur={() => verificarDuplicado("chassi")}
+                    className={`input font-mono uppercase placeholder:font-sans placeholder:normal-case ${erros.chassi || duplicados.chassi ? "input-error" : ""}`}
                   />
+                  <AvisoDuplicado dup={duplicados.chassi} />
                 </Label>
               </div>
             </Secao>
@@ -936,6 +974,19 @@ function Revisao({
         ))}
       </div>
     </section>
+  );
+}
+
+function AvisoDuplicado({ dup }: { dup?: { id: string; placa: string } }) {
+  if (!dup) return null;
+  return (
+    <span className="mt-1 block text-meta font-normal text-[#B42318]" role="alert">
+      Já cadastrado no veículo{" "}
+      <Link href={`/veiculos/${dup.id}`} target="_blank" className="font-semibold underline">
+        {dup.placa}
+      </Link>
+      .
+    </span>
   );
 }
 

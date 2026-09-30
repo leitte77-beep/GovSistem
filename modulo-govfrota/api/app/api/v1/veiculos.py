@@ -1,9 +1,10 @@
 import uuid
 from decimal import Decimal
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy import func as sa_func
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -449,6 +450,52 @@ async def _resposta(db: AsyncSession, user: User, veiculo: Veiculo) -> VeiculoRe
     return VeiculoResponse(**dados)
 
 
+_ROTULOS_IDENTIFICADOR = {"placa": "placa", "renavam": "RENAVAM", "chassi": "chassi"}
+
+
+async def _veiculo_com_identificador(
+    db: AsyncSession, user: User, campo: str, valor: str | None, ignorar_id: uuid.UUID | None = None
+) -> Veiculo | None:
+    """Veículo ativo da organização que já usa esta placa/RENAVAM/chassi."""
+    if not valor:
+        return None
+    q = select(Veiculo).where(
+        Veiculo.organization_id == user.organization_id,
+        getattr(Veiculo, campo) == valor,
+        Veiculo.deleted_at.is_(None),
+    )
+    if ignorar_id:
+        q = q.where(Veiculo.id != ignorar_id)
+    return await db.scalar(q.limit(1))
+
+
+async def _bloquear_duplicado(
+    db: AsyncSession, user: User, campo: str, valor: str | None, ignorar_id: uuid.UUID | None = None
+) -> None:
+    existente = await _veiculo_com_identificador(db, user, campo, valor, ignorar_id)
+    if existente:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Já existe um veículo com este {_ROTULOS_IDENTIFICADOR[campo]} ({existente.placa}).",
+        )
+
+
+@router.get("/verificar-duplicidade")
+async def verificar_duplicidade(
+    campo: str = Query(..., pattern="^(placa|renavam|chassi)$"),
+    valor: str = Query(..., min_length=1, max_length=50),
+    ignorar_id: uuid.UUID | None = None,
+    user: User = Depends(require_permission(Perm.VEHICLE_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Consulta usada pelo formulário para avisar duplicidade antes de salvar."""
+    normalizar = {"placa": normalizar_placa, "renavam": normalizar_renavam, "chassi": normalizar_chassi}[campo]
+    existente = await _veiculo_com_identificador(db, user, campo, normalizar(valor), ignorar_id)
+    if not existente:
+        return {"duplicado": False}
+    return {"duplicado": True, "veiculo_id": str(existente.id), "placa": existente.placa}
+
+
 @router.post("", response_model=VeiculoResponse, status_code=201)
 async def criar(
     body: VeiculoCreate,
@@ -456,15 +503,7 @@ async def criar(
     db: AsyncSession = Depends(get_db),
 ):
     placa = normalizar_placa(body.placa)
-    existente = await db.execute(
-        select(Veiculo.id).where(
-            Veiculo.organization_id == user.organization_id,
-            Veiculo.placa == placa,
-            Veiculo.deleted_at.is_(None),
-        )
-    )
-    if existente.scalar_one_or_none():
-        raise HTTPException(status_code=422, detail="Já existe um veículo com esta placa.")
+    await _bloquear_duplicado(db, user, "placa", placa)
 
     # Normaliza identificadores opcionais e bloqueia duplicidade por organização.
     dados = body.model_dump(exclude={"placa", "tanques_auxiliares", *_CAMPOS_RESERVATORIO})
@@ -484,25 +523,8 @@ async def criar(
         | {aux.combustivel_id for aux in body.tanques_auxiliares},
     )
 
-    for campo, valor, rotulo in (
-        ("renavam", renavam, "RENAVAM"),
-        ("chassi", chassi, "chassi"),
-    ):
-        if not valor:
-            continue
-        duplicado = await db.scalar(
-            select(Veiculo.id)
-            .where(
-                Veiculo.organization_id == user.organization_id,
-                getattr(Veiculo, campo) == valor,
-                Veiculo.deleted_at.is_(None),
-            )
-            .limit(1)
-        )
-        if duplicado:
-            raise HTTPException(
-                status_code=422, detail=f"Já existe um veículo com este {rotulo}."
-            )
+    await _bloquear_duplicado(db, user, "renavam", renavam)
+    await _bloquear_duplicado(db, user, "chassi", chassi)
 
     veiculo = Veiculo(
         **dados,
@@ -510,7 +532,12 @@ async def criar(
         placa=placa,
     )
     db.add(veiculo)
-    await db.flush()
+    try:
+        await db.flush()
+    except IntegrityError as exc:
+        # Cadastro simultâneo que escapou da checagem acima: o índice único barra.
+        await db.rollback()
+        raise HTTPException(status_code=422, detail="Placa, RENAVAM ou chassi já cadastrado.") from exc
     await _sync_reservatorios(
         db,
         veiculo,
@@ -558,6 +585,12 @@ async def atualizar(
     }
     enviados = body.model_dump(exclude_unset=True)
     dados = {k: v for k, v in enviados.items() if k not in ("tanques_auxiliares", *_CAMPOS_RESERVATORIO)}
+    if "renavam" in dados:
+        dados["renavam"] = normalizar_renavam(dados["renavam"]) or None
+        await _bloquear_duplicado(db, user, "renavam", dados["renavam"], ignorar_id=veiculo.id)
+    if "chassi" in dados:
+        dados["chassi"] = normalizar_chassi(dados["chassi"]) or None
+        await _bloquear_duplicado(db, user, "chassi", dados["chassi"], ignorar_id=veiculo.id)
     if "unidade_id" in dados:
         await _validar_unidade(db, user, dados["unidade_id"])
     for campo, valor in dados.items():
@@ -593,7 +626,11 @@ async def atualizar(
         dados_anteriores=anteriores,
         dados_novos=body.model_dump(exclude_unset=True, mode="json"),
     )
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        await db.rollback()
+        raise HTTPException(status_code=422, detail="RENAVAM ou chassi já cadastrado em outro veículo.") from exc
     await db.refresh(veiculo)
     return await _resposta(db, user, veiculo)
 

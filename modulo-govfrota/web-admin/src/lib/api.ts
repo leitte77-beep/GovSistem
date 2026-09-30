@@ -207,6 +207,13 @@ export const api = {
   getVeiculo(id: string) {
     return request<Veiculo>(`/veiculos/${id}`);
   },
+  verificarDuplicidadeVeiculo(campo: "placa" | "renavam" | "chassi", valor: string, ignorarId?: string) {
+    const q = new URLSearchParams({ campo, valor });
+    if (ignorarId) q.set("ignorar_id", ignorarId);
+    return request<{ duplicado: boolean; veiculo_id?: string; placa?: string }>(
+      `/veiculos/verificar-duplicidade?${q}`
+    );
+  },
   createVeiculo(data: Record<string, unknown>) {
     return request<Veiculo>("/veiculos", { method: "POST", body: JSON.stringify(data) });
   },
