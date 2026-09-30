@@ -33,9 +33,17 @@ docker compose -f infra/docker-compose.yml run --rm --no-deps -v $PWD/fipe.csv:/
   govfrota-api python scripts/importar_tabelas_simam.py ModeloVeiculoFIPE /tmp/t.csv
 ```
 
-## Conferir no PDF do layout antes do primeiro envio
+## Layout conferido com o manual oficial
 
-Tudo fica em `api/app/services/simam/layout.py` (marcado com `# conferir`):
-- nomes exatos dos arquivos `.txt`;
-- separador decimal (hoje ponto), fim de linha (hoje CRLF) e formato de data (hoje DD/MM/AAAA);
-- ordem e nomes dos campos de EntradaExtraCombustivel e SaidaExtraCombustivel, montados a partir de um resumo e não do manual.
+`api/app/services/simam/layout.py` segue o Layout SIM-AM 2026 v1.2b (publicado em 23/09/2026):
+fim de linha `\n`, ponto decimal, datas AAAA-MM-DD, `|` após o último campo, Windows-1252.
+
+- Códigos de combustível: apenas as combinações de TipoCategoriaXObjetoDespesa (Gasolina 1/1, Etanol 1/2, Diesel 1/3...).
+  Veículo que aceita dois combustíveis vai no VeiculoEquipamento como "FLEX" (1/26); o consumo continua por combustível real.
+  ARLA 32 e lubrificantes não têm código: desmarque "informar ao SIM-AM".
+- EntradaExtra exige o `cdControleLeiAto` (código da lei/ato já enviado pela contabilidade na tabela LeiAto).
+- Entradas ou saídas com a mesma chave do TCE (mesmo combustível, tipo, documento e data) são somadas numa linha.
+
+**Validações que só o TCE faz:** o CPF do responsável e o documento do repassador/recebedor precisam
+existir no PessoaAM, o cdBem precisa existir na tabela Bem do patrimônio (com agrupamento que usa
+combustível), e o cdControleLeiAto precisa existir na tabela LeiAto. Esses cadastros são enviados pelo ERP.

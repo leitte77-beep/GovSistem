@@ -28,7 +28,7 @@ async def _cenario(client, _db, make_tenant, setup_frota, *, completo=True):
     if completo:
         r = await client.patch(f"{API}/configuracoes", json={"simam_id_pessoa": 123456, "simam_cpf_responsavel": "12345678909"}, headers=h)
         assert r.status_code == 200, r.text
-        r = await client.patch(f"{API}/combustiveis/{c.id}", json={"nome": c.nome, "simam_categoria": 1, "simam_objeto": 101}, headers=h)
+        r = await client.patch(f"{API}/combustiveis/{c.id}", json={"nome": c.nome, "simam_categoria": 1, "simam_objeto": 3}, headers=h)
         assert r.status_code == 200, r.text
         r = await client.patch(
             f"{API}/veiculos/{v.id}",
@@ -85,7 +85,7 @@ async def test_consumo_e_hodometro_do_mes(client, _db, make_tenant, setup_frota)
     assert (medicao["nrMedicaoInicial"], medicao["nrMedicaoFinal"]) == ("50100.000", "50800.000")
     assert medicao["idTipoMedidor"] == 1 and medicao["nrSequencialHodoHori"] == 1
     veic = dados["arquivos"]["VeiculoEquipamento"][0]
-    assert veic["cdBem"] == "PAT0001" and veic["idTipoObjetoDespesa"] == 101
+    assert veic["cdBem"] == "PAT0001" and veic["idTipoObjetoDespesa"] == 3
 
 
 async def test_fechar_trava_reabrir_e_sequencial_estavel(client, _db, make_tenant, setup_frota):
@@ -164,9 +164,9 @@ async def test_arquivo_zip_segue_layout(client, _db, make_tenant, setup_frota):
     z = zipfile.ZipFile(io.BytesIO(r.content))
     assert "ConsumoCombustivel.txt" in z.namelist()
     linha = z.read("ConsumoCombustivel.txt").decode("cp1252")
-    assert linha == f"123456|1|PAT0001|1|101|{MES_ANT}|{ANO_ANT}|42.500|\r\n"
+    assert linha == f"123456|1|PAT0001|1|3|{MES_ANT}|{ANO_ANT}|42.500|\n"
     hodo = z.read("HodometroHorimetro.txt").decode("cp1252")
-    assert hodo.startswith("123456|PAT0001|1|") and hodo.endswith("|0.000||\r\n")
+    assert hodo.startswith("123456|PAT0001|1|") and hodo.endswith("|0.000||\n") and "\r" not in hodo
 
 
 async def test_hodometro_encadeia_com_mes_anterior(client, _db, make_tenant, setup_frota):
@@ -252,12 +252,21 @@ async def test_entrada_extraorcamentaria(client, _db, make_tenant, setup_frota):
     }
     r = await client.post(f"{API}/entradas", json=corpo, headers=h)
     assert r.status_code == 422 and "nota explicativa" in r.json()["detail"]
-    r = await client.post(f"{API}/entradas", json={**corpo, "nota_explicativa": "Doação conforme termo 12/2026"}, headers=h)
+    corpo["nota_explicativa"] = "Doação conforme termo 12/2026"
+    r = await client.post(f"{API}/entradas", json=corpo, headers=h)
+    assert r.status_code == 422 and "cdControleLeiAto" in r.json()["detail"]
+    r = await client.post(f"{API}/entradas", json={**corpo, "lei_ato_codigo": 4521}, headers=h)
     assert r.status_code == 201, r.text
+    # Segunda doação igual no mesmo dia: o TCE recusa chave repetida, então soma.
+    assert (await client.post(f"{API}/entradas", json={**corpo, "lei_ato_codigo": 4521, "quantidade_litros": "100"}, headers=h)).status_code == 201
     assert r.json()["simam_numero"] == 1 and r.json()["repassador_cpf_cnpj"] == "11222333000181"
     atual = (await client.get(_comp(HOJE.year, HOJE.month), headers=h)).json()
     entrada = atual["arquivos"]["EntradaExtraCombustivel"][0]
+    assert len(atual["arquivos"]["EntradaExtraCombustivel"]) == 1
     assert entrada["idTipoEntradaCombustivel"] == 1 and entrada["nrCPF"] == "12345678909"
+    assert (entrada["flEntidadeRepassador"], entrada["tpDocRepassador"], entrada["nrDocRepassador"]) == ("N", 3, "11222333000181")
+    assert entrada["cdControleLeiAto"] == 4521 and entrada["nrQuantidade"] == "600.000"
+    assert entrada["dtEntrada"] == HOJE.isoformat()
 
 
 async def test_inventario_com_falta_vira_saida_extra(client, _db, make_tenant, setup_frota):
@@ -288,3 +297,26 @@ async def test_isolamento_entre_organizacoes(client, _db, make_tenant, setup_fro
     assert dados["arquivos"]["ConsumoCombustivel"] == []
     r = await client.get(f"{API}/simam/veiculos/{base['veiculo'].id}/medidores", headers=outro["headers"])
     assert r.status_code == 404
+
+
+async def test_combustivel_so_aceita_codigos_da_tabela_do_tce(client, _db, make_tenant, setup_frota):
+    t, base = await _cenario(client, _db, make_tenant, setup_frota)
+    c = base["combustivel"]
+    r = await client.patch(f"{API}/combustiveis/{c.id}", json={"nome": c.nome, "simam_categoria": 1, "simam_objeto": 101}, headers=t["headers"])
+    assert r.status_code == 422
+    r = await client.patch(f"{API}/combustiveis/{c.id}", json={"nome": c.nome, "simam_categoria": 2, "simam_objeto": 3}, headers=t["headers"])
+    assert r.status_code == 422
+
+
+async def test_saida_convenio_segue_layout(client, _db, make_tenant, setup_frota):
+    t, base = await _cenario(client, _db, make_tenant, setup_frota)
+    h = t["headers"]
+    corpo = {
+        "tanque_id": str(base["tanque"].id), "tipo_saida": 6, "data_saida": HOJE.isoformat(), "quantidade": "200",
+        "recebedor_cpf_cnpj": "11.222.333/0001-81", "recebedor_entidade_tce": True,
+        "convenio_numero": "15", "convenio_ano": 2026, "convenio_objeto": "Apoio ao transporte escolar",
+    }
+    assert (await client.post(f"{API}/simam/saidas-extra", json=corpo, headers=h)).status_code == 201
+    linha = (await client.get(_comp(HOJE.year, HOJE.month), headers=h)).json()["arquivos"]["SaidaExtraCombustivel"][0]
+    assert (linha["flEntidadeRecebedor"], linha["tpDocRecebedor"], linha["nrDocRecebedor"]) == ("S", 3, "11222333000181")
+    assert (linha["nrConvenioOrigem"], linha["nrAnoConvenioOrigem"], linha["dtSaida"]) == ("15", 2026, HOJE.isoformat())

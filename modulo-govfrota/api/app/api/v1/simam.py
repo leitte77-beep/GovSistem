@@ -403,9 +403,11 @@ class SaidaExtraCreate(BaseModel):
     nota_explicativa: Optional[str] = Field(default=None, max_length=250)
     recebedor_nome: Optional[str] = Field(default=None, max_length=150)
     recebedor_cpf_cnpj: Optional[str] = None
-    convenio_numero: Optional[str] = Field(default=None, max_length=20)
-    convenio_ano: Optional[int] = None
-    convenio_objeto: Optional[str] = Field(default=None, max_length=250)
+    recebedor_entidade_tce: bool = False
+    lei_ato_codigo: Optional[int] = Field(default=None, ge=1, le=9999999)
+    convenio_numero: Optional[str] = Field(default=None, pattern=r"^\d{1,9}$")
+    convenio_ano: Optional[int] = Field(default=None, ge=1900, le=2100)
+    convenio_objeto: Optional[str] = Field(default=None, max_length=1000)
     anexo_id: Optional[uuid.UUID] = None
 
     @field_validator("tipo_saida")
@@ -447,12 +449,14 @@ async def registrar_saida_extra(
     nota = (body.nota_explicativa or "").strip() or None
     if body.tipo_saida not in SAIDAS_SEM_NOTA_OBRIGATORIA and not nota:
         raise HTTPException(status_code=422, detail="Nota explicativa é obrigatória para este tipo de saída.")
-    if body.tipo_saida == 6 and not all(
-        [body.recebedor_nome, _so_digitos(body.recebedor_cpf_cnpj), body.convenio_numero, body.convenio_ano, body.convenio_objeto]
+    doc_recebedor = _so_digitos(body.recebedor_cpf_cnpj)
+    if body.tipo_saida == 6 and not (
+        doc_recebedor and len(doc_recebedor) in (11, 14)
+        and body.convenio_numero and body.convenio_ano and body.convenio_objeto
     ):
         raise HTTPException(
             status_code=422,
-            detail="Saída para convênio exige recebedor, CPF/CNPJ, número, ano e objeto do convênio.",
+            detail="Saída para convênio exige CPF/CNPJ do recebedor, número, ano e objeto do convênio.",
         )
     await _anexo_da_org(db, user.organization_id, body.anexo_id, obrigatorio=False)
 
@@ -468,7 +472,9 @@ async def registrar_saida_extra(
         responsavel_cpf=cpf,
         nota_explicativa=nota,
         recebedor_nome=body.recebedor_nome if body.tipo_saida == 6 else None,
-        recebedor_cpf_cnpj=_so_digitos(body.recebedor_cpf_cnpj) if body.tipo_saida == 6 else None,
+        recebedor_cpf_cnpj=doc_recebedor if body.tipo_saida == 6 else None,
+        recebedor_entidade_tce=body.recebedor_entidade_tce if body.tipo_saida == 6 else None,
+        lei_ato_codigo=body.lei_ato_codigo,
         convenio_numero=body.convenio_numero if body.tipo_saida == 6 else None,
         convenio_ano=body.convenio_ano if body.tipo_saida == 6 else None,
         convenio_objeto=body.convenio_objeto if body.tipo_saida == 6 else None,
@@ -512,6 +518,7 @@ def _saida_json(s: SaidaExtraCombustivel, tanque_nome: str | None = None) -> dic
         "data_saida": s.data_saida, "quantidade": s.quantidade, "responsavel_cpf": s.responsavel_cpf,
         "nota_explicativa": s.nota_explicativa, "recebedor_nome": s.recebedor_nome,
         "convenio_numero": s.convenio_numero, "convenio_ano": s.convenio_ano,
+        "lei_ato_codigo": s.lei_ato_codigo,
         "anexo_url": f"/api/govfrota/uploads/{s.anexo_id}" if s.anexo_id else None,
     }
 

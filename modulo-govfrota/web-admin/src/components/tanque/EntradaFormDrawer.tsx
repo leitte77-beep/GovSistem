@@ -41,8 +41,8 @@ export function EntradaFormDrawer({ aberto, onClose, tanques, fornecedores, onSa
     repassador_nome: "",
     repassador_cpf_cnpj: "",
     responsavel_cpf: "",
-    lei_ato_numero: "",
-    lei_ato_ano: "",
+    repassador_entidade_tce: false,
+    lei_ato_codigo: "",
     convenio_numero: "",
     convenio_ano: "",
     convenio_objeto: "",
@@ -118,7 +118,7 @@ export function EntradaFormDrawer({ aberto, onClose, tanques, fornecedores, onSa
     });
   };
 
-  const campo = (k: keyof typeof form) => ({
+  const campo = (k: Exclude<keyof typeof form, "repassador_entidade_tce">) => ({
     value: form[k],
     onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
       setForm((f) => ({ ...f, [k]: e.target.value })),
@@ -173,8 +173,8 @@ export function EntradaFormDrawer({ aberto, onClose, tanques, fornecedores, onSa
           repassador_nome: form.repassador_nome || undefined,
           repassador_cpf_cnpj: form.repassador_cpf_cnpj || undefined,
           responsavel_cpf: form.responsavel_cpf || undefined,
-          lei_ato_numero: form.lei_ato_numero || undefined,
-          lei_ato_ano: form.lei_ato_ano ? Number(form.lei_ato_ano) : undefined,
+          repassador_entidade_tce: form.repassador_entidade_tce,
+          lei_ato_codigo: form.lei_ato_codigo ? Number(form.lei_ato_codigo) : undefined,
           convenio_numero: form.convenio_numero || undefined,
           convenio_ano: form.convenio_ano ? Number(form.convenio_ano) : undefined,
           convenio_objeto: form.convenio_objeto || undefined,
@@ -251,7 +251,7 @@ export function EntradaFormDrawer({ aberto, onClose, tanques, fornecedores, onSa
               <p className="text-meta text-text-subtle sm:col-span-2">
                 Entrada extraorçamentária: informada ao TCE no arquivo EntradaExtraCombustivel.
               </p>
-              <Label texto="Repassador (quem entregou) *">
+              <Label texto="Repassador (quem entregou)">
                 <input {...campo("repassador_nome")} maxLength={150} />
               </Label>
               <Label texto="CPF/CNPJ do repassador *">
@@ -260,17 +260,21 @@ export function EntradaFormDrawer({ aberto, onClose, tanques, fornecedores, onSa
               <Label texto="CPF do responsável pelo combustível">
                 <input {...campo("responsavel_cpf")} inputMode="numeric" maxLength={14} placeholder="Vazio = o de Configurações" />
               </Label>
-              <div className="grid grid-cols-2 gap-3">
-                <Label texto="Lei/Ato nº"><input {...campo("lei_ato_numero")} maxLength={20} /></Label>
-                <Label texto="Ano"><input {...campo("lei_ato_ano")} inputMode="numeric" maxLength={4} /></Label>
-              </div>
+              <Label texto="Código de controle da Lei/Ato *">
+                <input {...campo("lei_ato_codigo")} inputMode="numeric" maxLength={7} placeholder="cdControleLeiAto do SIM-AM" />
+              </Label>
+              <label className="flex items-center gap-2 text-body-sm text-text-body sm:col-span-2">
+                <input type="checkbox" checked={form.repassador_entidade_tce}
+                  onChange={(e) => setForm((f) => ({ ...f, repassador_entidade_tce: e.target.checked }))} />
+                O repassador também presta contas ao TCE-PR (outra entidade pública)
+              </label>
               {form.tipo_entrada === "CONVENIO" && (<>
                 <div className="grid grid-cols-2 gap-3">
-                  <Label texto="Convênio nº *"><input {...campo("convenio_numero")} maxLength={20} /></Label>
+                  <Label texto="Convênio nº *"><input {...campo("convenio_numero")} inputMode="numeric" maxLength={9} /></Label>
                   <Label texto="Ano *"><input {...campo("convenio_ano")} inputMode="numeric" maxLength={4} /></Label>
                 </div>
                 <Label texto="Objeto do convênio *">
-                  <input {...campo("convenio_objeto")} maxLength={250} />
+                  <textarea rows={2} {...campo("convenio_objeto")} maxLength={1000} />
                 </Label>
               </>)}
               <Label texto={`Nota explicativa${form.tipo_entrada === "DOACAO" ? " *" : ""}`} classe="sm:col-span-2">

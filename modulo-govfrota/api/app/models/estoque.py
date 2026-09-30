@@ -71,11 +71,13 @@ class EntradaCombustivel(Base, TimestampMixin):
     repassador_nome: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
     repassador_cpf_cnpj: Mapped[Optional[str]] = mapped_column(String(14), nullable=True)
     responsavel_cpf: Mapped[Optional[str]] = mapped_column(String(11), nullable=True)
-    lei_ato_numero: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    lei_ato_ano: Mapped[Optional[int]] = mapped_column(Integer(), nullable=True)
+    # Repassador com obrigação de prestar contas ao TCE (flEntidadeRepassador).
+    repassador_entidade_tce: Mapped[bool] = mapped_column(default=False, server_default="false", nullable=False)
+    # cdControleLeiAto: código de controle da lei/ato na tabela LeiAto do SIM-AM.
+    lei_ato_codigo: Mapped[Optional[int]] = mapped_column(Integer(), nullable=True)
     convenio_numero: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
     convenio_ano: Mapped[Optional[int]] = mapped_column(Integer(), nullable=True)
-    convenio_objeto: Mapped[Optional[str]] = mapped_column(String(250), nullable=True)
+    convenio_objeto: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
     nota_explicativa: Mapped[Optional[str]] = mapped_column(String(250), nullable=True)
 
     tanque: Mapped["Tanque"] = relationship()

@@ -40,7 +40,18 @@ from app.models.simam import (
     VeiculoMedidor,
 )
 from app.models.veiculo import Veiculo, VeiculoTanque
-from app.services.simam.layout import ARQUIVOS, TIPOS_ENTRADA, ErroLayout, formatar_linha, gerar_txt
+from app.services.simam.layout import (
+    ARQUIVOS,
+    CATEGORIAS_DO_ARQUIVO,
+    OBJETO_FLEX,
+    TIPOS_ENTRADA,
+    TIPOS_SAIDA,
+    TP_DOC_CNPJ,
+    TP_DOC_CPF,
+    ErroLayout,
+    formatar_linha,
+    gerar_txt,
+)
 
 ZERO = Decimal("0")
 MIL = Decimal("0.001")
@@ -274,6 +285,11 @@ async def calcular(db: AsyncSession, org_id: uuid.UUID, ano: int, mes: int) -> R
         if not (c.simam_categoria and c.simam_objeto) and comb_id not in combustiveis_sem_codigo:
             combustiveis_sem_codigo.add(comb_id)
             r.erro(arquivo, f"Combustível {c.nome} sem código SIM-AM (categoria/objeto da despesa).", "/tanques")
+        if c.simam_categoria and c.simam_categoria not in CATEGORIAS_DO_ARQUIVO.get(arquivo, {c.simam_categoria}):
+            chave = (comb_id, arquivo)
+            if chave not in combustiveis_sem_codigo:
+                combustiveis_sem_codigo.add(chave)
+                r.erro(arquivo, f"{c.nome}: a categoria {c.simam_categoria} não é aceita pelo TCE neste arquivo.", "/tanques")
         return c.simam_categoria, c.simam_objeto
 
     # ── Veículos ──
@@ -308,6 +324,19 @@ async def calcular(db: AsyncSession, org_id: uuid.UUID, ano: int, mes: int) -> R
                     VeiculoTanque.organization_id == org_id,
                     VeiculoTanque.tank_type == "PRIMARY",
                     VeiculoTanque.deleted_at.is_(None),
+                )
+            )
+        ).scalars()
+    }
+    flex = {
+        vt.veiculo_id
+        for vt in (
+            await db.execute(
+                select(VeiculoTanque).where(
+                    VeiculoTanque.organization_id == org_id,
+                    VeiculoTanque.tank_type == "PRIMARY",
+                    VeiculoTanque.deleted_at.is_(None),
+                    VeiculoTanque.combustivel_alternativo_id.isnot(None),
                 )
             )
         ).scalars()
@@ -348,6 +377,9 @@ async def calcular(db: AsyncSession, org_id: uuid.UUID, ano: int, mes: int) -> R
             faltas.append("combustível principal")
         else:
             cat, obj = codigos(comb_id, "VeiculoEquipamento")
+            # Aceita dois combustíveis (ex.: gasolina/etanol): "Veículos FLEX" (1/26).
+            if v.id in flex and cat == 1:
+                obj = OBJETO_FLEX
         if faltas:
             r.erro("VeiculoEquipamento", f"{v.placa}: falta {', '.join(faltas)}.", link)
         r.arquivos["VeiculoEquipamento"].append({
@@ -522,6 +554,9 @@ async def calcular(db: AsyncSession, org_id: uuid.UUID, ano: int, mes: int) -> R
         })
 
     # ── Entradas extraorçamentárias ──
+    # A chave do TCE é (repassador, combustível, tipo, data): lançamentos iguais
+    # no mesmo dia viram uma linha só, com as quantidades somadas.
+    entradas: dict[tuple, dict] = {}
     for en in (
         await db.execute(
             select(EntradaCombustivel)
@@ -532,7 +567,7 @@ async def calcular(db: AsyncSession, org_id: uuid.UUID, ano: int, mes: int) -> R
                 EntradaCombustivel.data_entrada >= d_ini,
                 EntradaCombustivel.data_entrada < d_fim,
             )
-            .order_by(EntradaCombustivel.simam_numero)
+            .order_by(EntradaCombustivel.data_entrada, EntradaCombustivel.simam_numero)
         )
     ).scalars():
         c = combustiveis.get(en.combustivel_id)
@@ -540,31 +575,45 @@ async def calcular(db: AsyncSession, org_id: uuid.UUID, ano: int, mes: int) -> R
             continue
         cat, obj = codigos(en.combustivel_id, "EntradaExtraCombustivel")
         cpf = en.responsavel_cpf or cpf_padrao
+        rotulo = f"Entrada de {c.nome} em {en.data_entrada.strftime('%d/%m/%Y')}"
         if not cpf:
-            r.erro("EntradaExtraCombustivel", f"Entrada nº {en.simam_numero}: falta o CPF do responsável pelo combustível.", "/configuracoes")
-        r.arquivos["EntradaExtraCombustivel"].append({
+            r.erro("EntradaExtraCombustivel", f"{rotulo}: falta o CPF do responsável pelo combustível.", "/configuracoes")
+        if not en.lei_ato_codigo:
+            r.erro("EntradaExtraCombustivel", f"{rotulo}: falta o código da Lei/Ato (cdControleLeiAto).", "/tanques")
+        doc = en.repassador_cpf_cnpj or ""
+        fl = "S" if en.repassador_entidade_tce else "N"
+        chave = (fl, doc, cat, obj, en.tipo_entrada, en.data_entrada)
+        if chave in entradas:
+            linha = entradas[chave]
+            linha["nrQuantidade"] = _q(linha["nrQuantidade"] + Decimal(en.quantidade_litros))
+            if en.nota_explicativa:
+                linha["dsNotaExplicativa"] = "; ".join(
+                    filter(None, [linha["dsNotaExplicativa"], en.nota_explicativa])
+                )[:250]
+            continue
+        entradas[chave] = {
             "idPessoa": id_pessoa,
-            "nrEntrada": en.simam_numero,
-            "nrAnoEntrada": en.data_entrada.year,
-            "nmRepassador": en.repassador_nome,
-            "nrCPFCNPJRepassador": en.repassador_cpf_cnpj,
+            "flEntidadeRepassador": fl,
+            "tpDocRepassador": TP_DOC_CNPJ if len(doc) == 14 else TP_DOC_CPF,
+            "nrDocRepassador": doc or None,
             "idTipoCategoriaObjetoDespesa": cat,
             "idTipoObjetoDespesa": obj,
             "idTipoEntradaCombustivel": TIPOS_ENTRADA.get(en.tipo_entrada),
             "dtEntrada": en.data_entrada.isoformat(),
             "nrCPF": cpf,
             "nrQuantidade": _q(en.quantidade_litros),
-            "nrLeiAto": en.lei_ato_numero,
-            "nrAnoLeiAto": en.lei_ato_ano,
+            "cdControleLeiAto": en.lei_ato_codigo,
             "nrConvenioOrigem": en.convenio_numero,
             "nrAnoConvenioOrigem": en.convenio_ano,
             "dsObjetoConvenioOrigem": en.convenio_objeto,
             "dsNotaExplicativa": en.nota_explicativa,
             "_combustivel": c.nome,
-            "_entrada_id": str(en.id),
-        })
+            "_repassador": en.repassador_nome,
+        }
+    r.arquivos["EntradaExtraCombustivel"] = list(entradas.values())
 
-    # ── Saídas extraordinárias ──
+    # ── Saídas extraordinárias ── (mesma regra de agregação por chave)
+    saidas: dict[tuple, dict] = {}
     for s in (
         await db.execute(
             select(SaidaExtraCombustivel)
@@ -573,32 +622,44 @@ async def calcular(db: AsyncSession, org_id: uuid.UUID, ano: int, mes: int) -> R
                 SaidaExtraCombustivel.data_saida >= d_ini,
                 SaidaExtraCombustivel.data_saida < d_fim,
             )
-            .order_by(SaidaExtraCombustivel.ano, SaidaExtraCombustivel.numero)
+            .order_by(SaidaExtraCombustivel.data_saida, SaidaExtraCombustivel.numero)
         )
     ).scalars():
         c = combustiveis.get(s.combustivel_id)
         if c is None or not c.simam_informar:
             continue
         cat, obj = codigos(s.combustivel_id, "SaidaExtraCombustivel")
-        r.arquivos["SaidaExtraCombustivel"].append({
+        doc = s.recebedor_cpf_cnpj or ""
+        fl = None if s.tipo_saida != 6 else ("S" if s.recebedor_entidade_tce else "N")
+        chave = (cat, obj, s.tipo_saida, s.data_saida, fl, doc, s.convenio_numero)
+        if chave in saidas:
+            linha = saidas[chave]
+            linha["nrQuantidade"] = _q(linha["nrQuantidade"] + Decimal(s.quantidade))
+            if s.nota_explicativa:
+                linha["dsNotaExplicativa"] = "; ".join(
+                    filter(None, [linha["dsNotaExplicativa"], s.nota_explicativa])
+                )[:250]
+            continue
+        saidas[chave] = {
             "idPessoa": id_pessoa,
-            "nrSaida": s.numero,
-            "nrAnoSaida": s.ano,
             "idTipoCategoriaObjetoDespesa": cat,
             "idTipoObjetoDespesa": obj,
             "idTipoSaidaCombustivel": s.tipo_saida,
             "dtSaida": s.data_saida.isoformat(),
+            "flEntidadeRecebedor": fl,
+            "tpDocRecebedor": (TP_DOC_CNPJ if len(doc) == 14 else TP_DOC_CPF) if doc else None,
+            "nrDocRecebedor": doc or None,
             "nrCPF": s.responsavel_cpf,
             "nrQuantidade": _q(s.quantidade),
-            "nmRecebedor": s.recebedor_nome,
-            "nrCPFCNPJRecebedor": s.recebedor_cpf_cnpj,
-            "nrConvenio": s.convenio_numero,
-            "nrAnoConvenio": s.convenio_ano,
-            "dsObjetoConvenio": s.convenio_objeto,
+            "cdControleLeiAto": s.lei_ato_codigo,
+            "nrConvenioOrigem": s.convenio_numero,
+            "nrAnoConvenioOrigem": s.convenio_ano,
+            "dsObjetoConvenioOrigem": s.convenio_objeto,
             "dsNotaExplicativa": s.nota_explicativa,
             "_combustivel": c.nome,
-            "_saida_id": str(s.id),
-        })
+            "_tipo": TIPOS_SAIDA.get(s.tipo_saida),
+        }
+    r.arquivos["SaidaExtraCombustivel"] = list(saidas.values())
 
     # ── Estoque (tanques próprios) ──
     tanques_por_comb = defaultdict(list)
@@ -610,7 +671,8 @@ async def calcular(db: AsyncSession, org_id: uuid.UUID, ano: int, mes: int) -> R
             estoque_anterior[linha.get("_combustivel_id")] = Decimal(str(linha["nrQuantidadeFinal"]))
     for comb_id, tanques in tanques_por_comb.items():
         c = combustiveis.get(comb_id)
-        if c is None or not c.simam_informar:
+        # EstoqueCombustivel só aceita a categoria 1 (Combustível).
+        if c is None or not c.simam_informar or (c.simam_categoria and c.simam_categoria != 1):
             continue
         final = await _saldo_em(db, org_id, tanques, t_fim)
         if str(comb_id) in estoque_anterior:

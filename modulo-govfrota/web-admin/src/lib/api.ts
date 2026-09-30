@@ -1028,6 +1028,16 @@ export const TIPOS_ENTRADA: { codigo: TipoEntrada; nome: string }[] = [
   { codigo: "CONVENIO", nome: "Convênio" },
   { codigo: "AJUSTE_LIQUIDACAO", nome: "Ajuste por liquidação quantitativa" },
 ];
+/** Tabela TipoCategoriaXObjetoDespesa do TCE-PR (layout SIM-AM 2026 v1.2b). */
+export const OBJETOS_DESPESA_SIMAM: { categoria: number; objeto: number; nome: string }[] = [
+  { categoria: 1, objeto: 1, nome: "Combustível · Gasolina" },
+  { categoria: 1, objeto: 2, nome: "Combustível · Etanol" },
+  { categoria: 1, objeto: 3, nome: "Combustível · Diesel" },
+  { categoria: 1, objeto: 4, nome: "Combustível · Biodiesel" },
+  { categoria: 1, objeto: 5, nome: "Combustível · GNV" },
+  { categoria: 1, objeto: 6, nome: "Combustível · Querosene" },
+  { categoria: 3, objeto: 8, nome: "Energia elétrica consumida por veículos e equipamentos" },
+];
 export const TIPOS_SAIDA_SIMAM: { codigo: number; nome: string; semNota?: boolean }[] = [
   { codigo: 1, nome: "Evaporação" },
   { codigo: 2, nome: "Furto" },

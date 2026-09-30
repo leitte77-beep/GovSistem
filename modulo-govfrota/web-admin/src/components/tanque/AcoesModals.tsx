@@ -241,7 +241,9 @@ export function SaidaExtraModal({
   const vazio = {
     tipo_saida: "4", data_saida: new Date().toISOString().slice(0, 10), quantidade: "", responsavel_cpf: "",
     nota_explicativa: "", recebedor_nome: "", recebedor_cpf_cnpj: "", convenio_numero: "", convenio_ano: "", convenio_objeto: "",
+    lei_ato_codigo: "",
   };
+  const [recebedorTce, setRecebedorTce] = useState(false);
   const [form, setForm] = useState(vazio);
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [salvando, setSalvando] = useState(false);
@@ -275,10 +277,12 @@ export function SaidaExtraModal({
         quantidade: form.quantidade,
         responsavel_cpf: form.responsavel_cpf || undefined,
         nota_explicativa: form.nota_explicativa || undefined,
+        lei_ato_codigo: form.lei_ato_codigo ? Number(form.lei_ato_codigo) : undefined,
         anexo_id,
         ...(convenio
           ? {
-              recebedor_nome: form.recebedor_nome, recebedor_cpf_cnpj: form.recebedor_cpf_cnpj,
+              recebedor_nome: form.recebedor_nome || undefined, recebedor_cpf_cnpj: form.recebedor_cpf_cnpj,
+              recebedor_entidade_tce: recebedorTce,
               convenio_numero: form.convenio_numero, convenio_ano: Number(form.convenio_ano) || undefined,
               convenio_objeto: form.convenio_objeto,
             }
@@ -328,12 +332,19 @@ export function SaidaExtraModal({
           <Label texto="CPF do responsável">
             <input inputMode="numeric" maxLength={14} placeholder="Vazio = o de Configurações" {...campo("responsavel_cpf")} />
           </Label>
+          <Label texto="Código da Lei/Ato (opcional)">
+            <input inputMode="numeric" maxLength={7} placeholder="cdControleLeiAto" {...campo("lei_ato_codigo")} />
+          </Label>
           {convenio && (<>
-            <Label texto="Entidade recebedora *"><input maxLength={150} {...campo("recebedor_nome")} /></Label>
+            <Label texto="Entidade recebedora"><input maxLength={150} {...campo("recebedor_nome")} /></Label>
             <Label texto="CPF/CNPJ do recebedor *"><input inputMode="numeric" maxLength={18} {...campo("recebedor_cpf_cnpj")} /></Label>
-            <Label texto="Convênio nº *"><input maxLength={20} {...campo("convenio_numero")} /></Label>
+            <Label texto="Convênio nº *"><input inputMode="numeric" maxLength={9} {...campo("convenio_numero")} /></Label>
             <Label texto="Ano do convênio *"><input inputMode="numeric" maxLength={4} {...campo("convenio_ano")} /></Label>
-            <Label texto="Objeto do convênio *"><input maxLength={250} {...campo("convenio_objeto")} /></Label>
+            <label className="flex items-center gap-2 text-body-sm text-text-body sm:col-span-2">
+              <input type="checkbox" checked={recebedorTce} onChange={(e) => setRecebedorTce(e.target.checked)} />
+              O recebedor presta contas ao TCE-PR
+            </label>
+            <Label texto="Objeto do convênio *" classe="sm:col-span-2"><textarea rows={2} maxLength={1000} {...campo("convenio_objeto")} /></Label>
           </>)}
         </div>
         <Label texto={`Nota explicativa${tipo?.semNota ? "" : " *"}`}>

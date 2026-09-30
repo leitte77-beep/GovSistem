@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
-import { api, Combustivel } from "@/lib/api";
+import { api, Combustivel, OBJETOS_DESPESA_SIMAM } from "@/lib/api";
 import { UNIDADES_COMBUSTIVEL } from "@/lib/combustiveis";
 import { Drawer, Label, Secao } from "@/components/tanque/Drawer";
 import { UploadImagem } from "@/components/tanque/UploadImagem";
@@ -25,8 +25,8 @@ export function CombustivelFormDrawer({ aberto, onClose, combustivel, onSalvo }:
     codigo_anp: c?.codigo_anp ?? "",
     especificacao: c?.especificacao ?? "",
     descricao: c?.descricao ?? "",
-    simam_categoria: c?.simam_categoria ? String(c.simam_categoria) : "",
-    simam_objeto: c?.simam_objeto ? String(c.simam_objeto) : "",
+    // "categoria/objeto" da tabela do TCE; vazio = não definido.
+    simam_codigo: c?.simam_categoria && c?.simam_objeto ? `${c.simam_categoria}/${c.simam_objeto}` : "",
     simam_informar: c?.simam_informar ?? true,
   });
   const [form, setForm] = useState(() => novoForm(combustivel));
@@ -66,8 +66,8 @@ export function CombustivelFormDrawer({ aberto, onClose, combustivel, onSalvo }:
         foto_url,
         ativo: combustivel?.ativo ?? true,
         simam_informar: form.simam_informar,
-        simam_categoria: form.simam_categoria ? Number(form.simam_categoria) : null,
-        simam_objeto: form.simam_objeto ? Number(form.simam_objeto) : null,
+        simam_categoria: form.simam_codigo ? Number(form.simam_codigo.split("/")[0]) : null,
+        simam_objeto: form.simam_codigo ? Number(form.simam_codigo.split("/")[1]) : null,
       };
       if (combustivel) {
         await api.updateCombustivel(combustivel.id, payload);
@@ -141,18 +141,20 @@ export function CombustivelFormDrawer({ aberto, onClose, combustivel, onSalvo }:
             Códigos da tabela do TCE usados nos arquivos de consumo e estoque. Quem lança abastecimento não vê estes códigos.
           </p>
           <div className="grid gap-3 sm:grid-cols-2">
-            <Label texto="Categoria do objeto da despesa">
-              <input {...campo("simam_categoria")} inputMode="numeric" maxLength={3} placeholder="Ex.: 1 (Combustível)"
-                onChange={(e) => setForm((f) => ({ ...f, simam_categoria: e.target.value.replace(/\D/g, "") }))} />
-            </Label>
-            <Label texto="Tipo do objeto da despesa">
-              <input {...campo("simam_objeto")} inputMode="numeric" maxLength={9} placeholder="Código do combustível no TCE"
-                onChange={(e) => setForm((f) => ({ ...f, simam_objeto: e.target.value.replace(/\D/g, "") }))} />
+            <Label texto="Tipo no TCE (categoria · objeto da despesa)" classe="sm:col-span-2">
+              <select {...campo("simam_codigo")}>
+                <option value="">Não definido</option>
+                {OBJETOS_DESPESA_SIMAM.map((o) => (
+                  <option key={`${o.categoria}/${o.objeto}`} value={`${o.categoria}/${o.objeto}`}>
+                    {o.nome} ({o.categoria}/{o.objeto})
+                  </option>
+                ))}
+              </select>
             </Label>
             <label className="flex items-center gap-2 text-body-sm text-text-body sm:col-span-2">
               <input type="checkbox" checked={form.simam_informar}
                 onChange={(e) => setForm((f) => ({ ...f, simam_informar: e.target.checked }))} />
-              Informar este produto ao SIM-AM (desmarque para lubrificantes e outros itens fora do layout)
+              Informar este produto ao SIM-AM (desmarque para ARLA, lubrificantes e itens fora da tabela do TCE)
             </label>
           </div>
         </Secao>

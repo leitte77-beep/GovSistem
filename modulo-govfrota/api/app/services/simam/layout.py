@@ -1,17 +1,10 @@
-"""Layout SIM-AM 2026 (v1.2b) — arquivos de frota/combustível como DADOS.
+"""Layout SIM-AM 2026 (v1.2b, publicado em 23/09/2026) — arquivos de frota como DADOS.
 
-Mudança de layout = mudar esta especificação, não o código.
-
-Regras gerais do manual: .txt, um registro por linha, separador "|" também
-após o último campo, sem cabeçalho, ordem rigorosa dos campos, codificação
-Windows-1252, obrigatórios nunca em branco, arquivos enviados dentro de .zip.
-
-CONFERIR COM O PDF (páginas 699–722) antes do primeiro envio — itens marcados
-"# conferir" foram montados a partir do resumo do layout, não do manual:
-- nomes exatos dos arquivos;
-- separador decimal e fim de linha;
-- formato de data;
-- ordem e nomes dos campos de EntradaExtraCombustivel e SaidaExtraCombustivel.
+Mudança de layout = mudar esta especificação, não o código. Conferido com o
+manual (Módulo Patrimônio/Controle Interno e "Regras Básicas", págs. 14–16):
+arquivo = nome da tabela + ".txt"; separador "|" também após o último campo;
+fim de linha "\n"; decimais com ponto; datas AAAA-MM-DD; sem cabeçalho;
+Windows-1252; os .txt vão dentro de um .zip.
 """
 
 from dataclasses import dataclass
@@ -19,9 +12,9 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
 SEPARADOR = "|"
-FIM_DE_LINHA = "\r\n"  # conferir
-SEPARADOR_DECIMAL = "."  # conferir (exemplo do resumo usa ponto: 120500.000)
-FORMATO_DATA = "%d/%m/%Y"  # conferir
+FIM_DE_LINHA = "\n"
+SEPARADOR_DECIMAL = "."
+FORMATO_DATA = "%Y-%m-%d"
 CODIFICACAO = "cp1252"
 
 
@@ -92,42 +85,38 @@ ARQUIVOS: dict[str, list[Campo]] = {
         D("nrQuantidade", 14, 3),
         C("dsMotivo", 250),
     ],
-    # conferir: ordem/nomes montados a partir da lista de campos do resumo.
     "EntradaExtraCombustivel": [
         N("idPessoa", 7),
-        N("nrEntrada", 9),
-        N("nrAnoEntrada", 4),
-        C("nmRepassador", 150),
-        C("nrCPFCNPJRepassador", 14),
+        C("flEntidadeRepassador", 1),
+        N("tpDocRepassador", 2),
+        C("nrDocRepassador", 15),
         N("idTipoCategoriaObjetoDespesa", 3),
         N("idTipoObjetoDespesa", 9),
         N("idTipoEntradaCombustivel", 2),
         DT("dtEntrada"),
-        C("nrCPF", 11),
+        C("nrCPF", 15),
         D("nrQuantidade", 14, 3),
-        C("nrLeiAto", 20, False),
-        N("nrAnoLeiAto", 4, False),
-        C("nrConvenioOrigem", 20, False),
+        N("cdControleLeiAto", 7),
+        N("nrConvenioOrigem", 9, False),
         N("nrAnoConvenioOrigem", 4, False),
-        C("dsObjetoConvenioOrigem", 250, False),
+        C("dsObjetoConvenioOrigem", 1000, False),
         C("dsNotaExplicativa", 250, False),
     ],
-    # conferir: ordem/nomes montados a partir da lista de campos do resumo.
     "SaidaExtraCombustivel": [
         N("idPessoa", 7),
-        N("nrSaida", 9),
-        N("nrAnoSaida", 4),
         N("idTipoCategoriaObjetoDespesa", 3),
         N("idTipoObjetoDespesa", 9),
         N("idTipoSaidaCombustivel", 2),
         DT("dtSaida"),
-        C("nrCPF", 11),
+        C("flEntidadeRecebedor", 1, False),
+        N("tpDocRecebedor", 2, False),
+        C("nrDocRecebedor", 15, False),
+        C("nrCPF", 15),
         D("nrQuantidade", 14, 3),
-        C("nmRecebedor", 150, False),
-        C("nrCPFCNPJRecebedor", 14, False),
-        C("nrConvenio", 20, False),
-        N("nrAnoConvenio", 4, False),
-        C("dsObjetoConvenio", 250, False),
+        N("cdControleLeiAto", 7, False),
+        N("nrConvenioOrigem", 9, False),
+        N("nrAnoConvenioOrigem", 4, False),
+        C("dsObjetoConvenioOrigem", 1000, False),
         C("dsNotaExplicativa", 250, False),
     ],
     "EstoqueCombustivel": [
@@ -140,6 +129,33 @@ ARQUIVOS: dict[str, list[Campo]] = {
         D("nrQuantidadeFinal", 14, 3),
     ],
 }
+
+# TipoCategoriaXObjetoDespesa (combinações válidas de categoria × objeto).
+CATEGORIAS = {1: "Combustível", 2: "Pneus", 3: "Energia elétrica consumida por veículos e equipamentos"}
+OBJETOS = {
+    (1, 1): "Gasolina",
+    (1, 2): "Etanol",
+    (1, 3): "Diesel",
+    (1, 4): "Biodiesel",
+    (1, 5): "GNV",
+    (1, 6): "Querosene",
+    (1, 26): "Veículos FLEX e assemelhados",
+    (2, 27): "Pneus para caminhões",
+    (2, 28): "Pneus para tratores",
+    (2, 29): "Pneus para veículos e utilitários",
+    (2, 30): "Pneus para outros veículos e equipamentos",
+    (3, 8): "Energia elétrica consumida por veículos e equipamentos",
+}
+OBJETO_FLEX = 26
+# Categorias aceitas em cada arquivo (regras 1110/1179, 1189/1198, 1209).
+CATEGORIAS_DO_ARQUIVO = {
+    "VeiculoEquipamento": {1, 3},
+    "ConsumoCombustivel": {1, 3},
+    "EntradaExtraCombustivel": {1, 2},
+    "SaidaExtraCombustivel": {1, 2},
+    "EstoqueCombustivel": {1},
+}
+TP_DOC_CPF, TP_DOC_CNPJ = 2, 3
 
 TIPOS_MEDIDOR = {1: "Hodômetro", 2: "Horímetro", 3: "Não usa hodômetro/horímetro"}
 TIPOS_ENTRADA = {"DOACAO": 1, "CONVENIO": 2, "AJUSTE_LIQUIDACAO": 3}

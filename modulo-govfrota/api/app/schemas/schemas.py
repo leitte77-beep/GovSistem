@@ -390,6 +390,17 @@ class CombustivelCreate(BaseModel):
     simam_categoria: Optional[int] = Field(default=None, ge=1, le=999)
     simam_objeto: Optional[int] = Field(default=None, ge=1, le=999999999)
 
+    @model_validator(mode="after")
+    def _par_simam(self):
+        # Só combinações da tabela TipoCategoriaXObjetoDespesa do TCE.
+        from app.services.simam.layout import OBJETOS
+
+        if (self.simam_categoria is None) != (self.simam_objeto is None):
+            raise ValueError("Informe a categoria e o tipo do objeto da despesa do SIM-AM.")
+        if self.simam_categoria is not None and (self.simam_categoria, self.simam_objeto) not in OBJETOS:
+            raise ValueError("Combinação de categoria e objeto da despesa inexistente na tabela do TCE.")
+        return self
+
 
 class CombustivelResponse(ORMModel):
     id: uuid.UUID
@@ -636,11 +647,11 @@ class EntradaCreate(BaseModel):
     repassador_nome: Optional[str] = Field(default=None, max_length=150)
     repassador_cpf_cnpj: Optional[str] = Field(default=None, max_length=18)
     responsavel_cpf: Optional[str] = Field(default=None, max_length=14)
-    lei_ato_numero: Optional[str] = Field(default=None, max_length=20)
-    lei_ato_ano: Optional[int] = None
-    convenio_numero: Optional[str] = Field(default=None, max_length=20)
-    convenio_ano: Optional[int] = None
-    convenio_objeto: Optional[str] = Field(default=None, max_length=250)
+    repassador_entidade_tce: bool = False
+    lei_ato_codigo: Optional[int] = Field(default=None, ge=1, le=9999999)
+    convenio_numero: Optional[str] = Field(default=None, pattern=r"^\d{1,9}$")
+    convenio_ano: Optional[int] = Field(default=None, ge=1900, le=2100)
+    convenio_objeto: Optional[str] = Field(default=None, max_length=1000)
     nota_explicativa: Optional[str] = Field(default=None, max_length=250)
 
 
@@ -676,8 +687,8 @@ class EntradaResponse(ORMModel):
     repassador_nome: Optional[str] = None
     repassador_cpf_cnpj: Optional[str] = None
     responsavel_cpf: Optional[str] = None
-    lei_ato_numero: Optional[str] = None
-    lei_ato_ano: Optional[int] = None
+    repassador_entidade_tce: bool = False
+    lei_ato_codigo: Optional[int] = None
     convenio_numero: Optional[str] = None
     convenio_ano: Optional[int] = None
     convenio_objeto: Optional[str] = None

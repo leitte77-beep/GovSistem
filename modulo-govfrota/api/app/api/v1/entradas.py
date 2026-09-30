@@ -85,8 +85,8 @@ async def _montar_entrada(db: AsyncSession, entrada: EntradaCombustivel) -> Entr
         repassador_nome=entrada.repassador_nome,
         repassador_cpf_cnpj=entrada.repassador_cpf_cnpj,
         responsavel_cpf=entrada.responsavel_cpf,
-        lei_ato_numero=entrada.lei_ato_numero,
-        lei_ato_ano=entrada.lei_ato_ano,
+        repassador_entidade_tce=entrada.repassador_entidade_tce,
+        lei_ato_codigo=entrada.lei_ato_codigo,
         convenio_numero=entrada.convenio_numero,
         convenio_ano=entrada.convenio_ano,
         convenio_objeto=entrada.convenio_objeto,
@@ -101,31 +101,31 @@ def _digitos(valor: str | None) -> str | None:
 def _validar_tipo_entrada(body: EntradaCreate, cpf_padrao: str | None) -> dict:
     """Regras do SIM-AM (EntradaExtraCombustivel) por tipo de entrada."""
     if body.tipo_entrada == "ORCAMENTARIA":
-        return {c: None for c in _CAMPOS_EXTRA}
+        return {**{c: None for c in _CAMPOS_EXTRA}, "repassador_entidade_tce": False}
     faltas = []
     repassador_doc = _digitos(body.repassador_cpf_cnpj)
-    if not (body.repassador_nome or "").strip():
-        faltas.append("repassador")
     if not repassador_doc or len(repassador_doc) not in (11, 14):
         faltas.append("CPF/CNPJ do repassador")
     if body.tipo_entrada == "DOACAO" and not (body.nota_explicativa or "").strip():
         faltas.append("nota explicativa")
     if body.tipo_entrada == "CONVENIO" and not (body.convenio_numero and body.convenio_ano and body.convenio_objeto):
         faltas.append("número, ano e objeto do convênio")
+    if not body.lei_ato_codigo:
+        faltas.append("código de controle da Lei/Ato (cdControleLeiAto)")
     cpf = _digitos(body.responsavel_cpf) or cpf_padrao
     if not cpf or len(cpf) != 11:
         faltas.append("CPF do servidor responsável pelo combustível")
     if faltas:
         raise HTTPException(status_code=422, detail=f"Entrada extraorçamentária: informe {', '.join(faltas)}.")
     dados = {c: getattr(body, c) for c in _CAMPOS_EXTRA}
-    dados.update(repassador_cpf_cnpj=repassador_doc, responsavel_cpf=cpf)
+    dados.update(repassador_cpf_cnpj=repassador_doc, responsavel_cpf=cpf, repassador_entidade_tce=bool(body.repassador_entidade_tce))
     if body.tipo_entrada != "CONVENIO":
         dados.update(convenio_numero=None, convenio_ano=None, convenio_objeto=None)
     return dados
 
 
 _CAMPOS_EXTRA = (
-    "repassador_nome", "repassador_cpf_cnpj", "responsavel_cpf", "lei_ato_numero", "lei_ato_ano",
+    "repassador_nome", "repassador_cpf_cnpj", "responsavel_cpf", "repassador_entidade_tce", "lei_ato_codigo",
     "convenio_numero", "convenio_ano", "convenio_objeto", "nota_explicativa",
 )
 
