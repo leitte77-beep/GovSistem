@@ -368,6 +368,8 @@ class CombustivelCreate(BaseModel):
     nome: str = Field(min_length=1, max_length=100)
     unidade: str = "litro"
     categoria: str = "COMBUSTIVEL"
+    codigo_anp: Optional[str] = Field(default=None, max_length=20)
+    especificacao: Optional[str] = Field(default=None, max_length=120)
     descricao: Optional[str] = None
     foto_url: Optional[str] = None
     ativo: bool = True
@@ -378,12 +380,16 @@ class CombustivelResponse(ORMModel):
     nome: str
     unidade: str
     categoria: str
+    codigo_anp: Optional[str] = None
+    especificacao: Optional[str] = None
     descricao: Optional[str]
     foto_url: Optional[str]
     ativo: bool
     # Associados (preenchidos na listagem) — evita N+1 no frontend
     total_tanques: int = 0
     total_veiculos: int = 0
+    # Preço de referência vigente (contrato/ata com posto credenciado), se houver
+    preco_referencia: Optional[Decimal] = None
 
 
 class TanqueCreate(BaseModel):
@@ -635,6 +641,72 @@ class EntradaResponse(ORMModel):
     fornecedor_nome: Optional[str] = None
     # Anexos associados (id, nome, tipo, mime, url)
     anexos: list[dict] = []
+
+
+# ── Manifestos de entrada (NF-e pendentes) ─────────────────────────────────
+
+
+class ManifestoCreate(BaseModel):
+    """Lançamento manual de uma NF-e de combustível aguardando vínculo."""
+
+    numero: Optional[str] = Field(default=None, max_length=50)
+    serie: Optional[str] = Field(default=None, max_length=20)
+    chave_nfe: Optional[str] = Field(default=None, max_length=44)
+    emitente_nome: Optional[str] = Field(default=None, max_length=255)
+    emitente_cnpj: Optional[str] = Field(default=None, max_length=20)
+    data_emissao: Optional[datetime] = None
+    combustivel_id: Optional[uuid.UUID] = None
+    descricao_item: Optional[str] = Field(default=None, max_length=255)
+    quantidade_litros: Optional[Decimal] = Field(default=None, gt=0)
+    valor_unitario: Optional[Decimal] = None
+    valor_total: Optional[Decimal] = None
+    observacoes: Optional[str] = None
+    anexo_id: Optional[uuid.UUID] = None
+
+
+class ManifestoImportacao(BaseModel):
+    """Importa uma NF-e a partir de um XML já enviado via /uploads."""
+
+    anexo_id: uuid.UUID
+
+
+class ManifestoVinculo(BaseModel):
+    """Confirma a descarga de um manifesto no tanque, gerando a entrada."""
+
+    tanque_id: uuid.UUID
+    fornecedor_id: Optional[uuid.UUID] = None
+    quantidade_litros: Optional[Decimal] = Field(default=None, gt=0)
+    valor_unitario: Optional[Decimal] = None
+    valor_total: Optional[Decimal] = None
+    data_entrada: Optional[date] = None
+    observacoes: Optional[str] = None
+
+
+class ManifestoIgnorar(BaseModel):
+    justificativa: Optional[str] = Field(default=None, max_length=2000)
+
+
+class ManifestoResponse(ORMModel):
+    id: uuid.UUID
+    chave_nfe: Optional[str] = None
+    numero: Optional[str] = None
+    serie: Optional[str] = None
+    emitente_nome: Optional[str] = None
+    emitente_cnpj: Optional[str] = None
+    data_emissao: Optional[datetime] = None
+    combustivel_id: Optional[uuid.UUID] = None
+    combustivel_nome: Optional[str] = None
+    descricao_item: Optional[str] = None
+    codigo_anp: Optional[str] = None
+    quantidade_litros: Optional[Decimal] = None
+    valor_unitario: Optional[Decimal] = None
+    valor_total: Optional[Decimal] = None
+    status: str
+    origem: str
+    entrada_id: Optional[uuid.UUID] = None
+    anexo_id: Optional[uuid.UUID] = None
+    observacoes: Optional[str] = None
+    created_at: datetime
 
 
 # ── Estoque ────────────────────────────────────────────────────────────────

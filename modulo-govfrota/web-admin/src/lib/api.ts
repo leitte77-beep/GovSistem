@@ -355,6 +355,32 @@ export const api = {
     return request(`/entradas/${id}/cancelar`, { method: "POST", body: JSON.stringify({ justificativa }) });
   },
 
+  // Manifestos de entrada (NF-e pendentes)
+  listManifestos(params?: Record<string, unknown>) {
+    return requestPaginado<ManifestoEntrada>(`/manifestos${qs(params)}`);
+  },
+  criarManifesto(data: Record<string, unknown>) {
+    return request<ManifestoEntrada>("/manifestos", { method: "POST", body: JSON.stringify(data) });
+  },
+  importarManifesto(anexo_id: string) {
+    return request<ManifestoEntrada>("/manifestos/importar", {
+      method: "POST",
+      body: JSON.stringify({ anexo_id }),
+    });
+  },
+  vincularManifesto(id: string, data: Record<string, unknown>) {
+    return request<ManifestoEntrada>(`/manifestos/${id}/vincular`, {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+  },
+  ignorarManifesto(id: string, justificativa?: string) {
+    return request<ManifestoEntrada>(`/manifestos/${id}/ignorar`, {
+      method: "POST",
+      body: JSON.stringify({ justificativa }),
+    });
+  },
+
   // Fornecedores e oficinas
   listFornecedores(params?: Record<string, unknown>) {
     return requestPaginado<Fornecedor>(`/fornecedores${qs(params)}`);
@@ -802,11 +828,36 @@ export interface Combustivel {
   nome: string;
   unidade: string;
   categoria?: string;
+  codigo_anp?: string | null;
+  especificacao?: string | null;
   descricao?: string | null;
   foto_url?: string | null;
   ativo: boolean;
   total_tanques?: number;
   total_veiculos?: number;
+  preco_referencia?: number | string | null;
+}
+export interface ManifestoEntrada {
+  id: string;
+  chave_nfe: string | null;
+  numero: string | null;
+  serie: string | null;
+  emitente_nome: string | null;
+  emitente_cnpj: string | null;
+  data_emissao: string | null;
+  combustivel_id: string | null;
+  combustivel_nome: string | null;
+  descricao_item: string | null;
+  codigo_anp: string | null;
+  quantidade_litros: number | string | null;
+  valor_unitario: number | string | null;
+  valor_total: number | string | null;
+  status: string;
+  origem: string;
+  entrada_id: string | null;
+  anexo_id: string | null;
+  observacoes: string | null;
+  created_at: string;
 }
 export interface Tanque {
   id: string;

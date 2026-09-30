@@ -1,4 +1,5 @@
 import uuid
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import func as sa_func
@@ -9,7 +10,7 @@ from app.core.auth import get_current_user, require_permission
 from app.core.database import get_db
 from app.core.permissions import Perm
 from app.models.auth_models import User
-from app.models.combustivel import Combustivel, Tanque
+from app.models.combustivel import Combustivel, ContratoPosto, Tanque
 from app.models.veiculo import Veiculo, VeiculoTanque
 from app.schemas.schemas import CombustivelCreate, CombustivelResponse
 from app.services.auditoria import registrar_auditoria
@@ -43,17 +44,50 @@ async def _montar_resposta(
         or 0
     )
     total_veiculos = (await _veiculos_por_combustivel(db, user, [combustivel.id])).get(combustivel.id, 0)
+    precos = await _precos_referencia(db, user.organization_id, [combustivel.id])
     return CombustivelResponse(
         id=combustivel.id,
         nome=combustivel.nome,
         unidade=combustivel.unidade,
         categoria=combustivel.categoria,
+        codigo_anp=combustivel.codigo_anp,
+        especificacao=combustivel.especificacao,
         descricao=combustivel.descricao,
         foto_url=combustivel.foto_url,
         ativo=combustivel.ativo,
         total_tanques=total_tanques,
         total_veiculos=total_veiculos,
+        preco_referencia=precos.get(combustivel.id),
     )
+
+
+async def _precos_referencia(
+    db: AsyncSession, organization_id: uuid.UUID, ids: list[uuid.UUID]
+) -> dict[uuid.UUID, Decimal]:
+    """Preço vigente (R$/L) do contrato/ata ativo mais recente por combustível."""
+    if not ids:
+        return {}
+    rows = (
+        await db.execute(
+            select(ContratoPosto.combustivel_id, ContratoPosto.preco_litro)
+            .where(
+                ContratoPosto.organization_id == organization_id,
+                ContratoPosto.combustivel_id.in_(ids),
+                ContratoPosto.ativo.is_(True),
+                ContratoPosto.deleted_at.is_(None),
+            )
+            .order_by(
+                ContratoPosto.data_inicio.desc().nulls_last(),
+                ContratoPosto.created_at.desc(),
+            )
+        )
+    ).all()
+    precos: dict[uuid.UUID, Decimal] = {}
+    for combustivel_id, preco_litro in rows:
+        # Como estão ordenados do mais recente para o mais antigo, o primeiro
+        # preço de cada combustível é o vigente.
+        precos.setdefault(combustivel_id, preco_litro)
+    return precos
 
 
 async def _veiculos_por_combustivel(
@@ -123,8 +157,9 @@ async def listar(
             ).all()
         )
         veiculos = await _veiculos_por_combustivel(db, user, ids)
+        precos = await _precos_referencia(db, user.organization_id, ids)
     else:
-        tanques, veiculos = {}, {}
+        tanques, veiculos, precos = {}, {}, {}
 
     return [
         CombustivelResponse(
@@ -132,11 +167,14 @@ async def listar(
             nome=c.nome,
             unidade=c.unidade,
             categoria=c.categoria,
+            codigo_anp=c.codigo_anp,
+            especificacao=c.especificacao,
             descricao=c.descricao,
             foto_url=c.foto_url,
             ativo=c.ativo,
             total_tanques=int(tanques.get(c.id, 0)),
             total_veiculos=int(veiculos.get(c.id, 0)),
+            preco_referencia=precos.get(c.id),
         )
         for c in combustiveis
     ]

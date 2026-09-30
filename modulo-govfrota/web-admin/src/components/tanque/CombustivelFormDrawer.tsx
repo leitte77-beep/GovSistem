@@ -22,6 +22,8 @@ export function CombustivelFormDrawer({ aberto, onClose, combustivel, onSalvo }:
   const novoForm = (c: Combustivel | null) => ({
     nome: c?.nome ?? "",
     unidade: c?.unidade ?? "litro",
+    codigo_anp: c?.codigo_anp ?? "",
+    especificacao: c?.especificacao ?? "",
     descricao: c?.descricao ?? "",
   });
   const [form, setForm] = useState(() => novoForm(combustivel));
@@ -55,6 +57,8 @@ export function CombustivelFormDrawer({ aberto, onClose, combustivel, onSalvo }:
       const payload: Record<string, unknown> = {
         nome: form.nome,
         unidade: form.unidade,
+        codigo_anp: form.codigo_anp || null,
+        especificacao: form.especificacao || null,
         descricao: form.descricao || undefined,
         foto_url,
         ativo: combustivel?.ativo ?? true,
@@ -113,6 +117,12 @@ export function CombustivelFormDrawer({ aberto, onClose, combustivel, onSalvo }:
                   <option key={u} value={u}>{u}</option>
                 ))}
               </select>
+            </Label>
+            <Label texto="Código ANP">
+              <input {...campo("codigo_anp")} placeholder="Ex.: 320101001" />
+            </Label>
+            <Label texto="Especificação">
+              <input {...campo("especificacao")} placeholder="Ex.: Tipo C (27% Anidro)" />
             </Label>
             <Label texto="Descrição" classe="sm:col-span-2">
               <textarea rows={2} {...campo("descricao")} />

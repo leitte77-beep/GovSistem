@@ -40,6 +40,10 @@ class Combustivel(Base, TimestampMixin, SoftDeleteMixin):
     categoria: Mapped[str] = mapped_column(
         String(20), default="COMBUSTIVEL", nullable=False, index=True
     )
+    # Classificação oficial ANP (ex.: 320101001) e especificação do produto
+    # (ex.: "Tipo C (27% Anidro)"), usadas na homologação fiscal do combustível.
+    codigo_anp: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    especificacao: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
     descricao: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
     foto_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     ativo: Mapped[bool] = mapped_column(Boolean(), default=True, nullable=False)

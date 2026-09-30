@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import {
@@ -8,10 +8,15 @@ import {
   ArrowDownToLine,
   ChevronLeft,
   ChevronRight,
+  ClipboardList,
   Droplets,
+  Eye,
   FileDown,
+  FileText,
   Fuel,
   History,
+  Info,
+  Link2,
   PackagePlus,
   Pencil,
   Plus,
@@ -21,10 +26,10 @@ import {
   Search,
   ShieldCheck,
   SlidersHorizontal,
+  Upload,
   X,
-  Eye,
 } from "lucide-react";
-import { api, Combustivel, Entrada, Fornecedor, Tanque } from "@/lib/api";
+import { api, Combustivel, Entrada, Fornecedor, ManifestoEntrada, Tanque } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { RequirePermission } from "@/components/RequirePermission";
 import { EmptyState } from "@/components/veiculo/EmptyState";
@@ -37,6 +42,7 @@ import { FornecedorFormDrawer } from "@/components/tanque/FornecedorFormDrawer";
 import { EntradaFormDrawer } from "@/components/tanque/EntradaFormDrawer";
 import { AjusteModal, CancelarEntradaModal, InventarioModal, TransferenciaModal } from "@/components/tanque/AcoesModals";
 import { VerEntradaModal } from "@/components/tanque/VerEntradaModal";
+import { IgnorarManifestoModal, VincularManifestoModal } from "@/components/tanque/ManifestoModals";
 import { ConfirmarModal } from "@/components/tanque/Drawer";
 import { corStatusTanque, rotuloMovimentacao } from "@/lib/combustiveis";
 
@@ -63,7 +69,13 @@ export default function CombustiveisPage() {
   const [totalEntradas, setTotalEntradas] = useState(0);
   const [entradasLimit, setEntradasLimit] = useState(50);
   const [entradasSkip, setEntradasSkip] = useState(0);
-  const [filtroEntradas, setFiltroEntradas] = useState({ busca: "", tipo: "" });
+  const [filtroEntradas, setFiltroEntradas] = useState({ busca: "", tipo: "", tanque_id: "", periodo: "tudo" });
+
+  // Manifestos de entrada (NF-e pendentes de vinculação)
+  const [manifestos, setManifestos] = useState<ManifestoEntrada[]>([]);
+  const [vincularManifesto, setVincularManifesto] = useState<ManifestoEntrada | null>(null);
+  const [ignorarManifesto, setIgnorarManifesto] = useState<ManifestoEntrada | null>(null);
+  const importarInputRef = useRef<HTMLInputElement>(null);
 
   // Fornecedores — só para o formulário de entrada (cadastro em /fornecedores)
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
@@ -100,8 +112,19 @@ export default function CombustiveisPage() {
   const carregarEntradas = useCallback(async () => {
     try {
       const params: Record<string, unknown> = { skip: entradasSkip, limit: entradasLimit };
-      if (filtroEntradas.busca) params.numero_nota = filtroEntradas.busca;
-      if (filtroEntradas.tipo) params.cancelada = filtroEntradas.tipo === "cancelada";
+      if (filtroEntradas.busca) params.busca = filtroEntradas.busca;
+      if (filtroEntradas.tipo === "confirmada") params.cancelada = false;
+      if (filtroEntradas.tipo === "cancelada") params.cancelada = true;
+      if (filtroEntradas.tanque_id) params.tanque_id = filtroEntradas.tanque_id;
+      const hoje = new Date();
+      const iso = (d: Date) => d.toISOString().slice(0, 10);
+      if (filtroEntradas.periodo === "hoje") {
+        params.data_inicio = iso(hoje);
+        params.data_fim = iso(hoje);
+      } else if (filtroEntradas.periodo === "mes") {
+        params.data_inicio = iso(new Date(hoje.getFullYear(), hoje.getMonth(), 1));
+        params.data_fim = iso(new Date(hoje.getFullYear(), hoje.getMonth() + 1, 0));
+      }
       const r = await api.listEntradas(params);
       setEntradas(r.itens);
       setTotalEntradas(r.total);
@@ -109,6 +132,15 @@ export default function CombustiveisPage() {
       toast.error((e as Error).message);
     }
   }, [entradasSkip, entradasLimit, filtroEntradas]);
+
+  const carregarManifestos = useCallback(async () => {
+    try {
+      const r = await api.listManifestos({ status: "PENDENTE", skip: 0, limit: 20 });
+      setManifestos(r.itens);
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
+  }, []);
 
   useEffect(() => {
     carregarBase().finally(() => setCarregando(false));
@@ -118,9 +150,26 @@ export default function CombustiveisPage() {
     carregarEntradas();
   }, [carregarEntradas]);
 
+  useEffect(() => {
+    carregarManifestos();
+  }, [carregarManifestos]);
+
   const recarregar = () => {
     carregarBase();
     carregarEntradas();
+    carregarManifestos();
+  };
+
+  const importarNfe = async (file: File) => {
+    try {
+      const up = await api.upload(file);
+      const manifesto = await api.importarManifesto(up.id);
+      toast.success(`NF-e ${manifesto.numero ?? ""} detectada e aguardando vínculo.`.trim());
+      setAba("entradas");
+      recarregar();
+    } catch (e) {
+      toast.error((e as Error).message);
+    }
   };
 
   const tanquesFiltrados = useMemo(() => {
@@ -312,10 +361,15 @@ export default function CombustiveisPage() {
                 setFiltro={setFiltroEntradas}
                 setSkip={setEntradasSkip}
                 setLimit={setEntradasLimit}
+                tanques={tanques}
+                manifestos={manifestos}
                 podeGerenciar={podeGerenciar}
                 onNovo={() => setEntradaDrawer({ aberto: true })}
+                onImportar={() => importarInputRef.current?.click()}
                 onCancelar={(e) => setCancelarEntrada(e)}
                 onVer={(e) => setVerEntrada(e)}
+                onVincular={(m) => setVincularManifesto(m)}
+                onIgnorar={(m) => setIgnorarManifesto(m)}
               />
             )}
 
@@ -328,6 +382,7 @@ export default function CombustiveisPage() {
                 onNovo={() => setCombDrawer({ aberto: true, item: null })}
                 onEditar={(c) => setCombDrawer({ aberto: true, item: c })}
                 onInativar={(c) => setInativarCombustivel(c)}
+                onVerMovimentacao={(c) => { setBuscaTanque(c.nome); setAba("estoque"); }}
               />
             )}
           </>
@@ -414,6 +469,32 @@ export default function CombustiveisPage() {
 
         {/* Ver detalhes / NF */}
         {verEntrada && <VerEntradaModal entrada={verEntrada} onClose={() => setVerEntrada(null)} />}
+
+        {/* Manifestos pendentes */}
+        <VincularManifestoModal
+          manifesto={vincularManifesto}
+          tanques={tanques}
+          onClose={() => setVincularManifesto(null)}
+          onConcluido={recarregar}
+        />
+        <IgnorarManifestoModal
+          manifesto={ignorarManifesto}
+          onClose={() => setIgnorarManifesto(null)}
+          onConcluido={recarregar}
+        />
+
+        {/* Importação de XML NF-e (compartilhada) */}
+        <input
+          ref={importarInputRef}
+          type="file"
+          accept=".xml,text/xml,application/xml"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) importarNfe(file);
+            e.target.value = "";
+          }}
+        />
 
         {/* Inativar combustível / fornecedor */}
         <ConfirmarModal
@@ -687,61 +768,119 @@ function EntradasTab(props: {
   total: number;
   skip: number;
   limit: number;
-  filtro: { busca: string; tipo: string };
-  setFiltro: (f: { busca: string; tipo: string }) => void;
+  filtro: { busca: string; tipo: string; tanque_id: string; periodo: string };
+  setFiltro: (f: { busca: string; tipo: string; tanque_id: string; periodo: string }) => void;
   setSkip: (n: number) => void;
   setLimit: (n: number) => void;
+  tanques: Tanque[];
+  manifestos: ManifestoEntrada[];
   podeGerenciar: boolean;
   onNovo: () => void;
+  onImportar: () => void;
   onCancelar: (e: Entrada) => void;
   onVer: (e: Entrada) => void;
+  onVincular: (m: ManifestoEntrada) => void;
+  onIgnorar: (m: ManifestoEntrada) => void;
 }) {
   const { entradas, total, skip, limit, setSkip, setLimit } = props;
   const paginas = Math.ceil(total / limit);
+  const setFiltro = (parcial: Partial<typeof props.filtro>) => {
+    props.setFiltro({ ...props.filtro, ...parcial });
+    props.setSkip(0);
+  };
+  const litrosFmt = (v: number | string) => Number(v).toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+  const periodos: { k: string; label: string }[] = [
+    { k: "tudo", label: "Tudo" },
+    { k: "hoje", label: "Hoje" },
+    { k: "mes", label: "Mês Atual" },
+  ];
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-h2 text-text-title">Entradas de combustível</h2>
-          <p className="mt-0.5 text-body-sm text-text-subtle">Registre compras e recebimentos de combustível nos tanques.</p>
+    <div className="space-y-6">
+      {/* Barra de filtros */}
+      <div className="flex flex-col gap-3 rounded-xl border border-outline-variant/50 bg-surface-card p-3 shadow-sm lg:flex-row lg:items-center lg:justify-between">
+        <div className="flex flex-1 flex-wrap items-center gap-2">
+          <div className="relative w-full max-w-sm">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-subtle" />
+            <input
+              value={props.filtro.busca}
+              onChange={(e) => setFiltro({ busca: e.target.value })}
+              placeholder="Buscar por NF-e, fornecedor, tanque…"
+              className="input pl-9"
+            />
+          </div>
+          <select
+            value={props.filtro.tipo}
+            onChange={(e) => setFiltro({ tipo: e.target.value })}
+            className="input w-auto"
+          >
+            <option value="">Todas as entradas</option>
+            <option value="confirmada">Confirmadas</option>
+            <option value="cancelada">Canceladas</option>
+          </select>
+          <select
+            value={props.filtro.tanque_id}
+            onChange={(e) => setFiltro({ tanque_id: e.target.value })}
+            className="input w-auto max-w-[220px]"
+          >
+            <option value="">Todos os tanques</option>
+            {props.tanques.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.codigo ? `#${t.codigo} - ` : ""}{t.nome}
+              </option>
+            ))}
+          </select>
         </div>
-        {props.podeGerenciar && (
-          <button className="btn btn-primary" onClick={props.onNovo}>
-            <Plus size={16} /> Nova entrada
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          <div className="hidden rounded-lg border border-outline-variant/60 bg-surface-container-low p-1 text-meta font-medium text-text-subtle sm:inline-flex">
+            {periodos.map((p) => (
+              <button
+                key={p.k}
+                type="button"
+                onClick={() => setFiltro({ periodo: p.k })}
+                className={`rounded-md px-2.5 py-1 transition-colors ${
+                  props.filtro.periodo === p.k ? "bg-surface-card font-semibold text-text-title shadow-sm" : "hover:text-text-title"
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+          {props.podeGerenciar && (
+            <button className="btn btn-primary" onClick={props.onNovo}>
+              <Plus size={16} /> Nova entrada
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        <div className="relative max-w-xs flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-subtle" />
-          <input
-            value={props.filtro.busca}
-            onChange={(e) => { props.setFiltro({ ...props.filtro, busca: e.target.value }); props.setSkip(0); }}
-            placeholder="Buscar por NF…"
-            className="input pl-9"
-          />
-        </div>
-        <select
-          value={props.filtro.tipo}
-          onChange={(e) => { props.setFiltro({ ...props.filtro, tipo: e.target.value }); props.setSkip(0); }}
-          className="input w-auto"
-        >
-          <option value="">Todas as entradas</option>
-          <option value="confirmada">Confirmadas</option>
-          <option value="cancelada">Canceladas</option>
-        </select>
-      </div>
-
+      {/* Lista / estado vazio */}
       {entradas.length === 0 ? (
-        <EmptyState
-          icon={<PackagePlus size={22} />}
-          titulo="Nenhuma entrada registrada"
-          descricao="Registre uma compra ou recebimento de combustível para creditar o estoque de um tanque."
-          acao={props.podeGerenciar ? { label: "Nova entrada", onClick: props.onNovo } : undefined}
-          permissao={props.podeGerenciar}
-        />
+        <section className="relative flex flex-col items-center justify-center overflow-hidden rounded-2xl border border-outline-variant/50 bg-surface-card p-8 text-center shadow-sm sm:p-14">
+          <div className="pointer-events-none absolute -left-12 -top-12 h-48 w-48 rounded-full bg-[#EFF6FF]/60 blur-2xl" />
+          <div className="pointer-events-none absolute -bottom-12 -right-12 h-48 w-48 rounded-full bg-surface-container/50 blur-2xl" />
+          <div className="relative mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border border-[#BFDBFE] bg-[#EFF6FF] text-primary shadow-sm">
+            <PackagePlus size={30} />
+            <span className="absolute -right-1 -top-1 flex h-4 w-4">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary/50" />
+              <span className="relative inline-flex h-4 w-4 items-center justify-center rounded-full bg-primary text-[9px] font-bold text-white">+</span>
+            </span>
+          </div>
+          <h2 className="text-h2 tracking-tight text-text-title">Nenhuma entrada registrada</h2>
+          <p className="mt-2 max-w-lg text-body-sm text-text-subtle">
+            Registre uma compra ou recebimento de combustível para creditar o estoque de um tanque municipal ou importe uma NF-e diretamente da SEFAZ.
+          </p>
+          {props.podeGerenciar && (
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+              <button className="btn btn-primary" onClick={props.onNovo}>
+                <Plus size={16} /> Nova entrada
+              </button>
+              <button className="btn btn-secondary" onClick={props.onImportar}>
+                <Upload size={15} /> Importar NF-e (XML)
+              </button>
+            </div>
+          )}
+        </section>
       ) : (
         <>
           <div className="overflow-x-auto rounded-2xl border border-outline-variant/50 bg-surface-card shadow-sm">
@@ -767,7 +906,7 @@ function EntradasTab(props: {
                     <td className="px-4 py-3 font-medium text-text-title">{e.tanque_nome ?? "—"}</td>
                     <td className="px-4 py-3">{e.combustivel_nome ?? "—"}</td>
                     <td className="px-4 py-3">{e.fornecedor_nome ?? "—"}</td>
-                    <td className="px-4 py-3 font-medium tabular-nums">{Number(e.quantidade_litros).toLocaleString("pt-BR")} L</td>
+                    <td className="px-4 py-3 font-medium tabular-nums">{litrosFmt(e.quantidade_litros)} L</td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-1.5">
                         {e.numero_nota ?? "—"}
@@ -804,6 +943,124 @@ function EntradasTab(props: {
           <Paginacao total={total} skip={skip} limit={limit} setSkip={setSkip} setLimit={setLimit} paginas={paginas} />
         </>
       )}
+
+      {/* Fluxo operacional + manifestos pendentes */}
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+        <div className="rounded-2xl border border-outline-variant/50 bg-surface-card p-6 shadow-sm lg:col-span-2">
+          <div className="mb-5 flex items-center justify-between border-b border-outline-variant/30 pb-4">
+            <div className="flex items-center gap-2.5">
+              <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#EFF6FF] text-primary">
+                <ClipboardList size={16} />
+              </span>
+              <div>
+                <h3 className="text-body-sm font-bold text-text-title">Fluxo Operacional de Recebimento ANP</h3>
+                <p className="text-meta text-text-subtle">Etapas normativas obrigatórias para descarga em reservatórios públicos</p>
+              </div>
+            </div>
+            <span className="hidden rounded bg-surface-container px-2.5 py-1 text-meta font-semibold text-text-subtle sm:inline">Manual GovFrota</span>
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            {[
+              { n: 1, tag: "Pátio / Descarga", titulo: "Aferição de Régua & Termodensímetro", texto: "Medir o volume pré-descarga com a régua padrão e testar densidade/temperatura da amostra na boca do caminhão.", cta: "Lançar Régua Física", cls: "text-slate-400" },
+              { n: 2, tag: "Conformidade SEFAZ", titulo: "Conferência de NF-e e Manifesto", texto: "Validar a chave de 44 dígitos com a distribuidora homologada e autorizar o manifesto de entrega.", cta: "Sincronizar SEFAZ", cls: "text-slate-400" },
+              { n: 3, tag: "Crédito Real", titulo: "Atualização do LMC & Estoque", texto: "Crédito automático do combustível no volume útil do tanque e registro contábil auditável pelo TCE/ANP.", cta: "Livro Digital LMC", cls: "text-[#106D34]" },
+            ].map((s, idx) => (
+              <div key={s.n} className={`flex flex-col justify-between rounded-xl border border-outline-variant/40 bg-surface-container-low/50 p-4 transition-colors hover:border-[#BFDBFE] hover:bg-surface-card ${idx < 2 ? "md:border-r" : ""}`}>
+                <div>
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-primary text-[11px] font-bold text-white">{s.n}</span>
+                    <span className={`text-[11px] font-semibold ${s.cls}`}>{s.tag}</span>
+                  </div>
+                  <h4 className="mb-1 text-meta font-bold text-text-title">{s.titulo}</h4>
+                  <p className="text-meta leading-relaxed text-text-subtle">{s.texto}</p>
+                </div>
+                <div className="mt-3 flex items-center gap-1 border-t border-outline-variant/30 pt-2 text-[11px] font-semibold text-primary">
+                  <span>{s.cta}</span>
+                  <span>→</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="flex flex-col justify-between rounded-2xl border border-outline-variant/50 bg-surface-card p-6 shadow-sm">
+          <div>
+            <div className="mb-4 flex items-center justify-between border-b border-outline-variant/30 pb-3">
+              <h3 className="flex items-center gap-2 text-body-sm font-bold text-text-title">
+                <span className="h-2.5 w-2.5 rounded-full bg-[#F59E0B]" />
+                Manifestos Pendentes
+              </h3>
+              <span className="rounded border border-[#FFDD9A] bg-[#FFF4D6] px-2 py-0.5 text-meta font-semibold text-[#805600]">
+                {props.manifestos.length} nota(s)
+              </span>
+            </div>
+            {props.manifestos.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-outline-variant/60 bg-surface-bg p-4 text-center text-meta text-text-subtle">
+                Nenhuma NF-e aguardando vinculação. Importe um XML para detectar notas emitidas contra o CNPJ do órgão.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {props.manifestos.map((m) => (
+                  <div key={m.id} className="space-y-2.5 rounded-xl border border-outline-variant/50 bg-surface-bg p-3.5">
+                    <div className="flex items-center justify-between gap-2 text-meta">
+                      <span className="truncate font-bold text-text-title">
+                        NF-e {m.numero ?? "—"}{m.emitente_nome ? ` • ${m.emitente_nome}` : ""}
+                      </span>
+                      <span className="shrink-0 text-text-subtle">
+                        {new Date(m.data_emissao ?? m.created_at).toLocaleDateString("pt-BR")}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-meta text-text-body">
+                      <span className="truncate">Item: <strong>{m.descricao_item ?? m.combustivel_nome ?? "—"}</strong></span>
+                      <span className="shrink-0 font-semibold text-text-title">
+                        {m.quantidade_litros ? `${litrosFmt(m.quantidade_litros)} L` : "a medir"}
+                      </span>
+                    </div>
+                    {m.chave_nfe && <div className="truncate text-[11px] text-text-subtle">Chave: {m.chave_nfe}</div>}
+                    {props.podeGerenciar && (
+                      <div className="flex items-center gap-2 pt-1">
+                        <button className="btn btn-primary btn-sm flex-1" onClick={() => props.onVincular(m)}>
+                          <Link2 size={14} /> Vincular e registrar
+                        </button>
+                        <button className="btn btn-ghost btn-sm" onClick={() => props.onIgnorar(m)}>
+                          Ignorar
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+          <div className="mt-4 flex items-start gap-2.5 border-t border-outline-variant/30 pt-3 text-meta text-text-subtle">
+            <Info size={15} className="mt-0.5 shrink-0 text-primary" />
+            <span>As notas faturadas contra o CNPJ da prefeitura são detectadas na importação do XML e ficam pendentes até o vínculo com o tanque.</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Banner de conformidade */}
+      <section className="flex flex-col items-center justify-between gap-4 rounded-2xl border border-[#BFDBFE] bg-[#EFF6FF]/60 p-4 shadow-sm sm:p-5 md:flex-row">
+        <div className="flex items-start gap-3.5 sm:items-center">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-white shadow-sm">
+            <ShieldCheck size={20} />
+          </span>
+          <div>
+            <h4 className="text-body-sm font-bold text-text-title">Auditoria de Entradas &amp; Cruzamento SEFAZ / ANP</h4>
+            <p className="text-meta leading-relaxed text-text-body">
+              Todas as entradas em tanques próprios exigem vinculação de chave de NF-e e medição de densidade/temperatura conforme a Resolução ANP vigente.
+            </p>
+          </div>
+        </div>
+        <div className="flex w-full shrink-0 items-center justify-end gap-2.5 md:w-auto">
+          <button className="btn btn-secondary btn-sm" onClick={props.onImportar} type="button">
+            <Upload size={14} /> Importar XML NF-e
+          </button>
+          <Link href="/relatorios" className="btn btn-sm bg-[#DBEAFE] text-primary hover:bg-[#BFDBFE]">
+            Histórico de Entradas
+          </Link>
+        </div>
+      </section>
     </div>
   );
 }
@@ -839,17 +1096,32 @@ function CombustiveisTab(props: {
   onNovo: () => void;
   onEditar: (c: Combustivel) => void;
   onInativar: (c: Combustivel) => void;
+  onVerMovimentacao: (c: Combustivel) => void;
 }) {
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="space-y-6">
+      {/* Barra de ações */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="relative max-w-sm flex-1">
           <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-subtle" />
-          <input value={props.busca} onChange={(e) => props.setBusca(e.target.value)} placeholder="Buscar por nome…" className="input pl-9" />
+          <input
+            value={props.busca}
+            onChange={(e) => props.setBusca(e.target.value)}
+            placeholder="Buscar por nome, código ANP…"
+            className="input pl-9"
+          />
         </div>
-        {props.podeGerenciar && (
-          <button className="btn btn-primary" onClick={props.onNovo}><Plus size={16} /> Novo tipo de combustível</button>
-        )}
+        <div className="flex items-center gap-3">
+          <div className="hidden items-center gap-1.5 rounded-xl border border-outline-variant/60 bg-surface-card px-3 py-2 text-meta font-medium text-text-subtle shadow-sm md:flex">
+            <span className="text-text-subtle">Situação:</span>
+            <span className="font-semibold text-text-title">Todos</span>
+          </div>
+          {props.podeGerenciar && (
+            <button className="btn btn-primary" onClick={props.onNovo}>
+              <Plus size={16} /> Novo tipo de combustível
+            </button>
+          )}
+        </div>
       </div>
 
       {props.combustiveis.length === 0 ? (
@@ -861,38 +1133,137 @@ function CombustiveisTab(props: {
           permissao={props.podeGerenciar}
         />
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
           {props.combustiveis.map((c) => (
-            <div key={c.id} className="flex items-start gap-3 rounded-2xl border border-outline-variant/50 bg-surface-card p-4 shadow-sm">
-              <FotoCombustivel
-                src={c.foto_url}
-                alt={`Ícone ${c.nome}`}
-                className="h-12 w-12 flex-shrink-0 rounded-xl object-cover"
-                fallback={<Fuel className="h-6 w-6" />}
-              />
-              <div className="flex-1">
-                <p className="font-medium text-text-title">{c.nome}</p>
-                <p className="text-meta text-text-subtle capitalize">{c.unidade}</p>
-                <div className="mt-1 flex flex-wrap gap-1">
-                  <span className="rounded-pill bg-[#EFF6FF] px-2 py-0.5 text-meta text-primary">{c.total_tanques ?? 0} tanque(s)</span>
-                  <span className="rounded-pill bg-surface-bg px-2 py-0.5 text-meta text-text-subtle">{c.total_veiculos ?? 0} veículo(s)</span>
-                  <span className={`rounded-pill px-2 py-0.5 text-meta font-medium ${c.ativo ? "bg-[#E7F8EC] text-[#106D34]" : "bg-surface-bg text-text-subtle"}`}>
-                    {c.ativo ? "Ativo" : "Inativo"}
-                  </span>
-                </div>
-              </div>
-              {props.podeGerenciar && (
-                <MenuAcoes
-                  acoes={[
-                    { key: "editar", label: "Editar", icon: <Pencil size={16} />, onClick: () => props.onEditar(c) },
-                    { key: "inativar", label: c.ativo ? "Inativar" : "Reativar", icon: <X size={16} />, cor: c.ativo ? "danger" : undefined, onClick: () => props.onInativar(c) },
-                  ]}
-                />
-              )}
-            </div>
+            <CombustivelCard
+              key={c.id}
+              combustivel={c}
+              podeGerenciar={props.podeGerenciar}
+              onEditar={props.onEditar}
+              onInativar={props.onInativar}
+              onVerMovimentacao={props.onVerMovimentacao}
+            />
           ))}
         </div>
       )}
+
+      {/* Conformidade ANP / TCE */}
+      <section className="rounded-2xl border border-outline-variant/50 bg-surface-card p-6 shadow-sm">
+        <div className="flex flex-col items-start justify-between gap-6 lg:flex-row lg:items-center">
+          <div className="flex items-start gap-4">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-[#FFDD9A] bg-[#FFF4D6] text-[#805600]">
+              <ShieldCheck size={24} />
+            </span>
+            <div>
+              <h4 className="text-body font-bold leading-tight text-text-title">Classificação de Derivados e Biocombustíveis • Padrão ANP</h4>
+              <p className="mt-1 max-w-2xl text-body-sm leading-relaxed text-text-subtle">
+                Os combustíveis listados são conferidos conforme a tabela oficial da Agência Nacional do Petróleo (ANP) e as diretrizes do Tribunal de Contas do Estado (TCE) para controle de perdas, evaporação e consumo público (Lei 14.133/21).
+              </p>
+            </div>
+          </div>
+          <div className="flex w-full flex-wrap items-center gap-3 lg:w-auto">
+            <button className="btn btn-secondary btn-sm" type="button">
+              <Repeat size={15} /> Sincronizar ANP
+            </button>
+            <Link href="/relatorios" className="btn btn-sm bg-[#DBEAFE] text-primary hover:bg-[#BFDBFE]">
+              <FileText size={15} /> Relatório de Homologação
+            </Link>
+          </div>
+        </div>
+      </section>
     </div>
+  );
+}
+
+function CombustivelCard(props: {
+  combustivel: Combustivel;
+  podeGerenciar: boolean;
+  onEditar: (c: Combustivel) => void;
+  onInativar: (c: Combustivel) => void;
+  onVerMovimentacao: (c: Combustivel) => void;
+}) {
+  const c = props.combustivel;
+  const preco = c.preco_referencia;
+  return (
+    <article className="group flex flex-col justify-between rounded-2xl border border-outline-variant/50 bg-surface-card p-5 shadow-sm transition-all hover:border-[#BFDBFE] hover:shadow-md">
+      <div>
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex items-start gap-4">
+            <FotoCombustivel
+              src={c.foto_url}
+              alt={`Ícone ${c.nome}`}
+              className="h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-[#BFDBFE] object-cover"
+              fallback={
+                <span className="flex h-full w-full items-center justify-center rounded-xl border border-[#BFDBFE] bg-[#EFF6FF] text-primary">
+                  <Fuel size={24} />
+                </span>
+              }
+            />
+            <div>
+              <h3 className="text-body font-bold leading-snug tracking-tight text-text-title transition-colors group-hover:text-primary">
+                {c.nome}
+              </h3>
+              <p className="mt-0.5 text-meta font-medium capitalize text-text-subtle">{c.unidade}</p>
+            </div>
+          </div>
+          {props.podeGerenciar && (
+            <MenuAcoes
+              acoes={[
+                { key: "editar", label: "Editar", icon: <Pencil size={16} />, onClick: () => props.onEditar(c) },
+                { key: "inativar", label: c.ativo ? "Inativar" : "Reativar", icon: <X size={16} />, cor: c.ativo ? "danger" : undefined, onClick: () => props.onInativar(c) },
+              ]}
+            />
+          )}
+        </div>
+
+        {/* Vínculos e status */}
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => props.onVerMovimentacao(c)}
+            title="Ver tanques deste combustível"
+            className="inline-flex items-center rounded-pill border border-[#BFDBFE] bg-[#EFF6FF] px-2.5 py-1 text-meta font-semibold text-primary transition-colors hover:bg-[#DBEAFE]"
+          >
+            {c.total_tanques ?? 0} tanque(s)
+          </button>
+          <span className="inline-flex items-center rounded-pill border border-outline-variant/60 bg-surface-container-low px-2.5 py-1 text-meta font-medium text-text-subtle">
+            {c.total_veiculos ?? 0} veículo(s)
+          </span>
+          <span className={`inline-flex items-center gap-1.5 rounded-pill border px-2.5 py-1 text-meta font-semibold ${c.ativo ? "border-[#9DF6B3] bg-[#E7F8EC] text-[#106D34]" : "border-outline-variant/60 bg-surface-bg text-text-subtle"}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${c.ativo ? "bg-[#106D34]" : "bg-gray-400"}`} />
+            {c.ativo ? "Ativo" : "Inativo"}
+          </span>
+        </div>
+
+        {/* Metadados ANP */}
+        <div className="mt-4 grid grid-cols-2 gap-3 border-t border-outline-variant/30 pt-3 text-meta">
+          <div>
+            <span className="block text-[11px] text-text-subtle">Código ANP</span>
+            <span className="block truncate font-mono font-medium text-text-body">{c.codigo_anp || "—"}</span>
+          </div>
+          <div>
+            <span className="block text-[11px] text-text-subtle">Especificação</span>
+            <span className="block truncate font-medium text-text-body">{c.especificacao || "—"}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Rodapé: preço de referência + ação */}
+      <div className="mt-4 flex items-center justify-between border-t border-outline-variant/30 pt-3 text-meta text-text-subtle">
+        <span>
+          Ref. Ata:{" "}
+          <strong className="font-semibold text-text-title">
+            {preco != null ? `R$ ${Number(preco).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 4 })}/L` : "—"}
+          </strong>
+        </span>
+        <button
+          type="button"
+          onClick={() => props.onVerMovimentacao(c)}
+          className="inline-flex items-center gap-1 font-semibold text-primary hover:underline"
+        >
+          Ver movimentação →
+        </button>
+      </div>
+    </article>
   );
 }

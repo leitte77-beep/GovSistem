@@ -15,6 +15,7 @@ from app.api.v1 import (
     entradas,
     fornecedores,
     internal,
+    manifestos,
     manutencoes,
     motoristas,
     ocorrencias,
@@ -35,6 +36,7 @@ api_router.include_router(combustiveis.router)
 api_router.include_router(tanques.router)
 api_router.include_router(fornecedores.router)
 api_router.include_router(entradas.router)
+api_router.include_router(manifestos.router)
 api_router.include_router(abastecimentos.router)
 api_router.include_router(manutencoes.router)
 api_router.include_router(ocorrencias.router)

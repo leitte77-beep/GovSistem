@@ -35,9 +35,11 @@ from app.models.auditoria import Auditoria, Notificacao
 from app.models.anexo import Anexo
 from app.models.acesso_fornecedor import AcessoFornecedor
 from app.models.nota_abastecimento import NotaAbastecimento
+from app.models.manifesto import ManifestoEntrada
 
 __all__ = [
     "NotaAbastecimento",
+    "ManifestoEntrada",
     "Base",
     "TimestampMixin",
     "SoftDeleteMixin",

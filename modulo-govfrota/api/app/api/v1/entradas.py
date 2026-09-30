@@ -4,7 +4,7 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import func as sa_func
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -110,6 +110,7 @@ async def listar(
     data_inicio: str | None = None,
     data_fim: str | None = None,
     numero_nota: str | None = None,
+    busca: str | None = None,
     cancelada: bool | None = None,
     skip: int = 0,
     limit: int = 50,
@@ -130,6 +131,26 @@ async def listar(
         base = base.where(EntradaCombustivel.data_entrada <= date.fromisoformat(data_fim))
     if numero_nota:
         base = base.where(EntradaCombustivel.numero_nota.ilike(f"%{numero_nota}%"))
+    if busca:
+        termo = f"%{busca.strip()}%"
+        # Busca livre por NF, fornecedor (razão/fantasia) ou tanque.
+        base = base.where(
+            or_(
+                EntradaCombustivel.numero_nota.ilike(termo),
+                EntradaCombustivel.chave_nfe.ilike(termo),
+                EntradaCombustivel.tanque_id.in_(
+                    select(Tanque.id).where(Tanque.nome.ilike(termo))
+                ),
+                EntradaCombustivel.fornecedor_id.in_(
+                    select(Fornecedor.id).where(
+                        or_(
+                            Fornecedor.razao_social.ilike(termo),
+                            Fornecedor.nome_fantasia.ilike(termo),
+                        )
+                    )
+                ),
+            )
+        )
     if cancelada is not None:
         base = base.where(EntradaCombustivel.cancelada == cancelada)
 
