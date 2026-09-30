@@ -3,7 +3,27 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import { Camera, Fuel, Trash2, Upload, X } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Bike,
+  Bus,
+  BusFront,
+  Camera,
+  Car,
+  CarFront,
+  Check,
+  Construction,
+  Fuel,
+  Package,
+  Tractor,
+  Trash2,
+  Truck,
+  Upload,
+  Wrench,
+  X,
+  type LucideIcon,
+} from "lucide-react";
 import { api, Combustivel, Unidade, Veiculo } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import {
@@ -29,6 +49,23 @@ interface VeiculoFormDrawerProps {
   tipoOrganizacao: string;
   onSalvo: () => void;
 }
+
+const ETAPAS = ["Identificação", "Características", "Uso e combustível", "Lotação e documentos", "Foto e revisão"];
+
+const ICONES_TIPO: Record<string, LucideIcon> = {
+  CARRO: Car,
+  CAMINHONETE: CarFront,
+  UTILITARIO: Package,
+  CAMINHAO: Truck,
+  ONIBUS: Bus,
+  MICRO_ONIBUS: BusFront,
+  VAN: BusFront,
+  MOTOCICLETA: Bike,
+  TRATOR: Tractor,
+  MAQUINA: Construction,
+  EQUIPAMENTO: Wrench,
+  OUTRO: Package,
+};
 
 const VENDA_CLASSE_IMG = "h-32 w-40 flex-shrink-0 overflow-hidden rounded-btn border border-surface-border bg-surface-bg object-cover";
 
@@ -79,6 +116,8 @@ export function VeiculoFormDrawer({
   });
 
   const [form, setForm] = useState(() => novoForm(veiculo));
+  const [etapa, setEtapa] = useState(0);
+  const formInicial = useRef("");
   // KM do veículo só muda por alteração auditada (com justificativa).
   const [justificativaKm, setJustificativaKm] = useState("");
   const [unidades, setUnidades] = useState<Unidade[]>([]);
@@ -92,7 +131,10 @@ export function VeiculoFormDrawer({
   useEffect(() => {
     if (aberto) {
       api.listUnidades().then(setUnidades).catch(() => setUnidades([]));
-      setForm(novoForm(veiculo));
+      const inicial = novoForm(veiculo);
+      setForm(inicial);
+      formInicial.current = JSON.stringify(inicial);
+      setEtapa(0);
       setJustificativaKm("");
       setFotoUrlAtual(veiculo?.foto_url ?? "");
       setArquivoFoto(null);
@@ -149,41 +191,73 @@ export function VeiculoFormDrawer({
     if (inputFotoRef.current) inputFotoRef.current.value = "";
   };
 
-  async function enviar(e: React.FormEvent) {
-    e.preventDefault();
-    const placa = normalizarPlaca(form.placa);
-    if (!placaValida(placa)) {
-      setErroPlaca("Placa inválida. Use ABC1234 ou ABC1D23 (Mercosul).");
-      return;
+  // Erros de cada etapa (índice da etapa → campo → mensagem).
+  function errosDaEtapa(i: number): Record<string, string> {
+    const e: Record<string, string> = {};
+    if (i === 0) {
+      if (!placaValida(normalizarPlaca(form.placa))) {
+        e.placa = "Placa inválida. Use ABC1234 ou ABC1D23 (Mercosul).";
+      }
+      if (form.renavam && !renavamValido(form.renavam)) e.renavam = "RENAVAM inválido (confira os 11 dígitos).";
+      if (form.chassi && !chassiValido(form.chassi)) e.chassi = "Chassi deve ter 17 caracteres, sem I, O ou Q.";
     }
+    if (i === 1) {
+      const fab = Number(form.ano_fabricacao || 0);
+      const mod = Number(form.ano_modelo || 0);
+      if (fab && (fab < 1950 || fab > anoAtual)) e.ano_fabricacao = `Informe um ano entre 1950 e ${anoAtual}.`;
+      if (fab && mod && (mod < fab || mod > fab + 1)) {
+        e.ano_modelo = "Ano modelo deve ser igual ao de fabricação ou o seguinte.";
+      }
+    }
+    if (i === 2 && kmMudou && justificativaKm.trim().length < 5) {
+      e.justificativa_km = "Informe a justificativa da alteração do KM (mínimo 5 caracteres).";
+    }
+    return e;
+  }
+
+  function validarEtapa(i: number): boolean {
+    const e = errosDaEtapa(i);
+    setErros(e);
+    setErroPlaca(e.placa ?? null);
+    return Object.keys(e).length === 0;
+  }
+
+  function avancar() {
+    if (validarEtapa(etapa)) setEtapa((n) => Math.min(n + 1, ETAPAS.length - 1));
+  }
+
+  function irPara(i: number) {
+    // No cadastro só se volta livremente; para frente é preciso validar.
+    if (veiculo || i < etapa || validarEtapa(etapa)) {
+      setErros({});
+      setErroPlaca(null);
+      setEtapa(i);
+    }
+  }
+
+  function fechar() {
+    if (JSON.stringify(form) !== formInicial.current || arquivoFoto) {
+      if (!window.confirm("Descartar as informações preenchidas?")) return;
+    }
+    onClose();
+  }
+
+  const kmNovo = Number(form.quilometragem_atual || 0);
+  const kmMudou = !!veiculo && !form.usa_horimetro && kmNovo !== veiculo.quilometragem_atual;
+
+  async function enviar(e?: React.FormEvent) {
+    e?.preventDefault();
+    // Valida tudo; em caso de erro, leva o usuário à primeira etapa com problema.
+    for (let i = 0; i < ETAPAS.length; i++) {
+      if (!validarEtapa(i)) {
+        setEtapa(i);
+        toast.error("Corrija os campos destacados.");
+        return;
+      }
+    }
+    setErros({});
     setErroPlaca(null);
-    const novosErros: Record<string, string> = {};
-    if (form.renavam && !renavamValido(form.renavam)) {
-      novosErros.renavam = "RENAVAM inválido (confira os 11 dígitos).";
-    }
-    if (form.chassi && !chassiValido(form.chassi)) {
-      novosErros.chassi = "Chassi deve ter 17 caracteres, sem I, O ou Q.";
-    }
-    const anoAtual = new Date().getFullYear();
-    const fab = Number(form.ano_fabricacao || 0);
-    const mod = Number(form.ano_modelo || 0);
-    if (fab && (fab < 1950 || fab > anoAtual)) {
-      novosErros.ano_fabricacao = `Informe um ano entre 1950 e ${anoAtual}.`;
-    }
-    if (fab && mod && (mod < fab || mod > fab + 1)) {
-      novosErros.ano_modelo = "Ano modelo deve ser igual ao de fabricação ou o seguinte.";
-    }
-    setErros(novosErros);
-    if (Object.keys(novosErros).length) {
-      toast.error("Corrija os campos destacados.");
-      return;
-    }
-    const kmNovo = Number(form.quilometragem_atual || 0);
-    const kmMudou = !!veiculo && !form.usa_horimetro && kmNovo !== veiculo.quilometragem_atual;
-    if (kmMudou && justificativaKm.trim().length < 5) {
-      toast.error("Informe a justificativa da alteração do KM (mínimo 5 caracteres).");
-      return;
-    }
+    const placa = normalizarPlaca(form.placa);
     setSalvando(true);
     try {
       let foto_url: string | undefined = fotoUrlAtual || undefined;
@@ -244,24 +318,95 @@ export function VeiculoFormDrawer({
   const imgPreview = previewFoto ?? fotoUrlAtual;
 
   return (
-    <div className="fixed inset-0 z-[70] flex justify-end">
-      <div className="absolute inset-0 bg-black/30" onClick={onClose} />
-      <div className="relative flex h-full w-full max-w-2xl flex-col bg-white shadow-elevated">
+    <div className="fixed inset-0 z-[70] flex items-center justify-center sm:p-4">
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-[2px]" onClick={fechar} />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="veiculo-form-titulo"
+        className="relative flex h-full w-full flex-col bg-white shadow-elevated sm:h-auto sm:max-h-[90vh] sm:max-w-3xl sm:rounded-card"
+      >
         {/* Cabeçalho */}
-        <div className="flex items-center justify-between border-b border-surface-border px-6 py-4">
-          <div>
-            <h2 className="text-h3 text-text-title">{veiculo ? "Editar veículo" : "Novo veículo"}</h2>
-            <p className="text-meta text-text-subtle">Campos com * são obrigatórios.</p>
+        <div className="border-b border-surface-border px-6 pb-4 pt-5">
+          <div className="flex items-start justify-between">
+            <div>
+              <h2 id="veiculo-form-titulo" className="text-h3 text-text-title">
+                {veiculo ? `Editar veículo ${veiculo.placa}` : "Novo veículo"}
+              </h2>
+              <p className="text-meta text-text-subtle">
+                {veiculo
+                  ? "Escolha a aba com o que deseja alterar."
+                  : `Etapa ${etapa + 1} de ${ETAPAS.length} · Campos com * são obrigatórios.`}
+              </p>
+            </div>
+            <button className="btn btn-ghost btn-sm" onClick={fechar} aria-label="Fechar">
+              <X size={20} />
+            </button>
           </div>
-          <button className="btn btn-ghost btn-sm" onClick={onClose} aria-label="Fechar">
-            <X size={20} />
-          </button>
+          {veiculo ? (
+            <div role="tablist" className="-mb-4 mt-4 flex gap-1 overflow-x-auto">
+              {ETAPAS.map((nome, i) => (
+                <button
+                  key={nome}
+                  type="button"
+                  role="tab"
+                  aria-selected={etapa === i}
+                  onClick={() => irPara(i)}
+                  className={`whitespace-nowrap border-b-2 px-3 py-2 text-body-sm font-medium ${
+                    etapa === i
+                      ? "border-[#1D4ED8] text-[#1D4ED8]"
+                      : "border-transparent text-text-subtle hover:text-text-title"
+                  }`}
+                >
+                  {i === ETAPAS.length - 1 ? "Foto e observações" : nome}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <ol className="mt-4 flex items-center gap-2">
+              {ETAPAS.map((nome, i) => {
+                const feita = i < etapa;
+                const atual = i === etapa;
+                return (
+                  <li key={nome} className="flex flex-1 items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => irPara(i)}
+                      disabled={i > etapa}
+                      aria-current={atual ? "step" : undefined}
+                      className="flex items-center gap-2 disabled:cursor-default"
+                    >
+                      <span
+                        className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-meta font-semibold ${
+                          feita
+                            ? "bg-[#1D4ED8] text-white"
+                            : atual
+                              ? "border-2 border-[#1D4ED8] text-[#1D4ED8]"
+                              : "border border-surface-border text-text-subtle"
+                        }`}
+                      >
+                        {feita ? <Check size={14} /> : i + 1}
+                      </span>
+                      <span
+                        className={`hidden text-meta lg:inline ${atual ? "font-semibold text-text-title" : "text-text-subtle"}`}
+                      >
+                        {nome}
+                      </span>
+                    </button>
+                    {i < ETAPAS.length - 1 && (
+                      <span className={`h-px flex-1 ${feita ? "bg-[#1D4ED8]" : "bg-surface-border"}`} />
+                    )}
+                  </li>
+                );
+              })}
+            </ol>
+          )}
         </div>
 
         {/* Corpo com scroll */}
-        <form id="veiculo-form" onSubmit={enviar} className="flex-1 overflow-y-auto px-6 py-5">
+        <form id="veiculo-form" onSubmit={enviar} className="flex-1 overflow-y-auto px-6 py-6">
           <div className="space-y-7">
-            {/* Identificação */}
+            {etapa === 0 && (<>
             <Secao titulo="Identificação">
               <div className="grid gap-3 sm:grid-cols-2">
                 <Label texto="Placa *">
@@ -305,7 +450,8 @@ export function VeiculoFormDrawer({
               </div>
             </Secao>
 
-            {/* Características */}
+            </>)}
+            {etapa === 1 && (<>
             <Secao titulo="Características">
               <div className="grid gap-3 sm:grid-cols-2">
                 <Label texto="Marca">
@@ -320,13 +466,39 @@ export function VeiculoFormDrawer({
                 <Label texto="Versão" dica="Opcional.">
                   <input {...campo("versao")} />
                 </Label>
-                <Label texto="Tipo *">
-                  <select {...campo("tipo")}>
-                    {TIPOS_VEICULO_LISTA.map(([valor, nome]) => (
-                      <option key={valor} value={valor}>{nome}</option>
-                    ))}
-                  </select>
-                </Label>
+                <div className="sm:col-span-2">
+                  <span className="text-meta">Tipo *</span>
+                  <div role="radiogroup" className="mt-1 grid grid-cols-3 gap-2 sm:grid-cols-4">
+                    {TIPOS_VEICULO_LISTA.map(([valor, nome]) => {
+                      const Icone = ICONES_TIPO[valor] ?? Package;
+                      const ativo = form.tipo === valor;
+                      return (
+                        <button
+                          key={valor}
+                          type="button"
+                          role="radio"
+                          aria-checked={ativo}
+                          onClick={() =>
+                            setForm((f) => ({
+                              ...f,
+                              tipo: valor,
+                              // Sugere o modo de controle natural do tipo no cadastro.
+                              usa_horimetro: veiculo ? f.usa_horimetro : TIPOS_HORIMETRO.has(valor),
+                            }))
+                          }
+                          className={`flex flex-col items-center gap-1 rounded-btn border px-2 py-3 text-body-sm transition-colors ${
+                            ativo
+                              ? "border-[#1D4ED8] bg-[#EFF6FF] font-medium text-[#1D4ED8]"
+                              : "border-surface-border bg-white text-text-body hover:border-[#93C5FD]"
+                          }`}
+                        >
+                          <Icone size={22} />
+                          {nome}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
                 <Label texto="Ano fabricação" erro={erros.ano_fabricacao}>
                   <input
                     type="number"
@@ -362,7 +534,8 @@ export function VeiculoFormDrawer({
               </div>
             </Secao>
 
-            {/* Controle */}
+            </>)}
+            {etapa === 2 && (<>
             <Secao titulo="Controle">
               <div className="space-y-5">
                 <div>
@@ -416,6 +589,9 @@ export function VeiculoFormDrawer({
                           onChange={(e) => setJustificativaKm(e.target.value)}
                           maxLength={2000}
                         />
+                        {erros.justificativa_km && (
+                          <span className="mt-1 block text-meta text-[#B42318]">{erros.justificativa_km}</span>
+                        )}
                       </span>
                     )}
                   </Label>
@@ -423,7 +599,7 @@ export function VeiculoFormDrawer({
               </div>
             </Secao>
 
-            {/* Combustível */}
+            
             <Secao titulo="Combustível">
               {combustiveis.length === 0 ? (
                 <div className="rounded-btn border border-surface-border bg-surface-bg p-4 text-center">
@@ -539,7 +715,8 @@ export function VeiculoFormDrawer({
               </div>
             </Secao>
 
-            {/* Lotação */}
+            </>)}
+            {etapa === 3 && (<>
             <Secao titulo="Lotação">
               <div className="grid gap-3 sm:grid-cols-2">
                 <Label texto={rotuloUnidade}>
@@ -564,7 +741,7 @@ export function VeiculoFormDrawer({
               </div>
             </Secao>
 
-            {/* Documentação */}
+            
             <Secao titulo="Documentação">
               <p className="text-meta text-text-subtle">
                 Opcional — vencimentos iniciais. Documentos completos podem ser adicionados na ficha do veículo.
@@ -579,7 +756,7 @@ export function VeiculoFormDrawer({
               </div>
             </Secao>
 
-            {/* Situação */}
+            
             <Secao titulo="Situação">
               <div className="grid gap-3 sm:grid-cols-2">
                 <Label texto="Situação">
@@ -592,7 +769,8 @@ export function VeiculoFormDrawer({
               </div>
             </Secao>
 
-            {/* Foto e observações */}
+            </>)}
+            {etapa === 4 && (<>
             <Secao titulo="Foto e observações">
               <div className="flex flex-col gap-4 sm:flex-row sm:items-start">
                 {imgPreview ? (
@@ -634,20 +812,109 @@ export function VeiculoFormDrawer({
                 </Label>
               </div>
             </Secao>
+            {!veiculo && <Revisao form={form} combustiveis={combustiveis} unidades={unidades} rotuloUnidade={rotuloUnidade} irPara={irPara} />}
+            </>)}
           </div>
         </form>
 
         {/* Rodapé fixo */}
-        <div className="flex items-center justify-end gap-2 border-t border-surface-border px-6 py-4">
-          <button type="button" className="btn btn-secondary" onClick={onClose} disabled={salvando}>
-            Cancelar
-          </button>
-          <button type="submit" form="veiculo-form" className="btn btn-primary" disabled={salvando}>
-            {salvando ? "Salvando…" : veiculo ? "Salvar alterações" : "Cadastrar veículo"}
-          </button>
+        <div className="flex items-center justify-between gap-2 border-t border-surface-border px-6 py-4">
+          {veiculo ? (
+            <>
+              <button type="button" className="btn btn-secondary" onClick={fechar} disabled={salvando}>
+                Cancelar
+              </button>
+              <button type="button" className="btn btn-primary" onClick={() => enviar()} disabled={salvando}>
+                {salvando ? "Salvando…" : "Salvar alterações"}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                className="btn btn-secondary"
+                onClick={() => (etapa === 0 ? fechar() : irPara(etapa - 1))}
+                disabled={salvando}
+              >
+                {etapa === 0 ? "Cancelar" : (<><ArrowLeft size={16} /> Voltar</>)}
+              </button>
+              <div className="flex gap-2">
+                {etapa > 0 && etapa < ETAPAS.length - 1 && (
+                  <button type="button" className="btn btn-ghost" onClick={() => enviar()} disabled={salvando}>
+                    Salvar agora
+                  </button>
+                )}
+                {etapa < ETAPAS.length - 1 ? (
+                  <button type="button" className="btn btn-primary" onClick={avancar}>
+                    Avançar <ArrowRight size={16} />
+                  </button>
+                ) : (
+                  <button type="button" className="btn btn-primary" onClick={() => enviar()} disabled={salvando}>
+                    {salvando ? "Salvando…" : "Cadastrar veículo"}
+                  </button>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+function Revisao({
+  form,
+  combustiveis,
+  unidades,
+  rotuloUnidade,
+  irPara,
+}: {
+  form: Record<string, unknown>;
+  combustiveis: Combustivel[];
+  unidades: Unidade[];
+  rotuloUnidade: string;
+  irPara: (i: number) => void;
+}) {
+  const v = (k: string) => (form[k] ? String(form[k]) : "—");
+  const nomeComb = (id: unknown) => combustiveis.find((c) => c.id === id)?.nome ?? "—";
+  const blocos: [number, [string, string][]][] = [
+    [0, [["Placa", normalizarPlaca(String(form.placa))], ["Código interno", v("codigo_interno")], ["RENAVAM", v("renavam")], ["Chassi", v("chassi")]]],
+    [1, [
+      ["Tipo", TIPOS_VEICULO_LISTA.find(([k]) => k === form.tipo)?.[1] ?? "—"],
+      ["Marca / modelo", [form.marca, form.modelo, form.versao].filter(Boolean).join(" ") || "—"],
+      ["Ano", [form.ano_fabricacao, form.ano_modelo].filter(Boolean).join("/") || "—"],
+      ["Cor", v("cor")],
+    ]],
+    [2, [
+      [form.usa_horimetro ? "Horímetro inicial" : "Km inicial", form.usa_horimetro ? `${v("horimetro_atual")} h` : `${Number(form.quilometragem_atual || 0).toLocaleString("pt-BR")} km`],
+      ["Combustível", [nomeComb(form.combustivel_principal_id), form.combustivel_secundario_id ? nomeComb(form.combustivel_secundario_id) : ""].filter(Boolean).join(" / ")],
+    ]],
+    [3, [
+      [rotuloUnidade, unidades.find((u) => u.id === form.unidade_id)?.nome ?? "—"],
+      ["Situação", SITUACOES_LISTA.find(([k]) => k === form.situacao)?.[1].label ?? "—"],
+    ]],
+  ];
+  return (
+    <section className="mt-7">
+      <h3 className="mb-3 text-label font-semibold text-text-title">Revisão</h3>
+      <div className="divide-y divide-surface-border rounded-btn border border-surface-border">
+        {blocos.map(([i, linhas]) => (
+          <div key={i} className="flex items-start justify-between gap-4 p-3">
+            <dl className="grid flex-1 grid-cols-1 gap-x-4 gap-y-1 sm:grid-cols-2">
+              {linhas.map(([rotulo, valor]) => (
+                <div key={rotulo} className="flex gap-2 text-body-sm">
+                  <dt className="text-text-subtle">{rotulo}:</dt>
+                  <dd className="font-medium text-text-title">{valor}</dd>
+                </div>
+              ))}
+            </dl>
+            <button type="button" className="btn btn-ghost btn-sm text-[#1D4ED8]" onClick={() => irPara(i)}>
+              Editar
+            </button>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
