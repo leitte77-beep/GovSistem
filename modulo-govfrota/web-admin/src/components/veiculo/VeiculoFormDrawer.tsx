@@ -6,6 +6,9 @@ import toast from "react-hot-toast";
 import {
   ArrowLeft,
   ArrowRight,
+  Building2,
+  Gauge,
+  IdCard,
   Bike,
   Bus,
   BusFront,
@@ -51,6 +54,16 @@ interface VeiculoFormDrawerProps {
 }
 
 const ETAPAS = ["Identificação", "Características", "Uso e combustível", "Lotação e documentos", "Foto e revisão"];
+
+const DESCRICOES_ETAPA = [
+  "Documentos e códigos que identificam o veículo.",
+  "Tipo, marca, modelo e aparência.",
+  "Como o uso é medido e o que ele abastece.",
+  "Onde o veículo está lotado e seus vencimentos.",
+  "Uma foto para reconhecer o veículo e a conferência final.",
+];
+
+const ICONES_ETAPA = [IdCard, Car, Gauge, Building2, Camera];
 
 const ICONES_TIPO: Record<string, LucideIcon> = {
   CARRO: Car,
@@ -324,27 +337,34 @@ export function VeiculoFormDrawer({
         role="dialog"
         aria-modal="true"
         aria-labelledby="veiculo-form-titulo"
-        className="relative flex h-full w-full flex-col bg-white shadow-elevated sm:h-auto sm:max-h-[90vh] sm:max-w-3xl sm:rounded-card"
+        className="relative flex h-full w-full flex-col bg-white shadow-elevated sm:h-auto sm:max-h-[90vh] sm:max-w-3xl sm:rounded-2xl"
       >
         {/* Cabeçalho */}
-        <div className="border-b border-surface-border px-6 pb-4 pt-5">
-          <div className="flex items-start justify-between">
-            <div>
-              <h2 id="veiculo-form-titulo" className="text-h3 text-text-title">
-                {veiculo ? `Editar veículo ${veiculo.placa}` : "Novo veículo"}
-              </h2>
-              <p className="text-meta text-text-subtle">
-                {veiculo
-                  ? "Escolha a aba com o que deseja alterar."
-                  : `Etapa ${etapa + 1} de ${ETAPAS.length} · Campos com * são obrigatórios.`}
-              </p>
+        <div className="px-6 pb-4 pt-6 sm:px-8">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-xl bg-[#EFF6FF] text-[#1D4ED8]">
+                <Car size={22} />
+              </span>
+              <div>
+                <h2 id="veiculo-form-titulo" className="text-h3 text-text-title">
+                  {veiculo ? `Editar veículo ${veiculo.placa}` : "Novo veículo"}
+                </h2>
+                <p className="text-meta text-text-subtle">
+                  {veiculo ? "Escolha a aba com o que deseja alterar." : "Campos com * são obrigatórios."}
+                </p>
+              </div>
             </div>
-            <button className="btn btn-ghost btn-sm" onClick={fechar} aria-label="Fechar">
+            <button
+              className="flex h-9 w-9 items-center justify-center rounded-full text-text-subtle transition-colors hover:bg-surface-bg hover:text-text-title"
+              onClick={fechar}
+              aria-label="Fechar"
+            >
               <X size={20} />
             </button>
           </div>
           {veiculo ? (
-            <div role="tablist" className="-mb-4 mt-4 flex gap-1 overflow-x-auto">
+            <div role="tablist" className="mt-5 flex gap-1 overflow-x-auto rounded-xl bg-[#F1F5F9] p-1">
               {ETAPAS.map((nome, i) => (
                 <button
                   key={nome}
@@ -352,10 +372,8 @@ export function VeiculoFormDrawer({
                   role="tab"
                   aria-selected={etapa === i}
                   onClick={() => irPara(i)}
-                  className={`whitespace-nowrap border-b-2 px-3 py-2 text-body-sm font-medium ${
-                    etapa === i
-                      ? "border-[#1D4ED8] text-[#1D4ED8]"
-                      : "border-transparent text-text-subtle hover:text-text-title"
+                  className={`flex-1 whitespace-nowrap rounded-lg px-3 py-1.5 text-body-sm font-medium transition-all ${
+                    etapa === i ? "bg-white text-[#1D4ED8] shadow-sm" : "text-text-subtle hover:text-text-title"
                   }`}
                 >
                   {i === ETAPAS.length - 1 ? "Foto e observações" : nome}
@@ -363,70 +381,73 @@ export function VeiculoFormDrawer({
               ))}
             </div>
           ) : (
-            <ol className="mt-4 flex items-center gap-2">
-              {ETAPAS.map((nome, i) => {
-                const feita = i < etapa;
-                const atual = i === etapa;
-                return (
-                  <li key={nome} className="flex flex-1 items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => irPara(i)}
-                      disabled={i > etapa}
-                      aria-current={atual ? "step" : undefined}
-                      className="flex items-center gap-2 disabled:cursor-default"
-                    >
-                      <span
-                        className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-meta font-semibold ${
-                          feita
-                            ? "bg-[#1D4ED8] text-white"
-                            : atual
-                              ? "border-2 border-[#1D4ED8] text-[#1D4ED8]"
-                              : "border border-surface-border text-text-subtle"
-                        }`}
-                      >
-                        {feita ? <Check size={14} /> : i + 1}
-                      </span>
-                      <span
-                        className={`hidden text-meta lg:inline ${atual ? "font-semibold text-text-title" : "text-text-subtle"}`}
-                      >
-                        {nome}
-                      </span>
-                    </button>
-                    {i < ETAPAS.length - 1 && (
-                      <span className={`h-px flex-1 ${feita ? "bg-[#1D4ED8]" : "bg-surface-border"}`} />
-                    )}
-                  </li>
-                );
-              })}
-            </ol>
+            <div className="mt-5">
+              <div className="flex gap-1.5" aria-hidden>
+                {ETAPAS.map((nome, i) => (
+                  <button
+                    key={nome}
+                    type="button"
+                    tabIndex={-1}
+                    title={nome}
+                    onClick={() => irPara(i)}
+                    disabled={i > etapa}
+                    className={`h-1.5 flex-1 rounded-full transition-colors duration-300 disabled:cursor-default ${
+                      i <= etapa ? "bg-[#1D4ED8]" : "bg-[#E2E8F0]"
+                    }`}
+                  />
+                ))}
+              </div>
+              <p className="mt-2 text-meta text-text-subtle" aria-live="polite">
+                Etapa {etapa + 1} de {ETAPAS.length}
+                {etapa < ETAPAS.length - 1 && <> · A seguir: {ETAPAS[etapa + 1]}</>}
+              </p>
+            </div>
           )}
         </div>
 
         {/* Corpo com scroll */}
-        <form id="veiculo-form" onSubmit={enviar} className="flex-1 overflow-y-auto px-6 py-6">
-          <div className="space-y-7">
+        <form
+          id="veiculo-form"
+          onSubmit={enviar}
+          className="flex-1 overflow-y-auto border-t border-[#EEF2F6] px-6 py-6 sm:px-8 [&_.input:focus]:bg-white [&_.input:focus]:ring-4 [&_.input:focus]:ring-[#1D4ED8]/15 [&_.input]:rounded-xl [&_.input]:border-[#E2E8F0] [&_.input]:bg-[#F8FAFC] [&_.input]:py-3 [&_.input]:hover:border-[#CBD5E1]"
+        >
+          <div key={etapa} className="animate-[fadeIn_.2s_ease-out] space-y-8">
+            {(() => {
+              const Icone = ICONES_ETAPA[etapa];
+              return (
+                <div className="flex items-start gap-3">
+                  <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-[#F1F5F9] text-text-title">
+                    <Icone size={18} />
+                  </span>
+                  <div>
+                    <h3 className="text-body font-semibold text-text-title">{ETAPAS[etapa]}</h3>
+                    <p className="text-meta text-text-subtle">{DESCRICOES_ETAPA[etapa]}</p>
+                  </div>
+                </div>
+              );
+            })()}
             {etapa === 0 && (<>
-            <Secao titulo="Identificação">
+            <Secao>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Label texto="Placa *">
                   <input
                     {...campo("placa")}
                     placeholder="ABC1D23"
+                    autoFocus={!veiculo}
                     maxLength={8}
                     onChange={(e) => {
                       atualizar("placa", e.target.value.toUpperCase());
                       setErroPlaca(null);
                     }}
-                    className={`input ${erroPlaca ? "input-error" : ""}`}
+                    className={`input font-mono text-lg font-semibold uppercase tracking-[0.2em] placeholder:font-normal placeholder:tracking-[0.2em] ${erroPlaca ? "input-error" : ""}`}
                   />
                   {erroPlaca && <span className="text-meta text-[#B42318]">{erroPlaca}</span>}
                 </Label>
                 <Label texto="Código interno">
                   <input {...campo("codigo_interno")} placeholder="EX.: VH-0001" />
                 </Label>
-                <Label texto="Patrimônio" dica="Quando aplicável.">
-                  <input {...campo("patrimonio")} />
+                <Label texto="Patrimônio">
+                  <input {...campo("patrimonio")} placeholder="Opcional" />
                 </Label>
                 <Label texto="RENAVAM" erro={erros.renavam}>
                   <input
@@ -444,7 +465,7 @@ export function VeiculoFormDrawer({
                     maxLength={17}
                     placeholder="17 caracteres"
                     onChange={(e) => atualizar("chassi", normalizarChassi(e.target.value))}
-                    className={`input font-mono uppercase ${erros.chassi ? "input-error" : ""}`}
+                    className={`input font-mono uppercase placeholder:font-sans placeholder:normal-case ${erros.chassi ? "input-error" : ""}`}
                   />
                 </Label>
               </div>
@@ -452,7 +473,7 @@ export function VeiculoFormDrawer({
 
             </>)}
             {etapa === 1 && (<>
-            <Secao titulo="Características">
+            <Secao>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Label texto="Marca">
                   <input {...campo("marca")} list="marcas-veiculo" placeholder="Ex.: Toyota" />
@@ -463,8 +484,8 @@ export function VeiculoFormDrawer({
                 <Label texto="Modelo">
                   <input {...campo("modelo")} placeholder="Ex.: Hilux" />
                 </Label>
-                <Label texto="Versão" dica="Opcional.">
-                  <input {...campo("versao")} />
+                <Label texto="Versão">
+                  <input {...campo("versao")} placeholder="Opcional" />
                 </Label>
                 <div className="sm:col-span-2">
                   <span className="text-meta">Tipo *</span>
@@ -818,7 +839,7 @@ export function VeiculoFormDrawer({
         </form>
 
         {/* Rodapé fixo */}
-        <div className="flex items-center justify-between gap-2 border-t border-surface-border px-6 py-4">
+        <div className="flex items-center justify-between gap-2 border-t border-[#EEF2F6] bg-[#F8FAFC] px-6 py-4 sm:rounded-b-2xl sm:px-8">
           {veiculo ? (
             <>
               <button type="button" className="btn btn-secondary" onClick={fechar} disabled={salvando}>
@@ -918,10 +939,12 @@ function Revisao({
   );
 }
 
-function Secao({ titulo, children }: { titulo: string; children: React.ReactNode }) {
+function Secao({ titulo, children }: { titulo?: string; children: React.ReactNode }) {
   return (
     <section>
-      <h3 className="mb-3 text-label font-semibold text-text-title">{titulo}</h3>
+      {titulo && (
+        <h4 className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-text-subtle">{titulo}</h4>
+      )}
       {children}
     </section>
   );
@@ -941,13 +964,13 @@ function Label({
   erro?: string;
 }) {
   return (
-    <label className={`text-meta ${classe ?? ""}`}>
+    <label className={`text-meta font-medium text-text-title ${classe ?? ""}`}>
       {texto}
       <span className="mt-1 block">{children}</span>
       {erro ? (
-        <span className="mt-1 block text-meta text-[#B42318]">{erro}</span>
+        <span className="mt-1 block text-meta font-normal text-[#B42318]">{erro}</span>
       ) : (
-        dica && <span className="mt-1 block text-meta text-text-subtle">{dica}</span>
+        dica && <span className="mt-1 block text-meta font-normal text-text-subtle">{dica}</span>
       )}
     </label>
   );
