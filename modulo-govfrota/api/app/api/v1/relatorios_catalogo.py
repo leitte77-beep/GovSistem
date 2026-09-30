@@ -282,7 +282,7 @@ async def conferencia(db: AsyncSession, user: User, f: Filtros) -> Relatorio:
 
 @relatorio(
     "notas_posto", titulo="Notas fiscais por posto", categoria="Controle",
-    descricao="Por posto: abastecimentos com e sem nota, só PDF, substituídas e avisos de divergência (valor/CNPJ).",
+    descricao="Por posto: abastecimentos com e sem nota, substituídas e divergências entre a nota e o abastecimento (valor/CNPJ).",
     filtros=("periodo", "unidade", "posto"),
 )
 async def notas_posto(db: AsyncSession, user: User, f: Filtros) -> Relatorio:
@@ -317,7 +317,7 @@ async def notas_posto(db: AsyncSession, user: User, f: Filtros) -> Relatorio:
             x["so_pdf"] += 1
         if any(v.versao > 1 for v in n.values()):
             x["subst"] += 1
-        if n.get("NFE_XML") and n["NFE_XML"].avisos:
+        if any(v.avisos for v in n.values()):
             x["aviso"] += 1
     linhas = [
         {
@@ -334,7 +334,7 @@ async def notas_posto(db: AsyncSession, user: User, f: Filtros) -> Relatorio:
         colunas=[
             Col("posto", "Posto", peso=20), Col("abast", "Abastecimentos", "inteiro", 8, True),
             Col("com", "Com nota", "inteiro", 7, True), Col("sem", "Sem nota", "inteiro", 7, True),
-            Col("so_pdf", "Só PDF", "inteiro", 6, True), Col("subst", "Substituídas", "inteiro", 7, True),
+            Col("subst", "Substituídas", "inteiro", 7, True),
             Col("aviso", "Com divergência", "inteiro", 8, True), Col("pct", "% com nota", "pct", 7),
             Col("valor", "Valor total", "moeda", 10, True), Col("valor_sem", "Valor sem nota", "moeda", 10, True),
         ],

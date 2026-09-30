@@ -67,7 +67,7 @@ async def test_relatorio_mostra_nota_e_numero(client, _db, make_tenant, setup_fr
     rel = (await client.get(url, params={"data_inicio": "2000-01-01"}, headers=admin["headers"])).json()
     item = next(i for i in rel["itens"] if i["id"] == alvo["id"])
     # Só o PDF enviado: antes aparecia "—" na coluna NF.
-    assert item["situacao_nota"] == "SO_PDF" and item["numero_nf"] == "PDF" and item["numero"].startswith("AB-")
+    assert item["situacao_nota"] == "ENVIADA" and item["numero_nf"] == "PDF" and item["numero"].startswith("AB-")
 
     com = (await client.get(url, params={"data_inicio": "2000-01-01", "situacao_nota": "COM_NOTA"}, headers=admin["headers"])).json()
     assert [i["id"] for i in com["itens"]] == [alvo["id"]]

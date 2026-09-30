@@ -245,11 +245,12 @@ async def relatorio_abastecimentos(
         n = notas.get(a.id)
         if not n:
             return "PENDENTE", None
-        xml = n.get("NFE_XML")
-        rotulo = xml.nfe_numero if xml and xml.nfe_numero else a.numero_nf or "PDF"
+        # O sistema trabalha com o PDF da nota; o número vem da leitura do PDF (ou do XML legado).
+        lido = next((v.nfe_numero for v in n.values() if v.nfe_numero), None)
+        rotulo = lido or a.numero_nf or "PDF"
         if any(v.versao > 1 for v in n.values()):
             return "SUBSTITUIDA", rotulo
-        return ("ENVIADA" if xml else "SO_PDF"), rotulo
+        return "ENVIADA", rotulo
 
     dados = [
         {

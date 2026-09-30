@@ -18,6 +18,8 @@ Pillow>=10.0.0
 # ── Relatórios (exportação) ──
 openpyxl>=3.1.0
 reportlab>=4.0.0
+# Leitura do texto do PDF da nota (DANFE)
+pypdf>=4.2.0
 
 # ── Testes ──
 pytest>=8.0.0

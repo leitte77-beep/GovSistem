@@ -55,7 +55,7 @@ export default function InicioPosto() {
         <Link href="/posto/abastecimentos" className="flex flex-wrap items-center gap-3 rounded-card border border-[#F5D98B] bg-[#FFFBEF] p-4 transition hover:shadow-elevated">
           <FileUp className="h-6 w-6 shrink-0 text-[#805600]" />
           <p className="flex-1 text-body-sm text-text-title">
-            <strong>{n.pendentes} abastecimento(s) sem nota fiscal</strong> ({brl(n.valor_pendente)}). Envie o XML e/ou o PDF de cada um.
+            <strong>{n.pendentes} abastecimento(s) sem nota fiscal</strong> ({brl(n.valor_pendente)}). Envie o PDF da nota de cada um.
           </p>
           <span className="btn btn-primary btn-sm">Enviar notas <ArrowRight size={14} /></span>
         </Link>
@@ -160,7 +160,7 @@ export default function InicioPosto() {
         <ol className="mt-3 list-decimal space-y-1 pl-5">
           <li>Emita a NF-e (ou NFC-e) de cada abastecimento com os mesmos litros e valor registrados aqui.</li>
           <li>Em <Link className="text-[#1D5BD6] underline" href="/posto/abastecimentos">Abastecimentos</Link>, clique em <strong>Enviar nota</strong> na linha do abastecimento.</li>
-          <li>Anexe o XML e/ou o PDF (DANFE). O sistema lê a nota e avisa se o valor ou o CNPJ não batem.</li>
+          <li>Anexe o PDF da nota (DANFE). O sistema lê a nota e avisa se o valor ou o CNPJ não batem. Tem várias? Use “Enviar notas em lote”.</li>
           <li>O faturamento é feito pela Prefeitura a partir das notas enviadas.</li>
         </ol>
       </details>

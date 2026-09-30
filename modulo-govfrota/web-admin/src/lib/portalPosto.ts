@@ -89,6 +89,29 @@ export interface NotaResumo {
   avisos: string[];
   substituida?: boolean;
   motivo_substituicao?: string | null;
+  /** Valor lido do PDF (quando foi possível ler). */
+  conferida?: boolean;
+}
+
+export interface CandidatoNota {
+  id: string;
+  numero: string | null;
+  data: string;
+  placa: string;
+  valor: number | null;
+  tem_nota: boolean;
+  pontos?: number;
+}
+
+export interface AnaliseNota {
+  indice: number;
+  arquivo: string;
+  erro: string | null;
+  leitura: { texto: boolean; chave: string | null; numero: string | null; serie: string | null; valor: number | null; emissao: string | null } | null;
+  sugestao: string | null;
+  confianca: "alta" | "media" | null;
+  candidatos: CandidatoNota[];
+  ja_enviada: CandidatoNota | null;
 }
 
 export interface AbastecimentoPosto {
@@ -132,6 +155,19 @@ export const portal = {
   /** nota: PENDENTE (todo o histórico sem nota) | ENVIADA */
   abastecimentos: (p: { inicio?: string; fim?: string; unidade_id?: string; nota?: string }) =>
     req<AbastecimentoPosto[]>(`/abastecimentos${qs(p)}`),
+  /** Lê vários PDFs e sugere o abastecimento de cada um (não grava). */
+  analisarNotas: (arquivos: File[]) => {
+    const fd = new FormData();
+    arquivos.forEach((f) => fd.append("arquivos", f));
+    return req<AnaliseNota[]>("/notas/analisar", { method: "POST", body: fd });
+  },
+  urlNota: (abastId: string, notaId: string) => `${BASE}/abastecimentos/${abastId}/nota/${notaId}/arquivo`,
+  /** Blob do arquivo para prévia (com o token do posto). */
+  blobNota: async (abastId: string, notaId: string) => {
+    const res = await fetch(`${BASE}/abastecimentos/${abastId}/nota/${notaId}/arquivo`, { headers: { Authorization: `Bearer ${token() ?? ""}` } });
+    if (!res.ok) throw new Error("Não foi possível abrir a nota.");
+    return res.blob();
+  },
   motivosSubstituicao: () => req<{ codigo: string; descricao: string }[]>("/motivos-substituicao"),
   /** `motivo` é obrigatório quando o abastecimento já tem nota. */
   enviarNota: (id: string, arquivos: File[], motivo?: { codigo: string; detalhe?: string }) => {

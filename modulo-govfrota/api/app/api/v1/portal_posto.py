@@ -9,6 +9,7 @@ envia a nota fiscal (XML e/ou DANFE) de cada um. Não fatura: o faturamento
 import uuid
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel, Field
@@ -292,6 +293,97 @@ async def _abast_do_posto(db: AsyncSession, acesso: AcessoFornecedor, abastecime
     if abast is None:
         raise HTTPException(status_code=404, detail="Abastecimento não encontrado.")
     return abast
+
+
+MAX_LOTE = 50
+
+
+@router.post("/notas/analisar")
+async def analisar_lote(
+    arquivos: list[UploadFile] = File(...),
+    acesso: AcessoFornecedor = Depends(get_fornecedor_com_senha_definitiva),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lê vários PDFs e sugere o abastecimento de cada um. Não grava nada.
+
+    Pontuação: nº AB no texto (100), valor igual (50), placa (30), data de
+    emissão no mesmo dia (20; até 2 dias, 10). Sugestão só com 50+ pontos e
+    sem empate no topo — o posto confere antes de enviar.
+    """
+    from starlette.concurrency import run_in_threadpool
+
+    from app.core.config import settings
+    from app.services.danfe import ler_danfe
+
+    if not 1 <= len(arquivos) <= MAX_LOTE:
+        raise HTTPException(status_code=422, detail=f"Envie de 1 a {MAX_LOTE} arquivos PDF.")
+    desde = now_local() - timedelta(days=120)
+    linhas = (await db.execute(
+        select(Abastecimento, Veiculo.placa)
+        .join(Veiculo, Veiculo.id == Abastecimento.veiculo_id)
+        .where(*_base_abastecimentos(acesso), Abastecimento.data_abastecimento >= desde)
+        .order_by(Abastecimento.data_abastecimento.desc())
+    )).all()
+    notas = await notas_ativas(db, [a.id for a, _ in linhas])
+    chaves_usadas = dict((await db.execute(
+        select(NotaAbastecimento.nfe_chave, NotaAbastecimento.abastecimento_id).where(
+            NotaAbastecimento.organization_id == acesso.organization_id, NotaAbastecimento.ativo.is_(True),
+            NotaAbastecimento.nfe_chave.isnot(None),
+        )
+    )).all())
+    por_id = {a.id: (a, placa) for a, placa in linhas}
+
+    def resumo(a: Abastecimento, placa: str) -> dict:
+        return {
+            "id": str(a.id), "numero": a.numero, "data": to_display(a.data_abastecimento).isoformat(), "placa": placa,
+            "valor": float(a.custo_total) if a.custo_total is not None else None, "tem_nota": a.id in notas,
+        }
+
+    resultado = []
+    for i, arq in enumerate(arquivos):
+        conteudo = await arq.read()
+        item = {"indice": i, "arquivo": arq.filename or f"nota-{i + 1}.pdf", "erro": None, "leitura": None,
+                "sugestao": None, "confianca": None, "candidatos": [], "ja_enviada": None}
+        if not conteudo.startswith(b"%PDF"):
+            item["erro"] = "Não é um PDF."
+            resultado.append(item)
+            continue
+        if len(conteudo) > settings.MAX_UPLOAD_SIZE_BYTES:
+            item["erro"] = "Arquivo maior que o permitido."
+            resultado.append(item)
+            continue
+        d = await run_in_threadpool(ler_danfe, conteudo)
+        item["leitura"] = {
+            "texto": d.texto, "chave": d.chave, "numero": d.numero, "serie": d.serie,
+            "valor": float(d.valor_total) if d.valor_total is not None else None,
+            "emissao": d.emissao.isoformat() if d.emissao else None,
+        }
+        if d.chave and d.chave in chaves_usadas and chaves_usadas[d.chave] in por_id:
+            a, placa = por_id[chaves_usadas[d.chave]]
+            item["ja_enviada"] = resumo(a, placa)
+        pontos = []
+        for a, placa in linhas:
+            p = 0
+            if (a.numero_ano, a.numero_seq) in d.numeros_ab:
+                p += 100
+            if d.valor_total is not None and a.custo_total is not None and abs(d.valor_total - a.custo_total) <= Decimal("0.05"):
+                p += 50
+            if placa and placa.replace("-", "").upper() in d.placas:
+                p += 30
+            if d.emissao:
+                dias = abs((to_display(a.data_abastecimento).date() - d.emissao.date()).days)
+                p += 20 if dias == 0 else (10 if dias <= 2 else 0)
+            if p:
+                p += 0 if a.id in notas else 5
+                pontos.append((p, a, placa))
+        pontos.sort(key=lambda x: (-x[0], x[1].data_abastecimento))
+        item["candidatos"] = [{**resumo(a, placa), "pontos": p} for p, a, placa in pontos[:5]]
+        if pontos and pontos[0][0] >= 50 and (len(pontos) == 1 or pontos[1][0] < pontos[0][0]):
+            topo = pontos[0][0]
+            item["sugestao"] = str(pontos[0][1].id)
+            item["confianca"] = "alta" if topo >= 100 or topo >= 75 else "media"
+        resultado.append(item)
+    return resultado
 
 
 @router.get("/motivos-substituicao")

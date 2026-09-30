@@ -46,7 +46,7 @@ const num = (v: number, casas = 2) => v.toLocaleString("pt-BR", { maximumFractio
 
 const SITUACAO_NOTA: Record<string, { rotulo: string; classe: string }> = {
   ENVIADA: { rotulo: "Enviada", classe: "bg-[#E7F8EC] text-[#106D34]" },
-  SO_PDF: { rotulo: "Só PDF", classe: "bg-[#E5EEFF] text-[#1D4ED8]" },
+  SO_PDF: { rotulo: "Enviada", classe: "bg-[#E7F8EC] text-[#106D34]" },
   SUBSTITUIDA: { rotulo: "Substituída", classe: "bg-[#FFF4D6] text-[#5C4200]" },
   PENDENTE: { rotulo: "Pendente", classe: "bg-[#FEE4E2] text-[#B42318]" },
 };

@@ -67,7 +67,7 @@ export default function NotasFiscaisPage() {
   const [situacao, setSituacao] = useState("COM_NOTA");
   const [busca, setBusca] = useState("");
   const [buscaAtiva, setBuscaAtiva] = useState("");
-  const [tipos, setTipos] = useState("NFE_XML,DANFE");
+  const tipos = "NFE_XML,DANFE";
   const [preview, setPreview] = useState<{ url: string; tipo: "xml" | "pdf"; titulo: string } | null>(null);
   const [dados, setDados] = useState<ListaNotasFiscais | null>(null);
   const [carregando, setCarregando] = useState(true);
@@ -324,16 +324,6 @@ export default function NotasFiscaisPage() {
               ))}
             </div>
             <div className="flex items-center gap-2 self-end sm:self-auto">
-              <Select
-                aria-label="Arquivos do ZIP"
-                className="!w-auto !py-2"
-                value={tipos}
-                onChange={(e) => setTipos(e.target.value)}
-              >
-                <option value="NFE_XML,DANFE">XML + PDF</option>
-                <option value="NFE_XML">Só XML</option>
-                <option value="DANFE">Só PDF</option>
-              </Select>
               <button
                 className="btn btn-primary !rounded-xl !px-4 !py-2 !text-meta"
                 onClick={baixarZip}
@@ -439,7 +429,7 @@ export default function NotasFiscaisPage() {
                                 </>
                               ) : (
                                 <>
-                                  <FileText size={13} className="text-[#BA1A1A]" /> Só PDF
+                                  <FileText size={13} className="text-[#BA1A1A]" /> Nota enviada
                                 </>
                               )}
                               {n.avisos.length > 0 && (

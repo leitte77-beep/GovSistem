@@ -4,13 +4,45 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { Fuel, LogOut } from "lucide-react";
+import { ChevronDown, Fuel, Landmark, LayoutDashboard, LogOut, ReceiptText } from "lucide-react";
 import { MePosto, portal, POSTO_TOKEN_KEY, sair, salvarToken, SessaoPostoExpirada } from "@/lib/portalPosto";
 
 const NAV = [
-  { href: "/posto", label: "Início" },
-  { href: "/posto/abastecimentos", label: "Abastecimentos" },
+  { href: "/posto", label: "Início", icone: LayoutDashboard },
+  { href: "/posto/abastecimentos", label: "Abastecimentos", icone: ReceiptText },
 ];
+
+function MenuUsuario({ nome, login, onSair }: { nome: string; login: string; onSair: () => void }) {
+  const [aberto, setAberto] = useState(false);
+  const iniciais = nome.split(/\s+/).filter(Boolean).slice(0, 2).map((p) => p[0]?.toUpperCase()).join("") || "?";
+  useEffect(() => {
+    if (!aberto) return;
+    const fechar = () => setAberto(false);
+    window.addEventListener("click", fechar);
+    return () => window.removeEventListener("click", fechar);
+  }, [aberto]);
+  return (
+    <div className="relative" onClick={(e) => e.stopPropagation()}>
+      <button onClick={() => setAberto(!aberto)} aria-haspopup="menu" aria-expanded={aberto}
+        className="flex items-center gap-2 rounded-pill border border-surface-border bg-white py-1 pl-1 pr-3 text-body-sm transition hover:bg-[#F3F4F6]">
+        <span className="flex h-7 w-7 items-center justify-center rounded-full bg-[#E5EEFF] text-meta font-semibold text-[#1D4ED8]">{iniciais}</span>
+        <span className="hidden max-w-[160px] truncate text-text-title sm:inline">{nome}</span>
+        <ChevronDown size={14} className="text-text-subtle" />
+      </button>
+      {aberto && (
+        <div role="menu" className="absolute right-0 mt-2 w-56 overflow-hidden rounded-card border border-surface-border bg-white shadow-elevated">
+          <div className="border-b border-surface-border px-4 py-3">
+            <p className="truncate text-body-sm font-medium text-text-title">{nome}</p>
+            <p className="truncate text-meta text-text-subtle">{login}</p>
+          </div>
+          <button role="menuitem" onClick={onSair} className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-body-sm text-[#B42318] hover:bg-[#FEF3F2]">
+            <LogOut size={15} /> Sair
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function PostoLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -61,40 +93,38 @@ export default function PostoLayout({ children }: { children: React.ReactNode })
 
   return (
     <div className="min-h-screen bg-[#F8F9FF]">
-        <header className="border-b border-surface-border bg-white">
-          <div className="mx-auto flex max-w-7xl flex-wrap items-center justify-between gap-3 px-4 py-3">
-            <div className="flex items-center gap-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-btn bg-[#1D5BD6] text-white">
-                <Fuel size={18} aria-hidden />
+        <header className="sticky top-0 z-30 border-b border-surface-border bg-white/90 backdrop-blur">
+          <div className="mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#1D5BD6] to-[#123C91] text-white shadow-sm">
+                <Fuel size={19} aria-hidden />
               </span>
-              <div className="leading-tight">
-                <p className="text-label font-semibold text-text-title">{me.posto}</p>
-                <p className="text-meta text-text-subtle">Portal do fornecedor · {me.prefeitura}</p>
+              <div className="min-w-0 leading-tight">
+                <p className="truncate text-label font-semibold text-text-title">{me.posto}</p>
+                <p className="truncate text-meta text-text-subtle">
+                  {me.posto_cnpj ? `CNPJ ${me.posto_cnpj}` : "Portal do fornecedor"}
+                </p>
               </div>
+              {me.prefeitura && (
+                <span className="hidden shrink-0 items-center gap-1.5 rounded-pill border border-[#D6E2FF] bg-[#F3F7FF] px-2.5 py-1 text-meta font-medium text-[#1D4ED8] md:inline-flex">
+                  <Landmark size={13} aria-hidden /> {me.prefeitura}
+                </span>
+              )}
             </div>
-            <div className="flex items-center gap-3 text-body-sm">
-              <span className="text-text-subtle">{me.nome}</span>
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={() => {
-                  sair();
-                  router.replace("/posto/login");
-                }}
-              >
-                <LogOut size={15} /> Sair
-              </button>
-            </div>
+            <MenuUsuario nome={me.nome} login={me.login} onSair={() => { sair(); router.replace("/posto/login"); }} />
           </div>
           {!me.deve_trocar_senha && (
             <nav className="mx-auto flex max-w-7xl gap-1 overflow-x-auto px-4" aria-label="Portal do fornecedor">
               {NAV.map((n) => {
                 const ativo = n.href === "/posto" ? pathname === "/posto" : pathname.startsWith(n.href);
+                const Icone = n.icone;
                 return (
                   <Link key={n.href} href={n.href} aria-current={ativo ? "page" : undefined}
-                    className={`border-b-2 px-3 py-2 text-body-sm font-medium ${ativo ? "border-[#1D5BD6] text-[#1D5BD6]" : "border-transparent text-text-subtle hover:text-text-title"}`}>
+                    className={`inline-flex items-center gap-2 border-b-2 px-3 py-2.5 text-body-sm font-medium transition ${ativo ? "border-[#1D5BD6] text-[#1D5BD6]" : "border-transparent text-text-subtle hover:text-text-title"}`}>
+                    <Icone size={15} aria-hidden />
                     {n.label}
                     {n.href === "/posto/abastecimentos" && pendentes > 0 && (
-                      <span className="ml-1.5 inline-flex min-w-[1.25rem] items-center justify-center rounded-pill bg-[#D92D20] px-1.5 text-[11px] font-semibold leading-5 text-white" aria-label={`${pendentes} nota(s) pendente(s)`}>
+                      <span className="inline-flex min-w-[1.25rem] items-center justify-center rounded-pill bg-[#D92D20] px-1.5 text-[11px] font-semibold leading-5 text-white" aria-label={`${pendentes} nota(s) pendente(s)`}>
                         {pendentes}
                       </span>
                     )}

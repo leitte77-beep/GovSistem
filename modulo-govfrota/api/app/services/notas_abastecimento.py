@@ -17,6 +17,7 @@ from app.models.anexo import Anexo
 from app.models.combustivel import Fornecedor
 from app.models.nota_abastecimento import NotaAbastecimento
 from app.services.auditoria import registrar_auditoria
+from app.services.danfe import ler_danfe
 from app.services.nfe import NFeInvalida, ler_nfe, so_digitos
 
 TIPOS = {"NFE_XML": "XML da nota", "DANFE": "PDF da nota (DANFE)"}
@@ -59,16 +60,19 @@ def resumo_nota(notas: dict[str, NotaAbastecimento] | None) -> dict | None:
         return None
     xml, pdf = notas.get("NFE_XML"), notas.get("DANFE")
     base = xml or pdf
-    avisos = json.loads(xml.avisos) if xml and xml.avisos else []
+    # Dados lidos: do XML quando houver, senão do texto do PDF.
+    lida = xml if xml and xml.nfe_numero else (pdf if pdf and (pdf.nfe_chave or pdf.nfe_valor_total is not None) else xml)
+    avisos = [a for n in (xml, pdf) if n and n.avisos for a in json.loads(n.avisos)]
     trocada = max((n for n in (xml, pdf) if n and n.versao > 1), key=lambda n: n.created_at, default=None)
     return {
         "substituida": trocada is not None,
         "motivo_substituicao": MOTIVOS_SUBSTITUICAO.get(trocada.motivo_substituicao or "", "Motivo não informado") if trocada else None,
-        "numero": xml.nfe_numero if xml else None,
-        "serie": xml.nfe_serie if xml else None,
-        "chave": xml.nfe_chave if xml else None,
-        "valor": float(xml.nfe_valor_total) if xml and xml.nfe_valor_total is not None else None,
-        "emissao": xml.nfe_emissao.isoformat() if xml and xml.nfe_emissao else None,
+        "numero": lida.nfe_numero if lida else None,
+        "serie": lida.nfe_serie if lida else None,
+        "chave": lida.nfe_chave if lida else None,
+        "valor": float(lida.nfe_valor_total) if lida and lida.nfe_valor_total is not None else None,
+        "emissao": lida.nfe_emissao.isoformat() if lida and lida.nfe_emissao else None,
+        "conferida": bool(lida and lida.nfe_valor_total is not None),
         "enviada_em": base.created_at.isoformat() if base and base.created_at else None,
         "xml_id": str(xml.id) if xml else None,
         "pdf_id": str(pdf.id) if pdf else None,
@@ -89,6 +93,20 @@ async def _avisos(db: AsyncSession, abast: Abastecimento, nfe) -> list[str]:
     return avisos
 
 
+async def _avisos_pdf(db: AsyncSession, abast: Abastecimento, d) -> list[str]:
+    """Conferência do que foi lido no PDF (quando foi possível ler)."""
+    avisos: list[str] = []
+    posto = await db.get(Fornecedor, abast.fornecedor_id)
+    cnpj_posto = so_digitos(posto.cpf_cnpj) if posto else ""
+    if cnpj_posto and d.emitente_cnpj and d.emitente_cnpj != cnpj_posto:
+        avisos.append("O CNPJ do emitente da nota é diferente do CNPJ do posto.")
+    if d.valor_total is not None and abast.custo_total is not None and abs(d.valor_total - Decimal(abast.custo_total)) > TOLERANCIA_VALOR:
+        avisos.append(
+            f"Valor da nota (R$ {d.valor_total:.2f}) diferente do abastecimento (R$ {Decimal(abast.custo_total):.2f}).".replace(".", ",", 2)
+        )
+    return avisos
+
+
 async def receber_nota(
     db: AsyncSession, abast: Abastecimento, tipo: str, nome: str, conteudo: bytes, *, acesso=None, user=None,
     motivo: tuple[str, str | None] | None = None,
@@ -98,6 +116,7 @@ async def receber_nota(
     if tipo not in TIPOS:
         raise HTTPException(status_code=422, detail="Tipo de arquivo inválido.")
     nfe = None
+    danfe = None
     if tipo == "NFE_XML":
         if len(conteudo) > MAX_XML_BYTES:
             raise HTTPException(status_code=422, detail="XML maior que 5 MB.")
@@ -118,8 +137,18 @@ async def receber_nota(
         if len(conteudo) > settings.MAX_UPLOAD_SIZE_BYTES:
             raise HTTPException(status_code=422, detail="Arquivo excede o tamanho máximo.")
         if not conteudo.startswith(b"%PDF"):
-            raise HTTPException(status_code=422, detail="Envie o DANFE em PDF.")
+            raise HTTPException(status_code=422, detail="Envie a nota em PDF.")
         mime, ext = "application/pdf", ".pdf"
+        danfe = await run_in_threadpool(ler_danfe, conteudo)
+        if danfe.chave:
+            repetida = await db.scalar(
+                select(NotaAbastecimento.abastecimento_id).where(
+                    NotaAbastecimento.organization_id == abast.organization_id, NotaAbastecimento.nfe_chave == danfe.chave,
+                    NotaAbastecimento.ativo.is_(True), NotaAbastecimento.abastecimento_id != abast.id,
+                ).limit(1)
+            )
+            if repetida:
+                raise HTTPException(status_code=409, detail="Esta nota já foi enviada para outro abastecimento.")
 
     anteriores = list(
         (await db.execute(select(NotaAbastecimento).where(NotaAbastecimento.abastecimento_id == abast.id, NotaAbastecimento.tipo == tipo))).scalars()
@@ -127,7 +156,7 @@ async def receber_nota(
     substitui = any(n.ativo for n in anteriores)
     if substitui:
         motivo = validar_motivo(*(motivo or (None, None)))
-    avisos = await _avisos(db, abast, nfe) if nfe else []
+    avisos = await _avisos(db, abast, nfe) if nfe else (await _avisos_pdf(db, abast, danfe) if danfe else [])
     hash_arquivo = hashlib.sha256(conteudo).hexdigest()
     anexo = Anexo(
         organization_id=abast.organization_id, nome_arquivo=nome, caminho="", mime_type=mime, tamanho_bytes=len(conteudo),
@@ -159,13 +188,25 @@ async def receber_nota(
         nota.nfe_emitente_cnpj = nfe.emitente_cnpj
         nota.nfe_valor_total = nfe.valor_total
         abast.numero_nf = nfe.numero[:50]
+    elif danfe is not None:
+        nota.nfe_chave = danfe.chave
+        nota.nfe_numero = danfe.numero
+        nota.nfe_serie = danfe.serie
+        nota.nfe_emitente_cnpj = danfe.emitente_cnpj
+        nota.nfe_valor_total = danfe.valor_total
+        if danfe.emissao:
+            from app.core.timezone import get_tz
+
+            nota.nfe_emissao = danfe.emissao.replace(tzinfo=get_tz())
+        if danfe.numero:
+            abast.numero_nf = danfe.numero
     db.add(nota)
     await db.flush()
     await registrar_auditoria(
         db, organization_id=abast.organization_id, acao="abastecimento.nota_substituir" if substitui else "abastecimento.nota_enviar", entidade="abastecimento",
         entidade_id=abast.id, usuario_id=user.id if user else None,
         dados_novos={"tipo": tipo, "arquivo": nome, "hash": hash_arquivo, "versao": nota.versao,
-                     "chave": nfe.chave if nfe else None, "acesso_fornecedor": str(acesso.id) if acesso else None,
+                     "chave": nfe.chave if nfe else (danfe.chave if danfe else None), "acesso_fornecedor": str(acesso.id) if acesso else None,
                      **({"motivo": motivo[0], "motivo_detalhe": motivo[1]} if substitui else {})},
     )
     return nota
