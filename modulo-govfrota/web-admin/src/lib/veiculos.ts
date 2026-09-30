@@ -90,3 +90,40 @@ export function placaValida(placa: string): boolean {
   return /^[A-Z]{3}[0-9]{4}$/.test(p) || /^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(p);
 }
 
+
+// Cores do padrão Denatran (evita "branco"/"Branca"/"BRANCA" como cores distintas).
+export const CORES_VEICULO = [
+  "Amarela", "Azul", "Bege", "Branca", "Cinza", "Dourada", "Fantasia", "Grená",
+  "Laranja", "Marrom", "Prata", "Preta", "Rosa", "Roxa", "Verde", "Vermelha",
+];
+
+export const MARCAS_COMUNS = [
+  "Agrale", "BYD", "Caterpillar", "Chevrolet", "Citroën", "Fiat", "Ford", "Honda",
+  "Hyundai", "Iveco", "JCB", "John Deere", "Case", "Kia", "Marcopolo", "Massey Ferguson",
+  "Mercedes-Benz", "Mitsubishi", "New Holland", "Nissan", "Peugeot", "Renault",
+  "Scania", "Toyota", "Valtra", "Volkswagen", "Volvo", "Yamaha",
+];
+
+export function soDigitos(v: string): string {
+  return v.replace(/\D/g, "");
+}
+
+/** RENAVAM: 11 dígitos com dígito verificador (módulo 11). */
+export function renavamValido(renavam: string): boolean {
+  const d = soDigitos(renavam).padStart(11, "0");
+  if (d.length !== 11) return false;
+  const pesos = [3, 2, 9, 8, 7, 6, 5, 4, 3, 2];
+  const soma = pesos.reduce((s, p, i) => s + p * Number(d[i]), 0);
+  let dv = 11 - (soma % 11);
+  if (dv >= 10) dv = 0;
+  return dv === Number(d[10]);
+}
+
+/** Chassi (VIN): 17 caracteres, sem I, O e Q. */
+export function normalizarChassi(chassi: string): string {
+  return chassi.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 17);
+}
+
+export function chassiValido(chassi: string): boolean {
+  return /^[A-HJ-NPR-Z0-9]{17}$/.test(chassi);
+}

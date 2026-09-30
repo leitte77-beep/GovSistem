@@ -7,7 +7,13 @@ import { Camera, Fuel, Trash2, Upload, X } from "lucide-react";
 import { api, Combustivel, Unidade, Veiculo } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import {
+  chassiValido,
+  CORES_VEICULO,
+  MARCAS_COMUNS,
+  normalizarChassi,
   normalizarPlaca,
+  renavamValido,
+  soDigitos,
   placaValida,
   SITUACOES,
   SITUACOES_LISTA,
@@ -42,6 +48,7 @@ export function VeiculoFormDrawer({
   const [fotoUrlAtual, setFotoUrlAtual] = useState<string>(veiculo?.foto_url ?? "");
   const [previewFoto, setPreviewFoto] = useState<string | null>(null);
   const [erroPlaca, setErroPlaca] = useState<string | null>(null);
+  const [erros, setErros] = useState<Record<string, string>>({});
   const inputFotoRef = useRef<HTMLInputElement>(null);
 
   const novoForm = (v: Veiculo | null) => ({
@@ -91,6 +98,7 @@ export function VeiculoFormDrawer({
       setArquivoFoto(null);
       setPreviewFoto(null);
       setErroPlaca(null);
+      setErros({});
       setSalvando(false);
       const aux = (veiculo?.tanques ?? []).filter((t) => t.tank_type === "AUXILIARY");
       setPossuiAuxiliar(aux.length > 0);
@@ -113,6 +121,13 @@ export function VeiculoFormDrawer({
 
   const publico = tipoOrganizacao !== "PRIVADO";
   const rotuloUnidade = publico ? "Secretaria" : "Centro de custo";
+
+  const anoAtual = new Date().getFullYear();
+
+  const atualizar = (k: string, valor: string) => {
+    setForm((f) => ({ ...f, [k]: valor }));
+    setErros((e) => (e[k] ? { ...e, [k]: "" } : e));
+  };
 
   const tipoHorimetroPadrao = TIPOS_HORIMETRO.has(form.tipo);
 
@@ -142,6 +157,27 @@ export function VeiculoFormDrawer({
       return;
     }
     setErroPlaca(null);
+    const novosErros: Record<string, string> = {};
+    if (form.renavam && !renavamValido(form.renavam)) {
+      novosErros.renavam = "RENAVAM inválido (confira os 11 dígitos).";
+    }
+    if (form.chassi && !chassiValido(form.chassi)) {
+      novosErros.chassi = "Chassi deve ter 17 caracteres, sem I, O ou Q.";
+    }
+    const anoAtual = new Date().getFullYear();
+    const fab = Number(form.ano_fabricacao || 0);
+    const mod = Number(form.ano_modelo || 0);
+    if (fab && (fab < 1950 || fab > anoAtual)) {
+      novosErros.ano_fabricacao = `Informe um ano entre 1950 e ${anoAtual}.`;
+    }
+    if (fab && mod && (mod < fab || mod > fab + 1)) {
+      novosErros.ano_modelo = "Ano modelo deve ser igual ao de fabricação ou o seguinte.";
+    }
+    setErros(novosErros);
+    if (Object.keys(novosErros).length) {
+      toast.error("Corrija os campos destacados.");
+      return;
+    }
     const kmNovo = Number(form.quilometragem_atual || 0);
     const kmMudou = !!veiculo && !form.usa_horimetro && kmNovo !== veiculo.quilometragem_atual;
     if (kmMudou && justificativaKm.trim().length < 5) {
@@ -159,6 +195,8 @@ export function VeiculoFormDrawer({
         ...form,
         placa,
         foto_url,
+        renavam: form.renavam ? soDigitos(form.renavam) : undefined,
+        chassi: form.chassi || undefined,
         ano_fabricacao: form.ano_fabricacao ? Number(form.ano_fabricacao) : undefined,
         ano_modelo: form.ano_modelo ? Number(form.ano_modelo) : undefined,
         quilometragem_atual: form.usa_horimetro ? 0 : Number(form.quilometragem_atual || 0),
@@ -211,7 +249,10 @@ export function VeiculoFormDrawer({
       <div className="relative flex h-full w-full max-w-2xl flex-col bg-white shadow-elevated">
         {/* Cabeçalho */}
         <div className="flex items-center justify-between border-b border-surface-border px-6 py-4">
-          <h2 className="text-h3 text-text-title">{veiculo ? "Editar veículo" : "Novo veículo"}</h2>
+          <div>
+            <h2 className="text-h3 text-text-title">{veiculo ? "Editar veículo" : "Novo veículo"}</h2>
+            <p className="text-meta text-text-subtle">Campos com * são obrigatórios.</p>
+          </div>
           <button className="btn btn-ghost btn-sm" onClick={onClose} aria-label="Fechar">
             <X size={20} />
           </button>
@@ -227,8 +268,9 @@ export function VeiculoFormDrawer({
                   <input
                     {...campo("placa")}
                     placeholder="ABC1D23"
+                    maxLength={8}
                     onChange={(e) => {
-                      campo("placa").onChange(e);
+                      atualizar("placa", e.target.value.toUpperCase());
                       setErroPlaca(null);
                     }}
                     className={`input ${erroPlaca ? "input-error" : ""}`}
@@ -238,14 +280,27 @@ export function VeiculoFormDrawer({
                 <Label texto="Código interno">
                   <input {...campo("codigo_interno")} placeholder="EX.: VH-0001" />
                 </Label>
-                <Label texto="Patrimônio (quando aplicável)">
+                <Label texto="Patrimônio" dica="Quando aplicável.">
                   <input {...campo("patrimonio")} />
                 </Label>
-                <Label texto="RENAVAM">
-                  <input {...campo("renavam")} />
+                <Label texto="RENAVAM" erro={erros.renavam}>
+                  <input
+                    {...campo("renavam")}
+                    inputMode="numeric"
+                    maxLength={11}
+                    placeholder="11 dígitos"
+                    onChange={(e) => atualizar("renavam", soDigitos(e.target.value).slice(0, 11))}
+                    className={`input ${erros.renavam ? "input-error" : ""}`}
+                  />
                 </Label>
-                <Label texto="Chassi" classe="sm:col-span-2">
-                  <input {...campo("chassi")} />
+                <Label texto="Chassi" classe="sm:col-span-2" erro={erros.chassi}>
+                  <input
+                    {...campo("chassi")}
+                    maxLength={17}
+                    placeholder="17 caracteres"
+                    onChange={(e) => atualizar("chassi", normalizarChassi(e.target.value))}
+                    className={`input font-mono uppercase ${erros.chassi ? "input-error" : ""}`}
+                  />
                 </Label>
               </div>
             </Secao>
@@ -254,12 +309,15 @@ export function VeiculoFormDrawer({
             <Secao titulo="Características">
               <div className="grid gap-3 sm:grid-cols-2">
                 <Label texto="Marca">
-                  <input {...campo("marca")} placeholder="Ex.: Toyota" />
+                  <input {...campo("marca")} list="marcas-veiculo" placeholder="Ex.: Toyota" />
+                  <datalist id="marcas-veiculo">
+                    {MARCAS_COMUNS.map((m) => <option key={m} value={m} />)}
+                  </datalist>
                 </Label>
                 <Label texto="Modelo">
                   <input {...campo("modelo")} placeholder="Ex.: Hilux" />
                 </Label>
-                <Label texto="Versão (opcional)">
+                <Label texto="Versão" dica="Opcional.">
                   <input {...campo("versao")} />
                 </Label>
                 <Label texto="Tipo *">
@@ -269,21 +327,44 @@ export function VeiculoFormDrawer({
                     ))}
                   </select>
                 </Label>
-                <Label texto="Ano fabricação">
-                  <input type="number" min={1950} max={2100} {...campo("ano_fabricacao")} />
+                <Label texto="Ano fabricação" erro={erros.ano_fabricacao}>
+                  <input
+                    type="number"
+                    min={1950}
+                    max={anoAtual}
+                    placeholder={String(anoAtual)}
+                    {...campo("ano_fabricacao")}
+                    className={`input ${erros.ano_fabricacao ? "input-error" : ""}`}
+                  />
                 </Label>
-                <Label texto="Ano modelo">
-                  <input type="number" min={1950} max={2100} {...campo("ano_modelo")} />
+                <Label texto="Ano modelo" erro={erros.ano_modelo}>
+                  <input
+                    type="number"
+                    min={1950}
+                    max={anoAtual + 1}
+                    placeholder={String(anoAtual)}
+                    {...campo("ano_modelo")}
+                    className={`input ${erros.ano_modelo ? "input-error" : ""}`}
+                  />
                 </Label>
                 <Label texto="Cor">
-                  <input {...campo("cor")} />
+                  <select {...campo("cor")}>
+                    <option value="">—</option>
+                    {/* Mantém cor legada digitada à mão, fora da lista. */}
+                    {form.cor && !CORES_VEICULO.includes(form.cor) && (
+                      <option value={form.cor}>{form.cor}</option>
+                    )}
+                    {CORES_VEICULO.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
                 </Label>
               </div>
             </Secao>
 
             {/* Controle */}
             <Secao titulo="Controle">
-              <div className="space-y-3">
+              <div className="space-y-5">
                 <div>
                   <span className="text-meta">Modo de controle</span>
                   <div className="mt-1.5 flex gap-2">
@@ -579,11 +660,28 @@ function Secao({ titulo, children }: { titulo: string; children: React.ReactNode
   );
 }
 
-function Label({ texto, children, classe }: { texto: string; children: React.ReactNode; classe?: string }) {
+function Label({
+  texto,
+  children,
+  classe,
+  dica,
+  erro,
+}: {
+  texto: string;
+  children: React.ReactNode;
+  classe?: string;
+  dica?: string;
+  erro?: string;
+}) {
   return (
     <label className={`text-meta ${classe ?? ""}`}>
       {texto}
       <span className="mt-1 block">{children}</span>
+      {erro ? (
+        <span className="mt-1 block text-meta text-[#B42318]">{erro}</span>
+      ) : (
+        dica && <span className="mt-1 block text-meta text-text-subtle">{dica}</span>
+      )}
     </label>
   );
 }
