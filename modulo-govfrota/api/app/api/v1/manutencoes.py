@@ -6,11 +6,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.auth import require_permission
+from app.core.auth import filtro_escopo, require_permission
 from app.core.database import get_db
 from app.core.permissions import Perm
 from app.models.auth_models import User
-from app.models.combustivel import Oficina
+from app.models.combustivel import Fornecedor
 from app.models.manutencao import Manutencao, ManutencaoItem, PlanoPreventivo
 from app.models.veiculo import Veiculo
 from app.schemas.schemas import (
@@ -28,6 +28,20 @@ from app.services.auditoria import registrar_auditoria
 router = APIRouter(tags=["manutenções"])
 
 
+async def _validar_fornecedor(db: AsyncSession, user: User, fornecedor_id: uuid.UUID) -> None:
+    ok = (
+        await db.execute(
+            select(Fornecedor.id).where(
+                Fornecedor.id == fornecedor_id,
+                Fornecedor.organization_id == user.organization_id,
+                Fornecedor.deleted_at.is_(None),
+            )
+        )
+    ).scalar_one_or_none()
+    if ok is None:
+        raise HTTPException(status_code=422, detail="Oficina/fornecedor inválido.")
+
+
 async def _get_manutencao(db: AsyncSession, user: User, manutencao_id: uuid.UUID) -> Manutencao:
     result = await db.execute(
         select(Manutencao)
@@ -35,6 +49,7 @@ async def _get_manutencao(db: AsyncSession, user: User, manutencao_id: uuid.UUID
             Manutencao.id == manutencao_id,
             Manutencao.organization_id == user.organization_id,
             Manutencao.deleted_at.is_(None),
+            filtro_escopo(user, Manutencao.unidade_id),
         )
         .options(selectinload(Manutencao.itens))
     )
@@ -49,6 +64,7 @@ async def _enriquecer(db: AsyncSession, registros: list[Manutencao]) -> list[dic
     from app.models.ocorrencia import Ocorrencia
 
     ids_veic = {r.veiculo_id for r in registros}
+    ids_forn = {r.fornecedor_id for r in registros if r.fornecedor_id}
     ids_ocorr = {r.ocorrencia_origem_id for r in registros if r.ocorrencia_origem_id}
 
     veiculos = {}
@@ -57,6 +73,14 @@ async def _enriquecer(db: AsyncSession, registros: list[Manutencao]) -> list[dic
             v.id: v
             for v in (
                 await db.execute(select(Veiculo).where(Veiculo.id.in_(ids_veic)))
+            ).scalars().all()
+        }
+    fornecedores = {}
+    if ids_forn:
+        fornecedores = {
+            f.id: f.nome_fantasia or f.razao_social
+            for f in (
+                await db.execute(select(Fornecedor).where(Fornecedor.id.in_(ids_forn)))
             ).scalars().all()
         }
     ocorrencias = {}
@@ -80,6 +104,7 @@ async def _enriquecer(db: AsyncSession, registros: list[Manutencao]) -> list[dic
         dados["veiculo_marca"] = v.marca if v else None
         dados["veiculo_foto_url"] = v.foto_url if v else None
         dados["veiculo_usa_horimetro"] = v.usa_horimetro if v else None
+        dados["fornecedor_nome"] = fornecedores.get(r.fornecedor_id)
         o = ocorrencias.get(r.ocorrencia_origem_id)
         ov = veiculos.get(o.veiculo_id) if o else None
         dados["ocorrencia_placa"] = ov.placa if ov else None
@@ -91,22 +116,23 @@ async def _enriquecer(db: AsyncSession, registros: list[Manutencao]) -> list[dic
 @router.get("/manutencoes", response_model=list[ManutencaoResponse])
 async def listar_manutencoes(
     veiculo_id: uuid.UUID | None = None,
-    oficina_id: uuid.UUID | None = None,
+    fornecedor_id: uuid.UUID | None = None,
     status: str | None = None,
     tipo: str | None = None,
     skip: int = 0,
     limit: int = 50,
-    user: User = Depends(require_permission(Perm.MAINTENANCE_VIEW)),
+    user: User = Depends(require_permission(Perm.MAINTENANCE_VIEW, escopo=True)),
     db: AsyncSession = Depends(get_db),
 ):
     stmt = select(Manutencao).where(
         Manutencao.organization_id == user.organization_id,
         Manutencao.deleted_at.is_(None),
+        filtro_escopo(user, Manutencao.unidade_id),
     )
     if veiculo_id:
         stmt = stmt.where(Manutencao.veiculo_id == veiculo_id)
-    if oficina_id:
-        stmt = stmt.where(Manutencao.oficina_id == oficina_id)
+    if fornecedor_id:
+        stmt = stmt.where(Manutencao.fornecedor_id == fornecedor_id)
     if status:
         stmt = stmt.where(Manutencao.status == status.upper())
     if tipo:
@@ -126,28 +152,19 @@ async def criar_manutencao(
     user: User = Depends(require_permission(Perm.MAINTENANCE_MANAGE)),
     db: AsyncSession = Depends(get_db),
 ):
-    veiculo_ok = (
+    veiculo = (
         await db.execute(
-            select(Veiculo.id).where(
+            select(Veiculo).where(
                 Veiculo.id == body.veiculo_id,
                 Veiculo.organization_id == user.organization_id,
                 Veiculo.deleted_at.is_(None),
             )
         )
     ).scalar_one_or_none()
-    if veiculo_ok is None:
+    if veiculo is None:
         raise HTTPException(status_code=422, detail="Veículo inválido.")
-    if body.oficina_id:
-        oficina_ok = (
-            await db.execute(
-                select(Oficina.id).where(
-                    Oficina.id == body.oficina_id,
-                    Oficina.organization_id == user.organization_id,
-                )
-            )
-        ).scalar_one_or_none()
-        if oficina_ok is None:
-            raise HTTPException(status_code=422, detail="Oficina inválida.")
+    if body.fornecedor_id:
+        await _validar_fornecedor(db, user, body.fornecedor_id)
 
     total_itens = sum(
         (Decimal(i.quantidade) * i.valor_unitario for i in body.itens), Decimal("0")
@@ -155,6 +172,7 @@ async def criar_manutencao(
     manutencao = Manutencao(
         **{k: v for k, v in body.model_dump().items() if k != "itens"},
         organization_id=user.organization_id,
+        unidade_id=veiculo.unidade_id,
         valor_total=total_itens.quantize(Decimal("0.01")),
     )
     db.add(manutencao)
@@ -172,12 +190,6 @@ async def criar_manutencao(
                 valor_total=(Decimal(item.quantidade) * item.valor_unitario).quantize(Decimal("0.01")),
             )
         )
-
-    # Abertura de manutenção coloca o veículo em manutenção quando apropriado
-    if manutencao.status == "ABERTA" and body.tipo in ("CORRETIVA",):
-        veiculo = await db.get(Veiculo, body.veiculo_id)
-        if veiculo and veiculo.organization_id == user.organization_id:
-            pass  # situação permanece; gestor decide via PATCH
 
     await registrar_auditoria(
         db,
@@ -201,7 +213,7 @@ async def criar_manutencao(
 @router.get("/manutencoes/{manutencao_id}", response_model=ManutencaoResponse)
 async def obter_manutencao(
     manutencao_id: uuid.UUID,
-    user: User = Depends(require_permission(Perm.MAINTENANCE_VIEW)),
+    user: User = Depends(require_permission(Perm.MAINTENANCE_VIEW, escopo=True)),
     db: AsyncSession = Depends(get_db),
 ):
     manutencao = await _get_manutencao(db, user, manutencao_id)
@@ -218,6 +230,8 @@ async def atualizar_manutencao(
     manutencao = await _get_manutencao(db, user, manutencao_id)
 
     dados = body.model_dump(exclude_unset=True)
+    if dados.get("fornecedor_id"):
+        await _validar_fornecedor(db, user, dados["fornecedor_id"])
     if dados.get("status") == "CONCLUIDA" and not dados.get("data_conclusao") and not manutencao.data_conclusao:
         raise HTTPException(
             status_code=422,
@@ -228,7 +242,8 @@ async def atualizar_manutencao(
         setattr(manutencao, campo, valor)
 
     # Conclusão atualiza o veículo para disponível e planos preventivos
-    if manutencao.status == "CONCLUIDA" and manutencao.quilometragem is not None:
+    if manutencao.status == "CONCLUIDA":
+        veiculo = await db.get(Veiculo, manutencao.veiculo_id)
         planos = (
             await db.execute(
                 select(PlanoPreventivo).where(
@@ -239,19 +254,20 @@ async def atualizar_manutencao(
             )
         ).scalars().all()
         for plano in planos:
-            if plano.base == "QUILOMETRAGEM":
+            if plano.base == "QUILOMETRAGEM" and manutencao.quilometragem is not None:
                 plano.ultima_execucao_km = manutencao.quilometragem
+            elif plano.base == "HORIMETRO" and veiculo and veiculo.horimetro_atual is not None:
+                plano.ultima_execucao_horimetro = veiculo.horimetro_atual
             elif plano.base == "DATA" or plano.base == "MESES":
                 plano.ultima_execucao_data = date.today()
 
-        veiculo = await db.get(Veiculo, manutencao.veiculo_id)
         if (
             veiculo
             and veiculo.organization_id == user.organization_id
             and veiculo.situacao == "EM_MANUTENCAO"
         ):
             veiculo.situacao = "DISPONIVEL"
-            if manutencao.quilometragem > veiculo.quilometragem_atual:
+            if manutencao.quilometragem is not None and manutencao.quilometragem > veiculo.quilometragem_atual:
                 veiculo.quilometragem_atual = manutencao.quilometragem
 
     await registrar_auditoria(
@@ -306,57 +322,47 @@ async def adicionar_item(
 # ── Manutenção preventiva (§27) ─────────────────────────────────────────────
 
 
-def _computar_proxima_execucao(plano: PlanoPreventivo, km_atual: int) -> tuple:
+def _computar_proxima_execucao(
+    plano: PlanoPreventivo, veiculo: Veiculo | None, antecedencia_dias: int = 15
+) -> tuple:
     """Retorna (proxima_km, proxima_data, situacao_alerta) do plano preventivo."""
-    from datetime import timedelta
+    from app.services.alertas import situacao_preventiva
 
-    hoje = date.today()
-    proxima_km = None
-    proxima_data = None
-    situacao = "OK"
+    r = situacao_preventiva(plano, veiculo, antecedencia_dias)
+    situacao = "OK" if r["situacao"] in (None, "EM_DIA") else r["situacao"]
+    return r["proxima_km"], r["proxima_data"], situacao
 
-    if plano.base == "QUILOMETRAGEM" and plano.intervalo_km:
-        base_km = plano.ultima_execucao_km or 0
-        proxima_km = base_km + plano.intervalo_km
-        restante = proxima_km - km_atual
-        if restante <= 0:
-            situacao = "VENCIDA"
-        elif restante <= max(int(plano.intervalo_km * 0.1), 500):
-            situacao = "PROXIMA"
-    elif plano.base in ("DATA", "MESES") and plano.intervalo_meses:
-        base_data = plano.ultima_execucao_data or (
-            plano.created_at.date() if plano.created_at else hoje
-        )
-        proxima_data = base_data + timedelta(days=30 * plano.intervalo_meses)
-        dias_restantes = (proxima_data - hoje).days
-        antecedencia = 15
-        if dias_restantes <= 0:
-            situacao = "VENCIDA"
-        elif dias_restantes <= antecedencia:
-            situacao = "PROXIMA"
 
-    return proxima_km, proxima_data, situacao
+async def _antecedencia(db: AsyncSession, user: User) -> int:
+    from app.services.abastecimento import get_configuracoes
+
+    return (await get_configuracoes(db, user.organization_id)).antecedencia_alerta_manutencao_dias
 
 
 @router.get("/planos-preventivos", response_model=list[PlanoPreventivoResponse])
 async def listar_planos(
     veiculo_id: uuid.UUID | None = None,
-    user: User = Depends(require_permission(Perm.MAINTENANCE_VIEW)),
+    user: User = Depends(require_permission(Perm.MAINTENANCE_VIEW, escopo=True)),
     db: AsyncSession = Depends(get_db),
 ):
     stmt = select(PlanoPreventivo).where(
         PlanoPreventivo.organization_id == user.organization_id,
+        PlanoPreventivo.veiculo_id.in_(
+            select(Veiculo.id).where(
+                Veiculo.organization_id == user.organization_id, filtro_escopo(user, Veiculo.unidade_id)
+            )
+        ),
         PlanoPreventivo.deleted_at.is_(None),
     )
     if veiculo_id:
         stmt = stmt.where(PlanoPreventivo.veiculo_id == veiculo_id)
     planos = (await db.execute(stmt)).scalars().all()
+    antecedencia = await _antecedencia(db, user)
 
     resposta = []
     for plano in planos:
         veiculo = await db.get(Veiculo, plano.veiculo_id)
-        km_atual = veiculo.quilometragem_atual if veiculo else 0
-        proxima_km, proxima_data, situacao = _computar_proxima_execucao(plano, km_atual)
+        proxima_km, proxima_data, situacao = _computar_proxima_execucao(plano, veiculo, antecedencia)
 
         resposta.append(
             PlanoPreventivoResponse(
@@ -409,8 +415,9 @@ async def criar_plano(
     await db.commit()
     await db.refresh(plano)
     veiculo = await db.get(Veiculo, plano.veiculo_id)
-    km_atual = veiculo.quilometragem_atual if veiculo else 0
-    proxima_km, proxima_data, situacao = _computar_proxima_execucao(plano, km_atual)
+    proxima_km, proxima_data, situacao = _computar_proxima_execucao(
+        plano, veiculo, await _antecedencia(db, user)
+    )
     return PlanoPreventivoResponse(
         id=plano.id,
         veiculo_id=plano.veiculo_id,

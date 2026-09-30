@@ -7,6 +7,7 @@ import {
   api,
   Combustivel,
   Configuracoes,
+  Fornecedor,
   MotoristaListItem,
   Tanque,
   Veiculo,
@@ -46,10 +47,15 @@ export function AbastecimentoFormDrawer({ aberto, onClose, onSalvo, veiculoPrese
   const [motoristas, setMotoristas] = useState<MotoristaListItem[]>([]);
   const [combustiveis, setCombustiveis] = useState<Combustivel[]>([]);
   const [tanques, setTanques] = useState<Tanque[]>([]);
+  const [postos, setPostos] = useState<Fornecedor[]>([]);
 
   const [motoristaId, setMotoristaId] = useState("");
   const [combustivelId, setCombustivelId] = useState("");
   const [tanqueId, setTanqueId] = useState("");
+  const [modalidade, setModalidade] = useState<"TANQUE_PROPRIO" | "POSTO_CREDENCIADO">("TANQUE_PROPRIO");
+  const [postoId, setPostoId] = useState("");
+  const [numeroNf, setNumeroNf] = useState("");
+  const [chaveNfe, setChaveNfe] = useState("");
   const [litros, setLitros] = useState("");
   const [km, setKm] = useState("");
   const [completouTanque, setCompletouTanque] = useState<boolean | null>(null);
@@ -67,6 +73,9 @@ export function AbastecimentoFormDrawer({ aberto, onClose, onSalvo, veiculoPrese
       setMotoristaId("");
       setCombustivelId("");
       setTanqueId("");
+      setPostoId("");
+      setNumeroNf("");
+      setChaveNfe("");
       setLitros("");
       setKm("");
       setCompletouTanque(null);
@@ -93,7 +102,22 @@ export function AbastecimentoFormDrawer({ aberto, onClose, onSalvo, veiculoPrese
     api.listMotoristas({ limit: 300, ativo: true, sort_by: "nome", order: "asc" }).then((d) => setMotoristas(d.itens)).catch(() => {});
     api.listCombustiveis(true).then(setCombustiveis).catch(() => {});
     api.listTanques().then(setTanques).catch(() => {});
+    api
+      .listFornecedores({ posto_credenciado: true, ativo: true, limit: 200 })
+      .then((r) => setPostos(r.itens))
+      .catch(() => {});
   }, [aberto]);
+
+  // Sem tanque próprio ativo e com posto credenciado → começa no posto.
+  useEffect(() => {
+    if (!aberto) return;
+    const temTanque = tanques.some((t) => t.ativo);
+    setModalidade(!temTanque && postos.length > 0 ? "POSTO_CREDENCIADO" : "TANQUE_PROPRIO");
+  }, [aberto, tanques, postos]);
+
+  useEffect(() => {
+    if (postos.length === 1) setPostoId(postos[0].id);
+  }, [postos]);
 
   const veiculosFiltrados = useMemo(() => {
     const q = buscaVeiculo.trim().toLowerCase();
@@ -103,12 +127,19 @@ export function AbastecimentoFormDrawer({ aberto, onClose, onSalvo, veiculoPrese
     );
   }, [veiculos, buscaVeiculo]);
 
-  // Combustíveis compatíveis com o veículo selecionado
+  // Combustíveis compatíveis: os aceitos por algum reservatório do veículo
+  // (principal, flex e auxiliares como ARLA).
+  const idsAceitos = (v: Veiculo | null): Set<string> =>
+    new Set(
+      (v?.tanques ?? [])
+        .filter((t) => t.ativo)
+        .flatMap((t) => [t.combustivel_id, t.combustivel_alternativo_id])
+        .filter(Boolean) as string[]
+    );
   const compativeis = useMemo(() => {
     if (!veiculo) return [];
-    const ids = new Set([veiculo.combustivel_principal_id, veiculo.combustivel_secundario_id].filter(Boolean) as string[]);
-    const lista = combustiveis.filter((c) => ids.size === 0 || ids.has(c.id));
-    return lista;
+    const ids = idsAceitos(veiculo);
+    return combustiveis.filter((c) => ids.size === 0 || ids.has(c.id));
   }, [veiculo, combustiveis]);
 
   const tanquesFiltrados = useMemo(() => {
@@ -121,9 +152,8 @@ export function AbastecimentoFormDrawer({ aberto, onClose, onSalvo, veiculoPrese
       const v = await api.getVeiculo(id);
       setVeiculo(v);
       // Seleciona combustível automaticamente quando há apenas um compatível
-      const comp = combustiveis.filter(
-        (c) => new Set([v.combustivel_principal_id, v.combustivel_secundario_id].filter(Boolean)).has(c.id)
-      );
+      const aceitos = idsAceitos(v);
+      const comp = combustiveis.filter((c) => aceitos.has(c.id));
       if (comp.length === 1) setCombustivelId(comp[0].id);
       else setCombustivelId("");
       setTanqueId("");
@@ -152,6 +182,13 @@ export function AbastecimentoFormDrawer({ aberto, onClose, onSalvo, veiculoPrese
 
   function isKmValida(): boolean {
     const kmNum = Number(km);
+    if (veiculo?.usa_horimetro) {
+      if (veiculo.horimetro_atual && kmNum < Number(veiculo.horimetro_atual)) {
+        toast.error(`Horímetro informado (${kmNum}) é inferior ao último registrado (${veiculo.horimetro_atual}).`);
+        return false;
+      }
+      return true;
+    }
     if (veiculo?.quilometragem_atual && kmNum < veiculo.quilometragem_atual) {
       toast.error(`KM informada (${kmNum}) é inferior à última registrada (${veiculo.quilometragem_atual}).`);
       return false;
@@ -163,7 +200,9 @@ export function AbastecimentoFormDrawer({ aberto, onClose, onSalvo, veiculoPrese
     e.preventDefault();
     if (!veiculo) return toast.error("Selecione um veículo.");
     if (!combustivelId) return toast.error("Selecione o combustível.");
-    if (!tanqueId) return toast.error("Selecione o tanque.");
+    if (modalidade === "TANQUE_PROPRIO" && !tanqueId) return toast.error("Selecione o tanque.");
+    if (modalidade === "POSTO_CREDENCIADO" && !postoId) return toast.error("Selecione o posto.");
+    if (config?.exigir_tanque_cheio && completouTanque === null) return toast.error("Informe se completou o tanque.");
     const litrosNum = Number(litros);
     if (!litrosNum || litrosNum <= 0) return toast.error("Informe os litros abastecidos.");
     if (km === "" || Number(km) < 0) return toast.error("Informe o KM/horímetro.");
@@ -187,10 +226,19 @@ export function AbastecimentoFormDrawer({ aberto, onClose, onSalvo, veiculoPrese
       await api.createAbastecimento({
         veiculo_id: veiculo.id,
         motorista_id: motoristaId || undefined,
-        tanque_id: tanqueId,
+        modalidade,
+        ...(modalidade === "TANQUE_PROPRIO"
+          ? { tanque_id: tanqueId }
+          : {
+              fornecedor_id: postoId,
+              numero_nf: numeroNf || undefined,
+              chave_nfe: chaveNfe.replace(/\D/g, "") || undefined,
+            }),
         combustivel_id: combustivelId,
         quantidade_litros: litros,
-        quilometragem: Number(km),
+        // Máquinas: a medição vai no horímetro; km fica como está no veículo.
+        quilometragem: veiculo.usa_horimetro ? 0 : Number(km),
+        horimetro: veiculo.usa_horimetro ? km : undefined,
         completou_tanque: completouTanque,
         data_abastecimento: new Date(dataHora).toISOString(),
         observacoes: observacoes || undefined,
@@ -295,7 +343,28 @@ export function AbastecimentoFormDrawer({ aberto, onClose, onSalvo, veiculoPrese
           {motoristaId && <AvatarMotorista nome={motoristas.find((m) => m.id === motoristaId)?.nome || ""} src={null} className="h-8 w-8 text-xs" />}
         </section>
 
-        {/* Combustível e Tanque */}
+        {/* Onde abasteceu */}
+        <section className="space-y-2">
+          <h3 className="text-label font-semibold text-text-title">Onde abasteceu *</h3>
+          <div className="grid grid-cols-2 gap-2">
+            {([
+              ["TANQUE_PROPRIO", "Tanque próprio", "Sai do estoque da organização"],
+              ["POSTO_CREDENCIADO", "Posto credenciado", "Posto externo (ex.: licitação)"],
+            ] as const).map(([valor, titulo, ajuda]) => (
+              <button
+                key={valor}
+                type="button"
+                onClick={() => setModalidade(valor)}
+                className={`rounded-btn border px-3 py-2 text-left transition-colors ${modalidade === valor ? "border-[#1D4ED8] bg-[#EFF4FF]" : "border-surface-border"}`}
+              >
+                <span className={`block text-body-sm font-medium ${modalidade === valor ? "text-[#1D4ED8]" : "text-text-title"}`}>{titulo}</span>
+                <span className="block text-meta text-text-subtle">{ajuda}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+
+        {/* Combustível e Tanque/Posto */}
         <section className="grid gap-4 sm:grid-cols-2">
           <Label texto="Combustível *">
             <select className="input" value={combustivelId} onChange={(e) => setCombustivelId(e.target.value)} disabled={!veiculo}>
@@ -303,6 +372,14 @@ export function AbastecimentoFormDrawer({ aberto, onClose, onSalvo, veiculoPrese
               {compativeis.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
             </select>
           </Label>
+          {modalidade === "POSTO_CREDENCIADO" ? (
+            <Label texto="Posto *">
+              <select className="input" value={postoId} onChange={(e) => setPostoId(e.target.value)}>
+                <option value="">{postos.length ? "Selecione…" : "Nenhum posto credenciado cadastrado"}</option>
+                {postos.map((p) => <option key={p.id} value={p.id}>{p.nome_fantasia || p.razao_social}</option>)}
+              </select>
+            </Label>
+          ) : (
           <Label texto="Tanque *">
             <select className="input" value={tanqueId} onChange={(e) => setTanqueId(e.target.value)} disabled={!combustivelId}>
               <option value="">{combustivelId ? "Selecione…" : "Selecione o combustível primeiro"}</option>
@@ -311,9 +388,24 @@ export function AbastecimentoFormDrawer({ aberto, onClose, onSalvo, veiculoPrese
               ))}
             </select>
           </Label>
+          )}
         </section>
 
-        {tanqueSelecionado && (
+        {modalidade === "POSTO_CREDENCIADO" && (
+          <section className="grid gap-4 sm:grid-cols-2">
+            <p className="text-meta text-text-subtle sm:col-span-2">
+              O valor é calculado pelo preço do contrato com o posto — informe só a quantidade.
+            </p>
+            <Label texto="Nº da nota fiscal">
+              <input value={numeroNf} onChange={(e) => setNumeroNf(e.target.value)} className="input" maxLength={50} />
+            </Label>
+            <Label texto="Chave de acesso da NF-e">
+              <input value={chaveNfe} onChange={(e) => setChaveNfe(e.target.value)} className="input" maxLength={60} placeholder="44 dígitos" />
+            </Label>
+          </section>
+        )}
+
+        {modalidade === "TANQUE_PROPRIO" && tanqueSelecionado && (
           <div className="rounded-card border border-surface-border bg-surface-bg p-3">
             <div className="text-body-sm font-medium text-text-title">{tanqueSelecionado.nome}</div>
             <div className="text-meta text-text-subtle">{tanqueSelecionado.combustivel_nome}</div>
@@ -346,7 +438,7 @@ export function AbastecimentoFormDrawer({ aberto, onClose, onSalvo, veiculoPrese
               <span className="text-meta text-warning-vibrant">Retroativo desabilitado — apenas registros recentes.</span>
             )}
           </Label>
-          <Label texto="Completou o tanque?">
+          <Label texto={config?.exigir_tanque_cheio ? "Completou o tanque? *" : "Completou o tanque?"}>
             <div className="mt-1 grid grid-cols-2 gap-2">
               <button type="button" onClick={() => setCompletouTanque(true)} className={`rounded-btn border px-3 py-2 text-body-sm transition-colors ${completouTanque === true ? "border-[#1D4ED8] bg-[#EFF4FF] font-medium text-[#1D4ED8]" : "border-surface-border text-text-body"}`}>Sim</button>
               <button type="button" onClick={() => setCompletouTanque(false)} className={`rounded-btn border px-3 py-2 text-body-sm transition-colors ${completouTanque === false ? "border-[#1D4ED8] bg-[#EFF4FF] font-medium text-[#1D4ED8]" : "border-surface-border text-text-body"}`}>Não</button>
@@ -376,7 +468,14 @@ export function AbastecimentoFormDrawer({ aberto, onClose, onSalvo, veiculoPrese
               <ResumoItem rotulo="Veículo" valor={`${veiculo.placa} • ${[veiculo.marca, veiculo.modelo].filter(Boolean).join(" ")}`} />
               <ResumoItem rotulo="Motorista" valor={motoristaId ? motoristas.find((m) => m.id === motoristaId)?.nome || "—" : "—"} />
               <ResumoItem rotulo="Combustível" valor={combustiveis.find((c) => c.id === combustivelId)?.nome || "—"} />
-              <ResumoItem rotulo="Tanque" valor={tanqueSelecionado?.nome || "—"} />
+              <ResumoItem
+                rotulo={modalidade === "POSTO_CREDENCIADO" ? "Posto" : "Tanque"}
+                valor={
+                  modalidade === "POSTO_CREDENCIADO"
+                    ? (() => { const p = postos.find((x) => x.id === postoId); return p ? p.nome_fantasia || p.razao_social : "—"; })()
+                    : tanqueSelecionado?.nome || "—"
+                }
+              />
               <ResumoItem rotulo="Quantidade" valor={`${Number(litros).toLocaleString("pt-BR", { minimumFractionDigits: 2 })} L`} />
               <ResumoItem rotulo={veiculo.usa_horimetro ? "Horímetro" : "KM"} valor={`${Number(km).toLocaleString("pt-BR")} ${veiculo.usa_horimetro ? "h" : "km"}`} />
               <ResumoItem rotulo="Data" valor={dataHora ? new Date(dataHora).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" }) : "—"} />

@@ -152,11 +152,23 @@ async def setup_frota(_db):
             modelo="Hilux",
             marca="Toyota",
             tipo="CAMINHONETE",
-            combustivel_principal_id=combustivel.id,
             quilometragem_atual=50000,
             situacao="DISPONIVEL",
         )
         _db.add(veiculo)
+        await _db.flush()
+        from app.models.veiculo import VeiculoTanque
+
+        _db.add(
+            VeiculoTanque(
+                organization_id=org.id,
+                veiculo_id=veiculo.id,
+                combustivel_id=combustivel.id,
+                tank_type="PRIMARY",
+                capacidade=0,
+                identificacao="Tanque principal",
+            )
+        )
 
         motorista = Motorista(
             organization_id=org.id,

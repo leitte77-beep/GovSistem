@@ -498,7 +498,7 @@ export function MinhaFila() {
                           : t.responsavel_atual.name.split(" ")[0]
                         : "Sem dono"}
                     </span>
-                    {!t.responsavel_atual && eu?.pode_trabalhar ? (
+                    {!t.somente_leitura && !t.responsavel_atual && t.situacao === "EM_SETOR" && eu?.pode_trabalhar ? (
                       <button
                         onClick={() => assumir(t)}
                         disabled={assumindo === t.id}

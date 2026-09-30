@@ -72,7 +72,7 @@ class TestCadastroReservatorios:
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert data["combustivel_principal_id"] == str(frota["veiculo"].combustivel_principal_id)
+        assert data["combustivel_principal_id"] == str(frota["combustivel"].id)
         assert len(data["tanques"]) >= 1
         principal = [x for x in data["tanques"] if x["tank_type"] == "PRIMARY"]
         assert principal

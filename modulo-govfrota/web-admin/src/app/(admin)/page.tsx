@@ -216,6 +216,61 @@ const ESTOQUE_TEMA = {
   NORMAL: { barra: "bg-[#106D34]", pill: "bg-[#9DF6B3] text-[#106D34]", texto: "Normal", icone: "bg-[#9DF6B3] text-[#106D34]" },
 } as const;
 
+function CardSaldoPosto({ contrato }: { contrato: NonNullable<Dashboard["contratos_posto"]>[number] }) {
+  const pct = contrato.percentual ?? 0;
+  const tema = contrato.saldo_litros <= 0 ? ESTOQUE_TEMA.CRITICO : pct < 20 ? ESTOQUE_TEMA.BAIXO : ESTOQUE_TEMA.NORMAL;
+  const texto = contrato.saldo_litros <= 0 ? "Sem saldo" : pct < 20 ? "Saldo baixo" : "Normal";
+  return (
+    <Link
+      href={`/fornecedores/${contrato.fornecedor_id}`}
+      className="ring-focus flex flex-col gap-3 rounded-card border border-surface-border bg-white p-5 shadow-card transition-shadow duration-150 hover:shadow-elevated"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className={`flex h-9 w-9 items-center justify-center rounded-btn ${tema.icone}`}>
+            <Fuel size={17} />
+          </span>
+          <div className="min-w-0">
+            <div className="truncate text-label font-semibold text-text-title">{contrato.combustivel}</div>
+            <div className="truncate text-meta text-text-subtle">
+              {contrato.posto}
+              {contrato.numero ? ` · ${contrato.numero}` : ""}
+            </div>
+          </div>
+        </div>
+        <span className={`rounded-pill px-2 py-0.5 text-meta font-medium ${tema.pill}`}>{texto}</span>
+      </div>
+
+      <div className="flex flex-wrap items-baseline gap-x-2">
+        <span className="text-h1 leading-9 text-text-title tabular-nums">{nf(contrato.saldo_litros, 2)} L</span>
+        <span className="text-meta text-text-subtle">de {nf(contrato.litros_contratados)} L contratados</span>
+      </div>
+
+      <div>
+        <div
+          className="h-2.5 overflow-hidden rounded-full bg-surface-bg"
+          role="progressbar"
+          aria-valuenow={Math.round(Math.max(pct, 0))}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-label={`Saldo de ${contrato.combustivel} em ${contrato.posto}`}
+        >
+          <div className={`h-full rounded-full ${tema.barra}`} style={{ width: `${Math.max(Math.min(pct, 100), 1)}%` }} />
+        </div>
+        <div className="mt-2 flex flex-wrap justify-between gap-x-3 text-meta text-text-body">
+          <span className="font-medium">
+            {contrato.saldo_valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} de saldo
+          </span>
+          <span className="text-text-subtle">
+            {contrato.preco_litro.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}/L
+            {contrato.data_fim ? ` · até ${new Date(contrato.data_fim + "T12:00").toLocaleDateString("pt-BR")}` : ""}
+          </span>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
 function CardTanque({ tanque }: { tanque: Dashboard["tanques"][number] }) {
   const tema = ESTOQUE_TEMA[(tanque.status_estoque as keyof typeof ESTOQUE_TEMA) ?? "NORMAL"] ?? ESTOQUE_TEMA.NORMAL;
   const temCapacidade = tanque.capacidade != null && tanque.capacidade > 0 && tanque.percentual != null;
@@ -264,6 +319,11 @@ function CardTanque({ tanque }: { tanque: Dashboard["tanques"][number] }) {
               {tanque.estoque_minimo > 0 ? `Estoque mínimo: ${nf(tanque.estoque_minimo)} L` : "Sem estoque mínimo definido"}
             </span>
           </div>
+          {tanque.dias_autonomia != null && (
+            <div className="mt-1 text-meta text-text-subtle">
+              Dura ~{nf(Math.round(tanque.dias_autonomia))} dia(s) no ritmo dos últimos 30 dias
+            </div>
+          )}
         </div>
       ) : (
         <div className="flex flex-wrap justify-between gap-x-3 text-meta">
@@ -272,6 +332,30 @@ function CardTanque({ tanque }: { tanque: Dashboard["tanques"][number] }) {
         </div>
       )}
     </Link>
+  );
+}
+
+// ── Gasto por secretaria ─────────────────────────────────────────────────────
+
+function GastoPorUnidade({ itens }: { itens: NonNullable<Dashboard["gasto_por_unidade_mes"]> }) {
+  const maior = Math.max(...itens.map((i) => i.gasto), 0);
+  return (
+    <ul className="space-y-3">
+      {itens.slice(0, 6).map((i) => (
+        <li key={i.unidade_id ?? "sem"}>
+          <div className="flex items-baseline justify-between gap-3 text-body-sm">
+            <span className={`truncate ${i.unidade_id ? "text-text-title" : "italic text-text-subtle"}`}>{i.unidade}</span>
+            <span className="flex-shrink-0 font-medium tabular-nums text-text-title">
+              R$ {i.gasto.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+          <div className="mt-1 h-2 overflow-hidden rounded-full bg-surface-bg">
+            <div className="h-full rounded-full bg-[#1D5BD6]" style={{ width: `${maior ? Math.max((i.gasto / maior) * 100, 2) : 0}%` }} />
+          </div>
+          <div className="mt-0.5 text-meta tabular-nums text-text-subtle">{nf(Math.round(i.litros))} L</div>
+        </li>
+      ))}
+    </ul>
   );
 }
 
@@ -416,6 +500,19 @@ function montarAlertas(d: Dashboard): Alerta[] {
       texto: `${d.ocorrencias_criticas} ocorrência(s) grave(s) em aberto`,
       href: "/ocorrencias",
       prioridade: P.OCORRENCIA_CRITICA,
+    });
+  }
+
+  const aConferir = d.abastecimentos.com_alerta_7d ?? 0;
+  if (aConferir > 0) {
+    alertas.push({
+      chave: "abastecimentos-conferir",
+      icone: Fuel,
+      cor: "text-[#805600]",
+      rotulo: "Conferência",
+      texto: `${aConferir} abastecimento(s) com alerta nos últimos 7 dias`,
+      href: "/abastecimentos?com_alerta=sim",
+      prioridade: P.VEICULO_INDISPONIVEL,
     });
   }
 
@@ -856,11 +953,25 @@ export default function DashboardPage() {
           <div className="flex items-end justify-between gap-3">
             <div>
               <h2 className="text-h3 text-text-title">Estoque de combustíveis e fluidos</h2>
-              <p className="text-meta text-text-subtle">Nível atual de cada tanque</p>
+              <p className="text-meta text-text-subtle">
+                {dados.tanques.length === 0 && (dados.contratos_posto?.length ?? 0) > 0
+                  ? "Saldo contratado com os postos credenciados"
+                  : "Nível atual de cada tanque"}
+              </p>
             </div>
-            <VerTodos href="/tanques" label="Gerenciar tanques" />
+            {dados.tanques.length === 0 && (dados.contratos_posto?.length ?? 0) > 0 ? (
+              <VerTodos href="/fornecedores" label="Ver postos" />
+            ) : (
+              <VerTodos href="/tanques" label="Gerenciar tanques" />
+            )}
           </div>
-          {dados.tanques.length === 0 ? (
+          {dados.tanques.length === 0 && (dados.contratos_posto?.length ?? 0) > 0 ? (
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              {dados.contratos_posto!.map((c) => (
+                <CardSaldoPosto key={c.id} contrato={c} />
+              ))}
+            </div>
+          ) : dados.tanques.length === 0 ? (
             <div className="rounded-card border border-surface-border bg-white shadow-card">
               <EstadoVazio
                 icone={Droplets}
@@ -889,6 +1000,11 @@ export default function DashboardPage() {
             <GraficoGastos dados={dados.graficos.evolucao_mensal} />
           </BlocoSeguro>
         </Bloco>
+        {(dados.gasto_por_unidade_mes?.length ?? 0) > 0 && (
+          <Bloco className="order-8 xl:order-6" titulo="Gasto do mês por secretaria" descricao="Combustível — tanque próprio e postos" acao={<VerTodos href="/relatorios" label="Relatórios" />}>
+            <GastoPorUnidade itens={dados.gasto_por_unidade_mes!} />
+          </Bloco>
+        )}
         <Bloco className="order-8 xl:order-6" titulo="Veículos que mais consomem" descricao="Últimos 90 dias" acao={<VerTodos href="/relatorios" />}>
           <BlocoSeguro onTentarNovamente={() => carregar()}>
             <Ranking itens={dados.graficos.ranking_veiculos} />
@@ -1023,6 +1139,10 @@ export default function DashboardPage() {
                     ? vencida
                       ? `${nf(Math.abs(p.restante_km))} km em atraso`
                       : `faltam ${nf(p.restante_km)} km`
+                    : p.restante_horas != null
+                    ? vencida
+                      ? `${nf(Math.abs(Math.round(p.restante_horas)))} h em atraso`
+                      : `faltam ${nf(Math.round(p.restante_horas))} h`
                     : p.restante_dias !== null
                     ? vencida
                       ? `vencida há ${Math.abs(p.restante_dias)} dia(s)`

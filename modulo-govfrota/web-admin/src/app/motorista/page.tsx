@@ -1,37 +1,87 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Fuel, AlertTriangle, LogOut, Droplets } from "lucide-react";
-import { driverApi, AbastecimentoRecenteMotorista } from "@/lib/api";
+import toast from "react-hot-toast";
+import { Fuel, AlertTriangle, CloudOff, LogOut, Droplets, RefreshCw } from "lucide-react";
+import { AuthError, driverApi, AbastecimentoRecenteMotorista } from "@/lib/api";
+import {
+  AbastecimentoPendente,
+  descartarPendente,
+  lerCache,
+  listarPendentes,
+  salvarCache,
+  sincronizarPendentes,
+} from "@/lib/filaOffline";
 
 export default function InicioMotoristaPage() {
   const router = useRouter();
   const [nome, setNome] = useState<string>("");
   const [orgNome, setOrgNome] = useState<string | null>(null);
   const [ultimos, setUltimos] = useState<AbastecimentoRecenteMotorista[]>([]);
+  const [pendentes, setPendentes] = useState<AbastecimentoPendente[]>([]);
+  const [enviando, setEnviando] = useState(false);
+
+  const carregarUltimos = useCallback(() => {
+    driverApi
+      .meusAbastecimentos()
+      .then((lista) => setUltimos(lista.slice(0, 3)))
+      .catch(() => {});
+  }, []);
+
+  // Envia o que ficou guardado no celular e atualiza a lista.
+  const sincronizar = useCallback(async (avisar = false) => {
+    setEnviando(true);
+    try {
+      const { enviados, recusados } = await sincronizarPendentes();
+      if (enviados) {
+        toast.success(`${enviados} abastecimento(s) enviado(s).`);
+        carregarUltimos();
+      } else if (avisar && !recusados) {
+        toast("Ainda sem conexão com o servidor.", { icon: "📶" });
+      }
+    } finally {
+      setPendentes(await listarPendentes());
+      setEnviando(false);
+    }
+  }, [carregarUltimos]);
 
   useEffect(() => {
     let cancelado = false;
+    const eu = lerCache<{ nome: string; org: string | null }>("me");
+    if (eu) {
+      setNome(eu.nome);
+      setOrgNome(eu.org);
+    }
     driverApi
       .me()
       .then((m) => {
         if (cancelado) return;
         setNome(m.nome.split(" ")[0]);
         setOrgNome(m.organization_name);
+        salvarCache("me", { nome: m.nome.split(" ")[0], org: m.organization_name });
       })
-      .catch(() => router.replace("/motorista/login?expirado=1"));
-    driverApi
-      .meusAbastecimentos()
-      .then((lista) => {
-        if (!cancelado) setUltimos(lista.slice(0, 3));
-      })
-      .catch(() => {});
+      .catch((e) => {
+        // Sem internet o motorista continua no app; só a sessão expirada volta ao login.
+        if (e instanceof AuthError) router.replace("/motorista/login?expirado=1");
+      });
+    carregarUltimos();
+    listarPendentes().then((p) => !cancelado && setPendentes(p));
+    sincronizar();
+    const aoVoltarSinal = () => sincronizar();
+    window.addEventListener("online", aoVoltarSinal);
     return () => {
       cancelado = true;
+      window.removeEventListener("online", aoVoltarSinal);
     };
-  }, [router]);
+  }, [router, carregarUltimos, sincronizar]);
+
+  async function descartar(item: AbastecimentoPendente) {
+    if (!window.confirm(`Descartar o abastecimento de ${item.resumo.placa}? Ele não será enviado.`)) return;
+    await descartarPendente(item.idempotency_key);
+    setPendentes(await listarPendentes());
+  }
 
   function sair() {
     driverApi.logout();
@@ -88,6 +138,46 @@ export default function InicioMotoristaPage() {
           </Link>
         </div>
 
+        {pendentes.length > 0 && (
+          <section className="mt-8 rounded-2xl border border-[#FFDD9A] bg-[#FFF8E6] p-4">
+            <div className="flex items-center justify-between gap-3">
+              <h2 className="flex items-center gap-2 text-sm font-bold text-[#5C4200]">
+                <CloudOff size={18} /> {pendentes.length} guardado(s) no celular
+              </h2>
+              <button
+                onClick={() => sincronizar(true)}
+                disabled={enviando}
+                className="inline-flex items-center gap-1 rounded-lg bg-white px-3 py-2 text-sm font-medium text-[#1D5BD6] disabled:opacity-50"
+              >
+                <RefreshCw size={16} className={enviando ? "animate-spin" : ""} /> Enviar agora
+              </button>
+            </div>
+            <ul className="mt-3 space-y-2">
+              {pendentes.map((p) => (
+                <li key={p.idempotency_key} className="rounded-xl bg-white px-3 py-2 text-sm">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono font-bold text-[#1D5BD6]">{p.resumo.placa}</span>
+                    <span className="text-[#424750]">
+                      {Number(p.resumo.litros).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} L ·{" "}
+                      {new Date(p.registrado_em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
+                    </span>
+                  </div>
+                  {p.erro ? (
+                    <div className="mt-1 flex items-start justify-between gap-2">
+                      <span className="text-xs text-[#BA1A1A]">Não aceito: {p.erro} Avise o setor de frota.</span>
+                      <button onClick={() => descartar(p)} className="shrink-0 text-xs font-medium text-[#737781] underline">
+                        Descartar
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="mt-1 text-xs text-[#737781]">Aguardando internet para enviar.</div>
+                  )}
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
+
         <section className="mt-10">
           <h2 className="mb-2 text-sm font-medium text-[#737781]">Últimos abastecimentos</h2>
           {ultimos.length === 0 ? (
@@ -111,8 +201,10 @@ export default function InicioMotoristaPage() {
                     </div>
                     {a.combustivel && <div className="text-xs text-[#737781]">{a.combustivel}</div>}
                     <div className="flex items-center justify-end gap-1 text-xs text-[#737781]">
-                      <Droplets size={12} /> {a.km.toLocaleString("pt-BR")} km
+                      <Droplets size={12} />{" "}
+                      {a.horimetro != null ? `${a.horimetro.toLocaleString("pt-BR")} h` : `${a.km.toLocaleString("pt-BR")} km`}
                     </div>
+                    {a.local && <div className="text-xs text-[#737781]">{a.local}</div>}
                   </div>
                 </li>
               ))}

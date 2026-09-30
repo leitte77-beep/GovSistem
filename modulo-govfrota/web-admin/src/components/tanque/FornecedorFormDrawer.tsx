@@ -12,10 +12,14 @@ interface Props {
   onClose: () => void;
   fornecedor: Fornecedor | null;
   onSalvo: () => void;
+  /** Categoria sugerida ao cadastrar (ex.: MECANICA vindo de "Nova oficina"). */
+  categoriaInicial?: string;
+  postoInicial?: boolean;
 }
 
-export function FornecedorFormDrawer({ aberto, onClose, fornecedor, onSalvo }: Props) {
+export function FornecedorFormDrawer({ aberto, onClose, fornecedor, onSalvo, categoriaInicial, postoInicial }: Props) {
   const [salvando, setSalvando] = useState(false);
+  const [postoCredenciado, setPostoCredenciado] = useState(false);
   const [arquivoLogo, setArquivoLogo] = useState<File | null>(null);
   const [logoUrlAtual, setLogoUrlAtual] = useState<string | null>(null);
 
@@ -23,7 +27,7 @@ export function FornecedorFormDrawer({ aberto, onClose, fornecedor, onSalvo }: P
     razao_social: f?.razao_social ?? "",
     nome_fantasia: f?.nome_fantasia ?? "",
     cpf_cnpj: f?.cpf_cnpj ?? "",
-    categoria: f?.categoria ?? "COMBUSTIVEL",
+    categoria: f?.categoria ?? categoriaInicial ?? "COMBUSTIVEL",
     telefone: f?.telefone ?? "",
     email: f?.email ?? "",
     contato: f?.contato ?? "",
@@ -42,6 +46,7 @@ export function FornecedorFormDrawer({ aberto, onClose, fornecedor, onSalvo }: P
   useEffect(() => {
     if (aberto) {
       setForm(novoForm(fornecedor));
+      setPostoCredenciado(fornecedor ? !!fornecedor.posto_credenciado : !!postoInicial);
       setLogoUrlAtual(fornecedor?.foto_url ?? null);
       setArquivoLogo(null);
       setSalvando(false);
@@ -68,6 +73,7 @@ export function FornecedorFormDrawer({ aberto, onClose, fornecedor, onSalvo }: P
       const payload: Record<string, unknown> = {
         ...form,
         foto_url,
+        posto_credenciado: form.categoria === "COMBUSTIVEL" && postoCredenciado,
         cpf_cnpj: form.cpf_cnpj ? form.cpf_cnpj.replace(/\D/g, "") : undefined,
         observacoes: form.observacoes || undefined,
         site: form.site || undefined,
@@ -140,6 +146,23 @@ export function FornecedorFormDrawer({ aberto, onClose, fornecedor, onSalvo }: P
               </select>
             </Label>
           </div>
+          {form.categoria === "COMBUSTIVEL" && (
+            <label className="mt-1 flex cursor-pointer items-start gap-3 rounded-card border border-surface-border p-3">
+              <input
+                type="checkbox"
+                className="mt-1 h-4 w-4"
+                checked={postoCredenciado}
+                onChange={(e) => setPostoCredenciado(e.target.checked)}
+              />
+              <span>
+                <span className="block text-body-sm font-medium text-text-title">Posto credenciado</span>
+                <span className="block text-meta text-text-subtle">
+                  Os motoristas podem abastecer neste posto pelo app (ex.: posto vencedor da licitação).
+                  O custo passa a ser o preço pago no posto e o estoque próprio não é movimentado.
+                </span>
+              </span>
+            </label>
+          )}
         </Secao>
 
         <Secao titulo="Contato">

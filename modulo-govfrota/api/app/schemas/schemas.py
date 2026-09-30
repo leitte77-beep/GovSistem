@@ -87,10 +87,8 @@ class VeiculoCreate(BaseModel):
     quilometragem_atual: int = 0
     horimetro_atual: Optional[Decimal] = None
     usa_horimetro: bool = False
-    unidade: Optional[str] = None
+    unidade_id: Optional[uuid.UUID] = None
     departamento: Optional[str] = None
-    filial: Optional[str] = None
-    centro_custo: Optional[str] = None
     situacao: str = "DISPONIVEL"
     observacoes: Optional[str] = None
     vencimento_licenciamento: Optional[date] = None
@@ -122,10 +120,8 @@ class VeiculoUpdate(BaseModel):
     tanques_auxiliares: Optional[list["VeiculoTanqueAuxIn"]] = None
     horimetro_atual: Optional[Decimal] = None
     usa_horimetro: Optional[bool] = None
-    unidade: Optional[str] = None
+    unidade_id: Optional[uuid.UUID] = None
     departamento: Optional[str] = None
-    filial: Optional[str] = None
-    centro_custo: Optional[str] = None
     situacao: Optional[str] = None
     observacoes: Optional[str] = None
     vencimento_licenciamento: Optional[date] = None
@@ -137,6 +133,8 @@ class VeiculoTanqueResponse(ORMModel):
     id: uuid.UUID
     combustivel_id: uuid.UUID
     combustivel_nome: Optional[str] = None
+    combustivel_alternativo_id: Optional[uuid.UUID] = None
+    combustivel_alternativo_nome: Optional[str] = None
     tank_type: str
     capacidade: Decimal
     identificacao: Optional[str]
@@ -162,16 +160,16 @@ class VeiculoResponse(ORMModel):
     ano_modelo: Optional[int]
     cor: Optional[str]
     tipo: str
-    combustivel_principal_id: Optional[uuid.UUID]
-    combustivel_secundario_id: Optional[uuid.UUID]
-    capacidade_tanque_litros: Optional[Decimal]
+    # Derivados do reservatório PRIMARY (não existem no veículo).
+    combustivel_principal_id: Optional[uuid.UUID] = None
+    combustivel_secundario_id: Optional[uuid.UUID] = None
+    capacidade_tanque_litros: Optional[Decimal] = None
     quilometragem_atual: int = 0
     horimetro_atual: Optional[Decimal]
     usa_horimetro: bool
-    unidade: Optional[str]
+    unidade_id: Optional[uuid.UUID] = None
+    unidade_nome: Optional[str] = None
     departamento: Optional[str]
-    filial: Optional[str]
-    centro_custo: Optional[str]
     situacao: str
     observacoes: Optional[str]
     vencimento_licenciamento: Optional[date]
@@ -453,6 +451,7 @@ class FornecedorCreate(BaseModel):
     endereco: Optional[str] = None
     foto_url: Optional[str] = None
     categoria: str = "COMBUSTIVEL"
+    posto_credenciado: bool = False
     observacoes: Optional[str] = None
     ativo: bool = True
 
@@ -475,6 +474,7 @@ class FornecedorUpdate(BaseModel):
     endereco: Optional[str] = None
     foto_url: Optional[str] = None
     categoria: Optional[str] = None
+    posto_credenciado: Optional[bool] = None
     observacoes: Optional[str] = None
     ativo: Optional[bool] = None
 
@@ -498,6 +498,7 @@ class FornecedorResponse(ORMModel):
     endereco: Optional[str]
     foto_url: Optional[str] = None
     categoria: str
+    posto_credenciado: bool = False
     observacoes: Optional[str]
     ativo: bool
     # Indicadores agregados (preenchidos na listagem/detalhe)
@@ -505,51 +506,83 @@ class FornecedorResponse(ORMModel):
     litros_fornecidos: float = 0
     valor_total: float = 0
     ultima_compra: Optional[dict] = None
+    # Abastecimentos feitos no posto (posto credenciado) e manutenções (oficina)
+    total_abastecimentos: int = 0
+    litros_abastecidos: float = 0
+    valor_abastecimentos: float = 0
+    total_manutencoes: int = 0
+    valor_manutencoes: float = 0
 
 
 class FornecedorDetalheResponse(FornecedorResponse):
-    """Ficha do fornecedor: dados + histórico de entradas associadas."""
+    """Ficha do fornecedor: dados + históricos associados."""
     historico_entradas: list[dict] = []
+    historico_abastecimentos: list[dict] = []
+    historico_manutencoes: list[dict] = []
 
 
-class OficinaCreate(BaseModel):
-    nome: str = Field(min_length=1, max_length=255)
-    razao_social: Optional[str] = None
-    cpf_cnpj: Optional[str] = None
-    telefone: Optional[str] = None
-    email: Optional[str] = None
-    endereco: Optional[str] = None
-    responsavel: Optional[str] = None
-    especialidade: Optional[str] = None
+# ── Contratos com postos credenciados ───────────────────────────────────
+
+
+class ContratoPostoCreate(BaseModel):
+    combustivel_id: uuid.UUID
+    numero: Optional[str] = Field(default=None, max_length=50)
+    preco_litro: Decimal = Field(gt=0)
+    litros_contratados: Decimal = Field(gt=0)
+    data_inicio: Optional[date] = None
+    data_fim: Optional[date] = None
+    ativo: bool = True
     observacoes: Optional[str] = None
+
+
+class ContratoPostoUpdate(BaseModel):
+    numero: Optional[str] = Field(default=None, max_length=50)
+    preco_litro: Optional[Decimal] = Field(default=None, gt=0)
+    litros_contratados: Optional[Decimal] = Field(default=None, gt=0)
+    data_inicio: Optional[date] = None
+    data_fim: Optional[date] = None
+    ativo: Optional[bool] = None
+    observacoes: Optional[str] = None
+
+
+class ContratoPostoResponse(BaseModel):
+    id: uuid.UUID
+    fornecedor_id: uuid.UUID
+    combustivel_id: uuid.UUID
+    combustivel_nome: Optional[str] = None
+    numero: Optional[str]
+    preco_litro: Decimal
+    litros_contratados: Decimal
+    litros_consumidos: Decimal
+    saldo_litros: Decimal
+    saldo_valor: Decimal
+    data_inicio: Optional[date]
+    data_fim: Optional[date]
+    ativo: bool
+    observacoes: Optional[str]
+
+
+# ── Unidades (secretarias / centros de custo) ────────────────────────────
+
+
+class UnidadeCreate(BaseModel):
+    nome: str = Field(min_length=1, max_length=150)
+    sigla: Optional[str] = Field(default=None, max_length=20)
     ativo: bool = True
 
 
-class OficinaUpdate(BaseModel):
-    nome: Optional[str] = None
-    razao_social: Optional[str] = None
-    cpf_cnpj: Optional[str] = None
-    telefone: Optional[str] = None
-    email: Optional[str] = None
-    endereco: Optional[str] = None
-    responsavel: Optional[str] = None
-    especialidade: Optional[str] = None
-    observacoes: Optional[str] = None
+class UnidadeUpdate(BaseModel):
+    nome: Optional[str] = Field(default=None, min_length=1, max_length=150)
+    sigla: Optional[str] = Field(default=None, max_length=20)
     ativo: Optional[bool] = None
 
 
-class OficinaResponse(ORMModel):
+class UnidadeResponse(ORMModel):
     id: uuid.UUID
     nome: str
-    razao_social: Optional[str]
-    cpf_cnpj: Optional[str]
-    telefone: Optional[str]
-    email: Optional[str]
-    endereco: Optional[str]
-    responsavel: Optional[str]
-    especialidade: Optional[str]
-    observacoes: Optional[str]
+    sigla: Optional[str]
     ativo: bool
+    total_veiculos: int = 0
 
 
 # ── Entradas de combustível ─────────────────────────────────────────────────
@@ -689,10 +722,17 @@ class TanqueResumoResponse(BaseModel):
 class AbastecimentoAdminCreate(BaseModel):
     veiculo_id: uuid.UUID
     motorista_id: Optional[uuid.UUID] = None
-    tanque_id: uuid.UUID
+    # TANQUE_PROPRIO exige tanque_id; POSTO_CREDENCIADO exige fornecedor_id.
+    modalidade: str = "TANQUE_PROPRIO"
+    tanque_id: Optional[uuid.UUID] = None
+    fornecedor_id: Optional[uuid.UUID] = None
+    preco_litro: Optional[Decimal] = Field(default=None, gt=0)
+    numero_nf: Optional[str] = Field(default=None, max_length=50)
+    chave_nfe: Optional[str] = Field(default=None, max_length=60)
     combustivel_id: uuid.UUID
     quantidade_litros: Decimal = Field(gt=0)
-    quilometragem: int = Field(ge=0)
+    quilometragem: int = Field(default=0, ge=0)
+    horimetro: Optional[Decimal] = Field(default=None, ge=0)
     completou_tanque: Optional[bool] = None
     data_abastecimento: datetime
     observacoes: Optional[str] = None
@@ -708,6 +748,11 @@ class AbastecimentoCancelar(BaseModel):
 class AbastecimentoCorrecao(BaseModel):
     quantidade_litros: Optional[Decimal] = None
     quilometragem: Optional[int] = None
+    horimetro: Optional[Decimal] = Field(default=None, ge=0)
+    # Posto credenciado: acerto pelo valor da nota fiscal.
+    preco_litro: Optional[Decimal] = Field(default=None, gt=0)
+    numero_nf: Optional[str] = Field(default=None, max_length=50)
+    chave_nfe: Optional[str] = Field(default=None, max_length=60)
     justificativa: str = Field(min_length=5, max_length=2000)
 
 
@@ -715,10 +760,19 @@ class AbastecimentoResponse(ORMModel):
     id: uuid.UUID
     veiculo_id: uuid.UUID
     motorista_id: Optional[uuid.UUID]
-    tanque_id: uuid.UUID
+    modalidade: str = "TANQUE_PROPRIO"
+    tanque_id: Optional[uuid.UUID] = None
+    fornecedor_id: Optional[uuid.UUID] = None
+    unidade_id: Optional[uuid.UUID] = None
     combustivel_id: uuid.UUID
     quantidade_litros: Decimal
     quilometragem: int
+    horimetro: Optional[Decimal] = None
+    consumo_l_h: Optional[Decimal] = None
+    preco_litro: Optional[Decimal] = None
+    numero_nf: Optional[str] = None
+    chave_nfe: Optional[str] = None
+    alertas: list[str] = []
     completou_tanque: Optional[bool]
     origem: str
     lancado_por_usuario_id: Optional[uuid.UUID]
@@ -743,9 +797,26 @@ class AbastecimentoResponse(ORMModel):
     veiculo_usa_horimetro: Optional[bool] = None
     combustivel_nome: Optional[str] = None
     tanque_nome: Optional[str] = None
+    fornecedor_nome: Optional[str] = None
+    unidade_nome: Optional[str] = None
     motorista_nome: Optional[str] = None
     lancado_por_nome: Optional[str] = None
     cancelado_por_nome: Optional[str] = None
+
+
+    @field_validator("alertas", mode="before")
+    @classmethod
+    def _alertas_json(cls, v):
+        if v is None:
+            return []
+        if isinstance(v, str):
+            import json
+
+            try:
+                return list(json.loads(v))
+            except ValueError:
+                return []
+        return v
 
 
 class ResumoAbastecimento(BaseModel):
@@ -784,7 +855,6 @@ class ManutencaoCreate(BaseModel):
     quilometragem: Optional[int] = None
     data_solicitacao: date
     prioridade: str = "NORMAL"
-    oficina_id: Optional[uuid.UUID] = None
     fornecedor_id: Optional[uuid.UUID] = None
     responsavel: Optional[str] = None
     previsao_conclusao: Optional[date] = None
@@ -797,7 +867,6 @@ class ManutencaoUpdate(BaseModel):
     descricao_problema: Optional[str] = None
     quilometragem: Optional[int] = None
     prioridade: Optional[str] = None
-    oficina_id: Optional[uuid.UUID] = None
     fornecedor_id: Optional[uuid.UUID] = None
     responsavel: Optional[str] = None
     previsao_conclusao: Optional[date] = None
@@ -823,8 +892,9 @@ class ManutencaoResponse(ORMModel):
     quilometragem: Optional[int]
     data_solicitacao: date
     prioridade: str
-    oficina_id: Optional[uuid.UUID]
     fornecedor_id: Optional[uuid.UUID]
+    fornecedor_nome: Optional[str] = None
+    unidade_id: Optional[uuid.UUID] = None
     responsavel: Optional[str]
     previsao_conclusao: Optional[date]
     data_conclusao: Optional[date]
@@ -926,19 +996,22 @@ class OcorrenciaResolver(BaseModel):
 
 class ConfiguracaoUpdate(BaseModel):
     tipo_organizacao: Optional[str] = None
-    nome_modulo: Optional[str] = None
-    foto_obrigatoria: Optional[bool] = None
     foto_bomba_obrigatoria: Optional[bool] = None
     foto_km_obrigatoria: Optional[bool] = None
     exigir_tanque_cheio: Optional[bool] = None
     permitir_retroativo: Optional[bool] = None
     tolerancia_km_percentual: Optional[int] = None
-    alerta_consumo_desvio_pct: Optional[int] = None
+    alerta_consumo_desvio_pct: Optional[int] = Field(default=None, ge=0, le=500)
+    alerta_litros_acima_media_pct: Optional[int] = Field(default=None, ge=0, le=500)
+    # "HH:MM" no fuso da organização; vazio/None = sem restrição.
+    horario_abastecimento_inicio: Optional[str] = Field(default=None, pattern=r"^(([01]\d|2[0-3]):[0-5]\d)?$")
+    horario_abastecimento_fim: Optional[str] = Field(default=None, pattern=r"^(([01]\d|2[0-3]):[0-5]\d)?$")
     bloquear_cnh_vencida: Optional[bool] = None
     permitir_estoque_negativo: Optional[bool] = None
     exigir_nf_entrada: Optional[bool] = None
     exigir_fornecedor_entrada: Optional[bool] = None
-    antecedencia_alerta_manutencao_dias: Optional[int] = None
+    alerta_estoque_minimo_dias: Optional[int] = Field(default=None, ge=0, le=365)
+    antecedencia_alerta_manutencao_dias: Optional[int] = Field(default=None, ge=1, le=365)
 
 
 class ConfiguracaoResponse(ConfiguracaoUpdate):
@@ -965,8 +1038,6 @@ class VeiculoAppResponse(BaseModel):
     usa_horimetro: bool
     combustivel_principal_id: Optional[uuid.UUID]
     combustivel_principal_nome: Optional[str] = None
-    combustivel_secundario_id: Optional[uuid.UUID] = None
-    combustivel_secundario_nome: Optional[str] = None
     quilometragem_atual: int = 0
     horimetro_atual: Optional[Decimal] = None
     # Produtos suportados (principal + reservatórios auxiliares) — ex.: Diesel e ARLA

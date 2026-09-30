@@ -270,8 +270,13 @@ def semear(api: Api) -> dict:
 
     # ── Manutenções: aberta, em andamento, concluída ──
     oficina = api.post(
-        "/oficinas",
-        {"nome": "Oficina Municipal Central", "cpf_cnpj": "98765432000155", "telefone": "44 3555-1234"},
+        "/fornecedores",
+        {
+            "razao_social": "Oficina Municipal Central",
+            "cpf_cnpj": "98765432000155",
+            "telefone": "44 3555-1234",
+            "categoria": "MECANICA",
+        },
     )
     manutencoes = [
         (veiculos[1], "CORRETIVA", "Vazamento no sistema de arrefecimento", hoje - timedelta(days=3), "ABERTA", 0),
@@ -286,7 +291,7 @@ def semear(api: Api) -> dict:
                 "tipo": tipo,
                 "descricao_problema": descricao,
                 "data_solicitacao": data.isoformat(),
-                "oficina_id": oficina["id"],
+                "fornecedor_id": oficina["id"],
                 "itens": (
                     [{"descricao": descricao, "quantidade": 1, "valor_unitario": str(valor), "categoria": "SERVICO"}]
                     if valor

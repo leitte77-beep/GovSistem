@@ -244,7 +244,7 @@ export function TabelaDePedidos({ pedidos }: { pedidos: PedidoLinha[] }) {
                 .join(" · ");
               const fechado = FECHADOS.includes(pedido.situacao);
               const podeAssumir =
-                !pedido.responsavel_atual && !fechado && eu?.pode_trabalhar;
+                !pedido.somente_leitura && !pedido.responsavel_atual && !fechado && pedido.situacao === "EM_SETOR" && eu?.pode_trabalhar;
               return (
                 <tr
                   key={pedido.id}

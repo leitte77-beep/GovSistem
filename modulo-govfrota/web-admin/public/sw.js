@@ -1,12 +1,13 @@
 /* Service Worker do GovFrota Motorista — instalação PWA e cache básico.
  *
- * Nesta fase NÃO há abastecimento offline (a confirmação exige servidor).
- * O SW apenas habilita a instalação e faz cache de ativos estáticos básicos
- * para uma abertura rápida; nunca cacheia dados de abastecimento.
+ * Guarda as telas do motorista para abrirem sem internet. O abastecimento
+ * feito sem sinal fica numa fila no IndexedDB (src/lib/filaOffline.ts) e é
+ * enviado pela própria página quando a conexão volta — o SW nunca cacheia
+ * nem responde rotas /api/.
  */
 
-const CACHE = "govfrota-motorista-v1";
-const PRECACHE = ["./", "./manifest.json", "icon-192.png", "icon-512.png"];
+const CACHE = "govfrota-motorista-v3";
+const PRECACHE = ["/motorista", "/motorista/abastecer", "/manifest.json", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -26,39 +27,51 @@ self.addEventListener("activate", (event) => {
   );
 });
 
-// Estratégia: network-first para navegação; cache-fallback para estáticos.
-// Dados (rotas /api/) NUNCA são servidos do cache.
+// Só guarda resposta completa, da própria origem e sem redirecionamento —
+// resposta redirecionada não pode ser devolvida para uma navegação.
+function guardar(req, res) {
+  if (res.ok && res.type === "basic" && !res.redirected) {
+    const copy = res.clone();
+    caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+  }
+  return res;
+}
+
+function ehEstatico(url) {
+  return (
+    url.pathname.startsWith("/_next/static/") ||
+    /^\/(manifest\.json|icon-\d+\.png|apple-touch-icon\.png)$/.test(url.pathname)
+  );
+}
+
+// Estratégia: network-first para as telas do motorista; cache-first para
+// estáticos com hash. Todo o resto (rotas /api/, payloads RSC do roteador do
+// Next, telas do painel administrativo) passa direto pela rede, sem o SW —
+// senão uma fetch abortada vira "FetchEvent ... network error" e o payload
+// RSC acabaria no cache com a mesma URL da página HTML.
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
   const url = new URL(req.url);
-  // Ignora esquemas não http(s) (ex.: chrome-extension://, devtools://) —
-  // não são cacheáveis e quebrariam o caches.put.
-  if (url.protocol !== "http:" && url.protocol !== "https:") return;
-  if (url.pathname.includes("/api/")) return;
+  if (url.origin !== self.location.origin) return;
 
   if (req.mode === "navigate") {
+    if (!url.pathname.startsWith("/motorista")) return;
     event.respondWith(
       fetch(req)
-        .then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
-          return res;
-        })
-        .catch(() => caches.match(req).then((r) => r || caches.match("./")))
+        .then((res) => guardar(req, res))
+        .catch(() =>
+          caches
+            .match(req, { ignoreSearch: true })
+            .then((r) => r || caches.match("/motorista"))
+            .then((r) => r || Response.error())
+        )
     );
     return;
   }
 
+  if (!ehEstatico(url)) return;
   event.respondWith(
-    caches.match(req).then(
-      (cached) =>
-        cached ||
-        fetch(req).then((res) => {
-          const copy = res.clone();
-          caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
-          return res;
-        })
-    )
+    caches.match(req).then((cached) => cached || fetch(req).then((res) => guardar(req, res)))
   );
 });

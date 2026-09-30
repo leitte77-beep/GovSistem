@@ -48,29 +48,20 @@ class Veiculo(Base, TimestampMixin, SoftDeleteMixin):
     cor: Mapped[Optional[str]] = mapped_column(String(40), nullable=True)
     tipo: Mapped[str] = mapped_column(String(30), default="CARRO", nullable=False)
 
-    # Combustível principal (legado — mantido para compatibilidade/leitura rápida).
-    # A fonte estruturada de reservatórios são as linhas de `VeiculoTanque`.
-    combustivel_principal_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("combustiveis.id"), nullable=True
-    )
-    combustivel_secundario_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("combustiveis.id"), nullable=True
-    )
-    capacidade_tanque_litros: Mapped[Optional[Decimal]] = mapped_column(
-        Numeric(12, 2), nullable=True
-    )
+    # Combustíveis aceitos e capacidades vivem SOMENTE em `VeiculoTanque`
+    # (reservatório PRIMARY + auxiliares). Não há cópia no veículo.
 
     # Controle
     quilometragem_atual: Mapped[int] = mapped_column(BigInteger(), default=0, nullable=False)
     horimetro_atual: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 1), nullable=True)
     usa_horimetro: Mapped[bool] = mapped_column(default=False, nullable=False)
 
-    # Organizacional (nomenclatura varia conforme tipo da organização)
-    unidade: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    # Lotação: secretaria (público) ou centro de custo (privado) — cadastro
+    # estruturado em `unidades`, base dos relatórios por secretaria.
+    unidade_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("unidades.id"), nullable=True, index=True
+    )
     departamento: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
-    filial: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
-    centro_custo: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
-
     situacao: Mapped[str] = mapped_column(
         String(20), default="DISPONIVEL", nullable=False, index=True
     )
@@ -114,13 +105,21 @@ class VeiculoTanque(Base, TimestampMixin, SoftDeleteMixin):
     combustivel_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("combustiveis.id"), nullable=False
     )
+    # Veículo flex: o mesmo reservatório aceita um segundo combustível
+    # (ex.: Gasolina no principal, Etanol como alternativo).
+    combustivel_alternativo_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("combustiveis.id"), nullable=True
+    )
     tank_type: Mapped[str] = mapped_column(String(20), default="AUXILIARY", nullable=False)
     capacidade: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
     identificacao: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
     ativo: Mapped[bool] = mapped_column(Boolean(), default=True, nullable=False)
 
     veiculo: Mapped["Veiculo"] = relationship(back_populates="tanques")
-    combustivel: Mapped["Combustivel"] = relationship()  # noqa: F821
+    combustivel: Mapped["Combustivel"] = relationship(foreign_keys=[combustivel_id])  # noqa: F821
+
+    def aceita(self, combustivel_id: uuid.UUID) -> bool:
+        return combustivel_id in (self.combustivel_id, self.combustivel_alternativo_id)
 
 
 class VeiculoDocumento(Base, TimestampMixin):

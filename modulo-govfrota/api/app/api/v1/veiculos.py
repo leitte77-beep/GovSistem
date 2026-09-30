@@ -7,13 +7,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.auth import require_permission
+from app.core.auth import filtro_escopo, require_permission
 from app.core.database import get_db
 from app.core.permissions import Perm
 from app.models.abastecimento import Abastecimento
 from app.models.auth_models import User
 from app.models.combustivel import Combustivel
 from app.models.manutencao import Manutencao, PlanoPreventivo
+from app.models.unidade import Unidade
 from app.models.veiculo import AlteracaoQuilometragem, Veiculo, VeiculoDocumento, VeiculoTanque
 from app.api.v1.manutencoes import _computar_proxima_execucao
 from app.schemas.schemas import (
@@ -25,10 +26,15 @@ from app.schemas.schemas import (
     VeiculoTanqueResponse,
     VeiculoUpdate,
 )
+from app.services.abastecimento import get_configuracoes
 from app.services.auditoria import registrar_auditoria
 from app.services.placa import normalizar_chassi, normalizar_placa, normalizar_renavam
 
 router = APIRouter(prefix="/veiculos", tags=["veículos"])
+
+# Campos de entrada que descrevem o reservatório principal — não existem no
+# veículo; vão para `VeiculoTanque` (PRIMARY).
+_CAMPOS_RESERVATORIO = ("combustivel_principal_id", "combustivel_secundario_id", "capacidade_tanque_litros")
 
 # Colunas ordenáveis na listagem (whitelist — evita SQL injection por sort_by).
 _SORTABLE = {
@@ -50,6 +56,7 @@ async def _get_veiculo_tenant(
             Veiculo.id == veiculo_id,
             Veiculo.organization_id == user.organization_id,
             Veiculo.deleted_at.is_(None),
+            filtro_escopo(user, Veiculo.unidade_id),
         )
     )
     veiculo = result.scalar_one_or_none()
@@ -82,18 +89,24 @@ async def _validar_produtos_org(
         )
 
 
+_NAO_INFORMADO = object()
+
+
 async def _sync_reservatorios(
     db: AsyncSession,
     veiculo: Veiculo,
     *,
     combustivel_principal_id: uuid.UUID | None,
     capacidade_principal: object | None,
-    tanques_auxiliares: list,
+    tanques_auxiliares: list | None,
+    combustivel_alternativo_id: object = _NAO_INFORMADO,
 ) -> None:
-    """Sincroniza os reservatórios estruturados do veículo.
+    """Sincroniza os reservatórios do veículo — única fonte dos combustíveis.
 
-    - PRIMARY: espelha o combustível principal + capacidade (único).
-    - AUXILIARY: substitui os reservatórios auxiliares pela lista enviada.
+    - PRIMARY: combustível principal + capacidade (+ alternativo, se flex).
+      Campos não enviados preservam o valor atual.
+    - AUXILIARY: substitui os reservatórios auxiliares pela lista enviada
+      (None = mantém como está).
     """
     existentes = (
         await db.execute(
@@ -101,44 +114,50 @@ async def _sync_reservatorios(
         )
     ).scalars().all()
 
-    principal = next((t for t in existentes if t.tank_type == "PRIMARY"), None)
-    if combustivel_principal_id is not None:
-        capacidade = (
-            Decimal(capacidade_principal)
-            if capacidade_principal is not None and Decimal(capacidade_principal) > 0
-            else None
+    capacidade = (
+        Decimal(capacidade_principal)
+        if capacidade_principal is not None and Decimal(capacidade_principal) > 0
+        else None
+    )
+    principal = next(
+        (t for t in existentes if t.tank_type == "PRIMARY" and t.deleted_at is None), None
+    )
+    if principal is None and combustivel_principal_id is not None:
+        principal = VeiculoTanque(
+            organization_id=veiculo.organization_id,
+            veiculo_id=veiculo.id,
+            combustivel_id=combustivel_principal_id,
+            tank_type="PRIMARY",
+            capacidade=capacidade or Decimal("0"),
+            identificacao="Tanque principal",
         )
-        if principal is None:
+        db.add(principal)
+    elif principal is not None:
+        if combustivel_principal_id is not None:
+            principal.combustivel_id = combustivel_principal_id
+        if capacidade is not None:
+            principal.capacidade = capacidade
+        principal.ativo = True
+    if principal is not None and combustivel_alternativo_id is not _NAO_INFORMADO:
+        alt = combustivel_alternativo_id
+        principal.combustivel_alternativo_id = alt if alt != principal.combustivel_id else None
+
+    if tanques_auxiliares is not None:
+        # Remove auxiliares atuais e recria a partir da lista enviada.
+        for t in existentes:
+            if t.tank_type == "AUXILIARY":
+                await db.delete(t)
+        for aux in tanques_auxiliares:
             db.add(
                 VeiculoTanque(
                     organization_id=veiculo.organization_id,
                     veiculo_id=veiculo.id,
-                    combustivel_id=combustivel_principal_id,
-                    tank_type="PRIMARY",
-                    capacidade=capacidade or Decimal("0"),
-                    identificacao="Tanque principal",
+                    combustivel_id=aux.combustivel_id,
+                    tank_type="AUXILIARY",
+                    capacidade=aux.capacidade,
+                    identificacao=aux.identificacao,
                 )
             )
-        else:
-            principal.combustivel_id = combustivel_principal_id
-            principal.capacidade = capacidade if capacidade is not None else principal.capacidade
-            principal.ativo = True
-
-    # Remove auxiliares atuais e recria a partir da lista enviada.
-    for t in existentes:
-        if t.tank_type == "AUXILIARY":
-            await db.delete(t)
-    for aux in tanques_auxiliares or []:
-        db.add(
-            VeiculoTanque(
-                organization_id=veiculo.organization_id,
-                veiculo_id=veiculo.id,
-                combustivel_id=aux.combustivel_id,
-                tank_type="AUXILIARY",
-                capacidade=aux.capacidade,
-                identificacao=aux.identificacao,
-            )
-        )
     await db.flush()
 
 
@@ -160,7 +179,7 @@ async def _mapa_tanques_resposta(
             .order_by(VeiculoTanque.tank_type, VeiculoTanque.identificacao)
         )
     ).scalars().all()
-    comb_ids = {t.combustivel_id for t in tanques}
+    comb_ids = {c for t in tanques for c in (t.combustivel_id, t.combustivel_alternativo_id) if c}
     nomes = {}
     if comb_ids:
         nomes = {
@@ -169,7 +188,7 @@ async def _mapa_tanques_resposta(
                 await db.execute(select(Combustivel).where(Combustivel.id.in_(comb_ids)))
             ).scalars().all()
         }
-    mapa: dict[uuid.UUID, list[VeiculoTanqueResponse]] = {vid: [] for vid in ids}
+    mapa: dict[uuid.UUID, list[VeiculoTanqueResponse]] = {}
     por_veiculo: dict[uuid.UUID, list] = {vid: [] for vid in ids}
     for t in tanques:
         por_veiculo[t.veiculo_id].append(
@@ -177,6 +196,8 @@ async def _mapa_tanques_resposta(
                 id=t.id,
                 combustivel_id=t.combustivel_id,
                 combustivel_nome=nomes.get(t.combustivel_id),
+                combustivel_alternativo_id=t.combustivel_alternativo_id,
+                combustivel_alternativo_nome=nomes.get(t.combustivel_alternativo_id),
                 tank_type=t.tank_type,
                 capacidade=t.capacidade,
                 identificacao=t.identificacao,
@@ -184,23 +205,43 @@ async def _mapa_tanques_resposta(
             )
         )
     for v in veiculos:
-        items = por_veiculo.get(v.id, [])
-        # Veículo legado (antes da migration/backfill) sem reservatório PRIMARY:
-        # sintetiza a partir dos campos de combustível principal + capacidade.
-        if not any(x.tank_type == "PRIMARY" for x in items) and v.combustivel_principal_id:
-            items.append(
-                VeiculoTanqueResponse(
-                    id=uuid.uuid4(),
-                    combustivel_id=v.combustivel_principal_id,
-                    combustivel_nome=nomes.get(v.combustivel_principal_id),
-                    tank_type="PRIMARY",
-                    capacidade=v.capacidade_tanque_litros or Decimal("0"),
-                    identificacao="Tanque principal",
-                    ativo=True,
-                )
-            )
-        mapa[v.id] = items
+        mapa[v.id] = por_veiculo.get(v.id, [])
     return mapa
+
+
+def _aplicar_reservatorios(dados: dict, tanques: list[VeiculoTanqueResponse]) -> None:
+    """Preenche principal/secundário/capacidade (campos de leitura) a partir
+    do reservatório PRIMARY — o veículo não guarda cópia deles."""
+    dados["tanques"] = tanques
+    principal = next((t for t in tanques if t.tank_type == "PRIMARY"), None)
+    if principal is not None:
+        dados["combustivel_principal_id"] = principal.combustivel_id
+        dados["combustivel_secundario_id"] = principal.combustivel_alternativo_id
+        dados["capacidade_tanque_litros"] = principal.capacidade or None
+
+
+async def _nomes_unidades(db: AsyncSession, ids: set) -> dict:
+    ids = {i for i in ids if i}
+    if not ids:
+        return {}
+    return {
+        u.id: u.nome
+        for u in (await db.execute(select(Unidade).where(Unidade.id.in_(ids)))).scalars().all()
+    }
+
+
+async def _validar_unidade(db: AsyncSession, user: User, unidade_id: uuid.UUID | None) -> None:
+    if unidade_id is None:
+        return
+    ok = await db.scalar(
+        select(Unidade.id).where(
+            Unidade.id == unidade_id,
+            Unidade.organization_id == user.organization_id,
+            Unidade.deleted_at.is_(None),
+        )
+    )
+    if ok is None:
+        raise HTTPException(status_code=422, detail="Unidade/secretaria inválida.")
 
 
 @router.get("", response_model=list[VeiculoResponse])
@@ -208,22 +249,21 @@ async def listar(
     search: str | None = None,
     situacao: str | None = None,
     tipo: str | None = None,
-    combustivel_id: str | None = None,
-    centro_custo: str | None = None,
-    unidade: str | None = None,
+    combustivel_id: uuid.UUID | None = None,
+    unidade_id: uuid.UUID | None = None,
     departamento: str | None = None,
-    filial: str | None = None,
     sort_by: str = "placa",
     order: str = "asc",
     skip: int = 0,
     limit: int = 50,
     response: Response = None,  # type: ignore[assignment]
-    user: User = Depends(require_permission(Perm.VEHICLE_VIEW)),
+    user: User = Depends(require_permission(Perm.VEHICLE_VIEW, escopo=True)),
     db: AsyncSession = Depends(get_db),
 ):
     base = select(Veiculo).where(
         Veiculo.organization_id == user.organization_id,
         Veiculo.deleted_at.is_(None),
+        filtro_escopo(user, Veiculo.unidade_id),
     ).options(selectinload(Veiculo.tanques))
     if search:
         like = f"%{search}%"
@@ -241,15 +281,19 @@ async def listar(
     if tipo:
         base = base.where(Veiculo.tipo == tipo.upper())
     if combustivel_id:
-        base = base.where(Veiculo.combustivel_principal_id == combustivel_id)
-    if centro_custo:
-        base = base.where(Veiculo.centro_custo == centro_custo)
-    if unidade:
-        base = base.where(Veiculo.unidade == unidade)
+        base = base.where(
+            Veiculo.id.in_(
+                select(VeiculoTanque.veiculo_id).where(
+                    VeiculoTanque.deleted_at.is_(None),
+                    (VeiculoTanque.combustivel_id == combustivel_id)
+                    | (VeiculoTanque.combustivel_alternativo_id == combustivel_id),
+                )
+            )
+        )
+    if unidade_id:
+        base = base.where(Veiculo.unidade_id == unidade_id)
     if departamento:
         base = base.where(Veiculo.departamento == departamento)
-    if filial:
-        base = base.where(Veiculo.filial == filial)
 
     # Total de registros (para paginação server-side) via header.
     total = await db.scalar(
@@ -354,9 +398,12 @@ async def listar(
             )
         )
     ).scalars().all()
+    antecedencia = (await get_configuracoes(db, user.organization_id)).antecedencia_alerta_manutencao_dias
+    por_id = {v.id: v for v in veiculos}
     for plano in planos:
-        km_atual = next((v.quilometragem_atual for v in veiculos if v.id == plano.veiculo_id), 0)
-        proxima_km, proxima_data, situacao = _computar_proxima_execucao(plano, km_atual)
+        proxima_km, proxima_data, situacao = _computar_proxima_execucao(
+            plano, por_id.get(plano.veiculo_id), antecedencia
+        )
         atual = proxima_map.get(plano.veiculo_id)
         if atual is not None and atual.get("situacao") == "OK" and situacao == "OK":
             continue
@@ -372,14 +419,16 @@ async def listar(
 
     adapter = TypeAdapter(list[VeiculoResponse])
     tanques_map = await _mapa_tanques_resposta(db, user, veiculos)
+    unidades = await _nomes_unidades(db, {v.unidade_id for v in veiculos})
     itens = []
     for v in veiculos:
         dados = VeiculoResponse.model_validate(v, from_attributes=True).model_dump()
+        dados["unidade_nome"] = unidades.get(v.unidade_id)
         dados["consumo_medio_km_l"] = consumo_map.get(v.id)
         dados["ultimo_abastecimento"] = ultimo_abast_map.get(v.id)
         dados["ultima_manutencao"] = ultima_manut_map.get(v.id)
         dados["proxima_manutencao"] = proxima_map.get(v.id)
-        dados["tanques"] = tanques_map.get(v.id, [])
+        _aplicar_reservatorios(dados, tanques_map.get(v.id, []))
         itens.append(dados)
     return adapter.validate_python(itens)
 
@@ -393,10 +442,11 @@ async def _resposta(db: AsyncSession, user: User, veiculo: Veiculo) -> VeiculoRe
             .options(selectinload(Veiculo.tanques))
         )
     ).scalar_one()
-    dados = VeiculoResponse.model_validate(carregado, from_attributes=True)
+    dados = VeiculoResponse.model_validate(carregado, from_attributes=True).model_dump()
     mapa = await _mapa_tanques_resposta(db, user, [carregado])
-    dados.tanques = mapa.get(carregado.id, [])
-    return dados
+    _aplicar_reservatorios(dados, mapa.get(carregado.id, []))
+    dados["unidade_nome"] = (await _nomes_unidades(db, {carregado.unidade_id})).get(carregado.unidade_id)
+    return VeiculoResponse(**dados)
 
 
 @router.post("", response_model=VeiculoResponse, status_code=201)
@@ -417,7 +467,8 @@ async def criar(
         raise HTTPException(status_code=422, detail="Já existe um veículo com esta placa.")
 
     # Normaliza identificadores opcionais e bloqueia duplicidade por organização.
-    dados = body.model_dump(exclude={"placa", "tanques_auxiliares"})
+    dados = body.model_dump(exclude={"placa", "tanques_auxiliares", *_CAMPOS_RESERVATORIO})
+    await _validar_unidade(db, user, body.unidade_id)
     renavam = normalizar_renavam(body.renavam)
     chassi = normalizar_chassi(body.chassi)
     dados["renavam"] = renavam or None
@@ -463,9 +514,10 @@ async def criar(
     await _sync_reservatorios(
         db,
         veiculo,
-        combustivel_principal_id=body.combustivel_principal_id,
+        combustivel_principal_id=body.combustivel_principal_id or body.combustivel_secundario_id,
         capacidade_principal=body.capacidade_tanque_litros,
         tanques_auxiliares=body.tanques_auxiliares,
+        combustivel_alternativo_id=body.combustivel_secundario_id if body.combustivel_principal_id else None,
     )
     await registrar_auditoria(
         db,
@@ -484,7 +536,7 @@ async def criar(
 @router.get("/{veiculo_id}", response_model=VeiculoResponse)
 async def obter(
     veiculo_id: uuid.UUID,
-    user: User = Depends(require_permission(Perm.VEHICLE_VIEW)),
+    user: User = Depends(require_permission(Perm.VEHICLE_VIEW, escopo=True)),
     db: AsyncSession = Depends(get_db),
 ):
     veiculo = await _get_veiculo_tenant(db, user, veiculo_id)
@@ -502,13 +554,16 @@ async def atualizar(
     anteriores = {
         "situacao": veiculo.situacao,
         "observacoes": veiculo.observacoes,
-        "centro_custo": veiculo.centro_custo,
+        "unidade_id": str(veiculo.unidade_id) if veiculo.unidade_id else None,
     }
-    dados = body.model_dump(exclude_unset=True, exclude={"tanques_auxiliares"})
+    enviados = body.model_dump(exclude_unset=True)
+    dados = {k: v for k, v in enviados.items() if k not in ("tanques_auxiliares", *_CAMPOS_RESERVATORIO)}
+    if "unidade_id" in dados:
+        await _validar_unidade(db, user, dados["unidade_id"])
     for campo, valor in dados.items():
         setattr(veiculo, campo, valor)
 
-    if "combustivel_principal_id" in dados or "capacidade_tanque_litros" in dados or body.tanques_auxiliares is not None:
+    if any(k in enviados for k in _CAMPOS_RESERVATORIO) or body.tanques_auxiliares is not None:
         await _validar_produtos_org(
             db,
             user,
@@ -520,7 +575,12 @@ async def atualizar(
             veiculo,
             combustivel_principal_id=body.combustivel_principal_id,
             capacidade_principal=body.capacidade_tanque_litros,
-            tanques_auxiliares=body.tanques_auxiliares or [],
+            tanques_auxiliares=body.tanques_auxiliares,
+            combustivel_alternativo_id=(
+                body.combustivel_secundario_id
+                if "combustivel_secundario_id" in enviados
+                else _NAO_INFORMADO
+            ),
         )
 
     await registrar_auditoria(
@@ -564,7 +624,7 @@ async def excluir(
 async def alterar_quilometragem(
     veiculo_id: uuid.UUID,
     body: AlterarKmRequest,
-    user: User = Depends(require_permission(Perm.REFUELING_MANAGE)),
+    user: User = Depends(require_permission(Perm.REFUELING_MANAGE, Perm.VEHICLE_MANAGE)),
     db: AsyncSession = Depends(get_db),
 ):
     """Correção autorizada de quilometragem — sempre auditada com justificativa."""
@@ -593,8 +653,9 @@ async def alterar_quilometragem(
         justificativa=body.justificativa,
     )
     await db.commit()
-    await db.refresh(veiculo)
-    return veiculo
+    # Resposta com reservatórios carregados em lote — serializar o ORM direto
+    # tentaria lazy-load de `tanques` fora do contexto async (MissingGreenlet).
+    return await _resposta(db, user, veiculo)
 
 
 # ── Documentos do veículo ────────────────────────────────────────────────────
@@ -603,7 +664,7 @@ async def alterar_quilometragem(
 @router.get("/{veiculo_id}/documentos", response_model=list[DocumentoVeiculoResponse])
 async def listar_documentos(
     veiculo_id: uuid.UUID,
-    user: User = Depends(require_permission(Perm.VEHICLE_VIEW)),
+    user: User = Depends(require_permission(Perm.VEHICLE_VIEW, escopo=True)),
     db: AsyncSession = Depends(get_db),
 ):
     await _get_veiculo_tenant(db, user, veiculo_id)

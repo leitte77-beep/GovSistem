@@ -31,7 +31,8 @@ async def _get_config(db: AsyncSession, organization_id: uuid.UUID) -> Configura
 
 @router.get("", response_model=ConfiguracaoResponse)
 async def obter(
-    user: User = Depends(require_permission(Perm.VEHICLE_VIEW)),
+    # Parâmetros do módulo (sem dados de secretaria): leitura liberada ao escopo.
+    user: User = Depends(require_permission(Perm.VEHICLE_VIEW, escopo=True)),
     db: AsyncSession = Depends(get_db),
 ):
     return await _get_config(db, user.organization_id)
@@ -49,6 +50,9 @@ async def atualizar(
         from fastapi import HTTPException
 
         raise HTTPException(status_code=422, detail="Tipo de organização inválido.")
+    for campo in ("horario_abastecimento_inicio", "horario_abastecimento_fim"):
+        if campo in dados and not dados[campo]:
+            dados[campo] = None
     for campo, valor in dados.items():
         setattr(config, campo, valor)
     await registrar_auditoria(

@@ -103,10 +103,12 @@ export function AbaHistorico({
 
   return (
     <section className="max-w-[48rem] space-y-4 pb-24">
-      <div className="cartao p-4">
-        <p className="rotulo">Registrar no histórico</p>
-        <Compositor pedido={pedido} usuarios={usuarios} aoAtualizar={aoAtualizar} />
-      </div>
+      {!pedido.somente_leitura && (
+        <div className="cartao p-4">
+          <p className="rotulo">Registrar no histórico</p>
+          <Compositor pedido={pedido} usuarios={usuarios} aoAtualizar={aoAtualizar} />
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-1.5">
         {FILTROS.map((f) => (

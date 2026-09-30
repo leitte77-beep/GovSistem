@@ -75,3 +75,40 @@ class UserRole(Base, TimestampMixin):
 
     user: Mapped["User"] = relationship(back_populates="user_roles")
     role: Mapped["Role"] = relationship()
+
+
+class UsuarioAcesso(Base, TimestampMixin):
+    """Perfil do usuário definido dentro do GovFrota.
+
+    Fica fora de `user_roles` porque o SSO da plataforma recria aqueles papéis a
+    cada sincronização. Quando `perfil` está preenchido, ele substitui os papéis
+    vindos da plataforma no cálculo de permissões.
+    """
+
+    __tablename__ = "usuario_acessos"
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    perfil: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    cargo: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    atualizado_por_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+
+class UsuarioUnidade(Base, TimestampMixin):
+    """Secretarias que o usuário pode ver. Com ao menos uma, o acesso fica restrito a elas."""
+
+    __tablename__ = "usuario_unidades"
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    unidade_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("unidades.id", ondelete="CASCADE"), nullable=False
+    )

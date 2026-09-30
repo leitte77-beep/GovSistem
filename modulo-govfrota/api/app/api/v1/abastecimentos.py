@@ -8,7 +8,7 @@ from sqlalchemy import func as sa_func
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_client_info, get_user_permissions, require_permission
+from app.core.auth import filtro_escopo, get_client_info, get_user_permissions, require_permission
 from app.core.database import get_db
 from app.core.permissions import Perm
 from app.models.abastecimento import Abastecimento, CorrecaoAbastecimento
@@ -57,6 +57,7 @@ async def _get_abastecimento(
             Abastecimento.id == abastecimento_id,
             Abastecimento.organization_id == user.organization_id,
             Abastecimento.deleted_at.is_(None),
+            filtro_escopo(user, Abastecimento.unidade_id),
         )
     )
     abast = result.scalar_one_or_none()
@@ -69,9 +70,16 @@ def _snapshot(abast: Abastecimento) -> dict:
     return {
         "litros": str(abast.quantidade_litros),
         "km": abast.quilometragem,
+        "horimetro": str(abast.horimetro) if abast.horimetro is not None else None,
         "veiculo": str(abast.veiculo_id),
-        "tanque": str(abast.tanque_id),
+        "modalidade": abast.modalidade,
+        "tanque": str(abast.tanque_id) if abast.tanque_id else None,
+        "posto": str(abast.fornecedor_id) if abast.fornecedor_id else None,
         "combustivel": str(abast.combustivel_id),
+        "preco_litro": str(abast.preco_litro) if abast.preco_litro is not None else None,
+        "custo_total": str(abast.custo_total) if abast.custo_total is not None else None,
+        "numero_nf": abast.numero_nf,
+        "chave_nfe": abast.chave_nfe,
         "status": abast.status,
     }
 
@@ -81,7 +89,10 @@ def _base_consulta(user: User):
         select(Abastecimento)
         .join(Veiculo, Abastecimento.veiculo_id == Veiculo.id)
         .outerjoin(Motorista, Abastecimento.motorista_id == Motorista.id)
-        .where(Abastecimento.organization_id == user.organization_id)
+        .where(
+            Abastecimento.organization_id == user.organization_id,
+            filtro_escopo(user, Abastecimento.unidade_id),
+        )
     )
 
 
@@ -92,11 +103,14 @@ async def _enriquecer(
 
     Evita N+1: todos os `in_(...)` em pouquíssimas queries.
     """
-    from app.models.combustivel import Combustivel
+    from app.models.combustivel import Combustivel, Fornecedor
+    from app.models.unidade import Unidade
 
     ids_veic = {r.veiculo_id for r in registros}
     ids_comb = {r.combustivel_id for r in registros}
-    ids_tanque = {r.tanque_id for r in registros}
+    ids_tanque = {r.tanque_id for r in registros if r.tanque_id}
+    ids_forn = {r.fornecedor_id for r in registros if r.fornecedor_id}
+    ids_unid = {r.unidade_id for r in registros if r.unidade_id}
     ids_mot = {r.motorista_id for r in registros if r.motorista_id}
     ids_user = {
         u
@@ -123,6 +137,22 @@ async def _enriquecer(
             await db.execute(select(Tanque).where(Tanque.id.in_(ids_tanque)))
         ).scalars().all()
     }
+    postos = {}
+    if ids_forn:
+        postos = {
+            f.id: f.nome_fantasia or f.razao_social
+            for f in (
+                await db.execute(select(Fornecedor).where(Fornecedor.id.in_(ids_forn)))
+            ).scalars().all()
+        }
+    unidades = {}
+    if ids_unid:
+        unidades = {
+            u.id: u.nome
+            for u in (
+                await db.execute(select(Unidade).where(Unidade.id.in_(ids_unid)))
+            ).scalars().all()
+        }
     motores = {}
     if ids_mot:
         motores = {
@@ -155,6 +185,8 @@ async def _enriquecer(
         dados["combustivel_nome"] = combustiveis.get(r.combustivel_id)
         t = tanques.get(r.tanque_id)
         dados["tanque_nome"] = t.nome if t else None
+        dados["fornecedor_nome"] = postos.get(r.fornecedor_id)
+        dados["unidade_nome"] = unidades.get(r.unidade_id)
         dados["motorista_nome"] = (
             motores.get(r.motorista_id) if r.motorista_id else None
         )
@@ -181,6 +213,10 @@ async def listar(
     veiculo_id: uuid.UUID | None = None,
     motorista_id: uuid.UUID | None = None,
     tanque_id: uuid.UUID | None = None,
+    fornecedor_id: uuid.UUID | None = None,
+    unidade_id: uuid.UUID | None = None,
+    modalidade: str | None = None,
+    com_alerta: bool | None = None,
     combustivel_id: uuid.UUID | None = None,
     origem: str | None = None,
     status: str | None = None,
@@ -191,7 +227,7 @@ async def listar(
     skip: int = 0,
     limit: int = 50,
     response: Response = None,  # type: ignore[assignment]
-    user: User = Depends(require_permission(Perm.REFUELING_VIEW)),
+    user: User = Depends(require_permission(Perm.REFUELING_VIEW, escopo=True)),
     db: AsyncSession = Depends(get_db),
 ):
     stmt = _base_consulta(user)
@@ -201,6 +237,16 @@ async def listar(
         stmt = stmt.where(Abastecimento.motorista_id == motorista_id)
     if tanque_id:
         stmt = stmt.where(Abastecimento.tanque_id == tanque_id)
+    if fornecedor_id:
+        stmt = stmt.where(Abastecimento.fornecedor_id == fornecedor_id)
+    if unidade_id:
+        stmt = stmt.where(Abastecimento.unidade_id == unidade_id)
+    if modalidade:
+        stmt = stmt.where(Abastecimento.modalidade == modalidade.upper())
+    if com_alerta is True:
+        stmt = stmt.where(Abastecimento.alertas.isnot(None))
+    elif com_alerta is False:
+        stmt = stmt.where(Abastecimento.alertas.is_(None))
     if combustivel_id:
         stmt = stmt.where(Abastecimento.combustivel_id == combustivel_id)
     if origem:
@@ -228,6 +274,7 @@ async def listar(
             | Veiculo.modelo.ilike(like)
             | Veiculo.marca.ilike(like)
             | Motorista.nome.ilike(like)
+            | Abastecimento.numero_nf.ilike(like)
         )
         id_uuid = _parse_uuid(search)
         if id_uuid is not None:
@@ -254,7 +301,7 @@ async def listar(
 
 @router.get("/resumo", response_model=ResumoAbastecimento)
 async def resumo(
-    user: User = Depends(require_permission(Perm.REFUELING_VIEW)),
+    user: User = Depends(require_permission(Perm.REFUELING_VIEW, escopo=True)),
     db: AsyncSession = Depends(get_db),
 ):
     """Indicadores resumidos para o cabeçalho da área de abastecimentos."""
@@ -272,6 +319,7 @@ async def resumo(
                 Abastecimento.organization_id == user.organization_id,
                 Abastecimento.status == "CONFIRMADO",
                 Abastecimento.data_abastecimento >= inicio,
+                filtro_escopo(user, Abastecimento.unidade_id),
             )
         )
         qtd, litros, gasto = row.one()
@@ -286,6 +334,7 @@ async def resumo(
             Abastecimento.status == "CONFIRMADO",
             Abastecimento.consumo_km_l.isnot(None),
             Abastecimento.data_abastecimento >= agora - timedelta(days=90),
+            filtro_escopo(user, Abastecimento.unidade_id),
         )
     )
     consumo_frota = (
@@ -304,7 +353,7 @@ async def resumo(
 @router.get("/{abastecimento_id}/correcoes", response_model=list[CorrecaoAbastecimentoResponse])
 async def correcoes(
     abastecimento_id: uuid.UUID,
-    user: User = Depends(require_permission(Perm.REFUELING_VIEW)),
+    user: User = Depends(require_permission(Perm.REFUELING_VIEW, escopo=True)),
     db: AsyncSession = Depends(get_db),
 ):
     """Linha do tempo de correções/cancelamentos do abastecimento (auditoria)."""
@@ -323,7 +372,7 @@ async def correcoes(
 @router.get("/{abastecimento_id}", response_model=AbastecimentoResponse)
 async def obter(
     abastecimento_id: uuid.UUID,
-    user: User = Depends(require_permission(Perm.REFUELING_VIEW)),
+    user: User = Depends(require_permission(Perm.REFUELING_VIEW, escopo=True)),
     db: AsyncSession = Depends(get_db),
 ):
     abast = await _get_abastecimento(db, user, abastecimento_id)
@@ -375,16 +424,18 @@ async def criar_admin(
         if motorista_ok is None:
             raise HTTPException(status_code=422, detail="Motorista inválido.")
 
-    tanque_ok = (
-        await db.execute(
-            select(Tanque.id).where(
-                Tanque.id == body.tanque_id,
-                Tanque.organization_id == user.organization_id,
+    modalidade = (body.modalidade or "TANQUE_PROPRIO").upper()
+    if modalidade == "TANQUE_PROPRIO":
+        tanque_ok = (
+            await db.execute(
+                select(Tanque.id).where(
+                    Tanque.id == body.tanque_id,
+                    Tanque.organization_id == user.organization_id,
+                )
             )
-        )
-    ).scalar_one_or_none()
-    if tanque_ok is None:
-        raise HTTPException(status_code=422, detail="Tanque inválido.")
+        ).scalar_one_or_none() if body.tanque_id else None
+        if tanque_ok is None:
+            raise HTTPException(status_code=422, detail="Tanque inválido.")
 
     info = get_client_info(request) if request else {"ip_address": None}
 
@@ -401,10 +452,16 @@ async def criar_admin(
             db,
             organization_id=user.organization_id,
             veiculo=veiculo,
+            modalidade=modalidade,
             tanque_id=body.tanque_id,
+            fornecedor_id=body.fornecedor_id,
+            preco_litro=body.preco_litro,
+            numero_nf=body.numero_nf,
+            chave_nfe=body.chave_nfe,
             combustivel_id=body.combustivel_id,
             quantidade_litros=Decimal(body.quantidade_litros),
             quilometragem=body.quilometragem,
+            horimetro=body.horimetro,
             data_abastecimento=data_informada,
             motorista_id=body.motorista_id,
             responsavel_usuario_id=user.id,
@@ -456,23 +513,24 @@ async def cancelar(
     if abast.status != "CONFIRMADO":
         raise HTTPException(status_code=422, detail="Abastecimento já cancelado.")
 
-    try:
-        await aplicar_movimentacao(
-            db,
-            organization_id=user.organization_id,
-            tipo=TipoMovimentacao.ESTORNO.value,
-            origem=OrigemMovimentacao.ESTORNO_ABASTECIMENTO.value,
-            sinal=1,
-            quantidade=abast.quantidade_litros,
-            combustivel_id=abast.combustivel_id,
-            tanque_id=abast.tanque_id,
-            referencia_tipo="ESTORNO_ABASTECIMENTO",
-            descricao=f"Estorno do abastecimento {abast.id}: {body.justificativa}",
-            responsavel_usuario_id=user.id,
-            permitir_negativo=True,
-        )
-    except EstoqueError as e:
-        raise HTTPException(status_code=422, detail=e.mensagem)
+    if abast.tanque_id is not None:
+        try:
+            await aplicar_movimentacao(
+                db,
+                organization_id=user.organization_id,
+                tipo=TipoMovimentacao.ESTORNO.value,
+                origem=OrigemMovimentacao.ESTORNO_ABASTECIMENTO.value,
+                sinal=1,
+                quantidade=abast.quantidade_litros,
+                combustivel_id=abast.combustivel_id,
+                tanque_id=abast.tanque_id,
+                referencia_tipo="ESTORNO_ABASTECIMENTO",
+                descricao=f"Estorno do abastecimento {abast.id}: {body.justificativa}",
+                responsavel_usuario_id=user.id,
+                permitir_negativo=True,
+            )
+        except EstoqueError as e:
+            raise HTTPException(status_code=422, detail=e.mensagem)
 
     anteriores = _snapshot(abast)
     abast.status = "CANCELADO"
@@ -501,7 +559,12 @@ async def cancelar(
         justificativa=body.justificativa,
     )
     await db.commit()
-    return {"ok": True, "id": str(abast.id), "mensagem": "Abastecimento cancelado e estoque estornado."}
+    mensagem = (
+        "Abastecimento cancelado e estoque estornado."
+        if abast.tanque_id is not None
+        else "Abastecimento cancelado."
+    )
+    return {"ok": True, "id": str(abast.id), "mensagem": mensagem}
 
 
 @router.post("/{abastecimento_id}/corrigir", response_model=AbastecimentoResponse)
@@ -511,9 +574,11 @@ async def corrigir(
     user: User = Depends(require_permission(Perm.REFUELING_MANAGE)),
     db: AsyncSession = Depends(get_db),
 ):
-    """Corrige litros/km de um abastecimento confirmado — mantém rastreabilidade.
+    """Corrige litros/km/horímetro e, no posto, preço e nota fiscal — mantém
+    rastreabilidade.
 
-    Ajusta a diferença de litros no estoque (nova movimentação auditável).
+    Tanque próprio: ajusta a diferença de litros no estoque (nova movimentação
+    auditável). O custo total é sempre recalculado com os valores corrigidos.
     """
     abast = await _get_abastecimento(db, user, abastecimento_id)
     if abast.status != "CONFIRMADO":
@@ -525,6 +590,8 @@ async def corrigir(
 
     # Diferença de estoque decorrente da correção de litros
     diferenca = novo_litros - Decimal(abast.quantidade_litros)
+    if abast.tanque_id is None:
+        diferenca = Decimal("0")
     if diferenca > 0:
         try:
             await aplicar_movimentacao(
@@ -565,6 +632,29 @@ async def corrigir(
     veiculo = await db.get(Veiculo, abast.veiculo_id)
     if veiculo and veiculo.organization_id == user.organization_id and novo_km > veiculo.quilometragem_atual:
         veiculo.quilometragem_atual = novo_km
+    if body.horimetro is not None:
+        abast.horimetro = body.horimetro
+        if veiculo and veiculo.organization_id == user.organization_id and body.horimetro > Decimal(
+            veiculo.horimetro_atual or 0
+        ):
+            veiculo.horimetro_atual = body.horimetro
+
+    # Posto credenciado: preço e NF vindos da nota fiscal.
+    if abast.modalidade == "POSTO_CREDENCIADO":
+        if body.preco_litro is not None:
+            abast.preco_litro = body.preco_litro
+            abast.custo_medio_litro = body.preco_litro
+        if body.numero_nf is not None:
+            abast.numero_nf = body.numero_nf or None
+        if body.chave_nfe is not None:
+            abast.chave_nfe = body.chave_nfe or None
+    elif any(v is not None for v in (body.preco_litro, body.numero_nf, body.chave_nfe)):
+        raise HTTPException(
+            status_code=422,
+            detail="Preço e nota fiscal só se aplicam a abastecimento em posto credenciado.",
+        )
+    if abast.custo_medio_litro is not None:
+        abast.custo_total = (Decimal(abast.custo_medio_litro) * novo_litros).quantize(Decimal("0.01"))
 
     novos = _snapshot(abast)
     db.add(

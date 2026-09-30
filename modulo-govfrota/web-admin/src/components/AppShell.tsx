@@ -20,23 +20,30 @@ import {
   Bell,
   ShieldCheck,
   HelpCircle,
+  Landmark,
+  Receipt,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { api } from "@/lib/api";
 
-const NAV_ITEMS = [
+// `todas`: telas com dados da organização inteira — ocultas para quem só vê
+// as próprias secretarias (o backend também as bloqueia).
+const NAV_ITEMS: { href: string; label: string; icon: typeof Truck; perm: string; todas?: boolean }[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, perm: "vehicle.view" },
+  { href: "/minha-secretaria", label: "Minha Secretaria", icon: Landmark, perm: "refueling.view" },
   { href: "/veiculos", label: "Veículos", icon: Truck, perm: "vehicle.view" },
-  { href: "/motoristas", label: "Motoristas", icon: Users, perm: "driver.manage" },
+  { href: "/motoristas", label: "Motoristas", icon: Users, perm: "driver.manage", todas: true },
   { href: "/abastecimentos", label: "Abastecimentos", icon: Fuel, perm: "refueling.view" },
-  { href: "/tanques", label: "Combustíveis", icon: Fuel, perm: "refueling.view" },
+  { href: "/notas-fiscais", label: "Faturamento", icon: Receipt, perm: "refueling.view" },
+  { href: "/tanques", label: "Combustíveis", icon: Fuel, perm: "refueling.view", todas: true },
   { href: "/manutencoes", label: "Manutenções", icon: Wrench, perm: "maintenance.view" },
   { href: "/ocorrencias", label: "Ocorrências", icon: AlertTriangle, perm: "vehicle.view" },
-  { href: "/oficinas", label: "Oficinas", icon: Building2, perm: "maintenance.view" },
+  { href: "/fornecedores", label: "Fornecedores", icon: Building2, perm: "vehicle.view", todas: true },
   { href: "/relatorios", label: "Relatórios", icon: BarChart3, perm: "reports.view" },
-  { href: "/busca", label: "Pesquisa", icon: Search, perm: "vehicle.view" },
+  { href: "/busca", label: "Pesquisa", icon: Search, perm: "vehicle.view", todas: true },
   { href: "/notificacoes", label: "Alertas", icon: Bell, perm: "vehicle.view" },
-  { href: "/auditoria", label: "Auditoria", icon: ShieldCheck, perm: "audit.view" },
-  { href: "/configuracoes", label: "Configurações", icon: Settings, perm: "config.manage" },
+  { href: "/auditoria", label: "Auditoria", icon: ShieldCheck, perm: "audit.view", todas: true },
+  { href: "/configuracoes", label: "Configurações", icon: Settings, perm: "config.manage", todas: true },
 ];
 
 const PAPEIS: Record<string, string> = {
@@ -55,7 +62,7 @@ const NAV_CLASSE = {
 };
 
 export function AppShell({ children }: { children: React.ReactNode }) {
-  const { user, loading, logout, hasPermission } = useAuth();
+  const { user, loading, logout, hasPermission, restrito } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
   const [menuAberto, setMenuAberto] = useState(false);
@@ -76,8 +83,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   if (!user) return null;
 
-  const itensVisiveis = NAV_ITEMS.filter((item) => hasPermission(item.perm));
-  const primeiroPapel = user.roles?.[0];
+  const itensVisiveis = NAV_ITEMS.filter((item) => hasPermission(item.perm) && !(restrito && item.todas));
+  const primeiroPapel = user.perfis?.[0] ?? user.roles?.[0];
   const papel = primeiroPapel ? PAPEIS[primeiroPapel.name] || primeiroPapel.label || null : null;
 
   const SidebarContent = () => (
@@ -158,11 +165,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <span className="text-lg font-bold text-[#1D5BD6]">GovFrota</span>
           </div>
           <div className="flex items-center gap-4 text-[#424750]">
-            <button className="rounded-full p-2 transition-colors hover:bg-[#EFF4FF]" aria-label="Alertas">
-              <Bell size={20} />
-            </button>
+            <SinoAlertas pathname={pathname} />
             <div className="ml-2 flex items-center gap-3 border-l border-[#C3C6D1]/30 pl-4">
-              <span className="text-sm font-medium text-[#181C22]">{user.name || user.email}</span>
+              <div className="text-right leading-tight">
+                <span className="block text-sm font-medium text-[#181C22]">{user.name || user.email}</span>
+                {restrito && (
+                  <span className="block text-xs text-[#737781]">
+                    {user.secretarias!.length
+                      ? user.secretarias!.map((s) => s.sigla || s.nome).join(", ")
+                      : "Nenhuma secretaria vinculada"}
+                  </span>
+                )}
+              </div>
               <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#E3ECFF] text-[#424750]">
                 <Users size={20} />
               </div>
@@ -173,5 +187,40 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         <main className="flex-1 overflow-y-auto p-8">{children}</main>
       </div>
     </div>
+  );
+}
+
+/** Sino do topo: leva aos alertas e mostra quantos pedem atenção. */
+function SinoAlertas({ pathname }: { pathname: string }) {
+  const [total, setTotal] = useState(0);
+
+  useEffect(() => {
+    let cancelado = false;
+    api
+      .alertas()
+      .then((r) => {
+        if (cancelado) return;
+        const graves = r.itens.filter((a) => a.severidade === "CRITICO" || a.severidade === "ALERTA").length;
+        setTotal(graves + r.notificacoes_nao_lidas);
+      })
+      .catch(() => {});
+    return () => {
+      cancelado = true;
+    };
+  }, [pathname]);
+
+  return (
+    <Link
+      href="/notificacoes"
+      className="relative rounded-full p-2 transition-colors hover:bg-[#EFF4FF]"
+      aria-label={total ? `Alertas: ${total} pedindo atenção` : "Alertas"}
+    >
+      <Bell size={20} />
+      {total > 0 && (
+        <span className="absolute -right-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-[#BA1A1A] px-1 text-[10px] font-bold text-white">
+          {total > 99 ? "99+" : total}
+        </span>
+      )}
+    </Link>
   );
 }

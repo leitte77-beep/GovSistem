@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { Eye, EyeOff, Truck } from "lucide-react";
@@ -12,9 +12,13 @@ export default function LoginMotoristaPage() {
   const [pin, setPin] = useState("");
   const [mostrarPin, setMostrarPin] = useState(false);
   const [carregando, setCarregando] = useState(false);
-  const [sessaoExpirada] = useState(
-    () => typeof window !== "undefined" && new URLSearchParams(window.location.search).get("expirado") === "1"
-  );
+  // Lido só depois de montar: no servidor não há window, e decidir no
+  // primeiro render faria o HTML divergir da hidratação (React #418).
+  const [sessaoExpirada, setSessaoExpirada] = useState(false);
+
+  useEffect(() => {
+    setSessaoExpirada(new URLSearchParams(window.location.search).get("expirado") === "1");
+  }, []);
 
   async function entrar(e: React.FormEvent) {
     e.preventDefault();

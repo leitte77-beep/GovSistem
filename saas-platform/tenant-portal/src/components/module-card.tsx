@@ -18,7 +18,9 @@ import {
   Gavel,
   AlertTriangle,
   Sparkles,
+  Truck,
 } from "lucide-react";
+import { MODULE_NEWS } from "@/lib/novidades";
 
 const MODULE_VISUALS: Record<string, { icon: React.ElementType; gradient: string }> = {
   diario: { icon: FileText, gradient: "from-[#001631] to-[#5392ef]" },
@@ -30,9 +32,9 @@ const MODULE_VISUALS: Record<string, { icon: React.ElementType; gradient: string
   govdoc: { icon: FolderOpen, gradient: "from-[#312e81] to-[#818cf8]" },
   govouve: { icon: Megaphone, gradient: "from-[#0b3b5c] to-[#38bdf8]" },
   govpro: { icon: Gavel, gradient: "from-[#3f2d13] to-[#f59e0b]" },
+  govfrota: { icon: Truck, gradient: "from-[#7c2d12] to-[#fb923c]" },
 };
 
-const NEWS_MODULES = new Set(["chatgov", "govsocial", "diario"]);
 
 interface ModuleCardProps {
   slug: string;
@@ -68,7 +70,7 @@ export default function ModuleCard({
   const visual = moduleVisual(slug);
   const Icon = visual.icon;
   const blocked = disabled || !is_active || !authorized;
-  const hasNews = NEWS_MODULES.has(slug);
+  const hasNews = slug in MODULE_NEWS;
   const router = useRouter();
 
   return (

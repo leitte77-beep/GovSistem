@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from sqlalchemy import func as sa_func
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -24,7 +25,7 @@ from app.core.security import create_driver_token, verify_secret
 from app.models.abastecimento import Abastecimento
 from app.models.motorista import AcessoMotorista, Motorista
 from app.models.ocorrencia import Ocorrencia
-from app.models.veiculo import Veiculo
+from app.models.veiculo import Veiculo, VeiculoTanque
 from app.schemas.schemas import (
     AbastecimentoResponse,
     LoginMotoristaRequest,
@@ -162,6 +163,7 @@ async def me(
         "organization_name": org.name if org else None,
         "foto_bomba_obrigatoria": config.foto_bomba_obrigatoria,
         "foto_km_obrigatoria": config.foto_km_obrigatoria,
+        "exigir_tanque_cheio": config.exigir_tanque_cheio,
     }
 
 
@@ -177,7 +179,6 @@ async def veiculos_disponiveis(
     auxiliares, ex.: Diesel e ARLA 32) com a capacidade de cada reservatório.
     """
     from app.models.combustivel import Combustivel
-    from app.models.veiculo import VeiculoTanque
 
     stmt = select(Veiculo).where(
         Veiculo.organization_id == motorista.organization_id,
@@ -192,69 +193,49 @@ async def veiculos_disponiveis(
     stmt = stmt.order_by(Veiculo.placa).limit(50)
     veiculos = (await db.execute(stmt)).scalars().all()
 
-    # Nomes dos combustíveis — evita N+1.
-    combustiveis = {}
-    ids = {
-        v.combustivel_principal_id
-        for v in veiculos
-        if v.combustivel_principal_id is not None
-    } | {
-        v.combustivel_secundario_id
-        for v in veiculos
-        if v.combustivel_secundario_id is not None
-    }
-    if ids:
-        comb_result = await db.execute(
-            select(Combustivel).where(Combustivel.id.in_(ids))
-        )
-        combustiveis = {c.id: c.nome for c in comb_result.scalars().all()}
-
-    # Reservatórios estruturados do veículo (principal + auxiliares).
-    tanques_veic = {}
+    # Reservatórios do veículo (principal + auxiliares) — única fonte dos
+    # produtos aceitos. Carregados em lote para evitar N+1.
+    tanques_veic: dict = {}
+    combustiveis: dict = {}
     if veiculos:
-        ids_veic = [v.id for v in veiculos]
         rows = (
             await db.execute(
                 select(VeiculoTanque).where(
                     VeiculoTanque.organization_id == motorista.organization_id,
-                    VeiculoTanque.veiculo_id.in_(ids_veic),
+                    VeiculoTanque.veiculo_id.in_([v.id for v in veiculos]),
                     VeiculoTanque.deleted_at.is_(None),
+                    VeiculoTanque.ativo.is_(True),
                 )
             )
         ).scalars().all()
         for t in rows:
             tanques_veic.setdefault(t.veiculo_id, []).append(t)
-        aux_ids = {t.combustivel_id for tanks in tanques_veic.values() for t in tanks}
-        if aux_ids:
-            aux = (
-                await db.execute(select(Combustivel).where(Combustivel.id.in_(aux_ids)))
-            ).scalars().all()
-            combustiveis.update({c.id: c.nome for c in aux})
+        ids = {c for t in rows for c in (t.combustivel_id, t.combustivel_alternativo_id) if c}
+        if ids:
+            combustiveis = {
+                c.id: c.nome
+                for c in (
+                    await db.execute(select(Combustivel).where(Combustivel.id.in_(ids)))
+                ).scalars().all()
+            }
 
     resposta = []
     for v in veiculos:
-        produtos = [
-            {
-                "combustivel_id": v.combustivel_principal_id,
-                "nome": combustiveis.get(v.combustivel_principal_id),
-                "tank_type": "PRIMARY",
-                "capacidade": v.capacidade_tanque_litros,
-            }
-        ] if v.combustivel_principal_id else []
-        produtos += [
-            {
-                "combustivel_id": t.combustivel_id,
-                "nome": combustiveis.get(t.combustivel_id),
-                "tank_type": t.tank_type,
-                "capacidade": t.capacidade,
-            }
-            for t in tanques_veic.get(v.id, [])
-        ]
-        # Deduplica produtos (ex.: principal também aparece como reservatório PRIMARY).
+        tanques = sorted(tanques_veic.get(v.id, []), key=lambda t: t.tank_type != "PRIMARY")
+        principal = next((t for t in tanques if t.tank_type == "PRIMARY"), None)
         unicos: dict = {}
-        for p in produtos:
-            if p["combustivel_id"] is not None and p["nome"]:
-                unicos.setdefault(p["combustivel_id"], p)
+        for t in tanques:
+            for cid in (t.combustivel_id, t.combustivel_alternativo_id):
+                if cid is not None and combustiveis.get(cid):
+                    unicos.setdefault(
+                        cid,
+                        {
+                            "combustivel_id": cid,
+                            "nome": combustiveis[cid],
+                            "tank_type": t.tank_type,
+                            "capacidade": t.capacidade if t.capacidade and t.capacidade > 0 else None,
+                        },
+                    )
         resposta.append(
             VeiculoAppResponse(
                 id=v.id,
@@ -263,10 +244,8 @@ async def veiculos_disponiveis(
                 marca=v.marca,
                 foto_url=v.foto_url,
                 usa_horimetro=v.usa_horimetro,
-                combustivel_principal_id=v.combustivel_principal_id,
-                combustivel_principal_nome=combustiveis.get(v.combustivel_principal_id),
-                combustivel_secundario_id=v.combustivel_secundario_id,
-                combustivel_secundario_nome=combustiveis.get(v.combustivel_secundario_id),
+                combustivel_principal_id=principal.combustivel_id if principal else None,
+                combustivel_principal_nome=combustiveis.get(principal.combustivel_id) if principal else None,
                 quilometragem_atual=v.quilometragem_atual,
                 horimetro_atual=v.horimetro_atual,
                 combustiveis=list(unicos.values()),
@@ -275,21 +254,61 @@ async def veiculos_disponiveis(
     return resposta
 
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field  # noqa: E402
 
 
 class AbastecimentoAppCreate(BaseModel):
     veiculo_id: uuid.UUID
+    # Onde abasteceu: tanque próprio OU posto credenciado. Se nenhum vier e
+    # só houver uma opção compatível, o backend escolhe.
     tanque_id: uuid.UUID | None = None
+    fornecedor_id: uuid.UUID | None = None
+    # Ignorado: o preço vem do contrato do posto. Mantido para a fila offline
+    # de versões antigas do app não ser recusada.
+    preco_litro: Decimal | None = None
+    numero_nf: str | None = Field(default=None, max_length=50)
     quantidade_litros: Decimal = Field(gt=0)
-    quilometragem: int = Field(ge=0)
+    quilometragem: int = Field(default=0, ge=0)
     combustivel_id: uuid.UUID | None = None
-    horimetro: Decimal | None = None
+    horimetro: Decimal | None = Field(default=None, ge=0)
     completou_tanque: bool | None = None
     observacoes: str | None = None
     foto_bomba_url: str | None = None
     foto_painel_url: str | None = None
     idempotency_key: str | None = Field(default=None, max_length=64)
+    # Momento em que o motorista registrou no celular — difere do envio quando
+    # o abastecimento foi feito sem internet e sincronizado depois.
+    data_abastecimento: datetime | None = None
+
+
+async def _tanques_proprios(db: AsyncSession, org: uuid.UUID, combustivel_id: uuid.UUID | None = None):
+    from app.models.combustivel import Tanque
+
+    stmt = select(Tanque).where(
+        Tanque.organization_id == org,
+        Tanque.deleted_at.is_(None),
+        Tanque.ativo.is_(True),
+    )
+    if combustivel_id is not None:
+        stmt = stmt.where(Tanque.combustivel_id == combustivel_id)
+    return (await db.execute(stmt.order_by(Tanque.nome))).scalars().all()
+
+
+async def _postos_credenciados(db: AsyncSession, org: uuid.UUID):
+    from app.models.combustivel import Fornecedor
+
+    return (
+        await db.execute(
+            select(Fornecedor)
+            .where(
+                Fornecedor.organization_id == org,
+                Fornecedor.deleted_at.is_(None),
+                Fornecedor.ativo.is_(True),
+                Fornecedor.posto_credenciado.is_(True),
+            )
+            .order_by(Fornecedor.nome_fantasia, Fornecedor.razao_social)
+        )
+    ).scalars().all()
 
 
 @router.get("/motorista/tanques")
@@ -298,23 +317,82 @@ async def listar_tanques(
     db: AsyncSession = Depends(get_db),
 ):
     """Tanques ativos da organização — para seleção no app quando houver mais de um."""
-    from app.models.combustivel import Tanque
-
-    result = await db.execute(
-        select(Tanque).where(
-            Tanque.organization_id == motorista.organization_id,
-            Tanque.deleted_at.is_(None),
-            Tanque.ativo.is_(True),
-        )
-    )
     return [
-        {
-            "id": str(t.id),
-            "nome": t.nome,
-            "combustivel_id": str(t.combustivel_id),
-        }
-        for t in result.scalars().all()
+        {"id": str(t.id), "nome": t.nome, "combustivel_id": str(t.combustivel_id)}
+        for t in await _tanques_proprios(db, motorista.organization_id)
     ]
+
+
+@router.get("/motorista/locais")
+async def listar_locais(
+    motorista: Motorista = Depends(get_current_motorista),
+    db: AsyncSession = Depends(get_db),
+):
+    """Onde o motorista pode abastecer: tanques próprios e postos credenciados.
+
+    Cada posto traz o preço contratado por combustível — só para exibição; o
+    backend aplica o preço do contrato no registro.
+    """
+    from app.core.timezone import now_local
+    from app.models.combustivel import Combustivel
+    from app.services.contrato_posto import contrato_vigente
+
+    org = motorista.organization_id
+    hoje = now_local().date()
+    combustiveis = [
+        c.id
+        for c in (
+            await db.execute(
+                select(Combustivel).where(
+                    Combustivel.organization_id == org, Combustivel.deleted_at.is_(None)
+                )
+            )
+        ).scalars().all()
+    ]
+    postos = []
+    for f in await _postos_credenciados(db, org):
+        precos = []
+        for cid in combustiveis:
+            contrato = await contrato_vigente(db, org, f.id, cid, hoje)
+            if contrato is not None:
+                precos.append({"combustivel_id": str(cid), "preco_litro": float(contrato.preco_litro)})
+        postos.append(
+            {
+                "id": str(f.id),
+                "nome": f.nome_fantasia or f.razao_social,
+                "endereco": ", ".join(x for x in (f.logradouro, f.numero, f.bairro) if x) or f.endereco,
+                "precos": precos,
+            }
+        )
+    return {
+        "tanques": [
+            {"id": str(t.id), "nome": t.nome, "combustivel_id": str(t.combustivel_id)}
+            for t in await _tanques_proprios(db, org)
+        ],
+        "postos": postos,
+    }
+
+
+def _data_informada(valor: datetime | None) -> datetime:
+    """Data do registro no celular, limitada a uma janela plausível."""
+    from datetime import timedelta
+
+    agora = datetime.now(timezone.utc)
+    if valor is None:
+        return agora
+    if valor.tzinfo is None:
+        valor = valor.replace(tzinfo=timezone.utc)
+    if valor > agora + timedelta(minutes=10):
+        raise HTTPException(status_code=422, detail="Data do abastecimento no futuro. Confira o relógio do celular.")
+    if valor < agora - timedelta(hours=settings.OFFLINE_MAX_HORAS):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                f"Abastecimento registrado há mais de {settings.OFFLINE_MAX_HORAS} horas. "
+                "Peça ao setor de frota para lançar pelo painel."
+            ),
+        )
+    return valor
 
 
 @router.post("/motorista/abastecimentos", response_model=AbastecimentoResponse, status_code=201)
@@ -327,13 +405,15 @@ async def novo_abastecimento(
     """Fluxo de abastecimento do motorista (§18-§19).
 
     Combustível é inferido do veículo quando ele possui apenas um compatível;
-    caso contrário deve ser informado pelo app.
+    caso contrário deve ser informado pelo app. O local (tanque próprio ou posto
+    credenciado) é escolhido automaticamente quando só existe uma opção.
     """
+    org = motorista.organization_id
     veiculo = (
         await db.execute(
             select(Veiculo).where(
                 Veiculo.id == body.veiculo_id,
-                Veiculo.organization_id == motorista.organization_id,
+                Veiculo.organization_id == org,
                 Veiculo.deleted_at.is_(None),
             )
         )
@@ -341,54 +421,48 @@ async def novo_abastecimento(
     if veiculo is None:
         raise HTTPException(status_code=404, detail="Veículo não encontrado.")
 
-    combustivel_id = body.combustivel_id or veiculo.combustivel_principal_id
+    combustivel_id = body.combustivel_id
     if combustivel_id is None:
-        raise HTTPException(
-            status_code=422,
-            detail="Selecione o combustível utilizado.",
-        )
-
-    # Tanque: auto-seleção quando existe apenas um compatível (§18, passo 3)
-    tanque_id = body.tanque_id
-    if tanque_id is None:
-        from app.models.combustivel import Tanque
-
-        compatíveis = (
+        principal = (
             await db.execute(
-                select(Tanque).where(
-                    Tanque.organization_id == motorista.organization_id,
-                    Tanque.deleted_at.is_(None),
-                    Tanque.ativo.is_(True),
-                    Tanque.combustivel_id == combustivel_id,
+                select(VeiculoTanque).where(
+                    VeiculoTanque.veiculo_id == veiculo.id,
+                    VeiculoTanque.tank_type == "PRIMARY",
+                    VeiculoTanque.deleted_at.is_(None),
                 )
             )
-        ).scalars().all()
-        if len(compatíveis) == 1:
-            tanque_id = compatíveis[0].id
-        elif len(compatíveis) == 0:
+        ).scalars().first()
+        combustivel_id = principal.combustivel_id if principal else None
+    if combustivel_id is None:
+        raise HTTPException(status_code=422, detail="Selecione o combustível utilizado.")
+
+    data_abastecimento = _data_informada(body.data_abastecimento)
+
+    # Idempotência antes de tudo: um reenvio (ex.: fila offline) devolve o que
+    # já foi gravado, mesmo que o cenário tenha mudado desde então.
+    if body.idempotency_key:
+        existente = await find_abastecimento_by_idempotency(db, org, body.idempotency_key)
+        if existente:
+            return existente
+
+    # Local do abastecimento
+    tanque_id = body.tanque_id
+    fornecedor_id = body.fornecedor_id
+    if fornecedor_id is None and tanque_id is None:
+        tanques = await _tanques_proprios(db, org, combustivel_id)
+        postos = await _postos_credenciados(db, org)
+        if len(tanques) + len(postos) == 1:
+            tanque_id = tanques[0].id if tanques else None
+            fornecedor_id = postos[0].id if postos else None
+        elif not tanques and not postos:
             raise HTTPException(
                 status_code=422,
-                detail="Nenhum tanque disponível para este combustível.",
+                detail="Nenhum tanque ou posto credenciado disponível para este combustível.",
             )
         else:
-            raise HTTPException(
-                status_code=422,
-                detail="Selecione o tanque de origem do abastecimento.",
-            )
-    else:
-        # Tanque informado pelo app: valida tenant + estado + combustível.
-        from app.models.combustivel import Tanque
-
-        tanque = (
-            await db.execute(
-                select(Tanque).where(
-                    Tanque.id == tanque_id,
-                    Tanque.organization_id == motorista.organization_id,
-                    Tanque.deleted_at.is_(None),
-                    Tanque.ativo.is_(True),
-                )
-            )
-        ).scalar_one_or_none()
+            raise HTTPException(status_code=422, detail="Selecione onde foi feito o abastecimento.")
+    elif tanque_id is not None and fornecedor_id is None:
+        tanque = next((t for t in await _tanques_proprios(db, org) if t.id == tanque_id), None)
         if tanque is None:
             raise HTTPException(status_code=404, detail="Tanque não encontrado.")
         if tanque.combustivel_id != combustivel_id:
@@ -396,8 +470,11 @@ async def novo_abastecimento(
                 status_code=422,
                 detail="Combustível incompatível com o tanque selecionado.",
             )
+    elif tanque_id is not None and fornecedor_id is not None:
+        raise HTTPException(status_code=422, detail="Informe o tanque OU o posto, não os dois.")
+    modalidade = "POSTO_CREDENCIADO" if fornecedor_id else "TANQUE_PROPRIO"
 
-    config = await get_configuracoes(db, motorista.organization_id)
+    config = await get_configuracoes(db, org)
 
     # Fotos obrigatórias conforme configuração da organização
     if config.foto_bomba_obrigatoria and not body.foto_bomba_url:
@@ -407,25 +484,23 @@ async def novo_abastecimento(
 
     await validar_motorista_habilitado(motorista, config)
 
-    # Idempotência: reenvio seguro (duplo toque/instabilidade de rede).
-    if body.idempotency_key:
-        existente = await find_abastecimento_by_idempotency(
-            db, motorista.organization_id, body.idempotency_key
-        )
-        if existente:
-            return existente
-
     info = get_client_info(request)
     try:
         abastecimento, avisos = await registrar_abastecimento(
             db,
-            organization_id=motorista.organization_id,
+            organization_id=org,
             veiculo=veiculo,
+            modalidade=modalidade,
             tanque_id=tanque_id,
+            fornecedor_id=fornecedor_id,
+            # Preço vem do contrato do posto; o app não informa valor.
+            preco_litro=None,
+            numero_nf=body.numero_nf,
             combustivel_id=combustivel_id,
             quantidade_litros=Decimal(body.quantidade_litros),
             quilometragem=body.quilometragem,
-            data_abastecimento=datetime.now(timezone.utc),
+            horimetro=body.horimetro,
+            data_abastecimento=data_abastecimento,
             motorista_id=motorista.id,
             origem="APP_MOTORISTA",
             completou_tanque=body.completou_tanque,
@@ -446,9 +521,7 @@ async def novo_abastecimento(
 
         if isinstance(exc, IntegrityError) and body.idempotency_key:
             await db.rollback()
-            existente = await find_abastecimento_by_idempotency(
-                db, motorista.organization_id, body.idempotency_key
-            )
+            existente = await find_abastecimento_by_idempotency(db, org, body.idempotency_key)
             if existente:
                 return existente
             raise HTTPException(
@@ -467,7 +540,7 @@ async def meus_abastecimentos(
     db: AsyncSession = Depends(get_db),
 ):
     """Últimos abastecimentos do próprio motorista (com placa/modelo/combustível)."""
-    from app.models.combustivel import Combustivel, Tanque
+    from app.models.combustivel import Combustivel, Fornecedor, Tanque
 
     result = await db.execute(
         select(
@@ -476,9 +549,12 @@ async def meus_abastecimentos(
             Veiculo.modelo,
             Veiculo.marca,
             Combustivel.nome,
+            Tanque.nome,
+            sa_func.coalesce(Fornecedor.nome_fantasia, Fornecedor.razao_social),
         )
         .join(Veiculo, Veiculo.id == Abastecimento.veiculo_id)
         .join(Tanque, Tanque.id == Abastecimento.tanque_id, isouter=True)
+        .outerjoin(Fornecedor, Fornecedor.id == Abastecimento.fornecedor_id)
         .outerjoin(Combustivel, Combustivel.id == Abastecimento.combustivel_id)
         .where(
             Abastecimento.organization_id == motorista.organization_id,
@@ -488,7 +564,7 @@ async def meus_abastecimentos(
         .limit(10)
     )
     itens = []
-    for a, placa, modelo, marca, combustivel in result.all():
+    for a, placa, modelo, marca, combustivel, tanque, posto in result.all():
         itens.append(
             {
                 "id": str(a.id),
@@ -500,6 +576,8 @@ async def meus_abastecimentos(
                 "combustivel": combustivel,
                 "litros": float(a.quantidade_litros),
                 "km": a.quilometragem,
+                "horimetro": float(a.horimetro) if a.horimetro is not None else None,
+                "local": posto or tanque,
             }
         )
     return itens

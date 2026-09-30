@@ -42,7 +42,8 @@ function CartaoPedido({
   const { eu } = useSessao();
   const valor = Number(pedido.valor_previsto) > 0 ? moeda(pedido.valor_previsto) : null;
   const fechado = FECHADOS.includes(pedido.situacao);
-  const podeAssumir = !pedido.responsavel_atual && !fechado && eu?.pode_trabalhar;
+  const podeAssumir =
+    !pedido.somente_leitura && !pedido.responsavel_atual && !fechado && pedido.situacao === "EM_SETOR" && eu?.pode_trabalhar;
   const tom = PONTO[pedido.situacao] ?? PONTO.CANCELADO;
 
   return (
@@ -119,11 +120,17 @@ function CartaoPedido({
 
         <div className="flex flex-col gap-3 border-t border-line pt-3 sm:flex-row sm:items-center sm:justify-between">
           <p className="min-w-0 text-xs text-ink-muted">
-            <span className="font-bold text-ink-soft">Próxima ação: </span>
-            <span className="inline-flex max-w-full items-center gap-1.5 truncate rounded border border-brand-200/60 bg-brand-50 px-2 py-0.5 font-medium text-brand-700">
-              <ScrollText size={12} aria-hidden />
-              {pedido.proxima_acao || pedido.tarefa_atual || "—"}
-            </span>
+            {pedido.somente_leitura ? (
+              <span className="font-medium text-ink-soft">Só acompanhamento: já passou pelo seu setor.</span>
+            ) : (
+              <>
+                <span className="font-bold text-ink-soft">Próxima ação: </span>
+                <span className="inline-flex max-w-full items-center gap-1.5 truncate rounded border border-brand-200/60 bg-brand-50 px-2 py-0.5 font-medium text-brand-700">
+                  <ScrollText size={12} aria-hidden />
+                  {pedido.proxima_acao || pedido.tarefa_atual || "—"}
+                </span>
+              </>
+            )}
           </p>
           <div className="flex shrink-0 items-center gap-2">
             <Link href={`/pedidos/${pedido.id}`} className="botao-secundario text-xs">

@@ -269,7 +269,7 @@ async def painel_prefeito(
     return PainelPrefeito(
         dias_alerta_parado=limite,
         kpis=kpis,
-        parados=paineis.ordenar_parados(abertos),
+        parados=paineis.parados_com_trilha(abertos, nomes),
         gargalos=await paineis.gargalos(db, org, abertos, limite, nomes),
         por_tipo=por_tipo,
         por_origem=por_origem,

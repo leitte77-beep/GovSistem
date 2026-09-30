@@ -11,7 +11,12 @@ export const metadata: Metadata = {
     title: "GovFrota Motorista",
   },
   icons: {
+    icon: "/icon-192.png",
     apple: "/apple-touch-icon.png",
+  },
+  // O Chrome considera obsoleta a meta só da Apple (appleWebApp.capable).
+  other: {
+    "mobile-web-app-capable": "yes",
   },
 };
 

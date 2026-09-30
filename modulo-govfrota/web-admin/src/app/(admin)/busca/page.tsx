@@ -25,7 +25,11 @@ export default function BuscaPage() {
   }, [q]);
 
   const total = resultado
-    ? resultado.veiculos.length + resultado.motoristas.length + resultado.fornecedores.length + resultado.oficinas.length
+    ? resultado.veiculos.length +
+      resultado.motoristas.length +
+      resultado.fornecedores.length +
+      (resultado.entradas?.length ?? 0) +
+      (resultado.abastecimentos?.length ?? 0)
     : 0;
 
   return (
@@ -36,7 +40,7 @@ export default function BuscaPage() {
           <Search size={18} className="absolute left-3 top-2.5 text-text-subtle" />
           <input
             autoFocus
-            placeholder="Buscar por placa, veículo, motorista, fornecedor, oficina, nota…"
+            placeholder="Buscar por placa, veículo, motorista, fornecedor, oficina, nº da nota…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             className="w-full rounded-btn border border-surface-border bg-white py-2 pl-10 pr-3 text-body-sm"
@@ -82,18 +86,37 @@ export default function BuscaPage() {
                 <h2 className="mb-2 text-label font-semibold text-text-title">Fornecedores ({resultado.fornecedores.length})</h2>
                 <ul className="divide-y divide-surface-border rounded-card border border-surface-border bg-white">
                   {resultado.fornecedores.map((f) => (
-                    <li key={f.id} className="px-4 py-3 text-body-sm">{f.nome}</li>
+                    <li key={f.id} className="px-4 py-3 text-body-sm">
+                      <Link href={`/fornecedores/${f.id}`} className="font-medium text-[#1D4ED8] hover:underline">{f.nome}</Link>
+                    </li>
                   ))}
                 </ul>
               </section>
             )}
 
-            {resultado.oficinas.length > 0 && (
+            {(resultado.abastecimentos?.length ?? 0) > 0 && (
               <section>
-                <h2 className="mb-2 text-label font-semibold text-text-title">Oficinas ({resultado.oficinas.length})</h2>
+                <h2 className="mb-2 text-label font-semibold text-text-title">Abastecimentos em posto ({resultado.abastecimentos!.length})</h2>
                 <ul className="divide-y divide-surface-border rounded-card border border-surface-border bg-white">
-                  {resultado.oficinas.map((o) => (
-                    <li key={o.id} className="px-4 py-3 text-body-sm">{o.nome}</li>
+                  {resultado.abastecimentos!.map((a) => (
+                    <li key={a.id} className="px-4 py-3 text-body-sm">
+                      <Link href={`/abastecimentos/${a.id}`} className="font-medium text-[#1D4ED8] hover:underline">NF {a.numero_nf || "—"}</Link>
+                      <span className="text-meta text-text-subtle"> · {a.placa} · {a.litros.toLocaleString("pt-BR")} L</span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            )}
+
+            {(resultado.entradas?.length ?? 0) > 0 && (
+              <section>
+                <h2 className="mb-2 text-label font-semibold text-text-title">Entradas de combustível ({resultado.entradas!.length})</h2>
+                <ul className="divide-y divide-surface-border rounded-card border border-surface-border bg-white">
+                  {resultado.entradas!.map((e) => (
+                    <li key={e.id} className="px-4 py-3 text-body-sm">
+                      NF {e.numero_nota || "—"}
+                      <span className="text-meta text-text-subtle"> · {e.litros.toLocaleString("pt-BR")} L</span>
+                    </li>
                   ))}
                 </ul>
               </section>

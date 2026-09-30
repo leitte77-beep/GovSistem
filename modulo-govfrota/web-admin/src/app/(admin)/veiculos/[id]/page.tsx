@@ -194,9 +194,8 @@ export default function DetalheVeiculoPage() {
             <div className="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-body-sm tabular-nums text-text-subtle">
               <span>{veiculo.usa_horimetro ? formatarHorimetro(veiculo.horimetro_atual) : formatarKm(veiculo.quilometragem_atual)}</span>
               <span className="inline-flex items-center gap-1"><Fuel size={14} /> {combustivelPrincipal?.nome ?? "—"}</span>
-              {veiculo.unidade && <span>{veiculo.unidade}</span>}
+              {veiculo.unidade_nome && <span>{veiculo.unidade_nome}</span>}
               {veiculo.departamento && <span>{veiculo.departamento}</span>}
-              {veiculo.centro_custo && <span>CC: {veiculo.centro_custo}</span>}
             </div>
           </div>
           <div className="flex flex-wrap gap-2">

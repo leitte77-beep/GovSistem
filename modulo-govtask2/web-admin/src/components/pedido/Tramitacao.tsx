@@ -416,7 +416,7 @@ function CartaoTarefa({
               </div>
             )}
 
-            <Conversa pedido={pedido} enc={enc} eu={eu} usuarios={usuarios} ativa={ativo} aoAtualizar={aoAtualizar} />
+            <Conversa pedido={pedido} enc={enc} eu={eu} usuarios={usuarios} ativa={ativo && !pedido.somente_leitura} aoAtualizar={aoAtualizar} />
 
             {executando && (
               <RespostaDoSetor pedido={pedido} enc={enc} aoAtualizar={aoAtualizar} aoPerguntar={() => abrirModal("complemento")} />

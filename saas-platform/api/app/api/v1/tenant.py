@@ -6,13 +6,14 @@ no backend. Rotas de gestor exigem require_tenant_manager.
 """
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, EmailStr, field_validator
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, func, literal_column, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_client_info
@@ -256,6 +257,73 @@ async def tenant_modules(
 # ---------------------------------------------------------------------------
 # GET /tenant/dashboard — indicadores do gestor
 # ---------------------------------------------------------------------------
+# Ruído técnico que não entra nos feeds (continua na auditoria completa).
+_FEED_NOISE = ["sso_code_issued", "sso_code_exchanged", "tenant_switch"]
+
+
+def _event_target_user_id(e: AuditEvent) -> Optional[str]:
+    if isinstance(e.details, dict) and e.details.get("user_id"):
+        return str(e.details["user_id"])
+    if e.resource_type in ("user", "user_grants") and e.resource_id:
+        return e.resource_id
+    return None
+
+
+async def _enrich_activity(db: AsyncSession, events) -> list[dict]:
+    """Eventos de auditoria com nomes legíveis: quem fez, sobre quem e qual módulo."""
+    user_ids: set[uuid.UUID] = set()
+    for e in events:
+        for raw in (e.actor_id, _event_target_user_id(e)):
+            try:
+                if raw:
+                    user_ids.add(raw if isinstance(raw, uuid.UUID) else uuid.UUID(str(raw)))
+            except ValueError:
+                pass
+    user_names: dict[str, str] = {}
+    if user_ids:
+        rows = (await db.execute(select(User.id, User.name).where(User.id.in_(user_ids)))).all()
+        user_names = {str(uid): name for uid, name in rows if name}
+    module_names = {
+        slug: name for slug, name in (await db.execute(select(Module.slug, Module.name))).all()
+    }
+
+    def module_name(e: AuditEvent) -> Optional[str]:
+        if not isinstance(e.details, dict):
+            return None
+        slug = e.details.get("module_slug") or e.details.get("module")
+        return module_names.get(slug, slug) if isinstance(slug, str) else None
+
+    def grant_summary(e: AuditEvent) -> list[str]:
+        d = e.details if isinstance(e.details, dict) else {}
+        if isinstance(d.get("grants"), dict):
+            return [
+                f"{module_names.get(slug, slug)} · {', '.join(map(str, roles)) or 'sem perfil'}"
+                for slug, roles in d["grants"].items()
+                if isinstance(roles, list)
+            ]
+        if d.get("role") and module_name(e):
+            return [f"{module_name(e)} · {d['role']}"]
+        return []
+
+    return [
+        {
+            "id": str(e.id),
+            "action": e.action,
+            "resource_type": e.resource_type,
+            "resource_id": e.resource_id,
+            "actor_email": e.actor_email,
+            "actor_name": user_names.get(str(e.actor_id)) if e.actor_id else None,
+            "target_name": user_names.get(_event_target_user_id(e) or ""),
+            "module_name": module_name(e),
+            "grant_summary": grant_summary(e),
+            "ip_address": e.ip_address,
+            "created_at": e.created_at.isoformat() if e.created_at else None,
+            "details": e.details,
+        }
+        for e in events
+    ]
+
+
 @router.get("/dashboard")
 async def tenant_dashboard(
     request: Request,
@@ -302,14 +370,21 @@ async def tenant_dashboard(
         )
     ).scalar() or 0
 
+    # Troca de código SSO e troca de órgão são ruído técnico (já existe o
+    # module_access / login correspondente); ficam só na auditoria completa.
     recent = (
         await db.execute(
             select(AuditEvent)
-            .where(AuditEvent.organization_id == ctx.organization_id)
+            .where(
+                AuditEvent.organization_id == ctx.organization_id,
+                AuditEvent.action.notin_(_FEED_NOISE),
+            )
             .order_by(desc(AuditEvent.created_at))
-            .limit(20)
+            .limit(60)
         )
     ).scalars().all()
+
+    activity = await _enrich_activity(db, recent)
 
     # Novidades: módulos contratados nos últimos 30 dias.
     news_since = datetime.now(timezone.utc) - timedelta(days=30)
@@ -339,16 +414,7 @@ async def tenant_dashboard(
             "grants_total": grants_total,
             "grants_pending_review": grants_pending,
         },
-        "recent_activity": [
-            {
-                "id": str(e.id),
-                "action": e.action,
-                "actor_email": e.actor_email,
-                "created_at": e.created_at.isoformat() if e.created_at else None,
-                "details": e.details,
-            }
-            for e in recent
-        ],
+        "recent_activity": activity,
         "news": [
             {
                 "slug": mod.slug,
@@ -398,6 +464,7 @@ async def tenant_role_catalog(
 async def list_tenant_users(
     search: str | None = Query(None),
     is_active: bool | None = Query(None),
+    removed: bool = Query(False, description="true lista os vínculos removidos (restauráveis)"),
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=200),
     ctx: TenantContext = Depends(require_tenant_manager),
@@ -409,18 +476,70 @@ async def list_tenant_users(
             .join(User, User.id == OrganizationMembership.user_id)
             .where(
                 OrganizationMembership.organization_id == ctx.organization_id,
-                OrganizationMembership.deleted_at.is_(None),
+                OrganizationMembership.deleted_at.is_not(None)
+                if removed
+                else OrganizationMembership.deleted_at.is_(None),
                 User.deleted_at.is_(None),
             )
             .order_by(User.name)
         )
     ).all()
+
+    # Módulos liberados por vínculo e último login no órgão, em lote (sem N+1).
+    mem_ids = [m.id for m, _ in mems]
+    grants_by_mem: dict[uuid.UUID, dict[str, dict]] = {}
+    if mem_ids and not removed:
+        module_names = {
+            slug: name for slug, name in (await db.execute(select(Module.slug, Module.name))).all()
+        }
+        grant_rows = (
+            await db.execute(
+                select(
+                    MembershipModuleGrant.membership_id,
+                    MembershipModuleGrant.module_slug,
+                    MembershipModuleGrant.requires_review,
+                ).where(
+                    MembershipModuleGrant.membership_id.in_(mem_ids),
+                    MembershipModuleGrant.deleted_at.is_(None),
+                    MembershipModuleGrant.is_active.is_(True),
+                )
+            )
+        ).all()
+        for mem_id, slug, review in grant_rows:
+            entry = grants_by_mem.setdefault(mem_id, {}).setdefault(
+                slug, {"slug": slug, "name": module_names.get(slug, slug), "requires_review": False}
+            )
+            entry["requires_review"] = entry["requires_review"] or bool(review)
+
+    user_ids = [u.id for _, u in mems]
+    last_login: dict[uuid.UUID, datetime] = {}
+    if user_ids:
+        last_login = dict(
+            (
+                await db.execute(
+                    select(AuditEvent.actor_id, func.max(AuditEvent.created_at))
+                    .where(
+                        AuditEvent.organization_id == ctx.organization_id,
+                        # Com a sessão aberta a pessoa abre módulos sem novo login.
+                        AuditEvent.action.in_(["login", "module_access"]),
+                        AuditEvent.actor_id.in_(user_ids),
+                    )
+                    .group_by(AuditEvent.actor_id)
+                )
+            ).all()
+        )
+
+    now = datetime.now(timezone.utc)
     rows = []
     for m, u in mems:
         if search and search.lower() not in u.name.lower() and search.lower() not in u.email.lower():
             continue
         if is_active is not None and m.is_active != is_active:
             continue
+        locked_until = u.locked_until
+        if locked_until is not None and locked_until.tzinfo is None:
+            locked_until = locked_until.replace(tzinfo=timezone.utc)
+        seen = last_login.get(u.id)
         rows.append(
             {
                 "user_id": str(m.user_id),
@@ -434,6 +553,11 @@ async def list_tenant_users(
                 "position": m.position,
                 "department": m.department,
                 "created_at": m.created_at.isoformat() if m.created_at else None,
+                "removed_at": m.deleted_at.isoformat() if m.deleted_at else None,
+                "modules": sorted(grants_by_mem.get(m.id, {}).values(), key=lambda g: g["name"]),
+                "last_login_at": seen.isoformat() if seen else None,
+                "must_change_password": bool(u.force_password_reset),
+                "locked": bool(locked_until and locked_until > now),
             }
         )
     total = len(rows)
@@ -471,6 +595,48 @@ async def get_tenant_user(
         "membership_role": mem.membership_role,
         "membership_active": mem.is_active,
         "created_at": mem.created_at.isoformat() if mem.created_at else None,
+        **(await _user_usage(db, ctx.organization_id, u)),
+    }
+
+
+async def _user_usage(db: AsyncSession, organization_id: uuid.UUID, u: User) -> dict:
+    """Último login no órgão, último uso de cada módulo e estado da senha."""
+    last_login = (
+        await db.execute(
+            select(func.max(AuditEvent.created_at)).where(
+                AuditEvent.organization_id == organization_id,
+                AuditEvent.actor_id == u.id,
+                AuditEvent.action == "login",
+            )
+        )
+    ).scalar()
+    slug_col = AuditEvent.details["module_slug"].as_string()
+    usage = (
+        await db.execute(
+            select(slug_col, func.max(AuditEvent.created_at), func.count(AuditEvent.id))
+            .where(
+                AuditEvent.organization_id == organization_id,
+                AuditEvent.actor_id == u.id,
+                AuditEvent.action == "module_access",
+            )
+            # Agrupa pela posição: repetir a expressão JSON geraria outro parâmetro
+            # e o Postgres não a reconheceria como a mesma coluna do SELECT.
+            .group_by(literal_column("1"))
+        )
+    ).all()
+    locked_until = u.locked_until
+    if locked_until is not None and locked_until.tzinfo is None:
+        locked_until = locked_until.replace(tzinfo=timezone.utc)
+    return {
+        "last_login_at": last_login.isoformat() if last_login else None,
+        "module_usage": {
+            slug: {"last_access_at": at.isoformat() if at else None, "count": n}
+            for slug, at, n in usage
+            if slug
+        },
+        "must_change_password": bool(u.force_password_reset),
+        "password_changed_at": u.password_changed_at.isoformat() if u.password_changed_at else None,
+        "locked": bool(locked_until and locked_until > datetime.now(timezone.utc)),
     }
 
 
@@ -911,6 +1077,8 @@ async def request_password_reset(
 
 class TenantPasswordSet(BaseModel):
     password: str
+    # Senha provisória: obriga a pessoa a criar a própria no próximo acesso.
+    require_change: bool = False
 
     @field_validator("password")
     @classmethod
@@ -953,9 +1121,10 @@ async def set_tenant_user_password(
     mem.user.password_changed_at = datetime.now(timezone.utc).replace(tzinfo=None)
     mem.user.password_failures = 0
     mem.user.locked_until = None
-    mem.user.force_password_reset = False
+    mem.user.force_password_reset = body.require_change
 
-    await _log(db, request, ctx, "password_set_by_manager", "user", resource_id=str(user_id))
+    await _log(db, request, ctx, "password_set_by_manager", "user", resource_id=str(user_id),
+               details={"require_change": body.require_change})
     await _revoke_user_sessions(db, user_id, ctx.organization_id)
     await db.commit()
     return {"status": "password_set"}
@@ -1120,31 +1289,23 @@ async def tenant_user_audit(
     if not mem or mem.deleted_at is not None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Usuário não pertence ao órgão")
 
-    q = select(AuditEvent).where(
-        AuditEvent.organization_id == ctx.organization_id,
+    # O que a pessoa fez (actor) e o que fizeram com ela (resource / details.user_id).
+    about_user = or_(
+        AuditEvent.actor_id == user_id,
         AuditEvent.resource_id.in_([str(user_id), str(mem.id)]),
-    ).order_by(desc(AuditEvent.created_at))
-    count_q = select(func.count(AuditEvent.id)).where(
-        AuditEvent.organization_id == ctx.organization_id,
-        AuditEvent.resource_id.in_([str(user_id), str(mem.id)]),
+        AuditEvent.details["user_id"].as_string() == str(user_id),
     )
-    total = (await db.execute(count_q)).scalar() or 0
+    where = (
+        AuditEvent.organization_id == ctx.organization_id,
+        AuditEvent.action.notin_(_FEED_NOISE),
+        about_user,
+    )
+    q = select(AuditEvent).where(*where).order_by(desc(AuditEvent.created_at))
+    total = (await db.execute(select(func.count(AuditEvent.id)).where(*where))).scalar() or 0
     rows = (await db.execute(q.offset((page - 1) * per_page).limit(per_page))).scalars().all()
 
     return {
-        "data": [
-            {
-                "id": str(e.id),
-                "action": e.action,
-                "actor_email": e.actor_email,
-                "resource_type": e.resource_type,
-                "resource_id": e.resource_id,
-                "details": e.details,
-                "ip_address": e.ip_address,
-                "created_at": e.created_at.isoformat() if e.created_at else None,
-            }
-            for e in rows
-        ],
+        "data": await _enrich_activity(db, rows),
         "total": total,
         "page": page,
         "per_page": per_page,
@@ -1154,55 +1315,111 @@ async def tenant_user_audit(
 # ---------------------------------------------------------------------------
 # Auditoria do tenant (gestor)
 # ---------------------------------------------------------------------------
+# Categorias da auditoria (mesma divisão usada no feed do portal).
+_SECURITY_ACTIONS = [
+    "password_reset_requested", "password_reset", "force_password_reset", "password_changed",
+    "change_password", "password_set_by_manager", "sessions_revoked", "module_access_failed",
+]
+_ACCESS_ACTIONS = ["login", "logout", "module_access"]
+
+
+def _audit_category(category: str):
+    # coalesce: com resource_type NULL a comparação daria NULL e o evento
+    # sumiria de todas as categorias (e do total).
+    rtype = func.coalesce(AuditEvent.resource_type, "")
+    security = AuditEvent.action.in_(_SECURITY_ACTIONS)
+    access = AuditEvent.action.in_(_ACCESS_ACTIONS)
+    grants = or_(
+        rtype == "user_grants",
+        AuditEvent.action.like("grant\\_%"),
+        AuditEvent.action.in_(["grants_update", "pending_grant_approved"]),
+    )
+    users = or_(
+        rtype == "user",
+        AuditEvent.action.like("membership\\_%"),
+        AuditEvent.action == "user_create",
+    )
+    if category == "security":
+        return security
+    if category == "access":
+        return access
+    if category == "grants":
+        return grants & ~security & ~access
+    if category == "users":
+        return users & ~grants & ~security & ~access
+    if category == "other":
+        return ~security & ~access & ~grants & ~users
+    return None
+
+
 @router.get("/audit")
 async def tenant_audit(
     action: str | None = Query(None),
-    q: str | None = Query(None),
+    q: str | None = Query(None, description="Busca no nome ou e-mail de quem fez"),
     module: str | None = Query(None),
+    category: str | None = Query(None, pattern="^(access|users|grants|security|other)$"),
+    actor_id: uuid.UUID | None = Query(None),
+    date_from: datetime | None = Query(None),
+    date_to: datetime | None = Query(None),
     page: int = Query(1, ge=1),
     per_page: int = Query(50, ge=1, le=200),
     ctx: TenantContext = Depends(require_tenant_manager),
     db: AsyncSession = Depends(get_db),
 ):
-    conditions = [AuditEvent.organization_id == ctx.organization_id]
+    base_conds = [
+        AuditEvent.organization_id == ctx.organization_id,
+        AuditEvent.action.notin_(_FEED_NOISE),
+    ]
     if action:
-        conditions.append(AuditEvent.action == action)
+        base_conds.append(AuditEvent.action == action)
     if module:
-        conditions.append(AuditEvent.details["module"].as_string() == module)
-    q_filter = None
-    if q:
-        like = f"%{q.lower()}%"
-        q_filter = func.lower(AuditEvent.actor_email).like(like) | func.lower(AuditEvent.action).like(like)
+        base_conds.append(
+            or_(
+                AuditEvent.details["module_slug"].as_string() == module,
+                AuditEvent.details["module"].as_string() == module,
+            )
+        )
+    if actor_id:
+        base_conds.append(AuditEvent.actor_id == actor_id)
+    if date_from:
+        base_conds.append(AuditEvent.created_at >= date_from)
+    if date_to:
+        base_conds.append(AuditEvent.created_at < date_to)
+    if q and q.strip():
+        like = f"%{q.strip().lower()}%"
+        by_name = select(User.id).where(func.lower(User.name).like(like))
+        base_conds.append(
+            or_(func.lower(AuditEvent.actor_email).like(like), AuditEvent.actor_id.in_(by_name))
+        )
 
-    base = select(AuditEvent).where(*conditions)
-    if q_filter is not None:
-        base = base.where(q_filter)
+    # Contagem por categoria com os demais filtros aplicados (para os chips).
+    counts: dict[str, int] = {}
+    for cat in ("access", "users", "grants", "security", "other"):
+        counts[cat] = (
+            await db.execute(
+                select(func.count(AuditEvent.id)).where(*base_conds, _audit_category(cat))
+            )
+        ).scalar() or 0
+    counts["all"] = sum(counts.values())
 
-    count_q = select(func.count(AuditEvent.id)).where(*conditions)
-    if q_filter is not None:
-        count_q = count_q.where(q_filter)
-
-    total = (await db.execute(count_q)).scalar() or 0
-    rows = (await db.execute(base.order_by(desc(AuditEvent.created_at)).offset((page - 1) * per_page).limit(per_page))).scalars().all()
-    return {
-        "data": [
-            {
-                "id": str(e.id),
-                "action": e.action,
-                "actor_email": e.actor_email,
-                "resource_type": e.resource_type,
-                "resource_id": e.resource_id,
-                "details": e.details,
-                "ip_address": e.ip_address,
-                "user_agent": e.user_agent,
-                "created_at": e.created_at.isoformat() if e.created_at else None,
-            }
-            for e in rows
-        ],
-        "total": total,
-        "page": page,
-        "per_page": per_page,
-    }
+    conds = list(base_conds)
+    if category:
+        conds.append(_audit_category(category))
+    total = counts[category] if category else counts["all"]
+    rows = (
+        await db.execute(
+            select(AuditEvent)
+            .where(*conds)
+            .order_by(desc(AuditEvent.created_at))
+            .offset((page - 1) * per_page)
+            .limit(per_page)
+        )
+    ).scalars().all()
+    enriched = await _enrich_activity(db, rows)
+    agents = {str(e.id): e.user_agent for e in rows}
+    for item in enriched:
+        item["user_agent"] = agents.get(item["id"])
+    return {"data": enriched, "total": total, "counts": counts, "page": page, "per_page": per_page}
 
 
 # ---------------------------------------------------------------------------
@@ -1217,6 +1434,9 @@ async def tenant_security(
         "organization_slug": ctx.organization.slug,
         "membership_role": ctx.membership.membership_role,
         "membership_active": ctx.membership.is_active,
+        "position": ctx.membership.position,
+        "department": ctx.membership.department,
+        "member_since": ctx.membership.created_at.isoformat() if ctx.membership.created_at else None,
         "global_active": ctx.user.is_active,
         "mfa_enabled": ctx.user.mfa_enabled,
         "force_password_reset": getattr(ctx.user, "force_password_reset", False),
@@ -1294,39 +1514,74 @@ async def tenant_contracted_modules(
         )
     ).scalars().all()
 
-    # grants ativos por módulo (neste tenant)
+    active_mem_ids = set(
+        (
+            await db.execute(
+                select(OrganizationMembership.id).where(
+                    OrganizationMembership.organization_id == ctx.organization_id,
+                    OrganizationMembership.deleted_at.is_(None),
+                    OrganizationMembership.is_active.is_(True),
+                )
+            )
+        ).scalars().all()
+    )
+
+    # grants por módulo (neste tenant): pessoas distintas, perfis em uso e pendências
     grant_rows = (
         await db.execute(
-            select(MembershipModuleGrant.module_slug, MembershipModuleGrant.role_name)
-            .where(
+            select(
+                MembershipModuleGrant.module_slug,
+                MembershipModuleGrant.membership_id,
+                MembershipModuleGrant.role_name,
+                MembershipModuleGrant.requires_review,
+            ).where(
                 MembershipModuleGrant.membership_id.in_(list(mem_ids)),
                 MembershipModuleGrant.deleted_at.is_(None),
                 MembershipModuleGrant.is_active.is_(True),
             )
         )
     ).all()
+    pending_enabled = await is_flag(db, "MEMBERSHIP_GRANTS_V2_ENABLED")
+    people: dict[str, set] = {}
+    roles_in_use: dict[str, dict[str, int]] = {}
+    pending_by_mod: dict[str, int] = {}
+    for slug, mem_id, role, review in grant_rows:
+        if review:
+            pending_by_mod[slug] = pending_by_mod.get(slug, 0) + 1
+        if role.startswith("__"):
+            continue
+        if mem_id in active_mem_ids:
+            people.setdefault(slug, set()).add(mem_id)
+            roles_in_use.setdefault(slug, {})
+            roles_in_use[slug][role] = roles_in_use[slug].get(role, 0) + 1
 
-    per_module: dict[str, list[str]] = {}
-    for slug, role in grant_rows:
-        per_module.setdefault(slug, []).append(role)
+    # Uso nos últimos 30 dias (aberturas do módulo por pessoas do órgão).
+    since = datetime.now(timezone.utc) - timedelta(days=30)
+    slug_col = AuditEvent.details["module_slug"].as_string()
+    usage = {
+        slug: (n, users, last)
+        for slug, n, users, last in (
+            await db.execute(
+                select(
+                    slug_col,
+                    func.count(AuditEvent.id),
+                    func.count(func.distinct(AuditEvent.actor_id)),
+                    func.max(AuditEvent.created_at),
+                )
+                .where(
+                    AuditEvent.organization_id == ctx.organization_id,
+                    AuditEvent.action == "module_access",
+                    AuditEvent.created_at >= since,
+                )
+                .group_by(literal_column("1"))
+            )
+        ).all()
+        if slug
+    }
 
     result = []
     for mod in rows:
-        roles_in_use = sorted(set(per_module.get(mod.slug, [])))
-        users_with_grant = len(per_module.get(mod.slug, []))
-        pending = await is_flag(db, "MEMBERSHIP_GRANTS_V2_ENABLED")
-        pending_count = 0
-        if pending:
-            pending_count = (
-                await db.execute(
-                    select(func.count(MembershipModuleGrant.id)).where(
-                        MembershipModuleGrant.module_slug == mod.slug,
-                        MembershipModuleGrant.membership_id.in_(list(mem_ids)),
-                        MembershipModuleGrant.deleted_at.is_(None),
-                        MembershipModuleGrant.requires_review.is_(True),
-                    )
-                )
-            ).scalar() or 0
+        n, users_30d, last = usage.get(mod.slug, (0, 0, None))
         result.append(
             {
                 "slug": mod.slug,
@@ -1337,9 +1592,13 @@ async def tenant_contracted_modules(
                 "is_active": mod.is_active,
                 "status": "Operacional" if mod.is_active else "Indisponível",
                 "module_url": _resolve_module_url(mod),
-                "users_with_grant": users_with_grant,
-                "roles_in_use": roles_in_use,
-                "pending_review": pending_count,
+                "users_with_grant": len(people.get(mod.slug, set())),
+                "roles_in_use": sorted(roles_in_use.get(mod.slug, {})),
+                "roles_count": roles_in_use.get(mod.slug, {}),
+                "pending_review": pending_by_mod.get(mod.slug, 0) if pending_enabled else 0,
+                "accesses_30d": n,
+                "active_users_30d": users_30d,
+                "last_access_at": last.isoformat() if last else None,
             }
         )
     return result
@@ -1369,19 +1628,53 @@ async def tenant_module_users(
         )
     ).all()
 
+    grants_by_mem: dict[uuid.UUID, list] = {}
+    if mems:
+        for g in (
+            await db.execute(
+                select(MembershipModuleGrant).where(
+                    MembershipModuleGrant.membership_id.in_([m.id for m, _ in mems]),
+                    MembershipModuleGrant.module_slug == module_slug,
+                    MembershipModuleGrant.deleted_at.is_(None),
+                    MembershipModuleGrant.is_active.is_(True),
+                )
+            )
+        ).scalars().all():
+            grants_by_mem.setdefault(g.membership_id, []).append(g)
+
+    last_use = dict(
+        (
+            await db.execute(
+                select(AuditEvent.actor_id, func.max(AuditEvent.created_at))
+                .where(
+                    AuditEvent.organization_id == ctx.organization_id,
+                    AuditEvent.action == "module_access",
+                    AuditEvent.details["module_slug"].as_string() == module_slug,
+                )
+                .group_by(AuditEvent.actor_id)
+            )
+        ).all()
+    )
+
     result = []
     for mem, u in mems:
-        grants = await get_membership_grants(db, mem.id, module_slug)
+        grants = grants_by_mem.get(mem.id, [])
         roles = [g.role_name for g in grants if g.role_name and not g.role_name.startswith("__")]
+        seen = last_use.get(u.id)
         result.append(
             {
                 "user_id": str(u.id),
                 "membership_id": str(mem.id),
                 "name": u.name,
                 "email": u.email,
+                "position": mem.position,
+                "department": mem.department,
                 "membership_active": mem.is_active,
                 "roles": sorted(set(roles)),
                 "requires_review": any(g.requires_review for g in grants),
+                # Antes a tela contava todos os membros como "com acesso".
+                "has_access": bool(grants),
+                "last_access_at": seen.isoformat() if seen else None,
             }
         )
     return {"module_slug": module_slug, "users": result}
@@ -1587,6 +1880,27 @@ async def dismiss_pending_grant(
     return {"grant_id": str(g.id), "dismissed": True}
 
 
+_ORG_EDITABLE = (
+    "description", "email", "phone", "public_url",
+    "address_zip", "address_street", "address_number", "address_complement",
+    "address_neighborhood", "address_city", "address_state",
+)
+
+
+def _org_payload(org) -> dict:
+    return {
+        "organization_id": str(org.id),
+        "slug": org.slug,
+        "name": org.name,
+        "cnpj": getattr(org, "cnpj", None),
+        "logo_url": org.logo_url,
+        "is_active": org.is_active,
+        "created_at": org.created_at.isoformat() if org.created_at else None,
+        "plan": None,
+        **{f: getattr(org, f) for f in _ORG_EDITABLE},
+    }
+
+
 @router.get("/org")
 async def tenant_org_info(
     ctx: TenantContext = Depends(require_tenant_manager),
@@ -1594,12 +1908,118 @@ async def tenant_org_info(
 ):
     """Dados do órgão (gestor) — página 'Dados do órgão'."""
     org = ctx.organization
+    mems = (
+        await db.execute(
+            select(OrganizationMembership, User)
+            .join(User, User.id == OrganizationMembership.user_id)
+            .where(
+                OrganizationMembership.organization_id == ctx.organization_id,
+                OrganizationMembership.deleted_at.is_(None),
+                User.deleted_at.is_(None),
+            )
+            .order_by(User.name)
+        )
+    ).all()
+    modules = (
+        await db.execute(
+            select(func.count(OrganizationModule.id)).where(
+                OrganizationModule.organization_id == ctx.organization_id,
+                OrganizationModule.is_active.is_(True),
+            )
+        )
+    ).scalar() or 0
     return {
-        "organization_id": str(org.id),
-        "slug": org.slug,
-        "name": org.name,
-        "cnpj": getattr(org, "cnpj", None),
-        "is_active": org.is_active,
-        "created_at": org.created_at.isoformat() if org.created_at else None,
-        "plan": None,
+        **_org_payload(org),
+        "stats": {
+            "members_active": sum(1 for m, _ in mems if m.is_active),
+            "members_total": len(mems),
+            "modules_contracted": modules,
+        },
+        "managers": [
+            {"user_id": str(u.id), "name": u.name, "email": u.email, "phone": u.phone}
+            for m, u in mems
+            if m.membership_role == "ORG_ADMIN" and m.is_active
+        ],
     }
+
+
+class OrgContactUpdate(BaseModel):
+    """Dados de contato e endereço que o gestor pode manter. Nome, CNPJ e
+    identificador são contratuais e ficam com a equipe da plataforma."""
+    description: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    public_url: Optional[str] = None
+    address_zip: Optional[str] = None
+    address_street: Optional[str] = None
+    address_number: Optional[str] = None
+    address_complement: Optional[str] = None
+    address_neighborhood: Optional[str] = None
+    address_city: Optional[str] = None
+    address_state: Optional[str] = None
+
+    @field_validator("email")
+    @classmethod
+    def _email(cls, v: Optional[str]) -> Optional[str]:
+        v = (v or "").strip().lower()
+        if v and not re.fullmatch(r"[^\s@]+@[^\s@]+\.[^\s@]+", v):
+            raise ValueError("E-mail inválido")
+        return v
+
+    @field_validator("phone")
+    @classmethod
+    def _phone(cls, v: Optional[str]) -> Optional[str]:
+        d = re.sub(r"\D", "", v or "")
+        if d and len(d) not in (10, 11):
+            raise ValueError("Telefone deve ter DDD e 8 ou 9 dígitos")
+        return d
+
+    @field_validator("address_zip")
+    @classmethod
+    def _zip(cls, v: Optional[str]) -> Optional[str]:
+        d = re.sub(r"\D", "", v or "")
+        if d and len(d) != 8:
+            raise ValueError("CEP deve ter 8 dígitos")
+        return f"{d[:5]}-{d[5:]}" if d else ""
+
+    @field_validator("address_state")
+    @classmethod
+    def _uf(cls, v: Optional[str]) -> Optional[str]:
+        v = (v or "").strip().upper()
+        if v and not re.fullmatch(r"[A-Z]{2}", v):
+            raise ValueError("UF deve ter 2 letras")
+        return v
+
+    @field_validator("public_url")
+    @classmethod
+    def _url(cls, v: Optional[str]) -> Optional[str]:
+        v = (v or "").strip()
+        if v and not re.match(r"^https?://", v):
+            v = "https://" + v
+        return v
+
+
+@router.patch("/org")
+async def tenant_org_update(
+    body: OrgContactUpdate,
+    request: Request,
+    ctx: TenantContext = Depends(require_tenant_manager),
+    db: AsyncSession = Depends(get_db),
+):
+    """Gestor atualiza contato e endereço do órgão. Campo ausente = não mexe;
+    texto vazio = apaga."""
+    org = ctx.organization
+    before = {f: getattr(org, f) for f in _ORG_EDITABLE}
+    for field in body.model_fields_set:
+        value = getattr(body, field)
+        value = value.strip() if isinstance(value, str) else value
+        setattr(org, field, value or None)
+    after = {f: getattr(org, f) for f in _ORG_EDITABLE}
+    changed = [f for f in _ORG_EDITABLE if before[f] != after[f]]
+    if changed:
+        await _log(db, request, ctx, "org_profile_update", "organization",
+                   resource_id=str(org.id),
+                   details={"before": {f: before[f] for f in changed},
+                            "after": {f: after[f] for f in changed}})
+        await db.commit()
+    return _org_payload(org)

@@ -43,11 +43,13 @@ class Manutencao(Base, TimestampMixin, SoftDeleteMixin):
     quilometragem: Mapped[Optional[int]] = mapped_column(BigInteger(), nullable=True)
     data_solicitacao: Mapped[date] = mapped_column(Date(), nullable=False)
     prioridade: Mapped[str] = mapped_column(String(15), default="NORMAL", nullable=False)
-    oficina_id: Mapped[Optional[uuid.UUID]] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("oficinas.id"), nullable=True
-    )
+    # Oficina/prestador do serviço — cadastro único de fornecedores.
     fornecedor_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("fornecedores.id"), nullable=True
+    )
+    # Unidade do veículo no momento da abertura (relatório por secretaria).
+    unidade_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("unidades.id"), nullable=True, index=True
     )
     responsavel: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
     previsao_conclusao: Mapped[Optional[date]] = mapped_column(Date(), nullable=True)
@@ -58,7 +60,7 @@ class Manutencao(Base, TimestampMixin, SoftDeleteMixin):
     ocorrencia_origem_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     veiculo: Mapped["Veiculo"] = relationship()
-    oficina: Mapped[Optional["Oficina"]] = relationship()
+    fornecedor: Mapped[Optional["Fornecedor"]] = relationship()  # noqa: F821
     itens: Mapped[list["ManutencaoItem"]] = relationship(
         back_populates="manutencao", cascade="all, delete-orphan"
     )

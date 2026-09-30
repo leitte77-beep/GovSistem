@@ -90,20 +90,3 @@ export function placaValida(placa: string): boolean {
   return /^[A-Z]{3}[0-9]{4}$/.test(p) || /^[A-Z]{3}[0-9][A-Z][0-9]{2}$/.test(p);
 }
 
-// Rótulos de lotação conforme o tipo de organização (público vs privado).
-export function camposLotacao(tipoOrganizacao: string): { chave: string; label: string; opcional: boolean }[] {
-  if (tipoOrganizacao === "PRIVADO") {
-    return [
-      { chave: "filial", label: "Filial", opcional: true },
-      { chave: "departamento", label: "Departamento", opcional: true },
-      { chave: "unidade", label: "Unidade", opcional: true },
-      { chave: "centro_custo", label: "Centro de custo", opcional: true },
-    ];
-  }
-  // Público (padrão)
-  return [
-    { chave: "unidade", label: "Unidade / Secretaria", opcional: true },
-    { chave: "departamento", label: "Departamento", opcional: true },
-    { chave: "centro_custo", label: "Centro de custo", opcional: true },
-  ];
-}

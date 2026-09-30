@@ -19,7 +19,7 @@ import {
   Wrench,
   X,
 } from "lucide-react";
-import { api, Combustivel, Paginado, VeiculoListItem } from "@/lib/api";
+import { api, Combustivel, Paginado, Unidade, VeiculoListItem } from "@/lib/api";
 import { RequirePermission } from "@/components/RequirePermission";
 import { useAuth } from "@/lib/auth";
 import { StatusBadge } from "@/components/veiculo/StatusBadge";
@@ -42,11 +42,10 @@ const LIMITES = [20, 50, 100];
 interface FiltrosAdicionais {
   tipo: string;
   combustivel_id: string;
-  unidade: string;
-  centro_custo: string;
+  unidade_id: string;
 }
 
-const FILTROS_VAZIO: FiltrosAdicionais = { tipo: "", combustivel_id: "", unidade: "", centro_custo: "" };
+const FILTROS_VAZIO: FiltrosAdicionais = { tipo: "", combustivel_id: "", unidade_id: "" };
 
 type Sortable = "placa" | "veiculo" | "km" | "situacao";
 const SORT_BACKEND: Record<string, string> = {
@@ -61,6 +60,8 @@ export default function VeiculosPage() {
   const [dados, setDados] = useState<Paginado<VeiculoListItem> | null>(null);
   const [combustiveis, setCombustiveis] = useState<Combustivel[]>([]);
   const [tipoOrganizacao, setTipoOrganizacao] = useState("PUBLICO");
+  const [unidades, setUnidades] = useState<Unidade[]>([]);
+  const rotuloUnidade = tipoOrganizacao === "PRIVADO" ? "Centro de custo" : "Secretaria";
 
   const [busca, setBusca] = useState("");
   const [situacaoFiltro, setSituacaoFiltro] = useState("");
@@ -96,8 +97,7 @@ export default function VeiculosPage() {
         situacao: situacaoFiltro || undefined,
         tipo: filtros.tipo || undefined,
         combustivel_id: filtros.combustivel_id || undefined,
-        unidade: filtros.unidade || undefined,
-        centro_custo: filtros.centro_custo || undefined,
+        unidade_id: filtros.unidade_id || undefined,
         sort_by: SORT_BACKEND[sortBy],
         order,
         skip,
@@ -115,6 +115,7 @@ export default function VeiculosPage() {
 
   useEffect(() => {
     api.listCombustiveis(true).then(setCombustiveis).catch(() => {});
+    api.listUnidades().then(setUnidades).catch(() => {});
     api.getConfiguracoes().then((c) => setTipoOrganizacao(c.tipo_organizacao || "PUBLICO")).catch(() => {});
   }, []);
 
@@ -145,19 +146,21 @@ export default function VeiculosPage() {
   const total = dados?.total ?? 0;
   const totalPaginas = Math.max(1, Math.ceil(total / limit));
   const temFiltroAtivo =
-    !!buscaEfetiva || !!situacaoFiltro || !!filtros.tipo || !!filtros.combustivel_id || !!filtros.unidade || !!filtros.centro_custo;
+    !!buscaEfetiva || !!situacaoFiltro || !!filtros.tipo || !!filtros.combustivel_id || !!filtros.unidade_id;
 
   const chips = [
     situacaoFiltro && { chave: "situacao", label: `Situação: ${SITUACOES_LISTA.find(([k]) => k === situacaoFiltro)?.[1] ?? situacaoFiltro}` },
     filtros.tipo && { chave: "tipo", label: `Tipo: ${nomeTipo(filtros.tipo)}` },
     filtros.combustivel_id && { chave: "combustivel_id", label: `Combustível: ${combustiveis.find((c) => c.id === filtros.combustivel_id)?.nome ?? ""}` },
-    filtros.unidade && { chave: "unidade", label: `Unidade: ${filtros.unidade}` },
-    filtros.centro_custo && { chave: "centro_custo", label: `C. custo: ${filtros.centro_custo}` },
+    filtros.unidade_id && {
+      chave: "unidade_id",
+      label: `${rotuloUnidade}: ${unidades.find((u) => u.id === filtros.unidade_id)?.nome ?? ""}`,
+    },
   ].filter(Boolean) as { chave: string; label: string }[];
 
   function removerChip(chave: string) {
     if (chave === "situacao") setSituacaoFiltro("");
-    else if (chave === "tipo" || chave === "combustivel_id" || chave === "unidade" || chave === "centro_custo") {
+    else if (chave === "tipo" || chave === "combustivel_id" || chave === "unidade_id") {
       setFiltros((f) => ({ ...f, [chave]: "" }));
     }
     setPagina(1);
@@ -259,7 +262,7 @@ export default function VeiculosPage() {
                 ))}
               </select>
             </Label>
-            <Label texto="Combustível principal">
+            <Label texto="Combustível">
               <select className="input" value={filtros.combustivel_id} onChange={(e) => aplicarFiltro("combustivel_id", e.target.value)}>
                 <option value="">Todos</option>
                 {combustiveis.map((c) => (
@@ -267,11 +270,13 @@ export default function VeiculosPage() {
                 ))}
               </select>
             </Label>
-            <Label texto="Unidade / Secretaria">
-              <input className="input" placeholder="Filtrar por unidade" value={filtros.unidade} onChange={(e) => aplicarFiltro("unidade", e.target.value)} />
-            </Label>
-            <Label texto="Centro de custo">
-              <input className="input" placeholder="Filtrar por centro" value={filtros.centro_custo} onChange={(e) => aplicarFiltro("centro_custo", e.target.value)} />
+            <Label texto={rotuloUnidade}>
+              <select className="input" value={filtros.unidade_id} onChange={(e) => aplicarFiltro("unidade_id", e.target.value)}>
+                <option value="">Todas</option>
+                {unidades.map((u) => (
+                  <option key={u.id} value={u.id}>{u.nome}</option>
+                ))}
+              </select>
             </Label>
           </div>
         )}

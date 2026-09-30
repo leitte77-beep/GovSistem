@@ -135,6 +135,48 @@ def build_xlsx(
     return buf.getvalue()
 
 
+def build_xlsx_abas(
+    meta: RelatorioMeta,
+    abas: list[tuple[str, list[str], list[list], set[int]]],
+) -> bytes:
+    """Várias tabelas, uma por aba: (nome da aba, cabeçalho, linhas, colunas de moeda)."""
+    from openpyxl import Workbook
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    wb = Workbook()
+    wb.remove(wb.active)
+    thin = Side(style="thin", color="D1D5DB")
+    borda = Border(left=thin, right=thin, top=thin, bottom=thin)
+    for nome, headers, rows, moeda in abas:
+        ws = wb.create_sheet(nome[:31])
+        ws["A1"] = meta.titulo
+        ws["A1"].font = Font(bold=True, size=13)
+        ws["A2"] = f"{meta.organizacao} · Período: {meta.periodo}"
+        ws["A2"].font = Font(size=10, color="6B7280")
+        if meta.filtros:
+            ws["A3"] = "; ".join(meta.filtros)
+            ws["A3"].font = Font(size=10, color="6B7280")
+        for c, h in enumerate(headers, start=1):
+            cell = ws.cell(row=5, column=c, value=h)
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor="1D4ED8")
+            cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+            cell.border = borda
+        for r, row in enumerate(rows, start=6):
+            for c, v in enumerate(row, start=1):
+                cell = ws.cell(row=r, column=c, value=_celula_numero(v))
+                cell.border = borda
+                if c - 1 in moeda:
+                    cell.number_format = "#,##0.00"
+        for c in range(1, len(headers) + 1):
+            ws.column_dimensions[get_column_letter(c)].width = 20
+        ws.freeze_panes = "A6"
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
 # ─────────────────────────────── PDF ───────────────────────────────────────
 
 

@@ -3,11 +3,13 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import func as sa_func
+from sqlalchemy import false as sa_false
 from sqlalchemy import select
+from sqlalchemy import true as sa_true
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.auth import get_current_user, require_permission
+from app.core.auth import escopo_unidades, filtro_escopo, get_current_user, require_permission
 from app.core.database import get_db
 from app.core.permissions import Perm
 from app.core.timezone import utcnow
@@ -19,6 +21,9 @@ from app.models.manutencao import Manutencao, PlanoPreventivo
 from app.models.motorista import Motorista
 from app.models.ocorrencia import Ocorrencia
 from app.models.veiculo import Veiculo, VeiculoDocumento
+from app.models.unidade import Unidade
+from app.services.abastecimento import get_configuracoes
+from app.services.alertas import autonomia_tanques, situacao_preventiva
 from app.services.estoque import status_estoque
 
 router = APIRouter(prefix="/dashboard", tags=["dashboard"])
@@ -26,11 +31,19 @@ router = APIRouter(prefix="/dashboard", tags=["dashboard"])
 
 @router.get("")
 async def dashboard(
-    user: User = Depends(require_permission(Perm.VEHICLE_VIEW)),
+    user: User = Depends(require_permission(Perm.VEHICLE_VIEW, escopo=True)),
     db: AsyncSession = Depends(get_db),
 ):
-    """Dashboard principal (§29) e visão executiva (§61)."""
+    """Dashboard principal (§29) e visão executiva (§61).
+
+    Usuário restrito a secretarias vê só os números delas; estoque de tanques,
+    contratos e CNHs (dados da organização toda) ficam de fora para ele.
+    """
     org = user.organization_id
+    restrito = escopo_unidades(user) is not None
+    veiculos_no_escopo = select(Veiculo.id).where(
+        Veiculo.organization_id == org, filtro_escopo(user, Veiculo.unidade_id)
+    )
     hoje = utcnow()
     # Fronteiras aware em UTC — nunca comparar datetime naive com coluna aware.
     inicio_dia = datetime.combine(hoje.date(), datetime.min.time()).replace(tzinfo=timezone.utc)
@@ -41,6 +54,7 @@ async def dashboard(
         await db.execute(
             select(Veiculo.situacao, sa_func.count(Veiculo.id)).where(
                 Veiculo.organization_id == org,
+                filtro_escopo(user, Veiculo.unidade_id),
                 Veiculo.deleted_at.is_(None),
             ).group_by(Veiculo.situacao)
         )
@@ -54,12 +68,16 @@ async def dashboard(
             select(Tanque)
             .where(
                 Tanque.organization_id == org,
+                sa_false() if restrito else sa_true(),
                 Tanque.deleted_at.is_(None),
+                # Tanque inativado sai do painel (continua no histórico).
+                Tanque.ativo.is_(True),
             )
             .options(selectinload(Tanque.combustivel))
             .order_by(Tanque.nome)
         )
     ).scalars().all()
+    autonomia = await autonomia_tanques(db, org) if tanques_rows else {}
     tanques = []
     for t in tanques_rows:
         capacidade = float(t.capacidade_maxima or 0)
@@ -75,13 +93,59 @@ async def dashboard(
                 "estoque_minimo": float(t.estoque_minimo),
                 "percentual": percentual,
                 "status_estoque": status_estoque(Decimal(t.estoque_atual), Decimal(t.estoque_minimo)),
+                "dias_autonomia": autonomia.get(t.id),
             }
         )
+
+    # Sem tanque próprio: o "estoque" é o saldo contratado com os postos.
+    contratos_posto = []
+    if not tanques and not restrito:
+        from app.core.timezone import now_local
+        from app.models.combustivel import Combustivel, ContratoPosto, Fornecedor
+        from app.services.contrato_posto import litros_consumidos
+
+        data_local = now_local().date()
+        linhas = (
+            await db.execute(
+                select(ContratoPosto, Fornecedor, Combustivel.nome)
+                .join(Fornecedor, Fornecedor.id == ContratoPosto.fornecedor_id)
+                .join(Combustivel, Combustivel.id == ContratoPosto.combustivel_id)
+                .where(
+                    ContratoPosto.organization_id == org,
+                    ContratoPosto.deleted_at.is_(None),
+                    ContratoPosto.ativo.is_(True),
+                    Fornecedor.deleted_at.is_(None),
+                    (ContratoPosto.data_inicio.is_(None)) | (ContratoPosto.data_inicio <= data_local),
+                    (ContratoPosto.data_fim.is_(None)) | (ContratoPosto.data_fim >= data_local),
+                )
+                .order_by(Combustivel.nome)
+            )
+        ).all()
+        consumidos = await litros_consumidos(db, [c.id for c, _, _ in linhas])
+        for c, f, combustivel_nome in linhas:
+            contratado = Decimal(c.litros_contratados)
+            saldo = contratado - consumidos.get(c.id, Decimal("0"))
+            contratos_posto.append(
+                {
+                    "id": str(c.id),
+                    "fornecedor_id": str(f.id),
+                    "posto": f.nome_fantasia or f.razao_social,
+                    "combustivel": combustivel_nome,
+                    "numero": c.numero,
+                    "preco_litro": float(c.preco_litro),
+                    "litros_contratados": float(contratado),
+                    "saldo_litros": float(saldo),
+                    "saldo_valor": float((saldo * Decimal(c.preco_litro)).quantize(Decimal("0.01"))),
+                    "percentual": round(float(saldo / contratado * 100), 1) if contratado else None,
+                    "data_fim": c.data_fim.isoformat() if c.data_fim else None,
+                }
+            )
 
     # ── Abastecimentos ──
     def _agg_abast(inicio: datetime | None):
         conditions = [
             Abastecimento.organization_id == org,
+            filtro_escopo(user, Abastecimento.unidade_id),
             Abastecimento.status == "CONFIRMADO",
         ]
         if inicio:
@@ -99,6 +163,7 @@ async def dashboard(
     abertas = await db.scalar(
         select(sa_func.count(Manutencao.id)).where(
             Manutencao.organization_id == org,
+            filtro_escopo(user, Manutencao.unidade_id),
             Manutencao.deleted_at.is_(None),
             Manutencao.status.in_(["ABERTA", "AGUARDANDO_ORCAMENTO", "APROVADA", "EM_MANUTENCAO"]),
         )
@@ -109,6 +174,7 @@ async def dashboard(
         await db.execute(
             select(PlanoPreventivo).where(
                 PlanoPreventivo.organization_id == org,
+                PlanoPreventivo.veiculo_id.in_(veiculos_no_escopo),
                 PlanoPreventivo.deleted_at.is_(None),
                 PlanoPreventivo.ativo.is_(True),
             )
@@ -126,6 +192,7 @@ async def dashboard(
         }
     else:
         veiculo_map = {}
+    config = await get_configuracoes(db, org)
     preventivas_proximas = 0
     preventivas_vencidas = 0
     proximas_preventivas: list[dict] = []
@@ -134,50 +201,34 @@ async def dashboard(
         veiculo = veiculo_map.get(plano.veiculo_id)
         if not veiculo:
             continue
-        item = {
-            "plano_id": str(plano.id),
-            "veiculo_id": str(veiculo.id),
-            "placa": veiculo.placa,
-            "modelo": f"{veiculo.marca or ''} {veiculo.modelo or ''}".strip() or None,
-            "nome": plano.nome,
-            "base": plano.base,
-            "restante_km": None,
-            "restante_dias": None,
-            "situacao": None,
-        }
-        if plano.base == "QUILOMETRAGEM" and plano.intervalo_km:
-            base_km = plano.ultima_execucao_km or 0
-            proxima_km = base_km + plano.intervalo_km
-            restante = proxima_km - veiculo.quilometragem_atual
-            limite = max(int(plano.intervalo_km * 0.1), 500)
-            item["restante_km"] = int(restante)
-            if restante <= 0:
-                preventivas_vencidas += 1
-                item["situacao"] = "VENCIDA"
-            elif restante <= limite:
-                preventivas_proximas += 1
-                item["situacao"] = "PROXIMA"
-            else:
-                item["situacao"] = "EM_DIA"
-            proximas_preventivas.append(item)
-        elif plano.intervalo_meses and plano.ultima_execucao_data:
-            proxima_data = plano.ultima_execucao_data + timedelta(days=30 * plano.intervalo_meses)
-            restante_dias = (proxima_data - hoje_date).days
-            item["restante_dias"] = restante_dias
-            if restante_dias <= 0:
-                preventivas_vencidas += 1
-                item["situacao"] = "VENCIDA"
-            elif restante_dias <= 15:
-                preventivas_proximas += 1
-                item["situacao"] = "PROXIMA"
-            else:
-                item["situacao"] = "EM_DIA"
-            proximas_preventivas.append(item)
+        r = situacao_preventiva(plano, veiculo, config.antecedencia_alerta_manutencao_dias)
+        if r["situacao"] is None:
+            continue
+        if r["situacao"] == "VENCIDA":
+            preventivas_vencidas += 1
+        elif r["situacao"] == "PROXIMA":
+            preventivas_proximas += 1
+        proximas_preventivas.append(
+            {
+                "plano_id": str(plano.id),
+                "veiculo_id": str(veiculo.id),
+                "placa": veiculo.placa,
+                "modelo": f"{veiculo.marca or ''} {veiculo.modelo or ''}".strip() or None,
+                "nome": plano.nome,
+                "base": plano.base,
+                "restante_km": r["restante_km"],
+                "restante_horas": r["restante_horas"],
+                "restante_dias": r["restante_dias"],
+                "situacao": r["situacao"],
+            }
+        )
 
     def _ordem_preventiva(p: dict):
         prioridade = {"VENCIDA": 0, "PROXIMA": 1, "EM_DIA": 2}.get(p["situacao"], 3)
         if p["restante_km"] is not None:
             return (prioridade, p["restante_km"])
+        if p["restante_horas"] is not None:
+            return (prioridade, p["restante_horas"] * 10)
         return (prioridade, (p["restante_dias"] or 0) * 100)
 
     proximas_preventivas = [
@@ -188,6 +239,7 @@ async def dashboard(
     criticas = await db.scalar(
         select(sa_func.count(Ocorrencia.id)).where(
             Ocorrencia.organization_id == org,
+            Ocorrencia.veiculo_id.in_(veiculos_no_escopo),
             Ocorrencia.deleted_at.is_(None),
             Ocorrencia.gravidade.in_(["ALTA", "CRITICA"]),
             Ocorrencia.status.in_(["ABERTA", "EM_ANALISE"]),
@@ -199,6 +251,7 @@ async def dashboard(
         await db.execute(
             select(Motorista).where(
                 Motorista.organization_id == org,
+                sa_false() if restrito else sa_true(),
                 Motorista.deleted_at.is_(None),
                 Motorista.ativo.is_(True),
                 Motorista.cnh_validade.isnot(None),
@@ -229,6 +282,7 @@ async def dashboard(
                     sa_func.count(Abastecimento.id),
                 ).where(
                     Abastecimento.organization_id == org,
+                    filtro_escopo(user, Abastecimento.unidade_id),
                     Abastecimento.status == "CONFIRMADO",
                     Abastecimento.data_abastecimento >= inicio,
                 )
@@ -253,6 +307,7 @@ async def dashboard(
                     sa_func.count(Abastecimento.id),
                 ).where(
                     Abastecimento.organization_id == org,
+                    filtro_escopo(user, Abastecimento.unidade_id),
                     Abastecimento.status == "CONFIRMADO",
                     Abastecimento.data_abastecimento >= mes_ref,
                     Abastecimento.data_abastecimento < mes_seguinte,
@@ -279,6 +334,7 @@ async def dashboard(
             )
             .where(
                 Abastecimento.organization_id == org,
+                filtro_escopo(user, Abastecimento.unidade_id),
                 Abastecimento.status == "CONFIRMADO",
                 Abastecimento.data_abastecimento >= hoje - timedelta(days=90),
             )
@@ -296,6 +352,7 @@ async def dashboard(
             )
             .where(
                 Manutencao.organization_id == org,
+                filtro_escopo(user, Manutencao.unidade_id),
                 Manutencao.deleted_at.is_(None),
                 Manutencao.data_solicitacao >= (hoje - timedelta(days=90)).date(),
             )
@@ -343,6 +400,7 @@ async def dashboard(
             select(Abastecimento)
             .where(
                 Abastecimento.organization_id == org,
+                filtro_escopo(user, Abastecimento.unidade_id),
                 Abastecimento.status == "CONFIRMADO",
                 Abastecimento.deleted_at.is_(None),
             )
@@ -379,6 +437,7 @@ async def dashboard(
             .join(Veiculo, Veiculo.id == VeiculoDocumento.veiculo_id)
             .where(
                 VeiculoDocumento.organization_id == org,
+                filtro_escopo(user, Veiculo.unidade_id),
                 VeiculoDocumento.vencimento.isnot(None),
                 VeiculoDocumento.vencimento <= limite_doc,
                 Veiculo.deleted_at.is_(None),
@@ -401,15 +460,62 @@ async def dashboard(
 
     org_nome = await db.scalar(select(Organization.name).where(Organization.id == org)) if org else None
 
+    # ── Abastecimentos a conferir (alertas dos últimos 7 dias) ──
+    abastecimentos_com_alerta = await db.scalar(
+        select(sa_func.count(Abastecimento.id)).where(
+            Abastecimento.organization_id == org,
+            filtro_escopo(user, Abastecimento.unidade_id),
+            Abastecimento.status == "CONFIRMADO",
+            Abastecimento.alertas.isnot(None),
+            Abastecimento.data_abastecimento >= hoje - timedelta(days=7),
+        )
+    ) or 0
+
+    # ── Gasto do mês por secretaria/unidade (combustível) ──
+    gasto_unidades_rows = (
+        await db.execute(
+            select(
+                Abastecimento.unidade_id,
+                sa_func.coalesce(sa_func.sum(Abastecimento.custo_total), 0),
+                sa_func.coalesce(sa_func.sum(Abastecimento.quantidade_litros), 0),
+            )
+            .where(
+                Abastecimento.organization_id == org,
+                filtro_escopo(user, Abastecimento.unidade_id),
+                Abastecimento.status == "CONFIRMADO",
+                Abastecimento.data_abastecimento >= inicio_mes,
+            )
+            .group_by(Abastecimento.unidade_id)
+        )
+    ).all()
+    nomes_unidades = {
+        u.id: u.nome
+        for u in (
+            await db.execute(select(Unidade).where(Unidade.organization_id == org))
+        ).scalars().all()
+    }
+    gasto_por_unidade = sorted(
+        [
+            {
+                "unidade_id": str(uid) if uid else None,
+                "unidade": nomes_unidades.get(uid) or "Sem secretaria definida",
+                "gasto": float(gasto),
+                "litros": float(litros),
+            }
+            for uid, gasto, litros in gasto_unidades_rows
+        ],
+        key=lambda x: -x["gasto"],
+    )
+
     # ── Onboarding: o tenant já está configurado? ──
     total_motoristas = await db.scalar(
         select(sa_func.count(Motorista.id)).where(
-            Motorista.organization_id == org, Motorista.deleted_at.is_(None)
+            Motorista.organization_id == org, Motorista.deleted_at.is_(None), sa_false() if restrito else sa_true(),
         )
     ) or 0
     total_abastecimentos = await db.scalar(
         select(sa_func.count(Abastecimento.id)).where(
-            Abastecimento.organization_id == org, Abastecimento.deleted_at.is_(None)
+            Abastecimento.organization_id == org, Abastecimento.deleted_at.is_(None), filtro_escopo(user, Abastecimento.unidade_id),
         )
     ) or 0
     total_entradas = await db.scalar(
@@ -426,7 +532,8 @@ async def dashboard(
         "entradas": total_entradas,
         # Só é "organização nova" quando nada foi cadastrado ainda — nunca por
         # ausência de movimento no mês.
-        "pendente": total_veiculos == 0
+        "pendente": not restrito
+        and total_veiculos == 0
         and total_motoristas == 0
         and len(tanques) == 0
         and total_abastecimentos == 0,
@@ -448,13 +555,16 @@ async def dashboard(
             "baixados": frota_por_situacao.get("BAIXADO", 0),
         },
         "tanques": tanques,
+        "contratos_posto": contratos_posto,
         "abastecimentos": {
             "hoje_litros": float(stats_hoje[1]),
             "hoje_quantidade": stats_hoje[0],
             "mes_litros": float(stats_mes[1]),
             "mes_gasto": float(stats_mes[2]),
             "mes_quantidade": stats_mes[0],
+            "com_alerta_7d": abastecimentos_com_alerta,
         },
+        "gasto_por_unidade_mes": gasto_por_unidade,
         "manutencao": {
             "abertas": abertas,
             "veiculos_em_manutencao": frota_por_situacao.get("EM_MANUTENCAO", 0),

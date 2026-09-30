@@ -9,9 +9,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import selectinload
 
-from app.api.v1._montagem import detalhe, filtro_caixa, linha
+from app.api.v1._montagem import detalhe, filtro_caixa, filtro_historico, linha
 from app.core.auth import get_current_user, get_user_permissions, require_permission
 from app.core.database import get_db
+from app.core.fluxo import SetorPadrao
 from app.core.permissions import Perm
 from app.models.auth_models import User
 from app.models.pedido import (
@@ -59,6 +60,19 @@ def _resposta_xlsx(buffer, nome: str) -> Response:
 GERENCIA = (Perm.PEDIDO_ENCAMINHAR, Perm.ADMIN)
 
 
+def _filtro_setor(setor: str):
+    """Onde o pedido está. Com o Assessor não há setor gravado (volta a
+    None) nem na espera externa, então "Assessoria" e "Órgão externo" casam
+    pela situação."""
+    por_situacao = {
+        SetorPadrao.ASSESSORIA.value: SituacaoPedido.COM_ASSESSOR.value,
+        SetorPadrao.EXTERNO.value: SituacaoPedido.AGUARDANDO_TERCEIRO.value,
+    }.get(setor)
+    if por_situacao:
+        return or_(Pedido.setor_atual == setor, Pedido.situacao == por_situacao)
+    return Pedido.setor_atual == setor
+
+
 def _carregado():
     """Relações necessárias para montar o detalhe sem disparar lazy load."""
     return (
@@ -94,7 +108,7 @@ async def _buscar(db: AsyncSession, pedido_id: uuid.UUID, user: User) -> Pedido:
     return pedido
 
 
-def _pode_ver(user: User, pedido: Pedido) -> bool:
+def _pode_agir(user: User, pedido: Pedido) -> bool:
     perms = get_user_permissions(user)
     if perms.intersection(GERENCIA) or Perm.PEDIDO_ENCAMINHAR in perms:
         return True
@@ -109,6 +123,34 @@ def _pode_ver(user: User, pedido: Pedido) -> bool:
                 return True
         return False
     return True
+
+
+def _passou_por_mim(user: User, pedido: Pedido) -> bool:
+    setor = (user.setor or "").upper()
+    for enc in pedido.encaminhamentos:
+        if setor and (enc.setor or "").upper() == setor:
+            return True
+        if enc.responsavel_id == user.id:
+            return True
+        if str(user.id) in {str(x) for x in (enc.participantes or [])}:
+            return True
+    return False
+
+
+def _pode_ver(user: User, pedido: Pedido) -> bool:
+    return _pode_agir(user, pedido) or _passou_por_mim(user, pedido)
+
+
+def _exige_agir(user: User, pedido: Pedido) -> None:
+    if not _pode_ver(user, pedido):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN, detail="Sem acesso a este pedido."
+        )
+    if not _pode_agir(user, pedido):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Este pedido já saiu do seu setor: você pode acompanhar e baixar documentos, mas não agir nele.",
+        )
 
 
 async def _usuarios_do_pedido(db: AsyncSession, pedido: Pedido) -> dict:
@@ -132,14 +174,19 @@ async def _usuarios_do_pedido(db: AsyncSession, pedido: Pedido) -> dict:
     return {str(u.id): u for u in result.scalars().all()}
 
 
-async def _montar(db: AsyncSession, pedido: Pedido) -> PedidoDetalhe:
+async def _montar(
+    db: AsyncSession, pedido: Pedido, user: User | None = None
+) -> PedidoDetalhe:
     usuarios = await _usuarios_do_pedido(db, pedido)
-    return detalhe(pedido, usuarios)
+    dados = detalhe(pedido, usuarios)
+    if user is not None:
+        dados.somente_leitura = not _pode_agir(user, pedido)
+    return dados
 
 
 async def _recarregar(db: AsyncSession, pedido: Pedido, user: User) -> PedidoDetalhe:
     await db.commit()
-    return await _montar(db, await _buscar(db, pedido.id, user))
+    return await _montar(db, await _buscar(db, pedido.id, user), user)
 
 
 @router.get("", response_model=PaginaPedidos)
@@ -171,13 +218,13 @@ async def listar(
     ]
     perms = get_user_permissions(user)
     if Perm.PEDIDO_TRABALHAR in perms and not perms.intersection(GERENCIA):
-        filtros.append(filtro_caixa(user))
+        filtros.append(or_(filtro_caixa(user), filtro_historico(user)))
     if situacao:
         filtros.append(Pedido.situacao == situacao)
     if tipo:
         filtros.append(Pedido.tipo == tipo)
     if setor:
-        filtros.append(Pedido.setor_atual == setor)
+        filtros.append(_filtro_setor(setor))
     if prioridade:
         filtros.append(Pedido.prioridade == prioridade)
     if origem:
@@ -262,7 +309,10 @@ async def listar(
         .offset((pagina - 1) * tamanho)
         .limit(tamanho)
     )
-    itens = [linha(p) for p in result.scalars().unique().all()]
+    pedidos = result.scalars().unique().all()
+    itens = [linha(p) for p in pedidos]
+    for item, p in zip(itens, pedidos):
+        item.somente_leitura = not _pode_agir(user, p)
     response.headers["X-Total-Count"] = str(total)
     return PaginaPedidos(itens=itens, total=total, pagina=pagina, tamanho=tamanho)
 
@@ -319,13 +369,13 @@ async def exportar_xlsx(
     ]
     perms = get_user_permissions(user)
     if Perm.PEDIDO_TRABALHAR in perms and not perms.intersection(GERENCIA):
-        filtros.append(filtro_caixa(user))
+        filtros.append(or_(filtro_caixa(user), filtro_historico(user)))
     if situacao:
         filtros.append(Pedido.situacao == situacao)
     if tipo:
         filtros.append(Pedido.tipo == tipo)
     if setor:
-        filtros.append(Pedido.setor_atual == setor)
+        filtros.append(_filtro_setor(setor))
     if prioridade:
         filtros.append(Pedido.prioridade == prioridade)
     if origem:
@@ -398,7 +448,7 @@ async def obter(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Sem acesso a este pedido."
         )
-    return await _montar(db, pedido)
+    return await _montar(db, pedido, user)
 
 
 @router.patch("/{pedido_id}", response_model=PedidoDetalhe)
@@ -447,6 +497,7 @@ async def assumir(
     db: AsyncSession = Depends(get_db),
 ):
     pedido = await _buscar(db, pedido_id, user)
+    _exige_agir(user, pedido)
     await servico.assumir(db, pedido, servico.localizar(pedido, enc_id), autor=user)
     return await _recarregar(db, pedido, user)
 
@@ -462,6 +513,7 @@ async def transferir(
     db: AsyncSession = Depends(get_db),
 ):
     pedido = await _buscar(db, pedido_id, user)
+    _exige_agir(user, pedido)
     await servico.transferir(
         db,
         pedido,
@@ -484,6 +536,7 @@ async def mencionar(
     db: AsyncSession = Depends(get_db),
 ):
     pedido = await _buscar(db, pedido_id, user)
+    _exige_agir(user, pedido)
     await servico.mencionar(
         db,
         pedido,
@@ -506,6 +559,7 @@ async def solicitar_complemento(
     db: AsyncSession = Depends(get_db),
 ):
     pedido = await _buscar(db, pedido_id, user)
+    _exige_agir(user, pedido)
     await servico.solicitar_complemento(
         db, pedido, servico.localizar(pedido, enc_id), autor=user, texto=body.texto
     )
@@ -524,6 +578,7 @@ async def responder_complemento(
     db: AsyncSession = Depends(get_db),
 ):
     pedido = await _buscar(db, pedido_id, user)
+    _exige_agir(user, pedido)
     await servico.responder_complemento(
         db, pedido, servico.localizar(pedido, enc_id), autor=user, texto=body.texto
     )
@@ -539,6 +594,7 @@ async def negociar_prazo(
     db: AsyncSession = Depends(get_db),
 ):
     pedido = await _buscar(db, pedido_id, user)
+    _exige_agir(user, pedido)
     await servico.negociar_prazo(
         db,
         pedido,
@@ -561,6 +617,7 @@ async def registrar_medicao(
     db: AsyncSession = Depends(get_db),
 ):
     pedido = await _buscar(db, pedido_id, user)
+    _exige_agir(user, pedido)
     await servico.registrar_medicao(
         db,
         pedido,
@@ -586,6 +643,7 @@ async def devolver(
     db: AsyncSession = Depends(get_db),
 ):
     pedido = await _buscar(db, pedido_id, user)
+    _exige_agir(user, pedido)
     await servico.devolver(
         db, pedido, servico.localizar(pedido, enc_id), autor=user, resultado=body.resultado
     )
@@ -648,10 +706,7 @@ async def comentar(
     db: AsyncSession = Depends(get_db),
 ):
     pedido = await _buscar(db, pedido_id, user)
-    if not _pode_ver(user, pedido):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Sem acesso a este pedido."
-        )
+    _exige_agir(user, pedido)
     enc = servico.localizar(pedido, body.encaminhamento_id) if body.encaminhamento_id else None
     mencionados = []
     if body.mencionados_ids:
@@ -686,6 +741,7 @@ async def salvar_rascunho(
 ):
     """Salvamento automático da resposta que o setor está escrevendo."""
     pedido = await _buscar(db, pedido_id, user)
+    _exige_agir(user, pedido)
     await servico.salvar_rascunho(
         db,
         pedido,
@@ -708,10 +764,7 @@ async def definir_parada(
 ):
     """Quem conduz ou quem executa diz por que o pedido não anda."""
     pedido = await _buscar(db, pedido_id, user)
-    if not _pode_ver(user, pedido):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Sem acesso a este pedido."
-        )
+    _exige_agir(user, pedido)
     await servico.definir_parada(
         db,
         pedido,

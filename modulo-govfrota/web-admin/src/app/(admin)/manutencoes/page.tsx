@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { Plus, Eye } from "lucide-react";
-import { api, Manutencao, Oficina, PlanoPreventivo, VeiculoListItem } from "@/lib/api";
+import { api, Fornecedor, Manutencao, PlanoPreventivo, VeiculoListItem } from "@/lib/api";
 import { RequirePermission } from "@/components/RequirePermission";
 import { useAuth } from "@/lib/auth";
 
@@ -30,11 +30,12 @@ export default function ManutencoesPage() {
   const [lista, setLista] = useState<Manutencao[]>([]);
   const [planos, setPlanos] = useState<PlanoPreventivo[]>([]);
   const [veiculos, setVeiculos] = useState<VeiculoListItem[]>([]);
-  const [oficinas, setOficinas] = useState<Oficina[]>([]);
+  // Oficinas = fornecedores de serviço (cadastro único em /fornecedores)
+  const [oficinas, setOficinas] = useState<Fornecedor[]>([]);
   const [mostrarForm, setMostrarForm] = useState(false);
   const [detalhe, setDetalhe] = useState<Manutencao | null>(null);
   const [filtros, setFiltros] = useState({ status: "", tipo: "", veiculo_id: "" });
-  const [form, setForm] = useState({ veiculo_id: "", tipo: "CORRETIVA", descricao_problema: "", prioridade: "NORMAL", oficina_id: "", data_solicitacao: new Date().toISOString().slice(0, 10), quilometragem: "" });
+  const [form, setForm] = useState({ veiculo_id: "", tipo: "CORRETIVA", descricao_problema: "", prioridade: "NORMAL", fornecedor_id: "", data_solicitacao: new Date().toISOString().slice(0, 10), quilometragem: "" });
 
   const carregar = useCallback(async () => {
     try {
@@ -45,7 +46,8 @@ export default function ManutencoesPage() {
       }));
       setPlanos(await api.listPlanosPreventivos());
       setVeiculos((await api.listVeiculos({ limit: 200 })).itens);
-      setOficinas(await api.listOficinas());
+      // Perfil restrito à secretaria não consulta fornecedores (dado da organização toda).
+      setOficinas(await api.listFornecedores({ oficina: true, ativo: true, limit: 200 }).then((r) => r.itens).catch(() => []));
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -68,7 +70,11 @@ export default function ManutencoesPage() {
   }
 
   const placaDe = (vid: string) => veiculos.find((v) => v.id === vid)?.placa ?? "—";
-  const nomeOficina = (oid: string | null) => (oid ? oficinas.find((o) => o.id === oid)?.nome ?? "—" : "—");
+  const nomeOficina = (m: Manutencao) => {
+    if (!m.fornecedor_id) return "—";
+    const f = oficinas.find((o) => o.id === m.fornecedor_id);
+    return m.fornecedor_nome || (f ? f.nome_fantasia || f.razao_social : "—");
+  };
 
   return (
     <RequirePermission perms={["maintenance.view", "vehicle.view"]}>
@@ -102,7 +108,7 @@ export default function ManutencoesPage() {
                     await api.createManutencao({
                       ...form,
                       descricao_problema: form.descricao_problema || undefined,
-                      oficina_id: form.oficina_id || undefined,
+                      fornecedor_id: form.fornecedor_id || undefined,
                       quilometragem: form.quilometragem ? Number(form.quilometragem) : undefined,
                     });
                     toast.success("Manutenção aberta.");
@@ -144,10 +150,10 @@ export default function ManutencoesPage() {
                     className="w-full rounded-btn border border-surface-border px-3 py-2 text-body-sm" />
                 </label>
                 <label className="text-meta">Oficina
-                  <select value={form.oficina_id} onChange={(e) => setForm({ ...form, oficina_id: e.target.value })}
+                  <select value={form.fornecedor_id} onChange={(e) => setForm({ ...form, fornecedor_id: e.target.value })}
                     className="w-full rounded-btn border border-surface-border px-3 py-2 text-body-sm">
                     <option value="">—</option>
-                    {oficinas.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}
+                    {oficinas.map((o) => <option key={o.id} value={o.id}>{o.nome_fantasia || o.razao_social}</option>)}
                   </select>
                 </label>
                 <div className="sm:col-span-4">
@@ -198,7 +204,7 @@ export default function ManutencoesPage() {
                       <td className="px-4 py-3 font-medium">{placaDe(m.veiculo_id)}</td>
                       <td className="px-4 py-3">{new Date(m.data_solicitacao + "T12:00").toLocaleDateString("pt-BR")} · {m.descricao_problema?.slice(0, 40)}</td>
                       <td className="px-4 py-3">{m.tipo.replace("_", " ")}</td>
-                      <td className="px-4 py-3">{nomeOficina(m.oficina_id)}</td>
+                      <td className="px-4 py-3">{nomeOficina(m)}</td>
                       <td className="px-4 py-3">{m.prioridade}</td>
                       <td className="px-4 py-3">R$ {Number(m.valor_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</td>
                       <td className="px-4 py-3">
@@ -252,7 +258,7 @@ export default function ManutencoesPage() {
           </div>
         )}
 
-        {detalhe && <ModalDetalhe manutencao={detalhe} oficina={nomeOficina(detalhe.oficina_id)} placa={placaDe(detalhe.veiculo_id)} onFechar={() => setDetalhe(null)} onSalvo={carregar} />}
+        {detalhe && <ModalDetalhe manutencao={detalhe} oficina={nomeOficina(detalhe)} placa={placaDe(detalhe.veiculo_id)} onFechar={() => setDetalhe(null)} onSalvo={carregar} />}
       </div>
     </RequirePermission>
   );

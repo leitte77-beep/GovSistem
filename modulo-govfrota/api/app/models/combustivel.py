@@ -1,10 +1,11 @@
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy import (
     Boolean,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -108,12 +109,25 @@ class Fornecedor(Base, TimestampMixin, SoftDeleteMixin):
     endereco: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
     foto_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     categoria: Mapped[str] = mapped_column(String(30), default="COMBUSTIVEL", nullable=False, index=True)
+    # Posto externo onde os motoristas podem abastecer (ex.: vencedor da licitação).
+    posto_credenciado: Mapped[bool] = mapped_column(Boolean(), default=False, nullable=False)
     observacoes: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
     ativo: Mapped[bool] = mapped_column(Boolean(), default=True, nullable=False)
 
 
-class Oficina(Base, TimestampMixin, SoftDeleteMixin):
-    __tablename__ = "oficinas"
+class ContratoPosto(Base, TimestampMixin, SoftDeleteMixin):
+    """Contrato/ata com o posto credenciado para um combustível.
+
+    Define o preço por litro cobrado nos abastecimentos do posto (o motorista
+    não informa valor) e os litros contratados. O saldo não é gravado: é
+    `litros_contratados` menos os abastecimentos CONFIRMADOS vinculados, então
+    cancelar um abastecimento devolve o saldo.
+    """
+
+    __tablename__ = "contratos_posto"
+    __table_args__ = (
+        Index("ix_contratos_posto_org_fornecedor", "organization_id", "fornecedor_id", "combustivel_id"),
+    )
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -121,14 +135,18 @@ class Oficina(Base, TimestampMixin, SoftDeleteMixin):
         nullable=False,
         index=True,
     )
-    nome: Mapped[str] = mapped_column(String(255), nullable=False)
-    razao_social: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    cpf_cnpj: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
-    telefone: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
-    email: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    endereco: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
-    responsavel: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
-    especialidade: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
-    observacoes: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
-    fornecedor_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+    fornecedor_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("fornecedores.id"), nullable=False
+    )
+    combustivel_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("combustiveis.id"), nullable=False
+    )
+    numero: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    preco_litro: Mapped[Decimal] = mapped_column(Numeric(12, 4), nullable=False)
+    litros_contratados: Mapped[Decimal] = mapped_column(Numeric(14, 2), nullable=False)
+    data_inicio: Mapped[Optional[date]] = mapped_column(Date(), nullable=True)
+    data_fim: Mapped[Optional[date]] = mapped_column(Date(), nullable=True)
     ativo: Mapped[bool] = mapped_column(Boolean(), default=True, nullable=False)
+    observacoes: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
+
+    combustivel: Mapped["Combustivel"] = relationship()

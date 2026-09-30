@@ -7,7 +7,7 @@ números diferentes para o mesmo processo.
 
 from datetime import date, datetime, timezone
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import and_, func, or_, select
 
 from app.models.auth_models import User
 from app.models.pedido import Encaminhamento, Pedido, SituacaoPedido, StatusEncaminhamento
@@ -56,6 +56,25 @@ def filtro_caixa(user: User):
     if not user.setor:
         return or_(pessoal, mencionado)
     return or_(pessoal, fila_do_setor, mencionado)
+
+
+def filtro_historico(user: User):
+    """Pedidos que já passaram pelo setor (ou pela pessoa) — só para consulta.
+
+    Depois de devolvido ao Assessor o pedido sai da caixa, mas o setor
+    continua podendo acompanhá-lo, ver a conversa e baixar os documentos.
+    """
+    condicoes = [
+        Encaminhamento.responsavel_id == user.id,
+        Encaminhamento.participantes.contains([str(user.id)]),
+    ]
+    if user.setor:
+        condicoes.append(func.upper(Encaminhamento.setor) == user.setor.upper())
+    return (
+        select(Encaminhamento.id)
+        .where(Encaminhamento.pedido_id == Pedido.id, or_(*condicoes))
+        .exists()
+    )
 
 
 def dias_de_atraso(pedido: Pedido, hoje: date | None = None) -> int:

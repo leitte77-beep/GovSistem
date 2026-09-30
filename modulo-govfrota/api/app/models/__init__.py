@@ -13,19 +13,31 @@ from app.models.enums import (
     TipoOrganizacao,
     TipoVeiculo,
 )
-from app.models.auth_models import Organization, Role, RolePermission, User, UserRole
+from app.models.auth_models import (
+    Organization,
+    Role,
+    RolePermission,
+    User,
+    UserRole,
+    UsuarioAcesso,
+    UsuarioUnidade,
+)
 from app.models.configuracoes import ConfiguracaoGovFrota
+from app.models.unidade import Unidade
 from app.models.veiculo import AlteracaoQuilometragem, Veiculo, VeiculoDocumento, VeiculoTanque
 from app.models.motorista import AcessoMotorista, Motorista
-from app.models.combustivel import Combustivel, Fornecedor, Oficina, Tanque
+from app.models.combustivel import Combustivel, ContratoPosto, Fornecedor, Tanque
 from app.models.estoque import EntradaAnexo, EntradaCombustivel, InventarioTanque, MovimentacaoEstoque
 from app.models.abastecimento import Abastecimento, CorrecaoAbastecimento
 from app.models.manutencao import Manutencao, ManutencaoItem, PlanoPreventivo
 from app.models.ocorrencia import Ocorrencia
 from app.models.auditoria import Auditoria, Notificacao
 from app.models.anexo import Anexo
+from app.models.acesso_fornecedor import AcessoFornecedor
+from app.models.nota_abastecimento import NotaAbastecimento
 
 __all__ = [
+    "NotaAbastecimento",
     "Base",
     "TimestampMixin",
     "SoftDeleteMixin",
@@ -46,7 +58,10 @@ __all__ = [
     "RolePermission",
     "User",
     "UserRole",
+    "UsuarioAcesso",
+    "UsuarioUnidade",
     "ConfiguracaoGovFrota",
+    "Unidade",
     "Veiculo",
     "VeiculoDocumento",
     "VeiculoTanque",
@@ -56,7 +71,7 @@ __all__ = [
     "Combustivel",
     "Tanque",
     "Fornecedor",
-    "Oficina",
+    "ContratoPosto",
     "EntradaCombustivel",
     "EntradaAnexo",
     "MovimentacaoEstoque",
@@ -70,4 +85,5 @@ __all__ = [
     "Auditoria",
     "Notificacao",
     "Anexo",
+    "AcessoFornecedor",
 ]

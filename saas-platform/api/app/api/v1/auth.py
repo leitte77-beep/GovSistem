@@ -328,6 +328,17 @@ async def update_me(
     """
     update_data = body.model_dump(exclude_unset=True)
 
+    if "name" in update_data:
+        name = (update_data["name"] or "").strip()
+        if len(name) < 3:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Informe o nome completo.",
+            )
+        update_data["name"] = name
+    if "phone" in update_data:
+        update_data["phone"] = re.sub(r"\D", "", update_data["phone"] or "") or None
+
     if "cpf" in update_data:
         if update_data["cpf"]:
             cleaned = re.sub(r"\D", "", update_data["cpf"])

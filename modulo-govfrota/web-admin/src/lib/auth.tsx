@@ -10,6 +10,11 @@ interface User {
   roles: { id: string; name: string; label: string }[];
   permissions?: string[];
   organization_name?: string | null;
+  /** Perfil efetivo no GovFrota (o definido no módulo prevalece sobre a plataforma). */
+  perfis?: { name: string; label: string }[];
+  cargo?: string | null;
+  /** null = todas as secretarias; lista = acesso restrito a elas. */
+  secretarias?: { id: string; nome: string; sigla: string | null }[] | null;
 }
 
 interface AuthContextType {
@@ -19,6 +24,8 @@ interface AuthContextType {
   refreshAuth: () => Promise<void>;
   hasRole: (...roles: string[]) => boolean;
   hasPermission: (...perms: string[]) => boolean;
+  /** Usuário restrito às secretarias vinculadas (o backend aplica o filtro). */
+  restrito: boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -28,6 +35,7 @@ const AuthContext = createContext<AuthContextType>({
   refreshAuth: async () => {},
   hasRole: () => false,
   hasPermission: () => false,
+  restrito: false,
 });
 
 export const ACCESS_TOKEN_KEY = "govfrota_access_token";
@@ -79,7 +87,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     !!user?.permissions && perms.some((p) => user.permissions!.includes(p));
 
   return (
-    <AuthContext.Provider value={{ user, loading, logout, refreshAuth, hasRole, hasPermission }}>
+    <AuthContext.Provider
+      value={{ user, loading, logout, refreshAuth, hasRole, hasPermission, restrito: !!user && user.secretarias != null }}
+    >
       {children}
     </AuthContext.Provider>
   );

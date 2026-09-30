@@ -3,13 +3,27 @@
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { Download, FileSpreadsheet, FileText } from "lucide-react";
-import { api, CNHItem, RelatorioAbastecimentos, RelatorioConsumo, RelatorioEstoque, RelatorioManutencoes } from "@/lib/api";
+import {
+  api,
+  CNHItem,
+  RelatorioAbastecimentos,
+  RelatorioConsumo,
+  RelatorioEstoque,
+  RelatorioManutencoes,
+  RelatorioSecretarias,
+} from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { RequirePermission } from "@/components/RequirePermission";
 
-type Aba = "abastecimentos" | "consumo" | "estoque" | "manutencoes" | "cnh";
+type Aba = "secretarias" | "abastecimentos" | "consumo" | "estoque" | "manutencoes" | "cnh";
+
+function reais(v: number): string {
+  return `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
 
 export default function RelatoriosPage() {
-  const [aba, setAba] = useState<Aba>("abastecimentos");
+  const { restrito } = useAuth();
+  const [aba, setAba] = useState<Aba>("secretarias");
   const [dataInicio, setDataInicio] = useState("");
   const [dataFim, setDataFim] = useState("");
   const [relAbast, setRelAbast] = useState<RelatorioAbastecimentos | null>(null);
@@ -17,9 +31,16 @@ export default function RelatoriosPage() {
   const [relEstoque, setRelEstoque] = useState<RelatorioEstoque | null>(null);
   const [relManut, setRelManut] = useState<RelatorioManutencoes | null>(null);
   const [cnh, setCnh] = useState<{ itens: CNHItem[] } | null>(null);
+  const [relSecretarias, setRelSecretarias] = useState<RelatorioSecretarias | null>(null);
+  const [publico, setPublico] = useState(true);
+
+  useEffect(() => {
+    api.getConfiguracoes().then((c) => setPublico(c.tipo_organizacao !== "PRIVADO")).catch(() => {});
+  }, []);
 
   const carregar = useCallback(async () => {
     try {
+      if (aba === "secretarias") setRelSecretarias(await api.relatorioSecretarias({ data_inicio: dataInicio || undefined, data_fim: dataFim || undefined }));
       if (aba === "abastecimentos") setRelAbast(await api.relatorioAbastecimentos({ data_inicio: dataInicio || undefined, data_fim: dataFim || undefined }));
       if (aba === "consumo") setRelConsumo(await api.relatorioConsumoVeiculos({ data_inicio: dataInicio || undefined, data_fim: dataFim || undefined }));
       if (aba === "estoque") setRelEstoque(await api.relatorioEstoque());
@@ -56,6 +77,7 @@ export default function RelatoriosPage() {
   }
 
   const endpointDaAba: Record<Aba, string> = {
+    secretarias: "secretarias",
     abastecimentos: "abastecimentos",
     consumo: "veiculos/consumo",
     estoque: "estoque",
@@ -64,12 +86,15 @@ export default function RelatoriosPage() {
   };
 
   const abas = [
+    { chave: "secretarias", label: publico ? "Por secretaria" : "Por centro de custo" },
     { chave: "abastecimentos", label: "Abastecimentos" },
     { chave: "consumo", label: "Consumo por veículo" },
     { chave: "estoque", label: "Estoque" },
     { chave: "manutencoes", label: "Manutenções" },
     { chave: "cnh", label: "CNHs" },
   ] as const;
+  // Estoque e CNHs são da organização toda — fora do alcance de quem vê só a secretaria.
+  const abasVisiveis = abas.filter((a) => !(restrito && (a.chave === "estoque" || a.chave === "cnh")));
 
   return (
     <RequirePermission perms="reports.view">
@@ -89,7 +114,7 @@ export default function RelatoriosPage() {
         </div>
 
         <div className="flex flex-wrap gap-1 border-b border-surface-border">
-          {abas.map((a) => (
+          {abasVisiveis.map((a) => (
             <button key={a.chave} onClick={() => setAba(a.chave)}
               className={`px-4 py-2 text-body-sm ${aba === a.chave ? "border-b-2 border-[#1D4ED8] font-medium text-[#1D4ED8]" : "text-text-body"}`}>
               {a.label}
@@ -109,6 +134,59 @@ export default function RelatoriosPage() {
           </button>
         </div>
 
+        {aba === "secretarias" && relSecretarias && (
+          <>
+            <p className="text-body-sm text-text-subtle">
+              {new Date(relSecretarias.periodo.inicio + "T12:00").toLocaleDateString("pt-BR")} a{" "}
+              {new Date(relSecretarias.periodo.fim + "T12:00").toLocaleDateString("pt-BR")} · total {reais(relSecretarias.total)}
+              {!dataInicio && " (mês atual — escolha o período acima)"}
+            </p>
+            {relSecretarias.itens.length === 0 ? (
+              <p className="rounded-card border border-surface-border bg-white px-4 py-8 text-center text-body-sm text-text-subtle">
+                Sem gastos no período.
+              </p>
+            ) : (
+              <div className="overflow-x-auto rounded-card border border-surface-border bg-white shadow-card">
+                <table className="w-full min-w-200 text-body-sm">
+                  <thead>
+                    <tr className="border-b border-surface-border bg-surface-bg text-left text-meta text-text-subtle">
+                      <th className="px-4 py-3">{publico ? "Secretaria" : "Centro de custo"}</th>
+                      <th className="px-4 py-3 text-right">Veículos</th>
+                      <th className="px-4 py-3 text-right">Litros</th>
+                      <th className="px-4 py-3 text-right">Comb. tanque</th>
+                      <th className="px-4 py-3 text-right">Comb. posto</th>
+                      <th className="px-4 py-3 text-right">Manutenção</th>
+                      <th className="px-4 py-3 text-right">Total</th>
+                      <th className="px-4 py-3">Participação</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {relSecretarias.itens.map((i) => (
+                      <tr key={i.unidade_id ?? "sem"} className="border-b border-surface-border last:border-0">
+                        <td className={`px-4 py-2 font-medium ${i.unidade_id ? "" : "italic text-text-subtle"}`}>{i.unidade}</td>
+                        <td className="px-4 py-2 text-right tabular-nums">{i.veiculos}</td>
+                        <td className="px-4 py-2 text-right tabular-nums">{i.litros.toLocaleString("pt-BR")}</td>
+                        <td className="px-4 py-2 text-right tabular-nums">{reais(i.combustivel_tanque)}</td>
+                        <td className="px-4 py-2 text-right tabular-nums">{reais(i.combustivel_posto)}</td>
+                        <td className="px-4 py-2 text-right tabular-nums">{reais(i.manutencao)}</td>
+                        <td className="px-4 py-2 text-right font-medium tabular-nums">{reais(i.total)}</td>
+                        <td className="px-4 py-2">
+                          <div className="flex items-center gap-2">
+                            <div className="h-2 w-24 overflow-hidden rounded-full bg-surface-bg">
+                              <div className="h-full bg-[#1D4ED8]" style={{ width: `${Math.min(i.participacao_pct, 100)}%` }} />
+                            </div>
+                            <span className="text-meta tabular-nums text-text-subtle">{i.participacao_pct.toLocaleString("pt-BR")}%</span>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </>
+        )}
+
         {aba === "abastecimentos" && relAbast && (
           <>
             <p className="text-body-sm text-text-subtle">
@@ -119,7 +197,8 @@ export default function RelatoriosPage() {
                 <thead>
                   <tr className="border-b border-surface-border bg-surface-bg text-left text-meta text-text-subtle">
                     <th className="px-4 py-3">Data</th><th className="px-4 py-3">Placa</th><th className="px-4 py-3">Motorista</th>
-                    <th className="px-4 py-3">Combustível</th><th className="px-4 py-3">Litros</th><th className="px-4 py-3">KM</th><th className="px-4 py-3">Custo</th>
+                    <th className="px-4 py-3">Combustível</th><th className="px-4 py-3">Local</th><th className="px-4 py-3">Litros</th>
+                    <th className="px-4 py-3">KM / horas</th><th className="px-4 py-3">NF</th><th className="px-4 py-3">Custo</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -129,8 +208,10 @@ export default function RelatoriosPage() {
                       <td className="px-4 py-2 font-medium">{i.placa}</td>
                       <td className="px-4 py-2">{i.motorista ?? "—"}</td>
                       <td className="px-4 py-2">{i.combustivel}</td>
+                      <td className="px-4 py-2">{i.local ?? "—"}</td>
                       <td className="px-4 py-2">{i.litros.toLocaleString("pt-BR")}</td>
-                      <td className="px-4 py-2">{i.km.toLocaleString("pt-BR")}</td>
+                      <td className="px-4 py-2">{i.horimetro != null ? `${i.horimetro.toLocaleString("pt-BR")} h` : i.km.toLocaleString("pt-BR")}</td>
+                      <td className="px-4 py-2">{i.numero_nf ?? "—"}</td>
                       <td className="px-4 py-2">{i.custo_total != null ? `R$ ${i.custo_total.toFixed(2)}` : "—"}</td>
                     </tr>
                   ))}
@@ -145,7 +226,7 @@ export default function RelatoriosPage() {
             <table className="w-full min-w-200 text-body-sm">
               <thead>
                 <tr className="border-b border-surface-border bg-surface-bg text-left text-meta text-text-subtle">
-                  <th className="px-4 py-3">Placa</th><th className="px-4 py-3">KM rodados</th><th className="px-4 py-3">Litros</th>
+                  <th className="px-4 py-3">Placa</th><th className="px-4 py-3">KM / horas</th><th className="px-4 py-3">Litros</th>
                   <th className="px-4 py-3">Consumo médio</th><th className="px-4 py-3">Combustível</th><th className="px-4 py-3">Manutenção</th>
                   <th className="px-4 py-3">Total</th><th className="px-4 py-3">Custo/km</th>
                 </tr>
@@ -154,9 +235,13 @@ export default function RelatoriosPage() {
                 {relConsumo.itens.map((i) => (
                   <tr key={i.placa} className="border-b border-surface-border last:border-0">
                     <td className="px-4 py-2 font-medium">{i.placa}</td>
-                    <td className="px-4 py-2">{i.km_rodados.toLocaleString("pt-BR")}</td>
+                    <td className="px-4 py-2">
+                      {i.usa_horimetro ? `${(i.horas_trabalhadas ?? 0).toLocaleString("pt-BR")} h` : `${i.km_rodados.toLocaleString("pt-BR")} km`}
+                    </td>
                     <td className="px-4 py-2">{i.litros.toLocaleString("pt-BR")}</td>
-                    <td className="px-4 py-2">{i.consumo_medio ? `${i.consumo_medio} km/L` : "—"}</td>
+                    <td className="px-4 py-2">
+                      {i.consumo_l_h ? `${i.consumo_l_h} L/h` : i.consumo_medio ? `${i.consumo_medio} km/L` : "—"}
+                    </td>
                     <td className="px-4 py-2">R$ {i.valor_combustivel.toFixed(2)}</td>
                     <td className="px-4 py-2">R$ {i.valor_manutencao.toFixed(2)}</td>
                     <td className="px-4 py-2 font-medium">R$ {i.custo_total.toFixed(2)}</td>

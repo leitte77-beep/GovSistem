@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import {
-  Building2, ChevronLeft, ChevronRight, Droplets, Fuel, PackagePlus, Pencil, Plus,
+  ChevronLeft, ChevronRight, Droplets, Fuel, PackagePlus, Pencil, Plus,
   Search, SlidersHorizontal, ArrowDownToLine, Scale, Repeat, Eye, X,
 } from "lucide-react";
 import { api, Combustivel, Entrada, Fornecedor, Tanque } from "@/lib/api";
@@ -21,15 +21,14 @@ import { EntradaFormDrawer } from "@/components/tanque/EntradaFormDrawer";
 import { AjusteModal, CancelarEntradaModal, InventarioModal, TransferenciaModal } from "@/components/tanque/AcoesModals";
 import { VerEntradaModal } from "@/components/tanque/VerEntradaModal";
 import { ConfirmarModal } from "@/components/tanque/Drawer";
-import { categoriaFornecedor, corStatusTanque, mascaraCpfCnpj, rotuloMovimentacao } from "@/lib/combustiveis";
+import { corStatusTanque, rotuloMovimentacao } from "@/lib/combustiveis";
 
-type Aba = "estoque" | "entradas" | "combustiveis" | "fornecedores";
+type Aba = "estoque" | "entradas" | "combustiveis";
 
 const ABAS: { chave: Aba; label: string }[] = [
   { chave: "estoque", label: "Estoque dos tanques" },
   { chave: "entradas", label: "Entradas de combustível" },
   { chave: "combustiveis", label: "Tipos de combustível" },
-  { chave: "fornecedores", label: "Fornecedores" },
 ];
 
 export default function CombustiveisPage() {
@@ -49,12 +48,8 @@ export default function CombustiveisPage() {
   const [entradasSkip, setEntradasSkip] = useState(0);
   const [filtroEntradas, setFiltroEntradas] = useState({ busca: "", tipo: "" });
 
-  // Fornecedores (paginados + filtros)
+  // Fornecedores — só para o formulário de entrada (cadastro em /fornecedores)
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
-  const [totalFornecedores, setTotalFornecedores] = useState(0);
-  const [fornecedoresLimit, setFornecedoresLimit] = useState(50);
-  const [fornecedoresSkip, setFornecedoresSkip] = useState(0);
-  const [filtroFornecedores, setFiltroFornecedores] = useState({ busca: "", categoria: "", ativo: "" });
 
   const [buscaTanque, setBuscaTanque] = useState("");
   const [buscaCombustivel, setBuscaCombustivel] = useState("");
@@ -62,7 +57,6 @@ export default function CombustiveisPage() {
   // Drawers
   const [tanqueDrawer, setTanqueDrawer] = useState<{ aberto: boolean; item: Tanque | null }>({ aberto: false, item: null });
   const [combDrawer, setCombDrawer] = useState<{ aberto: boolean; item: Combustivel | null }>({ aberto: false, item: null });
-  const [fornDrawer, setFornDrawer] = useState<{ aberto: boolean; item: Fornecedor | null }>({ aberto: false, item: null });
   const [entradaDrawer, setEntradaDrawer] = useState<{ aberto: boolean; tanqueInicial?: string }>({ aberto: false });
 
   // Ações (modais)
@@ -70,7 +64,6 @@ export default function CombustiveisPage() {
   const [cancelarEntrada, setCancelarEntrada] = useState<Entrada | null>(null);
   const [verEntrada, setVerEntrada] = useState<Entrada | null>(null);
   const [inativarCombustivel, setInativarCombustivel] = useState<Combustivel | null>(null);
-  const [inativarFornecedor, setInativarFornecedor] = useState<Fornecedor | null>(null);
 
   const carregarBase = useCallback(async () => {
     try {
@@ -82,7 +75,6 @@ export default function CombustiveisPage() {
       setTanques(ts);
       setCombustiveis(cs);
       setFornecedores(fs.itens);
-      setTotalFornecedores(fs.total);
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -114,31 +106,6 @@ export default function CombustiveisPage() {
     if (aba === "entradas") carregarEntradas();
   };
 
-  // Filtro de busca com debounce para fornecedores
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const carregarFornecedoresFiltrados = useCallback(async () => {
-    try {
-      const params: Record<string, unknown> = { skip: fornecedoresSkip, limit: fornecedoresLimit };
-      if (filtroFornecedores.busca) params.search = filtroFornecedores.busca;
-      if (filtroFornecedores.categoria) params.categoria = filtroFornecedores.categoria;
-      if (filtroFornecedores.ativo) params.ativo = filtroFornecedores.ativo === "ativo";
-      const r = await api.listFornecedores(params);
-      setFornecedores(r.itens);
-      setTotalFornecedores(r.total);
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
-  }, [fornecedoresSkip, fornecedoresLimit, filtroFornecedores]);
-
-  useEffect(() => {
-    if (aba === "fornecedores") {
-      if (debounceRef.current) clearTimeout(debounceRef.current);
-      debounceRef.current = setTimeout(() => carregarFornecedoresFiltrados(), 300);
-      return () => {
-        if (debounceRef.current) clearTimeout(debounceRef.current);
-      };
-    }
-  }, [aba, carregarFornecedoresFiltrados]);
 
   const tanquesFiltrados = useMemo(() => {
     const q = buscaTanque.trim().toLowerCase();
@@ -164,7 +131,8 @@ export default function CombustiveisPage() {
         <div>
           <h1 className="text-h1 text-text-title">Combustíveis</h1>
           <p className="mt-1 text-body-sm text-text-subtle">
-            Controle tanques, entradas, estoque, fornecedores e movimentações de combustível.
+            Controle tanques, entradas, estoque e movimentações de combustível. Fornecedores e postos
+            credenciados ficam em <Link href="/fornecedores" className="text-[#1D4ED8] hover:underline">Fornecedores</Link>.
           </p>
         </div>
 
@@ -234,23 +202,6 @@ export default function CombustiveisPage() {
               />
             )}
 
-            {aba === "fornecedores" && (
-              <FornecedoresTab
-                fornecedores={fornecedores}
-                total={totalFornecedores}
-                skip={fornecedoresSkip}
-                limit={fornecedoresLimit}
-                filtro={filtroFornecedores}
-                setFiltro={setFiltroFornecedores}
-                setSkip={setFornecedoresSkip}
-                setLimit={setFornecedoresLimit}
-                podeGerenciar={podeGerenciar}
-                onNovo={() => setFornDrawer({ aberto: true, item: null })}
-                onEditar={(f) => setFornDrawer({ aberto: true, item: f })}
-                onInativar={(f) => setInativarFornecedor(f)}
-                onEntrada={() => setEntradaDrawer({ aberto: true })}
-              />
-            )}
           </>
         )}
 
@@ -266,12 +217,6 @@ export default function CombustiveisPage() {
           aberto={combDrawer.aberto}
           onClose={() => setCombDrawer({ aberto: false, item: null })}
           combustivel={combDrawer.item}
-          onSalvo={recarregar}
-        />
-        <FornecedorFormDrawer
-          aberto={fornDrawer.aberto}
-          onClose={() => setFornDrawer({ aberto: false, item: null })}
-          fornecedor={fornDrawer.item}
           onSalvo={recarregar}
         />
         <EntradaFormDrawer
@@ -346,28 +291,18 @@ export default function CombustiveisPage() {
         <ConfirmarModal
           aberto={!!inativarCombustivel}
           onClose={() => setInativarCombustivel(null)}
-          titulo="Inativar combustível"
-          descricao={`Deseja inativar "${inativarCombustivel?.nome}"? Ele será mantido no histórico, mas não aparecerá em novos cadastros.`}
-          confirmarLabel="Inativar"
-          perigo
+          titulo={inativarCombustivel?.ativo ? "Inativar combustível" : "Reativar combustível"}
+          descricao={
+            inativarCombustivel?.ativo
+              ? `Deseja inativar "${inativarCombustivel?.nome.trim()}"? Ele será mantido no histórico, mas não aparecerá em novos cadastros.`
+              : `Deseja reativar "${inativarCombustivel?.nome.trim()}"? Ele volta a aparecer nos cadastros e abastecimentos.`
+          }
+          confirmarLabel={inativarCombustivel?.ativo ? "Inativar" : "Reativar"}
+          perigo={!!inativarCombustivel?.ativo}
           onConfirmar={async () => {
             const c = inativarCombustivel!;
-            await api.updateCombustivel(c.id, { nome: c.nome, unidade: c.unidade, ativo: false });
-            toast.success("Combustível inativado.");
-            recarregar();
-          }}
-        />
-        <ConfirmarModal
-          aberto={!!inativarFornecedor}
-          onClose={() => setInativarFornecedor(null)}
-          titulo="Inativar fornecedor"
-          descricao={`Deseja inativar "${inativarFornecedor?.razao_social}"? Ele será mantido no histórico, mas não aparecerá em novas entradas.`}
-          confirmarLabel="Inativar"
-          perigo
-          onConfirmar={async () => {
-            const f = inativarFornecedor!;
-            await api.updateFornecedor(f.id, { ativo: false });
-            toast.success("Fornecedor inativado.");
+            await api.updateCombustivel(c.id, { nome: c.nome, unidade: c.unidade, ativo: !c.ativo });
+            toast.success(c.ativo ? "Combustível inativado." : "Combustível reativado.");
             recarregar();
           }}
         />
@@ -727,157 +662,13 @@ function CombustiveisTab(props: {
                 <MenuAcoes
                   acoes={[
                     { key: "editar", label: "Editar", icon: <Pencil size={16} />, onClick: () => props.onEditar(c) },
-                    { key: "inativar", label: c.ativo ? "Inativar" : "Reativar", icon: <X size={16} />, cor: "danger", onClick: () => props.onInativar(c) },
+                    { key: "inativar", label: c.ativo ? "Inativar" : "Reativar", icon: <X size={16} />, cor: c.ativo ? "danger" : undefined, onClick: () => props.onInativar(c) },
                   ]}
                 />
               )}
             </div>
           ))}
         </div>
-      )}
-    </div>
-  );
-}
-
-// ── Aba: Fornecedores ──────────────────────────────────────────────────────
-
-function FornecedoresTab(props: {
-  fornecedores: Fornecedor[];
-  total: number;
-  skip: number;
-  limit: number;
-  filtro: { busca: string; categoria: string; ativo: string };
-  setFiltro: (f: { busca: string; categoria: string; ativo: string }) => void;
-  setSkip: (n: number) => void;
-  setLimit: (n: number) => void;
-  podeGerenciar: boolean;
-  onNovo: () => void;
-  onEditar: (f: Fornecedor) => void;
-  onInativar: (f: Fornecedor) => void;
-  onEntrada: () => void;
-}) {
-  const { fornecedores, total, skip, limit, setSkip, setLimit } = props;
-  const paginas = Math.ceil(total / limit);
-
-  return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-h2 text-text-title">Fornecedores</h2>
-          <p className="mt-0.5 text-body-sm text-text-subtle">Gerencie fornecedores de combustível, peças e serviços da frota.</p>
-        </div>
-        {props.podeGerenciar && (
-          <button className="btn btn-primary" onClick={props.onNovo}><Plus size={16} /> Novo fornecedor</button>
-        )}
-      </div>
-
-      <div className="flex flex-wrap gap-2">
-        <div className="relative max-w-xs flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-subtle" />
-          <input
-            value={props.filtro.busca}
-            onChange={(e) => { props.setFiltro({ ...props.filtro, busca: e.target.value }); props.setSkip(0); }}
-            placeholder="Buscar por nome ou CPF/CNPJ…"
-            className="input pl-9"
-          />
-        </div>
-        <select value={props.filtro.categoria} onChange={(e) => { props.setFiltro({ ...props.filtro, categoria: e.target.value }); props.setSkip(0); }} className="input w-auto">
-          <option value="">Todas as categorias</option>
-          {["COMBUSTIVEL", "AUTOPECAS", "PNEUS", "ELETRICA", "MECANICA", "FUNILARIA", "CONCESSIONARIA", "OUTRO"].map((c) => (
-            <option key={c} value={c}>{categoriaFornecedor(c)}</option>
-          ))}
-        </select>
-        <select value={props.filtro.ativo} onChange={(e) => { props.setFiltro({ ...props.filtro, ativo: e.target.value }); props.setSkip(0); }} className="input w-auto">
-          <option value="">Todos os status</option>
-          <option value="ativo">Ativos</option>
-          <option value="inativo">Inativos</option>
-        </select>
-      </div>
-
-      {fornecedores.length === 0 ? (
-        <EmptyState
-          icon={<Building2 size={22} />}
-          titulo="Nenhum fornecedor cadastrado"
-          descricao="Cadastre fornecedores de combustível, autopeças e serviços para associar às entradas e manutenções."
-          acao={props.podeGerenciar ? { label: "Novo fornecedor", onClick: props.onNovo } : undefined}
-          permissao={props.podeGerenciar}
-        />
-      ) : (
-        <>
-          <div className="overflow-x-auto rounded-card border border-surface-border bg-white shadow-card">
-            <table className="w-full min-w-200 text-body-sm">
-              <thead>
-                <tr className="border-b border-surface-border bg-surface-bg text-left text-meta text-text-subtle">
-                  <th className="px-4 py-3">Fornecedor</th>
-                  <th className="px-4 py-3">Documento</th>
-                  <th className="px-4 py-3">Categoria</th>
-                  <th className="px-4 py-3">Contato</th>
-                  <th className="px-4 py-3">Última compra</th>
-                  <th className="px-4 py-3">Total fornecido</th>
-                  <th className="px-4 py-3">Status</th>
-                  {props.podeGerenciar && <th className="px-4 py-3">Ações</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {fornecedores.map((f) => (
-                  <tr key={f.id} className="border-b border-surface-border last:border-0 hover:bg-surface-bg/50">
-                    <td className="px-4 py-3">
-                      <Link href={`/tanques/fornecedores/${f.id}`} className="flex items-center gap-3">
-                        <FotoCombustivel
-                          src={f.foto_url}
-                          alt={`Logo ${f.razao_social}`}
-                          className="h-10 w-10 flex-shrink-0 rounded-full object-cover"
-                          rounded="rounded-full"
-                          fallback={
-                            <span className="flex h-full w-full items-center justify-center bg-[#EFF6FF] text-label font-semibold text-[#1D4ED8]">
-                              {(f.nome_fantasia || f.razao_social).charAt(0).toUpperCase()}
-                            </span>
-                          }
-                        />
-                        <div>
-                          <p className="font-medium text-text-title hover:text-[#1D4ED8]">{f.nome_fantasia || f.razao_social}</p>
-                          {f.nome_fantasia && <p className="text-meta text-text-subtle">{f.razao_social}</p>}
-                        </div>
-                      </Link>
-                    </td>
-                    <td className="px-4 py-3 tabular-nums">{mascaraCpfCnpj(f.cpf_cnpj)}</td>
-                    <td className="px-4 py-3">
-                      <span className="rounded-pill bg-[#EFF6FF] px-2 py-0.5 text-meta font-medium text-[#1D4ED8]">{categoriaFornecedor(f.categoria)}</span>
-                    </td>
-                    <td className="px-4 py-3 text-meta text-text-subtle">
-                      {f.telefone || "—"}<br />{f.email || ""}
-                    </td>
-                    <td className="px-4 py-3">
-                      {f.ultima_compra ? new Date(f.ultima_compra.data + "T12:00").toLocaleDateString("pt-BR") : "—"}
-                    </td>
-                    <td className="px-4 py-3 font-medium">
-                      {f.valor_total ? `R$ ${f.valor_total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span className={`rounded-pill px-2 py-0.5 text-meta font-medium ${f.ativo ? "bg-[#9DF6B3] text-[#106D34]" : "bg-surface-bg text-text-subtle"}`}>
-                        {f.ativo ? "Ativo" : "Inativo"}
-                      </span>
-                    </td>
-                    {props.podeGerenciar && (
-                      <td className="px-4 py-3">
-                        <MenuAcoes
-                          acoes={[
-                            { key: "ver", label: "Ver fornecedor", icon: <Eye size={16} />, href: `/tanques/fornecedores/${f.id}` },
-                            { key: "editar", label: "Editar", icon: <Pencil size={16} />, onClick: () => props.onEditar(f) },
-                            { key: "entrada", label: "Registrar entrada", icon: <PackagePlus size={16} />, onClick: props.onEntrada },
-                            { key: "inativar", label: f.ativo ? "Inativar" : "Reativar", icon: <X size={16} />, cor: "danger", onClick: () => props.onInativar(f) },
-                          ]}
-                        />
-                      </td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <Paginacao total={total} skip={skip} limit={limit} setSkip={setSkip} setLimit={setLimit} paginas={paginas} />
-        </>
       )}
     </div>
   );

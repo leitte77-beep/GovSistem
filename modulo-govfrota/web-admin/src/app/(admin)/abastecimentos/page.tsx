@@ -23,10 +23,12 @@ import {
 import {
   Abastecimento,
   Combustivel,
+  Fornecedor,
   MotoristaListItem,
   Paginado,
   ResumoAbastecimento,
   Tanque,
+  Unidade,
   VeiculoListItem,
   api,
 } from "@/lib/api";
@@ -35,14 +37,15 @@ import { useAuth } from "@/lib/auth";
 import { MenuAcoes, type MenuAcao } from "@/components/veiculo/MenuAcoes";
 import { FotoVeiculo } from "@/components/veiculo/FotoVeiculo";
 import { AbastecimentoFormDrawer } from "@/components/abastecimento/AbastecimentoFormDrawer";
-import { BadgeOrigem, BadgeStatus } from "@/components/abastecimento/Badges";
+import { BadgeAlertas, BadgeOrigem, BadgeStatus } from "@/components/abastecimento/Badges";
 import { ModalCancelar, ModalCorrigir } from "@/components/abastecimento/ModaisCorrecao";
 import {
-  formatarConsumo,
+  formatarConsumoRegistro,
   formatarDataHora,
-  formatarKm,
   formatarLitros,
+  formatarMedicao,
   formatarMoeda,
+  localAbastecimento,
   nomeVeiculo,
 } from "@/lib/abastecimentos";
 
@@ -54,12 +57,26 @@ interface Filtros {
   veiculo_id: string;
   motorista_id: string;
   combustivel_id: string;
-  tanque_id: string;
+  /** "TANQUE:<id>", "POSTO:<id>", "TANQUE_PROPRIO" ou "POSTO_CREDENCIADO". */
+  local: string;
+  unidade_id: string;
+  com_alerta: string;
   origem: string;
   status: string;
 }
 
-const FILTROS_VAZIO: Filtros = { veiculo_id: "", motorista_id: "", combustivel_id: "", tanque_id: "", origem: "", status: "" };
+const FILTROS_VAZIO: Filtros = {
+  veiculo_id: "", motorista_id: "", combustivel_id: "", local: "", unidade_id: "", com_alerta: "", origem: "", status: "",
+};
+
+/** Traduz o filtro de local para os parâmetros da API. */
+function paramsLocal(local: string): Record<string, string> {
+  if (local === "TANQUE_PROPRIO" || local === "POSTO_CREDENCIADO") return { modalidade: local };
+  const [tipo, id] = local.split(":");
+  if (tipo === "TANQUE" && id) return { tanque_id: id };
+  if (tipo === "POSTO" && id) return { fornecedor_id: id };
+  return {};
+}
 
 const ORIGEM_OPCOES = [
   { valor: "APP_MOTORISTA", rotulo: "Motorista" },
@@ -128,8 +145,18 @@ export default function AbastecimentosPage() {
   const [motoristas, setMotoristas] = useState<MotoristaListItem[]>([]);
   const [combustiveis, setCombustiveis] = useState<Combustivel[]>([]);
   const [tanques, setTanques] = useState<Tanque[]>([]);
+  const [postos, setPostos] = useState<Fornecedor[]>([]);
+  const [unidades, setUnidades] = useState<Unidade[]>([]);
 
   const buscaTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Atalho vindo do painel/alertas: /abastecimentos?com_alerta=sim
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("com_alerta") === "sim") {
+      setFiltros((f) => ({ ...f, com_alerta: "sim" }));
+      setMostrarFiltros(true);
+    }
+  }, []);
 
   useEffect(() => {
     if (buscaTimer.current) clearTimeout(buscaTimer.current);
@@ -148,6 +175,8 @@ export default function AbastecimentosPage() {
     api.listMotoristas({ limit: 300, sort_by: "nome", order: "asc" }).then((d) => setMotoristas(d.itens)).catch(() => {});
     api.listCombustiveis(true).then(setCombustiveis).catch(() => {});
     api.listTanques().then(setTanques).catch(() => {});
+    api.listFornecedores({ posto_credenciado: true, limit: 200 }).then((r) => setPostos(r.itens)).catch(() => {});
+    api.listUnidades().then(setUnidades).catch(() => {});
   }, []);
 
   const carregar = useCallback(async () => {
@@ -160,7 +189,9 @@ export default function AbastecimentosPage() {
           veiculo_id: filtros.veiculo_id || undefined,
           motorista_id: filtros.motorista_id || undefined,
           combustivel_id: filtros.combustivel_id || undefined,
-          tanque_id: filtros.tanque_id || undefined,
+          ...paramsLocal(filtros.local),
+          unidade_id: filtros.unidade_id || undefined,
+          com_alerta: filtros.com_alerta === "sim" ? true : undefined,
           origem: filtros.origem || undefined,
           status: filtros.status || undefined,
           data_inicio: range.inicio || undefined,
@@ -218,7 +249,9 @@ export default function AbastecimentosPage() {
     !!filtros.veiculo_id ||
     !!filtros.motorista_id ||
     !!filtros.combustivel_id ||
-    !!filtros.tanque_id ||
+    !!filtros.local ||
+    !!filtros.unidade_id ||
+    !!filtros.com_alerta ||
     !!filtros.origem ||
     !!filtros.status;
 
@@ -229,11 +262,13 @@ export default function AbastecimentosPage() {
     if (filtros.veiculo_id) c.push({ chave: "veiculo_id", label: `Veículo: ${veiculos.find((v) => v.id === filtros.veiculo_id)?.placa ?? "—"}` });
     if (filtros.motorista_id) c.push({ chave: "motorista_id", label: `Motorista: ${motoristas.find((m) => m.id === filtros.motorista_id)?.nome ?? "—"}` });
     if (filtros.combustivel_id) c.push({ chave: "combustivel_id", label: `Combustível: ${combustiveis.find((c) => c.id === filtros.combustivel_id)?.nome ?? "—"}` });
-    if (filtros.tanque_id) c.push({ chave: "tanque_id", label: `Tanque: ${tanques.find((t) => t.id === filtros.tanque_id)?.nome ?? "—"}` });
+    if (filtros.local) c.push({ chave: "local", label: `Local: ${rotuloLocal(filtros.local, tanques, postos)}` });
+    if (filtros.unidade_id) c.push({ chave: "unidade_id", label: `Secretaria: ${unidades.find((u) => u.id === filtros.unidade_id)?.nome ?? "—"}` });
+    if (filtros.com_alerta) c.push({ chave: "com_alerta", label: "Só com alerta" });
     if (filtros.origem) c.push({ chave: "origem", label: `Origem: ${ORIGEM_OPCOES.find((o) => o.valor === filtros.origem)?.rotulo ?? filtros.origem}` });
     if (filtros.status) c.push({ chave: "status", label: `Status: ${STATUS_OPCOES.find((s) => s.valor === filtros.status)?.rotulo ?? filtros.status}` });
     return c;
-  }, [buscaEfetiva, periodo, filtros, veiculos, motoristas, combustiveis, tanques]);
+  }, [buscaEfetiva, periodo, filtros, veiculos, motoristas, combustiveis, tanques, postos, unidades]);
 
   function removerChip(chave: string) {
     if (chave === "busca") {
@@ -395,10 +430,25 @@ export default function AbastecimentosPage() {
                     {combustiveis.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
                   </select>
                 </Label>
-                <Label texto="Tanque">
-                  <select className="input" value={filtros.tanque_id} onChange={(e) => aplicarFiltro("tanque_id", e.target.value)}>
+                <Label texto="Onde abasteceu">
+                  <select className="input" value={filtros.local} onChange={(e) => aplicarFiltro("local", e.target.value)}>
                     <option value="">Todos</option>
-                    {tanques.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+                    <option value="TANQUE_PROPRIO">Tanques próprios</option>
+                    <option value="POSTO_CREDENCIADO">Postos credenciados</option>
+                    {tanques.map((t) => <option key={t.id} value={`TANQUE:${t.id}`}>Tanque · {t.nome}</option>)}
+                    {postos.map((p) => <option key={p.id} value={`POSTO:${p.id}`}>Posto · {p.nome_fantasia || p.razao_social}</option>)}
+                  </select>
+                </Label>
+                <Label texto="Secretaria / unidade">
+                  <select className="input" value={filtros.unidade_id} onChange={(e) => aplicarFiltro("unidade_id", e.target.value)}>
+                    <option value="">Todas</option>
+                    {unidades.map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
+                  </select>
+                </Label>
+                <Label texto="Conferência">
+                  <select className="input" value={filtros.com_alerta} onChange={(e) => aplicarFiltro("com_alerta", e.target.value)}>
+                    <option value="">Todos</option>
+                    <option value="sim">Só com alerta</option>
                   </select>
                 </Label>
                 <Label texto="Origem">
@@ -465,7 +515,7 @@ export default function AbastecimentosPage() {
                     <Th sortable="data" sortBy={sortBy} order={order} onClick={() => ordenarPor("data")}>Data</Th>
                     <Th sortable="veiculo" sortBy={sortBy} order={order} onClick={() => ordenarPor("veiculo")}>Veículo</Th>
                     <Th sortable="motorista" sortBy={sortBy} order={order} onClick={() => ordenarPor("motorista")}>Motorista</Th>
-                    <th className="px-6 py-5 font-semibold">Combustível</th>
+                    <th className="px-6 py-5 font-semibold">Combustível / local</th>
                     <Th sortable="litros" sortBy={sortBy} order={order} onClick={() => ordenarPor("litros")}>Litros</Th>
                     <th className="px-6 py-5 font-semibold">KM/Horímetro</th>
                     <th className="px-6 py-5 font-semibold">Consumo</th>
@@ -586,13 +636,21 @@ function LinhaAbastecimento({ a, acoes }: { a: Abastecimento; acoes: MenuAcao[] 
           {a.motorista_nome ?? "—"}
         </span>
       </td>
-      <td className="px-6 py-4 text-on-surface">{a.combustivel_nome ?? "—"}</td>
+      <td className="px-6 py-4 text-on-surface">
+        <div>{a.combustivel_nome ?? "—"}</div>
+        <div className="text-[12px] text-on-surface-variant/80">{localAbastecimento(a)}</div>
+      </td>
       <td className="px-6 py-4 font-medium tabular-nums text-on-surface">{formatarLitros(a.quantidade_litros)}</td>
-      <td className="px-6 py-4 tabular-nums text-on-surface-variant">{formatarKm(a.quilometragem, a.veiculo_usa_horimetro)}</td>
-      <td className="px-6 py-4 tabular-nums text-on-surface-variant">{formatarConsumo(a.consumo_km_l)}</td>
+      <td className="px-6 py-4 tabular-nums text-on-surface-variant">{formatarMedicao(a)}</td>
+      <td className="px-6 py-4 tabular-nums text-on-surface-variant">{formatarConsumoRegistro(a)}</td>
       <td className="px-6 py-4 tabular-nums text-on-surface">{formatarMoeda(a.custo_total)}</td>
       <td className="px-6 py-4"><BadgeOrigem origem={a.origem} /></td>
-      <td className="px-6 py-4"><BadgeStatus status={a.status} /></td>
+      <td className="px-6 py-4">
+        <div className="flex flex-col items-start gap-1">
+          <BadgeStatus status={a.status} />
+          <BadgeAlertas alertas={a.alertas} />
+        </div>
+      </td>
       <td className="px-6 py-4 text-center">
         <div className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
           <MenuAcoes acoes={acoes} />
@@ -616,14 +674,25 @@ function CardAbastecimento({ a, acoes }: { a: Abastecimento; acoes: MenuAcao[] }
       <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
         <span className="font-semibold tabular-nums text-on-surface">{formatarLitros(a.quantidade_litros)}</span>
         <span className="text-on-surface-variant">{a.combustivel_nome ?? "—"}</span>
-        <span className="tabular-nums text-on-surface-variant">{formatarKm(a.quilometragem, a.veiculo_usa_horimetro)}</span>
+        <span className="tabular-nums text-on-surface-variant">{formatarMedicao(a)}</span>
+        <span className="text-on-surface-variant">{localAbastecimento(a)}</span>
       </div>
-      <div className="mt-2 flex items-center gap-2">
+      <div className="mt-2 flex flex-wrap items-center gap-2">
         <BadgeOrigem origem={a.origem} />
         <BadgeStatus status={a.status} />
+        <BadgeAlertas alertas={a.alertas} />
       </div>
     </div>
   );
+}
+
+function rotuloLocal(local: string, tanques: Tanque[], postos: Fornecedor[]): string {
+  if (local === "TANQUE_PROPRIO") return "Tanques próprios";
+  if (local === "POSTO_CREDENCIADO") return "Postos credenciados";
+  const [tipo, id] = local.split(":");
+  if (tipo === "TANQUE") return tanques.find((t) => t.id === id)?.nome ?? "—";
+  const p = postos.find((x) => x.id === id);
+  return p ? p.nome_fantasia || p.razao_social : "—";
 }
 
 function Th({ children, sortable, sortBy, order, onClick, className = "" }: { children: React.ReactNode; sortable?: Sortable; sortBy?: Sortable; order?: "asc" | "desc"; onClick?: () => void; className?: string }) {

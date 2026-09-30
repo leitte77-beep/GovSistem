@@ -4,13 +4,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_user, require_permission
+from app.core.auth import escopo_unidades, get_current_user, require_permission
 from app.core.database import get_db
 from app.core.permissions import Perm
 from app.models.abastecimento import Abastecimento
 from app.models.auth_models import User
 from app.models.auditoria import Auditoria, Notificacao
-from app.models.combustivel import Combustivel, Fornecedor, Oficina, Tanque
+from app.models.combustivel import Combustivel, Fornecedor, Tanque
 from app.models.manutencao import Manutencao, PlanoPreventivo
 from app.models.motorista import Motorista
 from app.models.estoque import EntradaCombustivel
@@ -27,9 +27,9 @@ async def busca_global(
     db: AsyncSession = Depends(get_db),
 ):
     """Pesquisa global do GovFrota (§40): placa, veículo, motorista, fornecedor,
-    oficina, número de nota, manutenção."""
+    oficina (fornecedor), número de nota (entrada ou abastecimento em posto)."""
     like = f"%{q}%"
-    resultados: dict[str, list] = {"veiculos": [], "motoristas": [], "fornecedores": [], "oficinas": [], "entradas": [], "manutencoes": []}
+    resultados: dict[str, list] = {"veiculos": [], "motoristas": [], "fornecedores": [], "entradas": [], "abastecimentos": [], "manutencoes": []}
 
     veiculos = (
         await db.execute(
@@ -64,17 +64,6 @@ async def busca_global(
     ).scalars().all()
     resultados["fornecedores"] = [{"id": str(f.id), "nome": f.razao_social} for f in fornecedores]
 
-    oficinas = (
-        await db.execute(
-            select(Oficina).where(
-                Oficina.organization_id == user.organization_id,
-                Oficina.deleted_at.is_(None),
-                Oficina.nome.ilike(like),
-            ).limit(10)
-        )
-    ).scalars().all()
-    resultados["oficinas"] = [{"id": str(o.id), "nome": o.nome} for o in oficinas]
-
     entradas = (
         await db.execute(
             select(EntradaCombustivel).where(
@@ -85,6 +74,22 @@ async def busca_global(
     ).scalars().all()
     resultados["entradas"] = [
         {"id": str(e.id), "numero_nota": e.numero_nota, "litros": float(e.quantidade_litros)} for e in entradas
+    ]
+
+    abastecimentos = (
+        await db.execute(
+            select(Abastecimento, Veiculo.placa)
+            .join(Veiculo, Veiculo.id == Abastecimento.veiculo_id)
+            .where(
+                Abastecimento.organization_id == user.organization_id,
+                (Abastecimento.numero_nf.ilike(like)) | (Abastecimento.chave_nfe.ilike(like)),
+            )
+            .limit(10)
+        )
+    ).all()
+    resultados["abastecimentos"] = [
+        {"id": str(a.id), "numero_nf": a.numero_nf, "placa": placa, "litros": float(a.quantidade_litros)}
+        for a, placa in abastecimentos
     ]
 
     return resultados
@@ -157,15 +162,65 @@ async def listar_auditoria(
 @router.get("/notificacoes", response_model=list[NotificacaoResponse])
 async def listar_notificacoes(
     nao_lidas: bool = False,
-    user: User = Depends(require_permission(Perm.VEHICLE_VIEW)),
+    user: User = Depends(require_permission(Perm.VEHICLE_VIEW, escopo=True)),
     db: AsyncSession = Depends(get_db),
 ):
+    # Notificações são da organização inteira; a central por secretaria vem
+    # na tela "Minha Secretaria". Até lá, o perfil restrito não as recebe.
+    if escopo_unidades(user) is not None:
+        return []
     stmt = select(Notificacao).where(Notificacao.organization_id == user.organization_id)
     if nao_lidas:
         stmt = stmt.where(Notificacao.lida.is_(False))
     return (
         await db.execute(stmt.order_by(Notificacao.created_at.desc()).limit(50))
     ).scalars().all()
+
+
+@router.get("/alertas")
+async def alertas(
+    user: User = Depends(require_permission(Perm.VEHICLE_VIEW, escopo=True)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Pendências da frota agora (CNH, estoque, preventivas, documentos,
+    ocorrências graves, abastecimentos a conferir) + nº de notificações não lidas."""
+    if escopo_unidades(user) is not None:
+        return {"itens": [], "notificacoes_nao_lidas": 0}
+    from sqlalchemy import func as sa_func
+
+    from app.services.alertas import alertas_atuais
+
+    nao_lidas = await db.scalar(
+        select(sa_func.count(Notificacao.id)).where(
+            Notificacao.organization_id == user.organization_id,
+            Notificacao.lida.is_(False),
+        )
+    )
+    return {
+        "itens": await alertas_atuais(db, user.organization_id),
+        "notificacoes_nao_lidas": int(nao_lidas or 0),
+    }
+
+
+@router.post("/notificacoes/marcar-todas-lidas")
+async def marcar_todas_lidas(
+    user: User = Depends(require_permission(Perm.VEHICLE_VIEW)),
+    db: AsyncSession = Depends(get_db),
+):
+    from datetime import datetime, timezone
+
+    from sqlalchemy import update
+
+    await db.execute(
+        update(Notificacao)
+        .where(
+            Notificacao.organization_id == user.organization_id,
+            Notificacao.lida.is_(False),
+        )
+        .values(lida=True, lida_em=datetime.now(timezone.utc))
+    )
+    await db.commit()
+    return {"ok": True}
 
 
 @router.post("/notificacoes/{notificacao_id}/marcar-lida")

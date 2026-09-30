@@ -35,7 +35,8 @@ export default function DetalheOcorrenciaPage() {
       const ocorrencia = await api.getOcorrencia(id);
       setO(ocorrencia);
       const ev: Evento[] = [];
-      const regs = await api.auditoria("ocorrencia");
+      // Sem permissão de auditoria (ex.: secretário), a linha do tempo mostra só a criação.
+      const regs = await api.auditoria("ocorrencia").catch(() => []);
       const doRegistro = regs
         .filter((r) => r.entidade_id === id)
         .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());

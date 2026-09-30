@@ -229,6 +229,7 @@ export interface Andamento {
 }
 
 export interface PedidoLinha {
+  somente_leitura?: boolean;
   id: string;
   numero: string;
   titulo: string;
@@ -357,6 +358,15 @@ export interface EventoRecente {
   tarefa?: string | null;
 }
 
+export interface PassoTrilha {
+  setor: string;
+  nome: string;
+  dias: number;
+  atual: boolean;
+}
+
+export type PedidoComTrilha = PedidoLinha & { trilha: PassoTrilha[] };
+
 export interface PainelPrefeito {
   dias_alerta_parado: number;
   kpis: {
@@ -370,7 +380,7 @@ export interface PainelPrefeito {
     valor_liberado: string;
     valor_pago: string;
   };
-  parados: PedidoLinha[];
+  parados: PedidoComTrilha[];
   gargalos: GargaloSetor[];
   por_tipo: Fatia[];
   por_origem: Fatia[];

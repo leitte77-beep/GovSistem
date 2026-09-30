@@ -238,3 +238,57 @@ async def test_prefeito_nao_lota_usuario(como, prefeito, juridico):
         assert (
             await cliente.patch(f"/usuarios/{juridico.id}", json={"setor": "JURIDICO"})
         ).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_setor_acompanha_pedido_devolvido_sem_agir(como, assessor, engenheiro, engenheiro2, juridico):
+    async with como(assessor) as cliente:
+        pedido = (await cliente.post("/pedidos", json=PEDIDO)).json()
+        enc_id = (await _encaminhar(cliente, pedido["id"])).json()["encaminhamento_atual"]["id"]
+
+    async with como(engenheiro) as cliente:
+        await cliente.post(f"/pedidos/{pedido['id']}/encaminhamentos/{enc_id}/assumir")
+        await cliente.post(
+            f"/pedidos/{pedido['id']}/anexos",
+            files={"arquivo": ("planta.pdf", io.BytesIO(b"%PDF conteudo"), "application/pdf")},
+        )
+        devolvido = await cliente.post(
+            f"/pedidos/{pedido['id']}/encaminhamentos/{enc_id}/devolver",
+            json={"resultado": "Projeto pronto."},
+        )
+        assert devolvido.json()["somente_leitura"] is True
+
+    async with como(assessor) as cliente:
+        await _encaminhar(cliente, pedido["id"], setor="JURIDICO")
+
+    # Quem trabalhou e quem é do mesmo setor continuam vendo, sem poder agir.
+    for pessoa in (engenheiro, engenheiro2):
+        async with como(pessoa) as cliente:
+            lista = (await cliente.get("/pedidos")).json()["itens"]
+            assert pedido["id"] in [p["id"] for p in lista]
+            detalhe = await cliente.get(f"/pedidos/{pedido['id']}")
+            assert detalhe.status_code == 200
+            assert detalhe.json()["somente_leitura"] is True
+            anexo_id = detalhe.json()["anexos"][0]["id"]
+            baixado = await cliente.get(f"/pedidos/{pedido['id']}/anexos/{anexo_id}/download")
+            assert baixado.status_code == 200
+
+            assert (
+                await cliente.post(f"/pedidos/{pedido['id']}/comentarios", json={"texto": "oi"})
+            ).status_code == 403
+            assert (
+                await cliente.post(
+                    f"/pedidos/{pedido['id']}/anexos",
+                    files={"arquivo": ("x.pdf", io.BytesIO(b"%PDF"), "application/pdf")},
+                )
+            ).status_code == 403
+            assert (
+                await cliente.post(f"/pedidos/{pedido['id']}/encaminhamentos/{enc_id}/assumir")
+            ).status_code == 403
+
+    async with como(juridico) as cliente:
+        detalhe = (await cliente.get(f"/pedidos/{pedido['id']}")).json()
+        assert detalhe["somente_leitura"] is False
+    async with como(engenheiro) as cliente:
+        linha = next(p for p in (await cliente.get("/pedidos")).json()["itens"] if p["id"] == pedido["id"])
+        assert linha["somente_leitura"] is True

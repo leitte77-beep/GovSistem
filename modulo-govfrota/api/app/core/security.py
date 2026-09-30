@@ -56,6 +56,27 @@ def create_driver_token(
     return jwt.encode(payload, settings.SECRET_KEY.get_secret_value(), algorithm=settings.ALGORITHM)
 
 
+def create_supplier_token(
+    acesso_id: uuid.UUID,
+    fornecedor_id: uuid.UUID,
+    organization_id: uuid.UUID,
+    credential_version: int = 0,
+) -> str:
+    """Token do portal do posto — tipo próprio, recusado nas áreas admin/motorista."""
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": str(acesso_id),
+        "forn": str(fornecedor_id),
+        "org": str(organization_id),
+        "type": "supplier_access",
+        "module": "govfrota",
+        "ver": credential_version,
+        "iat": now,
+        "exp": now + timedelta(hours=8),
+    }
+    return jwt.encode(payload, settings.SECRET_KEY.get_secret_value(), algorithm=settings.ALGORITHM)
+
+
 def decode_token(token: str) -> dict:
     return jwt.decode(token, settings.SECRET_KEY.get_secret_value(), algorithms=[settings.ALGORITHM])
 

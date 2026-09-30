@@ -1,4 +1,5 @@
 import uuid
+from typing import Optional
 
 from sqlalchemy import Boolean, ForeignKey, Integer, String
 from sqlalchemy.dialects.postgresql import UUID
@@ -22,16 +23,19 @@ class ConfiguracaoGovFrota(Base, TimestampMixin):
 
     # Geral — adapta nomenclaturas (secretaria/unidade vs filial/empresa)
     tipo_organizacao: Mapped[str] = mapped_column(String(20), default="PUBLICO", nullable=False)
-    nome_modulo: Mapped[str] = mapped_column(String(100), default="GovFrota", nullable=False)
 
     # Abastecimento do motorista
-    foto_obrigatoria: Mapped[bool] = mapped_column(Boolean(), default=False, nullable=False)
     foto_bomba_obrigatoria: Mapped[bool] = mapped_column(Boolean(), default=False, nullable=False)
     foto_km_obrigatoria: Mapped[bool] = mapped_column(Boolean(), default=False, nullable=False)
     exigir_tanque_cheio: Mapped[bool] = mapped_column(Boolean(), default=False, nullable=False)
     permitir_retroativo: Mapped[bool] = mapped_column(Boolean(), default=True, nullable=False)
     tolerancia_km_percentual: Mapped[int] = mapped_column(Integer(), default=20, nullable=False)
     alerta_consumo_desvio_pct: Mapped[int] = mapped_column(Integer(), default=30, nullable=False)
+    # Alertas de conferência (não bloqueiam): horário permitido ("HH:MM",
+    # fuso da organização; vazio = sem restrição) e litros acima da média.
+    horario_abastecimento_inicio: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)
+    horario_abastecimento_fim: Mapped[Optional[str]] = mapped_column(String(5), nullable=True)
+    alerta_litros_acima_media_pct: Mapped[int] = mapped_column(Integer(), default=50, nullable=False)
     bloquear_cnh_vencida: Mapped[bool] = mapped_column(Boolean(), default=True, nullable=False)
 
     # Combustível / estoque

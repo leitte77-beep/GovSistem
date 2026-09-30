@@ -32,6 +32,8 @@ from app.schemas.pedido import (
     FatiaContagem,
     GargaloSetor,
     ObraResumo,
+    PassoTrilha,
+    PedidoComTrilha,
     PedidoLista,
 )
 
@@ -93,6 +95,40 @@ def ordenar_parados(pedidos: list[Pedido], limite: int = 20) -> list[PedidoLista
     return [
         linha(p)
         for p in sorted(pedidos, key=lambda p: dias_na_situacao(p), reverse=True)[:limite]
+    ]
+
+
+def _utc(d: datetime) -> datetime:
+    return d.replace(tzinfo=timezone.utc) if d.tzinfo is None else d
+
+
+def trilha(p: Pedido, nomes: dict[str, str], agora: datetime) -> list[PassoTrilha]:
+    """Setores por onde o pedido tramitou, na ordem, com os dias em cada um."""
+    passos = []
+    for enc in sorted(p.encaminhamentos, key=lambda e: (e.ordem, _utc(e.created_at))):
+        if enc.status == StatusEncaminhamento.CANCELADO.value:
+            continue
+        fim = _utc(enc.devolvido_em) if enc.devolvido_em else agora
+        passos.append(
+            PassoTrilha(
+                setor=enc.setor,
+                nome=nomes.get(enc.setor, enc.setor),
+                dias=max(0, (fim - _utc(enc.created_at)).days),
+                atual=enc.devolvido_em is None and p.setor_atual == enc.setor,
+            )
+        )
+    return passos
+
+
+def parados_com_trilha(
+    pedidos: list[Pedido], nomes: dict[str, str], limite: int = 20
+) -> list[PedidoComTrilha]:
+    """Os mais parados primeiro, cada um com o caminho que já fez."""
+    agora = datetime.now(timezone.utc)
+    ordem = sorted(pedidos, key=lambda p: dias_na_situacao(p), reverse=True)[:limite]
+    return [
+        PedidoComTrilha(**linha(p).model_dump(), trilha=trilha(p, nomes, agora))
+        for p in ordem
     ]
 
 

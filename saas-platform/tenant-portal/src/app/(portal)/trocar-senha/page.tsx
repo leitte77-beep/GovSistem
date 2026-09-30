@@ -24,7 +24,7 @@ export default function ChangePasswordPage() {
   const forcaSenha = (pw: string): { nivel: number; rotulo: string; cor: string; corBarra: string } => {
     if (!pw) return { nivel: 0, rotulo: "", cor: "", corBarra: "" };
     let pontos = 0;
-    if (pw.length >= 6) pontos++;
+    if (pw.length >= 8) pontos++;
     if (pw.length >= 10) pontos++;
     if (/[A-Z]/.test(pw)) pontos++;
     if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) pontos++;
@@ -48,7 +48,7 @@ export default function ChangePasswordPage() {
     e.preventDefault();
     setError("");
     setTouched(true);
-    if (next.length < 6) return setError("A nova senha deve ter no mínimo 6 caracteres.");
+    if (next.length < 8) return setError("A nova senha deve ter no mínimo 8 caracteres.");
     if (next !== confirm) return setError("As senhas não conferem.");
     setBusy(true);
     try {
@@ -61,7 +61,7 @@ export default function ChangePasswordPage() {
     }
   };
 
-  const senhaValida = next.length >= 6;
+  const senhaValida = next.length >= 8;
   const conferem = next !== "" && next === confirm;
 
   const inputCls = (ativo: boolean, erro = false) =>
@@ -171,7 +171,7 @@ export default function ChangePasswordPage() {
                   value={next}
                   onChange={(e) => setNext(e.target.value)}
                   className={inputCls(next.length > 0, touched && next !== "" && !senhaValida)}
-                  placeholder="Mínimo de 6 caracteres"
+                  placeholder="Mínimo de 8 caracteres"
                 />
                 <button
                   type="button"
@@ -204,7 +204,7 @@ export default function ChangePasswordPage() {
                   </div>
                   <div className="flex items-center gap-1.5 text-xs">
                     <span className={senhaValida ? "text-green-700" : "text-on-surface-variant"}>
-                      {senhaValida ? "✓" : "•"} Mínimo de 6 caracteres
+                      {senhaValida ? "✓" : "•"} Mínimo de 8 caracteres
                     </span>
                     <span className="text-on-surface-variant/40">·</span>
                     <span className={next === confirm && conferem ? "text-green-700" : "text-on-surface-variant"}>

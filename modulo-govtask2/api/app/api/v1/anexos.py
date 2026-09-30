@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.pedidos import _buscar, _montar
+from app.api.v1.pedidos import _buscar, _exige_agir, _montar
 from app.core import storage
 from app.core.auth import require_permission
 from app.core.database import get_db
@@ -42,6 +42,7 @@ async def enviar(
     db: AsyncSession = Depends(get_db),
 ):
     pedido = await _buscar(db, pedido_id, user)
+    _exige_agir(user, pedido)
 
     alvo_enc = None
     if encaminhamento_id is not None:
@@ -95,7 +96,7 @@ async def enviar(
         dados={"anexo_id": str(anexo.id), "nome": anexo.nome_original},
     )
     await db.commit()
-    return await _montar(db, await _buscar(db, pedido_id, user))
+    return await _montar(db, await _buscar(db, pedido_id, user), user)
 
 
 def _tipo(valor: str | None, categoria: str) -> str | None:
@@ -186,6 +187,7 @@ async def classificar(
 ):
     """Tipo do documento e legenda (útil para fotos de obra)."""
     pedido = await _buscar(db, pedido_id, user)
+    _exige_agir(user, pedido)
     anexo = next((a for a in pedido.anexos if a.id == anexo_id and a.deleted_at is None), None)
     if anexo is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Anexo não encontrado.")
@@ -195,7 +197,7 @@ async def classificar(
     if "legenda" in dados:
         anexo.legenda = (dados["legenda"] or "").strip() or None
     await db.commit()
-    return await _montar(db, await _buscar(db, pedido_id, user))
+    return await _montar(db, await _buscar(db, pedido_id, user), user)
 
 
 @router.delete("/{anexo_id}", response_model=PedidoDetalhe)
@@ -225,7 +227,7 @@ async def remover(
         dados={"removido": anexo.nome_original},
     )
     await db.commit()
-    return await _montar(db, await _buscar(db, pedido_id, user))
+    return await _montar(db, await _buscar(db, pedido_id, user), user)
 
 
 zip_router = APIRouter(prefix="/pedidos/{pedido_id}", tags=["anexos"])

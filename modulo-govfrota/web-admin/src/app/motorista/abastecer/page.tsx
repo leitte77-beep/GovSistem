@@ -1,17 +1,34 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { Camera, Check, ChevronLeft, RefreshCw, WifiOff } from "lucide-react";
-import { driverApi, VeiculoApp } from "@/lib/api";
+import { Camera, Check, ChevronLeft, CloudOff, MapPin, RefreshCw, WifiOff } from "lucide-react";
+import { AuthError, driverApi, LocaisAbastecimento, VeiculoApp } from "@/lib/api";
+import {
+  AbastecimentoPendente,
+  ehFalhaDeRede,
+  enviarAbastecimento,
+  guardarPendente,
+  lerCache,
+  salvarCache,
+  sincronizarPendentes,
+} from "@/lib/filaOffline";
 import { FotoMotorista } from "@/components/motorista/FotoMotorista";
 
-interface TanqueApp {
+interface ConfigMotorista {
+  foto_bomba_obrigatoria: boolean;
+  foto_km_obrigatoria: boolean;
+  exigir_tanque_cheio?: boolean;
+}
+
+/** Onde o abastecimento foi feito: tanque próprio ou posto credenciado. */
+interface Local {
+  tipo: "TANQUE" | "POSTO";
   id: string;
   nome: string;
-  combustivel_id: string;
+  detalhe?: string | null;
 }
 
 function novoIdempotencyKey(): string {
@@ -19,33 +36,50 @@ function novoIdempotencyKey(): string {
   return `k-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
+/** "1.234,5" e "40,5" (vírgula decimal) ou "40.5" (teclado com ponto). */
+function numero(v: string): number {
+  if (v.includes(",")) return Number(v.replace(/\./g, "").replace(",", "."));
+  return Number(v);
+}
+
+function reais(v: number): string {
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
 export default function AbastecerPage() {
   const router = useRouter();
   const [passo, setPasso] = useState<1 | 2 | 3>(1);
   const [veiculos, setVeiculos] = useState<VeiculoApp[]>([]);
-  const [tanques, setTanques] = useState<TanqueApp[]>([]);
+  const [locais, setLocais] = useState<LocaisAbastecimento>({ tanques: [], postos: [] });
+  const [config, setConfig] = useState<ConfigMotorista>({ foto_bomba_obrigatoria: false, foto_km_obrigatoria: false });
+  const [dadosDoCache, setDadosDoCache] = useState(false);
+  const [semDados, setSemDados] = useState(false);
+
   const [veiculoId, setVeiculoId] = useState("");
   const [buscaPlaca, setBuscaPlaca] = useState("");
   const [combustivelId, setCombustivelId] = useState("");
-  const [tanqueId, setTanqueId] = useState("");
+  const [localChave, setLocalChave] = useState("");
   const [litros, setLitros] = useState("");
   const [medicao, setMedicao] = useState("");
+  const [numeroNf, setNumeroNf] = useState("");
   const [completouTanque, setCompletouTanque] = useState<boolean | null>(null);
-  const [fotoBomba, setFotoBomba] = useState<string | null>(null);
-  const [fotoBombaPreview, setFotoBombaPreview] = useState<string | null>(null);
-  const [fotoPainel, setFotoPainel] = useState<string | null>(null);
-  const [fotoPainelPreview, setFotoPainelPreview] = useState<string | null>(null);
-  const [fotoBombaObrigatoria, setFotoBombaObrigatoria] = useState(false);
-  const [fotoKmObrigatoria, setFotoKmObrigatoria] = useState(false);
+  // Foto: URL já enviada ao servidor OU arquivo guardado para enviar depois.
+  const [fotoBomba, setFotoBomba] = useState<{ url: string | null; arquivo: File | null; preview: string } | null>(null);
+  const [fotoPainel, setFotoPainel] = useState<{ url: string | null; arquivo: File | null; preview: string } | null>(null);
   const [enviando, setEnviando] = useState(false);
-  const [concluido, setConcluido] = useState<VeiculoApp | null>(null);
+  const [concluido, setConcluido] = useState<{ veiculo: VeiculoApp; guardado: boolean } | null>(null);
   const [online, setOnline] = useState(true);
   const [idempotencyKey, setIdempotencyKey] = useState("");
 
   const veiculo = veiculos.find((v) => v.id === veiculoId);
 
   useEffect(() => {
-    const onOnline = () => setOnline(true);
+    const onOnline = () => {
+      setOnline(true);
+      sincronizarPendentes().then(({ enviados }) => {
+        if (enviados) toast.success(`${enviados} abastecimento(s) guardado(s) enviado(s).`);
+      });
+    };
     const onOffline = () => setOnline(false);
     setOnline(navigator.onLine);
     window.addEventListener("online", onOnline);
@@ -56,46 +90,72 @@ export default function AbastecerPage() {
     };
   }, []);
 
+  // Carrega veículos/locais; sem internet, usa a última cópia guardada no celular.
   useEffect(() => {
     let cancelado = false;
-    Promise.all([driverApi.me(), driverApi.veiculos(), driverApi.tanques()])
-      .then(([me, vs, ts]) => {
+    Promise.all([driverApi.me(), driverApi.veiculos(), driverApi.locais()])
+      .then(([me, vs, ls]) => {
         if (cancelado) return;
+        const cfg = {
+          foto_bomba_obrigatoria: me.foto_bomba_obrigatoria,
+          foto_km_obrigatoria: me.foto_km_obrigatoria,
+          exigir_tanque_cheio: me.exigir_tanque_cheio,
+        };
         setVeiculos(vs);
-        setTanques(ts);
-        setFotoBombaObrigatoria(me.foto_bomba_obrigatoria);
-        setFotoKmObrigatoria(me.foto_km_obrigatoria);
+        setLocais(ls);
+        setConfig(cfg);
+        salvarCache("veiculos", vs);
+        salvarCache("locais", ls);
+        salvarCache("config", cfg);
+        sincronizarPendentes().catch(() => {});
       })
-      .catch(() => router.replace("/motorista/login?expirado=1"));
+      .catch((e) => {
+        if (cancelado) return;
+        if (e instanceof AuthError) {
+          router.replace("/motorista/login?expirado=1");
+          return;
+        }
+        const vs = lerCache<VeiculoApp[]>("veiculos");
+        const ls = lerCache<LocaisAbastecimento>("locais");
+        const cfg = lerCache<ConfigMotorista>("config");
+        if (vs && ls) {
+          setVeiculos(vs);
+          setLocais(ls);
+          if (cfg) setConfig(cfg);
+          setDadosDoCache(true);
+        } else {
+          setSemDados(true);
+        }
+      });
     return () => {
       cancelado = true;
     };
   }, [router]);
 
-  // Produtos que o veículo aceita (principal + reservatórios auxiliares),
+  // Produtos que o veículo aceita (principal, flex e reservatórios auxiliares),
   // ex.: Diesel S10 e ARLA 32.
-  const combustiveisVeiculo = (
-    (veiculo?.combustiveis ?? []).length
-      ? veiculo!.combustiveis!.map((p) => ({ id: p.combustivel_id, nome: p.nome, capacidade: p.capacidade }))
-      : [
-          { id: veiculo?.combustivel_principal_id, nome: veiculo?.combustivel_principal_nome, capacidade: null },
-          { id: veiculo?.combustivel_secundario_id, nome: veiculo?.combustivel_secundario_nome, capacidade: null },
-        ].filter((c) => c.id && c.nome)
-  ) as { id: string; nome: string; capacidade: string | null }[];
-
-  // Auto-seleciona o combustível quando há apenas um.
-  const combustivelAuto =
-    veiculo && combustiveisVeiculo.length === 1 ? combustiveisVeiculo[0].id : "";
-  const combustivelEfetivo = combustivelAuto || combustivelId;
+  const combustiveisVeiculo = (veiculo?.combustiveis ?? []).map((p) => ({
+    id: p.combustivel_id,
+    nome: p.nome,
+    capacidade: p.capacidade,
+  }));
+  const combustivelEfetivo =
+    veiculo && combustiveisVeiculo.length === 1 ? combustiveisVeiculo[0].id : combustivelId;
   const produtoSelecionado = combustiveisVeiculo.find((c) => c.id === combustivelEfetivo);
 
-  // Tanques compatíveis com o combustível selecionado.
-  const tanquesCompativeis = combustivelEfetivo
-    ? tanques.filter((t) => t.combustivel_id === combustivelEfetivo)
+  // Opções de local: tanques próprios do combustível + postos credenciados.
+  const opcoesLocal: Local[] = combustivelEfetivo
+    ? [
+        ...locais.tanques
+          .filter((t) => t.combustivel_id === combustivelEfetivo)
+          .map((t) => ({ tipo: "TANQUE" as const, id: t.id, nome: t.nome, detalhe: "Tanque próprio" })),
+        ...locais.postos.map((p) => ({ tipo: "POSTO" as const, id: p.id, nome: p.nome, detalhe: p.endereco })),
+      ]
     : [];
-  const tanqueAuto =
-    combustivelEfetivo && tanquesCompativeis.length === 1 ? tanquesCompativeis[0].id : "";
-  const tanqueEfetivo = tanqueAuto || tanqueId;
+  const chaveLocal = (l: Local) => `${l.tipo}:${l.id}`;
+  const localEfetivo =
+    opcoesLocal.length === 1 ? opcoesLocal[0] : opcoesLocal.find((l) => chaveLocal(l) === localChave);
+  const noPosto = localEfetivo?.tipo === "POSTO";
 
   const veiculosFiltrados = veiculos.filter((v) =>
     v.placa.toLowerCase().includes(buscaPlaca.replace(/[- ]/g, "").toLowerCase())
@@ -103,90 +163,136 @@ export default function AbastecerPage() {
 
   const ultimoKm = veiculo?.quilometragem_atual ?? 0;
   const ultimoHorimetro = veiculo?.horimetro_atual ? Number(veiculo.horimetro_atual) : null;
-  const valorMedicao = Number(medicao.replace(",", "."));
-  const kmMenorQueUltimo =
-    !veiculo?.usa_horimetro && medicao !== "" && !isNaN(valorMedicao) && valorMedicao < ultimoKm;
+  const valorMedicao = numero(medicao);
+  const medicaoMenorQueUltima =
+    medicao !== "" &&
+    !isNaN(valorMedicao) &&
+    (veiculo?.usa_horimetro ? ultimoHorimetro != null && valorMedicao < ultimoHorimetro : valorMedicao < ultimoKm);
+  const litrosNum = numero(litros);
+  // Posto: preço do contrato (o motorista não informa valor).
+  const precoContrato = noPosto
+    ? locais.postos
+        .find((p) => p.id === localEfetivo?.id)
+        ?.precos?.find((c) => c.combustivel_id === combustivelEfetivo)?.preco_litro ?? null
+    : null;
+  const valorEstimado = precoContrato != null && litrosNum > 0 ? precoContrato * litrosNum : null;
 
   const fotosFaltando =
-    (fotoBombaObrigatoria && !fotoBomba) || (fotoKmObrigatoria && !fotoPainel);
-  const podeConfirmar = litros !== "" && medicao !== "" && !fotosFaltando && !!combustivelEfetivo && !!tanqueEfetivo;
+    (config.foto_bomba_obrigatoria && !fotoBomba) || (config.foto_km_obrigatoria && !fotoPainel);
+  const tanqueCheioFaltando = !!config.exigir_tanque_cheio && completouTanque === null;
+  const podeConfirmar =
+    litros !== "" &&
+    medicao !== "" &&
+    !fotosFaltando &&
+    !tanqueCheioFaltando &&
+    !!combustivelEfetivo &&
+    !!localEfetivo;
 
-  function selecionarVeiculo(v: VeiculoApp) {
-    setVeiculoId(v.id);
+  function limparFormulario() {
     setCombustivelId("");
-    setTanqueId("");
+    setLocalChave("");
     setMedicao("");
     setCompletouTanque(null);
     setLitros("");
+    setNumeroNf("");
     setFotoBomba(null);
-    setFotoBombaPreview(null);
     setFotoPainel(null);
-    setFotoPainelPreview(null);
+    setIdempotencyKey("");
+  }
+
+  function selecionarVeiculo(v: VeiculoApp) {
+    setVeiculoId(v.id);
+    limparFormulario();
     setPasso(2);
   }
 
   async function tirarFoto(
     evento: React.ChangeEvent<HTMLInputElement>,
-    setter: (url: string | null) => void,
-    setPreview: (url: string | null) => void
+    setter: (f: { url: string | null; arquivo: File | null; preview: string } | null) => void
   ) {
     const file = evento.target.files?.[0];
     if (!file) return;
+    const preview = URL.createObjectURL(file);
     if (!online) {
-      toast.error("Sem conexão com o servidor. Reconecte-se para enviar a foto.");
+      // Guarda a foto no celular; ela sobe junto com o abastecimento.
+      setter({ url: null, arquivo: file, preview });
       return;
     }
-    const objectUrl = URL.createObjectURL(file);
-    setPreview(objectUrl);
+    setter({ url: null, arquivo: file, preview });
     toast.loading("Enviando foto…", { id: "foto" });
     try {
       const url = await driverApi.uploadFoto(file);
-      setter(url);
+      setter({ url, arquivo: null, preview });
       toast.success("Foto anexada.", { id: "foto" });
-    } catch {
-      setPreview(null);
-      toast.error("Não foi possível enviar a foto. Tente novamente.", { id: "foto" });
+    } catch (e) {
+      if (ehFalhaDeRede(e)) {
+        toast("Sem sinal: a foto fica guardada e sobe junto com o abastecimento.", { id: "foto", icon: "📶" });
+      } else {
+        setter(null);
+        toast.error("Não foi possível enviar a foto. Tente novamente.", { id: "foto" });
+      }
     }
   }
 
-  function limparFoto(setter: (u: string | null) => void, setPreview: (u: string | null) => void) {
-    setter(null);
-    setPreview(null);
+  function montarPendente(): AbastecimentoPendente {
+    const chave = idempotencyKey || novoIdempotencyKey();
+    if (!idempotencyKey) setIdempotencyKey(chave);
+    const v = veiculo!;
+    const dados: Record<string, unknown> = {
+      veiculo_id: v.id,
+      combustivel_id: combustivelEfetivo || undefined,
+      quantidade_litros: String(litrosNum),
+      quilometragem: v.usa_horimetro ? 0 : Math.round(valorMedicao || 0),
+      horimetro: v.usa_horimetro ? String(valorMedicao) : undefined,
+      completou_tanque: completouTanque,
+      foto_bomba_url: fotoBomba?.url ?? null,
+      foto_painel_url: fotoPainel?.url ?? null,
+    };
+    if (localEfetivo?.tipo === "POSTO") {
+      dados.fornecedor_id = localEfetivo.id;
+      if (numeroNf.trim()) dados.numero_nf = numeroNf.trim();
+    } else if (localEfetivo) {
+      dados.tanque_id = localEfetivo.id;
+    }
+    return {
+      idempotency_key: chave,
+      registrado_em: new Date().toISOString(),
+      dados,
+      foto_bomba: fotoBomba?.url ? null : fotoBomba?.arquivo ?? null,
+      foto_painel: fotoPainel?.url ? null : fotoPainel?.arquivo ?? null,
+      resumo: { placa: v.placa, litros: String(litrosNum), local: localEfetivo?.nome ?? null },
+    };
   }
 
   async function confirmar() {
-    if (!online) {
-      toast.error("Sem conexão com o servidor. Verifique sua internet para registrar o abastecimento.");
-      return;
-    }
     if (!veiculo) return;
     if (!podeConfirmar) {
-      toast.error("Preencha os campos obrigatórios e as fotos para confirmar.");
+      toast.error("Preencha os campos obrigatórios para confirmar.");
       return;
     }
-    if (kmMenorQueUltimo) {
-      toast.error("O KM informado é menor que o último registro.");
+    if (medicaoMenorQueUltima) {
+      toast.error(veiculo.usa_horimetro ? "O horímetro informado é menor que o último registro." : "O KM informado é menor que o último registro.");
       return;
     }
+    const item = montarPendente();
     setEnviando(true);
-    // Idempotência real: mesma chave é reutilizada em reenvios (evita duplicar).
-    if (!idempotencyKey) setIdempotencyKey(novoIdempotencyKey());
     try {
-      await driverApi.abastecer({
-        veiculo_id: veiculoId,
-        tanque_id: tanqueEfetivo || null,
-        combustivel_id: combustivelEfetivo || undefined,
-        quantidade_litros: litros.replace(",", "."),
-        quilometragem: veiculo.usa_horimetro ? 0 : Math.round(valorMedicao || 0),
-        horimetro: veiculo.usa_horimetro ? medicao.replace(",", ".") : undefined,
-        completou_tanque: completouTanque,
-        foto_bomba_url: fotoBomba,
-        foto_painel_url: fotoPainel,
-        idempotency_key: idempotencyKey,
-      });
-      setConcluido(veiculo);
+      if (!navigator.onLine) throw new TypeError("offline");
+      await enviarAbastecimento(item);
+      setConcluido({ veiculo, guardado: false });
     } catch (e) {
-      toast.error((e as Error).message || "Não foi possível registrar o abastecimento. Tente novamente.");
+      if (ehFalhaDeRede(e)) {
+        try {
+          await guardarPendente(item);
+          setConcluido({ veiculo, guardado: true });
+        } catch {
+          toast.error("Sem internet e sem espaço para guardar no celular. Tente de novo com sinal.");
+        }
+      } else if (e instanceof AuthError) {
+        router.replace("/motorista/login?expirado=1");
+      } else {
+        toast.error((e as Error).message || "Não foi possível registrar o abastecimento. Tente novamente.");
+      }
     } finally {
       setEnviando(false);
     }
@@ -194,30 +300,37 @@ export default function AbastecerPage() {
 
   // ── Sucesso ───────────────────────────────────────────────────────────────
   if (concluido) {
+    const v = concluido.veiculo;
     return (
       <main
         className="flex min-h-screen flex-col items-center justify-center bg-[#F8F9FF] p-6 text-center"
         style={{ paddingTop: "env(safe-area-inset-top)", paddingBottom: "env(safe-area-inset-bottom)" }}
       >
         <div className="mx-auto flex max-w-[480px] flex-col items-center">
-          <div className="mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-[#9DF6B3] text-[#106D34]">
-            <Check size={44} />
+          <div className={`mb-4 flex h-20 w-20 items-center justify-center rounded-full ${concluido.guardado ? "bg-[#FFDD9A] text-[#805600]" : "bg-[#9DF6B3] text-[#106D34]"}`}>
+            {concluido.guardado ? <CloudOff size={40} /> : <Check size={44} />}
           </div>
-          <h1 className="text-2xl font-bold text-[#181C22]">Abastecimento registrado!</h1>
+          <h1 className="text-2xl font-bold text-[#181C22]">
+            {concluido.guardado ? "Guardado no celular" : "Abastecimento registrado!"}
+          </h1>
+          {concluido.guardado && (
+            <p className="mt-2 text-sm text-[#424750]">
+              Sem internet agora. O abastecimento será enviado sozinho quando o sinal voltar — com a data e a hora de agora.
+            </p>
+          )}
           <div className="mt-4 w-full rounded-2xl border border-[#C3C6D1]/30 bg-white p-5 shadow-card">
             <div className="flex items-center justify-center gap-3">
-              <div className="font-mono text-xl font-bold text-[#1D5BD6]">{concluido.placa}</div>
-              <div className="text-sm text-[#424750]">
-                {[concluido.marca, concluido.modelo].filter(Boolean).join(" ")}
-              </div>
+              <div className="font-mono text-xl font-bold text-[#1D5BD6]">{v.placa}</div>
+              <div className="text-sm text-[#424750]">{[v.marca, v.modelo].filter(Boolean).join(" ")}</div>
             </div>
             <div className="mt-3 text-3xl font-bold text-[#181C22]">
-              {Number(litros.replace(",", ".")).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} L
+              {litrosNum.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} L
             </div>
             <div className="text-sm text-[#737781]">
-              {concluido.usa_horimetro
-                ? `${Number(medicao.replace(",", ".")).toLocaleString("pt-BR")} h`
+              {v.usa_horimetro
+                ? `${valorMedicao.toLocaleString("pt-BR")} h`
                 : `${Math.round(valorMedicao || 0).toLocaleString("pt-BR")} km`}
+              {localEfetivo && ` · ${localEfetivo.nome}`}
             </div>
           </div>
           <button
@@ -231,14 +344,7 @@ export default function AbastecerPage() {
               setConcluido(null);
               setPasso(1);
               setVeiculoId("");
-              setLitros("");
-              setMedicao("");
-              setCompletouTanque(null);
-              setFotoBomba(null);
-              setFotoBombaPreview(null);
-              setFotoPainel(null);
-              setFotoPainelPreview(null);
-              setIdempotencyKey("");
+              limparFormulario();
             }}
             className="mt-3 w-full rounded-xl border border-[#C3C6D1] bg-white py-4 text-lg font-medium text-[#1D5BD6]"
           >
@@ -249,8 +355,8 @@ export default function AbastecerPage() {
     );
   }
 
-  // ── Offline ───────────────────────────────────────────────────────────────
-  if (!online) {
+  // ── Sem internet e sem dados guardados (primeiro uso) ─────────────────────
+  if (semDados) {
     return (
       <main
         className="flex min-h-screen flex-col items-center justify-center bg-[#F8F9FF] p-6 text-center"
@@ -260,9 +366,11 @@ export default function AbastecerPage() {
           <WifiOff size={32} />
         </div>
         <h1 className="text-2xl font-bold text-[#181C22]">Sem conexão</h1>
-        <p className="mt-2 text-sm text-[#424750]">Conecte-se à internet para registrar o abastecimento.</p>
+        <p className="mt-2 max-w-[360px] text-sm text-[#424750]">
+          Abra o app uma vez com internet para ele guardar os veículos no celular. Depois dá para abastecer mesmo sem sinal.
+        </p>
         <button
-          onClick={() => setOnline(navigator.onLine)}
+          onClick={() => window.location.reload()}
           className="mt-8 w-full max-w-[480px] rounded-xl bg-[#1D5BD6] py-4 text-lg font-bold text-white"
         >
           <span className="inline-flex items-center gap-2"><RefreshCw size={20} /> TENTAR NOVAMENTE</span>
@@ -277,7 +385,7 @@ export default function AbastecerPage() {
       style={{ paddingTop: "calc(env(safe-area-inset-top) + 1.25rem)", paddingBottom: "calc(env(safe-area-inset-bottom) + 1.25rem)" }}
     >
       <div className="mx-auto max-w-[480px]">
-        <header className="mb-6 flex items-center justify-between">
+        <header className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             {passo > 1 && (
               <button onClick={() => setPasso((p) => (p === 2 ? 1 : 2))} aria-label="Voltar" className="rounded-full p-2 text-[#424750] hover:bg-white">
@@ -290,6 +398,13 @@ export default function AbastecerPage() {
           </div>
           <Link href="/motorista" className="rounded-full px-4 py-2 text-sm text-[#424750] hover:bg-white">Cancelar</Link>
         </header>
+
+        {(!online || dadosDoCache) && (
+          <div className="mb-4 flex items-start gap-2 rounded-xl bg-[#FFF4D6] px-3 py-2 text-sm text-[#5C4200]">
+            <WifiOff size={18} className="mt-0.5 flex-shrink-0" />
+            <span>Sem internet. Pode abastecer normalmente: o registro fica guardado no celular e é enviado quando o sinal voltar.</span>
+          </div>
+        )}
 
         {/* Passo 1 — Veículo */}
         {passo === 1 && (
@@ -345,7 +460,7 @@ export default function AbastecerPage() {
               <span className="mb-2 block text-sm font-medium text-[#424750]">O que foi abastecido?</span>
               {combustiveisVeiculo.length <= 1 ? (
                 <div className="rounded-xl border border-[#C3C6D1]/30 bg-white px-4 py-3 text-lg font-semibold text-[#181C22]">
-                  {combustiveisVeiculo[0]?.nome ?? "—"}
+                  {combustiveisVeiculo[0]?.nome ?? "Veículo sem combustível cadastrado"}
                 </div>
               ) : (
                 <div className="grid gap-2">
@@ -355,12 +470,10 @@ export default function AbastecerPage() {
                       type="button"
                       onClick={() => {
                         setCombustivelId(c.id);
-                        setTanqueId("");
+                        setLocalChave("");
                       }}
                       className={`rounded-xl px-4 py-3 text-lg font-medium ${
-                        combustivelEfetivo === c.id
-                          ? "bg-[#1D5BD6] text-white"
-                          : "border border-[#C3C6D1] bg-white text-[#181C22]"
+                        combustivelEfetivo === c.id ? "bg-[#1D5BD6] text-white" : "border border-[#C3C6D1] bg-white text-[#181C22]"
                       }`}
                     >
                       {c.nome.toUpperCase()}
@@ -370,34 +483,47 @@ export default function AbastecerPage() {
               )}
             </div>
 
-            {/* Tanque */}
-            <div>
-              <span className="mb-2 block text-sm font-medium text-[#424750]">
-                {tanquesCompativeis.length > 1 ? "Selecione o tanque" : "Abastecendo pelo"}
-              </span>
-              {tanquesCompativeis.length <= 1 ? (
-                <div className="rounded-xl border border-[#C3C6D1]/30 bg-white px-4 py-3 text-lg font-semibold text-[#181C22]">
-                  {tanquesCompativeis[0]?.nome ?? "—"}
-                </div>
-              ) : (
-                <div className="grid gap-2">
-                  {tanquesCompativeis.map((t) => (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => setTanqueId(t.id)}
-                      className={`rounded-xl px-4 py-3 text-lg font-medium ${
-                        tanqueEfetivo === t.id
-                          ? "bg-[#1D5BD6] text-white"
-                          : "border border-[#C3C6D1] bg-white text-[#181C22]"
-                      }`}
-                    >
-                      {t.nome}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+            {/* Onde abasteceu */}
+            {combustivelEfetivo && (
+              <div>
+                <span className="mb-2 block text-sm font-medium text-[#424750]">
+                  {opcoesLocal.length > 1 ? "Onde abasteceu?" : "Abastecendo em"}
+                </span>
+                {opcoesLocal.length === 0 ? (
+                  <div className="rounded-xl border border-[#FFDD9A] bg-[#FFF8E6] px-4 py-3 text-sm text-[#5C4200]">
+                    Nenhum tanque ou posto credenciado para este combustível. Avise o setor de frota.
+                  </div>
+                ) : opcoesLocal.length === 1 ? (
+                  <div className="flex items-center gap-2 rounded-xl border border-[#C3C6D1]/30 bg-white px-4 py-3">
+                    <MapPin size={18} className="text-[#737781]" />
+                    <div>
+                      <div className="text-lg font-semibold text-[#181C22]">{opcoesLocal[0].nome}</div>
+                      {opcoesLocal[0].detalhe && <div className="text-xs text-[#737781]">{opcoesLocal[0].detalhe}</div>}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid gap-2">
+                    {opcoesLocal.map((l) => {
+                      const ativo = localEfetivo && chaveLocal(localEfetivo) === chaveLocal(l);
+                      return (
+                        <button
+                          key={chaveLocal(l)}
+                          type="button"
+                          onClick={() => setLocalChave(chaveLocal(l))}
+                          className={`rounded-xl px-4 py-3 text-left ${ativo ? "bg-[#1D5BD6] text-white" : "border border-[#C3C6D1] bg-white text-[#181C22]"}`}
+                        >
+                          <div className="text-lg font-medium">{l.nome}</div>
+                          <div className={`text-xs ${ativo ? "text-white/80" : "text-[#737781]"}`}>
+                            {l.tipo === "POSTO" ? "Posto credenciado" : "Tanque próprio"}
+                            {l.tipo === "POSTO" && l.detalhe ? ` · ${l.detalhe}` : ""}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Litros */}
             <label className="block">
@@ -408,16 +534,48 @@ export default function AbastecerPage() {
                 inputMode="decimal"
                 placeholder="0,00"
                 value={litros}
-                onChange={(e) => setLitros(e.target.value)}
+                onChange={(e) => setLitros(e.target.value.replace(/[^\d.,]/g, ""))}
                 className="w-full rounded-xl border border-[#C3C6D1] bg-white px-4 py-5 text-3xl font-semibold outline-none focus:border-[#1D5BD6]"
               />
             </label>
+
+            {/* Posto: valor vem do contrato com o posto; nota é opcional */}
+            {noPosto && (
+              <div className="space-y-3">
+                <div className="rounded-xl border border-[#C3C6D1] bg-[#F1F3FA] px-4 py-3">
+                  {precoContrato != null ? (
+                    <>
+                      <span className="block text-sm font-medium text-[#424750]">
+                        Preço contratado: {reais(precoContrato)} por litro
+                      </span>
+                      <span className="block text-xl font-semibold text-[#181C22]">
+                        {valorEstimado != null ? reais(valorEstimado) : "—"}
+                      </span>
+                    </>
+                  ) : (
+                    <span className="block text-sm text-[#424750]">
+                      O valor é definido pelo setor de frota conforme o contrato com o posto.
+                    </span>
+                  )}
+                </div>
+                <label className="block">
+                  <span className="mb-1 block text-sm font-medium text-[#424750]">Nº da nota</span>
+                  <input
+                    inputMode="numeric"
+                    placeholder="Opcional"
+                    value={numeroNf}
+                    onChange={(e) => setNumeroNf(e.target.value.replace(/[^\d]/g, "").slice(0, 20))}
+                    className="w-full rounded-xl border border-[#C3C6D1] bg-white px-4 py-4 text-xl font-semibold outline-none focus:border-[#1D5BD6]"
+                  />
+                </label>
+              </div>
+            )}
 
             {/* KM / Horímetro */}
             <div>
               <label className="block">
                 <span className="mb-1 block text-sm font-medium text-[#424750]">
-                  {veiculo.usa_horimetro ? "Horímetro atual" : "KM atual do veículo"}
+                  {veiculo.usa_horimetro ? "Horímetro atual (horas)" : "KM atual do veículo"}
                 </span>
                 <input
                   inputMode="decimal"
@@ -427,27 +585,23 @@ export default function AbastecerPage() {
                   className="w-full rounded-xl border border-[#C3C6D1] bg-white px-4 py-5 text-3xl font-semibold outline-none focus:border-[#1D5BD6]"
                 />
               </label>
-              {veiculo.usa_horimetro ? (
-                ultimoHorimetro != null && (
-                  <p className="mt-1 text-xs text-[#737781]">
-                    Último horímetro registrado: {ultimoHorimetro.toLocaleString("pt-BR")} h
-                  </p>
-                )
-              ) : (
-                <p className="mt-1 text-xs text-[#737781]">
-                  Último KM registrado: {ultimoKm.toLocaleString("pt-BR")} km
-                </p>
-              )}
-              {kmMenorQueUltimo && (
+              <p className="mt-1 text-xs text-[#737781]">
+                {veiculo.usa_horimetro
+                  ? ultimoHorimetro != null && `Último horímetro registrado: ${ultimoHorimetro.toLocaleString("pt-BR")} h`
+                  : `Último KM registrado: ${ultimoKm.toLocaleString("pt-BR")} km`}
+              </p>
+              {medicaoMenorQueUltima && (
                 <p className="mt-1 text-sm font-medium text-[#BA1A1A]">
-                  O KM informado é menor que o último registro: {ultimoKm.toLocaleString("pt-BR")} km.
+                  {veiculo.usa_horimetro ? "O horímetro informado é menor que o último registro." : "O KM informado é menor que o último registro."}
                 </p>
               )}
             </div>
 
             {/* Tanque cheio */}
             <div>
-              <span className="mb-2 block text-sm font-medium text-[#424750]">Completou o tanque?</span>
+              <span className="mb-2 block text-sm font-medium text-[#424750]">
+                Completou o tanque?{config.exigir_tanque_cheio && <span className="text-[#BA1A1A]"> *</span>}
+              </span>
               <div className="grid grid-cols-2 gap-3">
                 {[true, false].map((val) => (
                   <button
@@ -472,32 +626,35 @@ export default function AbastecerPage() {
             <div className="space-y-3">
               <CampoFoto
                 rotulo={veiculo.usa_horimetro ? "Foto do painel / horímetro" : "Foto do painel / KM"}
-                obrigatoria={fotoKmObrigatoria}
-                preview={fotoPainelPreview}
-                aoTirar={(e) => tirarFoto(e, setFotoPainel, setFotoPainelPreview)}
-                aoLimpar={() => limparFoto(setFotoPainel, setFotoPainelPreview)}
-                online={online}
+                obrigatoria={config.foto_km_obrigatoria}
+                foto={fotoPainel}
+                aoTirar={(e) => tirarFoto(e, setFotoPainel)}
+                aoLimpar={() => setFotoPainel(null)}
               />
               <CampoFoto
-                rotulo="Foto da bomba"
-                obrigatoria={fotoBombaObrigatoria}
-                preview={fotoBombaPreview}
-                aoTirar={(e) => tirarFoto(e, setFotoBomba, setFotoBombaPreview)}
-                aoLimpar={() => limparFoto(setFotoBomba, setFotoBombaPreview)}
-                online={online}
+                rotulo={noPosto ? "Foto da bomba ou do cupom" : "Foto da bomba"}
+                obrigatoria={config.foto_bomba_obrigatoria}
+                foto={fotoBomba}
+                aoTirar={(e) => tirarFoto(e, setFotoBomba)}
+                aoLimpar={() => setFotoBomba(null)}
               />
             </div>
 
             <button
               onClick={() => setPasso(3)}
+              disabled={!podeConfirmar}
               className="w-full rounded-xl bg-[#1D5BD6] py-5 text-xl font-bold text-white disabled:opacity-50"
             >
               CONFERIR ABASTECIMENTO
             </button>
 
-            {fotosFaltando && (
+            {!podeConfirmar && (litros !== "" || medicao !== "") && (
               <p className="text-center text-sm text-[#805600]">
-                Preencha os campos e as fotos obrigatórias para continuar.
+                {!localEfetivo && combustivelEfetivo && opcoesLocal.length > 1
+                  ? "Escolha onde abasteceu."
+                  : tanqueCheioFaltando
+                    ? "Responda se completou o tanque."
+                    : "Preencha os campos e as fotos obrigatórias para continuar."}
               </p>
             )}
           </div>
@@ -509,21 +666,27 @@ export default function AbastecerPage() {
             <div className="rounded-2xl border border-[#C3C6D1]/30 bg-white p-5 shadow-card">
               <h2 className="mb-4 text-base font-bold text-[#181C22]">Confira o abastecimento</h2>
               <LinhaResumo rotulo="Veículo" valor={`${veiculo.placa} • ${[veiculo.marca, veiculo.modelo].filter(Boolean).join(" ")}`} />
-              <LinhaResumo rotulo="Combustível" valor={combustiveisVeiculo.find((c) => c.id === combustivelEfetivo)?.nome ?? "—"} />
-              <LinhaResumo rotulo="Tanque" valor={tanquesCompativeis.find((t) => t.id === tanqueEfetivo)?.nome ?? "—"} />
-              <LinhaResumo rotulo="Quantidade" valor={`${Number(litros.replace(",", ".")).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} L`} />
+              <LinhaResumo rotulo="Combustível" valor={produtoSelecionado?.nome ?? "—"} />
+              <LinhaResumo rotulo="Local" valor={localEfetivo?.nome ?? "—"} />
+              <LinhaResumo rotulo="Quantidade" valor={`${litrosNum.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} L`} />
+              {noPosto && valorEstimado != null && <LinhaResumo rotulo="Valor (contrato)" valor={reais(valorEstimado)} />}
+              {noPosto && numeroNf && <LinhaResumo rotulo="Nota fiscal" valor={numeroNf} />}
               <LinhaResumo
                 rotulo={veiculo.usa_horimetro ? "Horímetro" : "KM"}
                 valor={
                   veiculo.usa_horimetro
-                    ? `${Number(medicao.replace(",", ".")).toLocaleString("pt-BR")} h`
+                    ? `${valorMedicao.toLocaleString("pt-BR")} h`
                     : `${Math.round(valorMedicao || 0).toLocaleString("pt-BR")} km`
                 }
               />
               <LinhaResumo rotulo="Tanque cheio" valor={completouTanque === null ? "—" : completouTanque ? "Sim" : "Não"} />
+              <LinhaResumo rotulo="Data e hora" valor={new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })} />
               <LinhaResumo rotulo="Foto da bomba" valor={fotoBomba ? "✓" : "—"} />
               <LinhaResumo rotulo="Foto do painel" valor={fotoPainel ? "✓" : "—"} />
             </div>
+            <p className="text-center text-xs text-[#737781]">
+              Ao confirmar, este registro fica assinado com o seu acesso (login e PIN), com data e hora.
+            </p>
 
             <button
               disabled={!podeConfirmar || enviando}
@@ -532,12 +695,6 @@ export default function AbastecerPage() {
             >
               {enviando ? "REGISTRANDO ABASTECIMENTO…" : "CONFIRMAR ABASTECIMENTO"}
             </button>
-            {enviando && <p className="text-center text-sm text-[#737781]">Registrando abastecimento…</p>}
-            {!podeConfirmar && !enviando && (
-              <p className="text-center text-sm text-[#805600]">
-                Confira os campos obrigatórios e as fotos marcadas com * para confirmar.
-              </p>
-            )}
           </div>
         )}
       </div>
@@ -547,9 +704,9 @@ export default function AbastecerPage() {
 
 function LinhaResumo({ rotulo, valor }: { rotulo: string; valor: string }) {
   return (
-    <div className="flex items-center justify-between border-b border-[#C3C6D1]/20 py-2 last:border-0">
+    <div className="flex items-center justify-between gap-3 border-b border-[#C3C6D1]/20 py-2 last:border-0">
       <span className="text-sm text-[#737781]">{rotulo}</span>
-      <span className="text-sm font-semibold text-[#181C22]">{valor}</span>
+      <span className="text-right text-sm font-semibold text-[#181C22]">{valor}</span>
     </div>
   );
 }
@@ -557,17 +714,15 @@ function LinhaResumo({ rotulo, valor }: { rotulo: string; valor: string }) {
 function CampoFoto({
   rotulo,
   obrigatoria,
-  preview,
+  foto,
   aoTirar,
   aoLimpar,
-  online,
 }: {
   rotulo: string;
   obrigatoria: boolean;
-  preview: string | null;
+  foto: { url: string | null; arquivo: File | null; preview: string } | null;
   aoTirar: (e: React.ChangeEvent<HTMLInputElement>) => void;
   aoLimpar: () => void;
-  online: boolean;
 }) {
   return (
     <div className="rounded-xl border-2 border-dashed border-[#C3C6D1] bg-white p-3">
@@ -577,9 +732,14 @@ function CampoFoto({
           {obrigatoria ? "* Obrigatória" : "Opcional"}
         </span>
       </div>
-      {preview ? (
+      {foto ? (
         <div className="space-y-2">
-          <img src={preview} alt={`Preview ${rotulo}`} className="h-40 w-full rounded-lg object-cover" />
+          <img src={foto.preview} alt={`Foto: ${rotulo}`} className="h-40 w-full rounded-lg object-cover" />
+          {!foto.url && (
+            <p className="flex items-center gap-1 text-xs text-[#805600]">
+              <CloudOff size={14} /> Guardada no celular — sobe junto com o abastecimento.
+            </p>
+          )}
           <button
             type="button"
             onClick={aoLimpar}
@@ -589,11 +749,7 @@ function CampoFoto({
           </button>
         </div>
       ) : (
-        <label
-          className={`flex cursor-pointer items-center justify-center gap-2 py-4 text-lg font-medium ${
-            online ? "text-[#424750]" : "pointer-events-none text-[#C3C6D1]"
-          }`}
-        >
+        <label className="flex cursor-pointer items-center justify-center gap-2 py-4 text-lg font-medium text-[#424750]">
           <Camera size={24} /> Tirar foto
           <input type="file" accept="image/*" capture="environment" hidden onChange={aoTirar} />
         </label>

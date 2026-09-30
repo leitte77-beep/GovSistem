@@ -92,7 +92,10 @@ class Settings(BaseSettings):
     DEFAULT_TIMEZONE: str = "America/Sao_Paulo"
 
     # Idempotência
-    IDEMPOTENCY_MAX_LIFETIME_HOURS: int = 24
+    IDEMPOTENCY_MAX_LIFETIME_HOURS: int = 168
+    # Abastecimento feito sem internet: o app guarda e envia depois. Registros
+    # capturados há mais tempo que isso são recusados (viram lançamento admin).
+    OFFLINE_MAX_HORAS: int = 72
 
     # Segurança do login do motorista
     DRIVER_MAX_LOGIN_FAILURES: int = 5

@@ -15,9 +15,9 @@ from app.core.database import get_sync_db  # noqa: F401
 from app.core.database import async_session
 from app.core.security import hash_secret
 from app.models.auth_models import Organization
-from app.models.combustivel import Combustivel, Fornecedor, Oficina, Tanque
+from app.models.combustivel import Combustivel, Fornecedor, Tanque
 from app.models.motorista import AcessoMotorista, Motorista
-from app.models.veiculo import Veiculo
+from app.models.veiculo import Veiculo, VeiculoTanque
 
 SEED_ORG_SLUG = "demo-govfrota"
 SEED_ORG_NAME = "Empresa Demo GovFrota"
@@ -115,16 +115,25 @@ async def seed() -> dict:
             ).scalar_one_or_none()
             if existe:
                 continue
+            veiculo = Veiculo(
+                organization_id=org.id,
+                placa=placa,
+                marca=marca,
+                modelo=modelo,
+                tipo=tipo,
+                quilometragem_atual=km,
+                situacao="DISPONIVEL",
+            )
+            db.add(veiculo)
+            await db.flush()
             db.add(
-                Veiculo(
+                VeiculoTanque(
                     organization_id=org.id,
-                    placa=placa,
-                    marca=marca,
-                    modelo=modelo,
-                    tipo=tipo,
-                    combustivel_principal_id=combustiveis[comb_nome].id,
-                    quilometragem_atual=km,
-                    situacao="DISPONIVEL",
+                    veiculo_id=veiculo.id,
+                    combustivel_id=combustiveis[comb_nome].id,
+                    tank_type="PRIMARY",
+                    capacidade=0,
+                    identificacao="Tanque principal",
                 )
             )
         await db.flush()
@@ -180,17 +189,19 @@ async def seed() -> dict:
 
         oficina = (
             await db.execute(
-                select(Oficina).where(
-                    Oficina.organization_id == org.id, Oficina.nome == "Auto Center Central"
+                select(Fornecedor).where(
+                    Fornecedor.organization_id == org.id,
+                    Fornecedor.razao_social == "Auto Center Central",
                 )
             )
         ).scalar_one_or_none()
         if oficina is None:
             db.add(
-                Oficina(
+                Fornecedor(
                     organization_id=org.id,
-                    nome="Auto Center Central",
-                    especialidade="Mecânica em geral",
+                    razao_social="Auto Center Central",
+                    categoria="MECANICA",
+                    observacoes="Mecânica em geral",
                 )
             )
 
@@ -291,8 +302,9 @@ async def _seed_dados_combustivel(db, org_id, combustiveis, tanques, veiculos_da
         veiculo = next((v for v in veiculos if v.placa == placa), None)
         if not veiculo:
             continue
+        comb_nome = next(c for p_, _m, _mo, _t, c, _k in veiculos_data if p_ == placa)
         tanque = tanques.get("Tanque Diesel S10")
-        if veiculo.combustivel_principal_id == combustiveis["Gasolina Comum"].id:
+        if comb_nome == "Gasolina Comum":
             tanque = tanques.get("Tanque Gasolina")
         if tanque is None:
             continue
@@ -303,7 +315,7 @@ async def _seed_dados_combustivel(db, org_id, combustiveis, tanques, veiculos_da
                 organization_id=org_id,
                 veiculo=veiculo,
                 tanque_id=tanque.id,
-                combustivel_id=veiculo.combustivel_principal_id,
+                combustivel_id=combustiveis[comb_nome].id,
                 quantidade_litros=Decimal(litros),
                 quilometragem=km,
                 data_abastecimento=data,

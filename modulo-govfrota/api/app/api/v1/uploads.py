@@ -24,6 +24,7 @@ from app.core.auth import (
     bearer_scheme,
     driver_bearer_scheme,
     get_current_motorista,
+    escopo_unidades,
     get_current_user,
 )
 from app.core.config import settings
@@ -56,6 +57,43 @@ async def _get_uploader(
         except HTTPException:
             pass
     raise HTTPException(status_code=401, detail="Não autenticado")
+
+
+async def _exigir_anexo_no_escopo(db: AsyncSession, user, anexo: Anexo) -> None:
+    """Usuário restrito a secretarias só baixa fotos de abastecimento e arquivos
+    de veículos das suas secretarias."""
+    from sqlalchemy import or_
+
+    from app.models.abastecimento import Abastecimento
+    from app.models.veiculo import Veiculo, VeiculoDocumento
+
+    escopo = escopo_unidades(user)
+    url = f"/api/govfrota/uploads/{anexo.id}"
+    if escopo:
+        achou = await db.scalar(
+            select(Abastecimento.id).where(
+                Abastecimento.organization_id == user.organization_id,
+                Abastecimento.unidade_id.in_(escopo),
+                or_(Abastecimento.foto_bomba_url == url, Abastecimento.foto_painel_url == url),
+            ).limit(1)
+        ) or await db.scalar(
+            select(Veiculo.id).where(
+                Veiculo.organization_id == user.organization_id,
+                Veiculo.unidade_id.in_(escopo),
+                Veiculo.foto_url == url,
+            ).limit(1)
+        ) or await db.scalar(
+            select(VeiculoDocumento.id)
+            .join(Veiculo, Veiculo.id == VeiculoDocumento.veiculo_id)
+            .where(
+                Veiculo.organization_id == user.organization_id,
+                Veiculo.unidade_id.in_(escopo),
+                or_(VeiculoDocumento.anexo_id == anexo.id, VeiculoDocumento.arquivo_url == url),
+            ).limit(1)
+        )
+        if achou:
+            return
+    raise HTTPException(status_code=404, detail="Anexo não encontrado.")
 
 
 def _validar_extensao(filename: str) -> str:
@@ -110,6 +148,8 @@ async def upload(
     A associação ao tenant é resolvida pelo token (nunca pelo frontend).
     """
     user, motorista = await _get_uploader(request, db, user_creds, driver_creds)
+    if user is not None and escopo_unidades(user) is not None:
+        raise HTTPException(status_code=403, detail="Acesso restrito às secretarias vinculadas ao seu usuário.")
 
     ext = _validar_extensao(file.filename or "arquivo")
     conteudo = await file.read()
@@ -178,6 +218,8 @@ async def download(
     org = user.organization_id if user else motorista.organization_id
     if anexo.organization_id != org:
         raise HTTPException(status_code=404, detail="Anexo não encontrado.")
+    if user is not None and escopo_unidades(user) is not None:
+        await _exigir_anexo_no_escopo(db, user, anexo)
 
     filename = anexo.nome_arquivo or "arquivo"
 

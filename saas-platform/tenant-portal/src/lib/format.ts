@@ -89,3 +89,38 @@ export function initials(name?: string | null): string {
   if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
   return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
 }
+
+export function onlyDigits(v?: string | null): string {
+  return (v ?? "").replace(/\D/g, "");
+}
+
+/** Máscara progressiva de CPF (serve tanto para exibir quanto para digitar). */
+export function formatCpf(v?: string | null): string {
+  const d = onlyDigits(v).slice(0, 11);
+  return d
+    .replace(/^(\d{3})(\d)/, "$1.$2")
+    .replace(/^(\d{3})\.(\d{3})(\d)/, "$1.$2.$3")
+    .replace(/\.(\d{3})(\d{1,2})$/, ".$1-$2");
+}
+
+/** Máscara progressiva de telefone: (00) 0000-0000 ou (00) 00000-0000. */
+export function formatPhone(v?: string | null): string {
+  const d = onlyDigits(v).slice(0, 11);
+  if (d.length <= 2) return d ? `(${d}` : "";
+  if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;
+  if (d.length <= 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+}
+
+/** Valida os dígitos verificadores do CPF. */
+export function isValidCpf(v?: string | null): boolean {
+  const d = onlyDigits(v);
+  if (d.length !== 11 || /^(\d)\1{10}$/.test(d)) return false;
+  const dv = (len: number) => {
+    let sum = 0;
+    for (let i = 0; i < len; i++) sum += Number(d[i]) * (len + 1 - i);
+    const r = (sum * 10) % 11;
+    return r === 10 ? 0 : r;
+  };
+  return dv(9) === Number(d[9]) && dv(10) === Number(d[10]);
+}

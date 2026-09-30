@@ -10,7 +10,7 @@ from app.core.database import get_db
 from app.core.permissions import Perm
 from app.models.auth_models import User
 from app.models.combustivel import Combustivel, Tanque
-from app.models.veiculo import Veiculo
+from app.models.veiculo import Veiculo, VeiculoTanque
 from app.schemas.schemas import CombustivelCreate, CombustivelResponse
 from app.services.auditoria import registrar_auditoria
 
@@ -42,21 +42,7 @@ async def _montar_resposta(
         )
         or 0
     )
-    total_veiculos = int(
-        await db.scalar(
-            select(sa_func.count())
-            .select_from(Veiculo)
-            .where(
-                Veiculo.organization_id == user.organization_id,
-                Veiculo.deleted_at.is_(None),
-                or_(
-                    Veiculo.combustivel_principal_id == combustivel.id,
-                    Veiculo.combustivel_secundario_id == combustivel.id,
-                ),
-            )
-        )
-        or 0
-    )
+    total_veiculos = (await _veiculos_por_combustivel(db, user, [combustivel.id])).get(combustivel.id, 0)
     return CombustivelResponse(
         id=combustivel.id,
         nome=combustivel.nome,
@@ -70,12 +56,44 @@ async def _montar_resposta(
     )
 
 
+async def _veiculos_por_combustivel(
+    db: AsyncSession, user: User, ids: list[uuid.UUID]
+) -> dict[uuid.UUID, int]:
+    """Veículos que aceitam cada produto em algum reservatório (principal,
+    alternativo/flex ou auxiliar). Cada veículo conta uma vez por produto."""
+    contagem: dict[uuid.UUID, set] = {cid: set() for cid in ids}
+    rows = (
+        await db.execute(
+            select(
+                VeiculoTanque.veiculo_id,
+                VeiculoTanque.combustivel_id,
+                VeiculoTanque.combustivel_alternativo_id,
+            )
+            .join(Veiculo, Veiculo.id == VeiculoTanque.veiculo_id)
+            .where(
+                Veiculo.organization_id == user.organization_id,
+                Veiculo.deleted_at.is_(None),
+                VeiculoTanque.deleted_at.is_(None),
+                or_(
+                    VeiculoTanque.combustivel_id.in_(ids),
+                    VeiculoTanque.combustivel_alternativo_id.in_(ids),
+                ),
+            )
+        )
+    ).all()
+    for veiculo_id, principal, alternativo in rows:
+        for cid in (principal, alternativo):
+            if cid in contagem:
+                contagem[cid].add(veiculo_id)
+    return {cid: len(v) for cid, v in contagem.items()}
+
+
 @router.get("", response_model=list[CombustivelResponse])
 async def listar(
     ativo: bool | None = None,
     categoria: str | None = None,
     response: Response = None,  # type: ignore[assignment]
-    user: User = Depends(require_permission(Perm.VEHICLE_VIEW)),
+    user: User = Depends(require_permission(Perm.VEHICLE_VIEW, escopo=True)),
     db: AsyncSession = Depends(get_db),
 ):
     stmt = select(Combustivel).where(
@@ -104,32 +122,7 @@ async def listar(
                 )
             ).all()
         )
-        # Veículos associados: soma dos que usam o combustível como principal ou secundário.
-        veiculos: dict[uuid.UUID, int] = {cid: 0 for cid in ids}
-        princ = (
-            await db.execute(
-                select(Veiculo.combustivel_principal_id, sa_func.count()).where(
-                    Veiculo.organization_id == user.organization_id,
-                    Veiculo.deleted_at.is_(None),
-                    Veiculo.combustivel_principal_id.in_(ids),
-                ).group_by(Veiculo.combustivel_principal_id)
-            )
-        ).all()
-        sec = (
-            await db.execute(
-                select(Veiculo.combustivel_secundario_id, sa_func.count()).where(
-                    Veiculo.organization_id == user.organization_id,
-                    Veiculo.deleted_at.is_(None),
-                    Veiculo.combustivel_secundario_id.in_(ids),
-                ).group_by(Veiculo.combustivel_secundario_id)
-            )
-        ).all()
-        for cid, n in princ:
-            if cid is not None and cid in veiculos:
-                veiculos[cid] += int(n)
-        for cid, n in sec:
-            if cid is not None and cid in veiculos:
-                veiculos[cid] += int(n)
+        veiculos = await _veiculos_por_combustivel(db, user, ids)
     else:
         tanques, veiculos = {}, {}
 
@@ -152,7 +145,7 @@ async def listar(
 @router.get("/{combustivel_id}", response_model=CombustivelResponse)
 async def obter(
     combustivel_id: uuid.UUID,
-    user: User = Depends(require_permission(Perm.VEHICLE_VIEW)),
+    user: User = Depends(require_permission(Perm.VEHICLE_VIEW, escopo=True)),
     db: AsyncSession = Depends(get_db),
 ):
     combustivel = (

@@ -4,10 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import { Camera, Fuel, Trash2, Upload, X } from "lucide-react";
-import { api, Combustivel, Veiculo } from "@/lib/api";
+import { api, Combustivel, Unidade, Veiculo } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import {
-  camposLotacao,
   normalizarPlaca,
   placaValida,
   SITUACOES,
@@ -64,10 +63,8 @@ export function VeiculoFormDrawer({
     combustivel_principal_id: v?.combustivel_principal_id ?? "",
     combustivel_secundario_id: v?.combustivel_secundario_id ?? "",
     capacidade_tanque_litros: v?.capacidade_tanque_litros ?? "",
-    unidade: v?.unidade ?? "",
+    unidade_id: v?.unidade_id ?? "",
     departamento: v?.departamento ?? "",
-    filial: v?.filial ?? "",
-    centro_custo: v?.centro_custo ?? "",
     vencimento_licenciamento: v?.vencimento_licenciamento ?? "",
     vencimento_seguro: v?.vencimento_seguro ?? "",
     situacao: v?.situacao ?? "DISPONIVEL",
@@ -75,6 +72,9 @@ export function VeiculoFormDrawer({
   });
 
   const [form, setForm] = useState(() => novoForm(veiculo));
+  // KM do veículo só muda por alteração auditada (com justificativa).
+  const [justificativaKm, setJustificativaKm] = useState("");
+  const [unidades, setUnidades] = useState<Unidade[]>([]);
   const [possuiAuxiliar, setPossuiAuxiliar] = useState(false);
   const [auxiliares, setAuxiliares] = useState<
     { combustivel_id: string; capacidade: string; identificacao: string }[]
@@ -84,7 +84,9 @@ export function VeiculoFormDrawer({
   // e editar sem "vazar" dados de outra abertura).
   useEffect(() => {
     if (aberto) {
+      api.listUnidades().then(setUnidades).catch(() => setUnidades([]));
       setForm(novoForm(veiculo));
+      setJustificativaKm("");
       setFotoUrlAtual(veiculo?.foto_url ?? "");
       setArquivoFoto(null);
       setPreviewFoto(null);
@@ -109,7 +111,8 @@ export function VeiculoFormDrawer({
     className: "input",
   });
 
-  const lotacao = camposLotacao(tipoOrganizacao);
+  const publico = tipoOrganizacao !== "PRIVADO";
+  const rotuloUnidade = publico ? "Secretaria" : "Centro de custo";
 
   const tipoHorimetroPadrao = TIPOS_HORIMETRO.has(form.tipo);
 
@@ -139,6 +142,12 @@ export function VeiculoFormDrawer({
       return;
     }
     setErroPlaca(null);
+    const kmNovo = Number(form.quilometragem_atual || 0);
+    const kmMudou = !!veiculo && !form.usa_horimetro && kmNovo !== veiculo.quilometragem_atual;
+    if (kmMudou && justificativaKm.trim().length < 5) {
+      toast.error("Informe a justificativa da alteração do KM (mínimo 5 caracteres).");
+      return;
+    }
     setSalvando(true);
     try {
       let foto_url: string | undefined = fotoUrlAtual || undefined;
@@ -155,7 +164,8 @@ export function VeiculoFormDrawer({
         quilometragem_atual: form.usa_horimetro ? 0 : Number(form.quilometragem_atual || 0),
         horimetro_atual: form.usa_horimetro ? form.horimetro_atual || undefined : undefined,
         combustivel_principal_id: form.combustivel_principal_id || undefined,
-        combustivel_secundario_id: form.combustivel_secundario_id || undefined,
+        // null limpa o flex na edição (vazio = não aceita outro combustível).
+        combustivel_secundario_id: form.combustivel_secundario_id || null,
         capacidade_tanque_litros: form.capacidade_tanque_litros || undefined,
         tanques_auxiliares: possuiAuxiliar
           ? auxiliares
@@ -168,13 +178,14 @@ export function VeiculoFormDrawer({
           : [],
         vencimento_licenciamento: form.vencimento_licenciamento || undefined,
         vencimento_seguro: form.vencimento_seguro || undefined,
-        unidade: form.unidade || undefined,
+        unidade_id: form.unidade_id || null,
         departamento: form.departamento || undefined,
-        filial: form.filial || undefined,
-        centro_custo: form.centro_custo || undefined,
         observacoes: form.observacoes || undefined,
       };
       if (veiculo) {
+        // A edição não altera KM; a mudança vai pela rota auditada.
+        delete payload.quilometragem_atual;
+        if (kmMudou) await api.alterarKm(veiculo.id, kmNovo, justificativaKm.trim());
         await api.updateVeiculo(veiculo.id, payload);
         toast.success("Veículo atualizado.");
       } else {
@@ -310,8 +321,22 @@ export function VeiculoFormDrawer({
                     <input type="number" step="0.1" min={0} {...campo("horimetro_atual")} placeholder="Ex.: 2480,5" />
                   </Label>
                 ) : (
-                  <Label texto="Quilometragem inicial (km)">
+                  <Label texto={veiculo ? "Quilometragem atual (km)" : "Quilometragem inicial (km)"}>
                     <input type="number" min={0} {...campo("quilometragem_atual")} placeholder="Ex.: 50350" />
+                    {veiculo && Number(form.quilometragem_atual || 0) !== veiculo.quilometragem_atual && (
+                      <span className="mt-2 block">
+                        <span className="block text-meta text-warning-vibrant">
+                          O KM era {veiculo.quilometragem_atual.toLocaleString("pt-BR")} km. A alteração fica registrada na auditoria.
+                        </span>
+                        <input
+                          className="input mt-1"
+                          placeholder="Justificativa da alteração do KM *"
+                          value={justificativaKm}
+                          onChange={(e) => setJustificativaKm(e.target.value)}
+                          maxLength={2000}
+                        />
+                      </span>
+                    )}
                   </Label>
                 )}
               </div>
@@ -339,7 +364,7 @@ export function VeiculoFormDrawer({
                       ))}
                     </select>
                   </Label>
-                  <Label texto="Combustível secundário">
+                  <Label texto="Também aceita (flex)">
                     <select {...campo("combustivel_secundario_id")}>
                       <option value="">—</option>
                       {combustiveis.map((c) => (
@@ -434,13 +459,27 @@ export function VeiculoFormDrawer({
             </Secao>
 
             {/* Lotação */}
-            <Secao titulo={tipoOrganizacao === "PRIVADO" ? "Lotação / Organização" : "Lotação / Centro de custo"}>
+            <Secao titulo="Lotação">
               <div className="grid gap-3 sm:grid-cols-2">
-                {lotacao.map((c) => (
-                  <Label key={c.chave} texto={c.label}>
-                    <input {...campo(c.chave)} />
-                  </Label>
-                ))}
+                <Label texto={rotuloUnidade}>
+                  <select {...campo("unidade_id")}>
+                    <option value="">— sem {rotuloUnidade.toLowerCase()} —</option>
+                    {unidades
+                      .filter((u) => u.ativo || u.id === form.unidade_id)
+                      .map((u) => (
+                        <option key={u.id} value={u.id}>{u.nome}{u.sigla ? ` (${u.sigla})` : ""}</option>
+                      ))}
+                  </select>
+                  {unidades.length === 0 && (
+                    <span className="text-meta text-text-subtle">
+                      Cadastre as {publico ? "secretarias" : "centros de custo"} em{" "}
+                      <Link href="/configuracoes" className="text-[#1D4ED8] hover:underline">Configurações</Link>.
+                    </span>
+                  )}
+                </Label>
+                <Label texto="Departamento / setor (opcional)">
+                  <input {...campo("departamento")} />
+                </Label>
               </div>
             </Secao>
 

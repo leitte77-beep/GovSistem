@@ -48,8 +48,19 @@ class Abastecimento(Base, TimestampMixin, SoftDeleteMixin):
     motorista_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("motoristas.id"), nullable=True
     )
-    tanque_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("tanques.id"), nullable=False
+    # Modalidade: TANQUE_PROPRIO (sai do estoque de um tanque da organização)
+    # ou POSTO_CREDENCIADO (posto externo, ex.: vencedor da licitação — não
+    # movimenta estoque; o custo é o preço pago no posto).
+    modalidade: Mapped[str] = mapped_column(String(20), default="TANQUE_PROPRIO", nullable=False)
+    tanque_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("tanques.id"), nullable=True
+    )
+    fornecedor_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("fornecedores.id"), nullable=True, index=True
+    )
+    # Unidade (secretaria/centro de custo) do veículo no momento do lançamento.
+    unidade_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("unidades.id"), nullable=True, index=True
     )
     combustivel_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("combustiveis.id"), nullable=False
@@ -57,6 +68,8 @@ class Abastecimento(Base, TimestampMixin, SoftDeleteMixin):
 
     quantidade_litros: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
     quilometragem: Mapped[int] = mapped_column(BigInteger(), nullable=False)
+    # Máquinas/tratores medem uso por horímetro (horas), não por km.
+    horimetro: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 1), nullable=True)
     completou_tanque: Mapped[Optional[bool]] = mapped_column(Boolean(), nullable=True)
 
     # Origem: APP_MOTORISTA ou ADMIN
@@ -74,12 +87,28 @@ class Abastecimento(Base, TimestampMixin, SoftDeleteMixin):
         DateTime(timezone=True), nullable=False
     )
 
-    # Custo calculado pelo custo médio do combustível no momento do abastecimento
+    # Posto credenciado: preço pago e nota fiscal emitida pelo posto.
+    preco_litro: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)
+    # Contrato do posto que definiu o preço e de cujo saldo os litros saem.
+    contrato_posto_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("contratos_posto.id"), nullable=True, index=True
+    )
+    numero_nf: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
+    chave_nfe: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
+
+    # Custo por litro: custo médio do tanque (tanque próprio) ou preço pago
+    # no posto (posto credenciado). `custo_total` = litros × custo por litro.
     custo_medio_litro: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)
     custo_total: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 2), nullable=True)
 
     # Consumo calculado entre registros (km/L) — informativo
     consumo_km_l: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2), nullable=True)
+    # Consumo de máquinas por horímetro (L/h) — informativo
+    consumo_l_h: Mapped[Optional[Decimal]] = mapped_column(Numeric(8, 2), nullable=True)
+
+    # Códigos dos alertas de conferência disparados no registro (JSON: lista),
+    # ex.: ["FORA_DO_HORARIO", "SEM_DESLOCAMENTO"]. Não bloqueiam o lançamento.
+    alertas: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
 
     foto_bomba_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     foto_painel_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
@@ -96,7 +125,7 @@ class Abastecimento(Base, TimestampMixin, SoftDeleteMixin):
 
     veiculo: Mapped["Veiculo"] = relationship(back_populates="abastecimentos")
     motorista: Mapped[Optional["Motorista"]] = relationship()
-    tanque: Mapped["Tanque"] = relationship()
+    tanque: Mapped[Optional["Tanque"]] = relationship()
     combustivel: Mapped["Combustivel"] = relationship()
 
 

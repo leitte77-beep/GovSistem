@@ -34,7 +34,7 @@ import { useAoMudar } from "@/lib/tempoReal";
 
 export default function DetalheDoPedido() {
   const { id } = useParams<{ id: string }>();
-  const { eu } = useSessao();
+  const { eu: euSessao } = useSessao();
   const [pedido, setPedido] = useState<Pedido | null>(null);
   const [usuarios, setUsuarios] = useState<UsuarioResumo[]>([]);
   const [limite, setLimite] = useState(15);
@@ -105,6 +105,8 @@ export default function DetalheDoPedido() {
     );
   }
 
+  // Setor que já devolveu o pedido continua vendo, mas não age mais nele.
+  const eu = pedido.somente_leitura && euSessao ? { ...euSessao, pode_encaminhar: false, pode_trabalhar: false } : euSessao;
   const enc = pedido.encaminhamento_atual;
   const souDono = Boolean(enc && (enc.responsavel?.id === eu?.id || enc.participantes.some((p) => p.id === eu?.id)));
   const acaoPrincipal =

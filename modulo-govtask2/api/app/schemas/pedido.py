@@ -325,6 +325,9 @@ class PedidoLista(BaseModel):
     """Linha da lista. Sem encaminhamentos nem anexos — leve de propósito."""
 
     model_config = ConfigDict(from_attributes=True)
+
+    # Para quem só acompanha (setor que já devolveu): ver e baixar, sem agir.
+    somente_leitura: bool = False
     id: uuid.UUID
     numero: str
     titulo: str
@@ -521,10 +524,23 @@ class EventoRecente(BaseModel):
     tarefa: Optional[str] = None
 
 
+class PassoTrilha(BaseModel):
+    """Um setor por onde o pedido passou, e quantos dias ficou lá."""
+
+    setor: str
+    nome: str
+    dias: int
+    atual: bool = False
+
+
+class PedidoComTrilha(PedidoLista):
+    trilha: list[PassoTrilha] = []
+
+
 class PainelPrefeito(BaseModel):
     dias_alerta_parado: int
     kpis: KpisPrefeito
-    parados: list[PedidoLista] = []
+    parados: list[PedidoComTrilha] = []
     gargalos: list[GargaloSetor] = []
     por_tipo: list[FatiaContagem] = []
     por_origem: list[FatiaContagem] = []

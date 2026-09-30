@@ -10,17 +10,18 @@ from sqlalchemy import func as sa_func
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_user, require_permission
+from app.core.auth import filtro_escopo, get_current_user, require_permission
 from app.core.database import get_db
 from app.core.permissions import Perm
-from app.core.timezone import utcnow
+from app.core.timezone import to_display, utcnow
 from app.models.abastecimento import Abastecimento
 from app.models.auth_models import User
-from app.models.combustivel import Combustivel, Tanque
+from app.models.combustivel import Combustivel, Fornecedor, Tanque
 from app.models.estoque import EntradaCombustivel, MovimentacaoEstoque
 from app.models.manutencao import Manutencao
 from app.models.motorista import Motorista
 from app.models.ocorrencia import Ocorrencia
+from app.models.unidade import Unidade
 from app.models.veiculo import Veiculo
 from app.services.exporters import (
     RelatorioMeta,
@@ -97,15 +98,18 @@ async def relatorio_abastecimentos(
     motorista_id: uuid.UUID | None = None,
     combustivel_id: uuid.UUID | None = None,
     tanque_id: uuid.UUID | None = None,
-    centro_custo: str | None = None,
+    fornecedor_id: uuid.UUID | None = None,
+    unidade_id: uuid.UUID | None = None,
+    modalidade: str | None = None,
     data_inicio: str | None = None,
     data_fim: str | None = None,
-    user: User = Depends(require_permission(Perm.REPORTS_VIEW)),
+    user: User = Depends(require_permission(Perm.REPORTS_VIEW, escopo=True)),
     db: AsyncSession = Depends(get_db),
 ):
     """Abastecimentos por período com filtros combináveis (§32-§33)."""
     conditions = [
         Abastecimento.organization_id == user.organization_id,
+        filtro_escopo(user, Abastecimento.unidade_id),
         Abastecimento.status == "CONFIRMADO",
     ]
     if veiculo_id:
@@ -116,6 +120,12 @@ async def relatorio_abastecimentos(
         conditions.append(Abastecimento.combustivel_id == combustivel_id)
     if tanque_id:
         conditions.append(Abastecimento.tanque_id == tanque_id)
+    if fornecedor_id:
+        conditions.append(Abastecimento.fornecedor_id == fornecedor_id)
+    if unidade_id:
+        conditions.append(Abastecimento.unidade_id == unidade_id)
+    if modalidade:
+        conditions.append(Abastecimento.modalidade == modalidade.upper())
     di = _parse_data(data_inicio)
     df = _parse_data(data_fim, fim=True)
     if di:
@@ -130,17 +140,18 @@ async def relatorio_abastecimentos(
             Motorista.nome.label("motorista"),
             Combustivel.nome.label("combustivel"),
             Tanque.nome.label("tanque"),
-            Veiculo.centro_custo.label("centro_custo"),
+            sa_func.coalesce(Fornecedor.nome_fantasia, Fornecedor.razao_social).label("posto"),
+            Unidade.nome.label("unidade"),
         )
         .join(Veiculo, Abastecimento.veiculo_id == Veiculo.id)
         .outerjoin(Motorista, Abastecimento.motorista_id == Motorista.id)
         .join(Combustivel, Abastecimento.combustivel_id == Combustivel.id)
-        .join(Tanque, Abastecimento.tanque_id == Tanque.id)
+        .outerjoin(Tanque, Abastecimento.tanque_id == Tanque.id)
+        .outerjoin(Fornecedor, Abastecimento.fornecedor_id == Fornecedor.id)
+        .outerjoin(Unidade, Abastecimento.unidade_id == Unidade.id)
         .where(*conditions)
         .order_by(Abastecimento.data_abastecimento.desc())
     )
-    if centro_custo:
-        stmt = stmt.where(Veiculo.centro_custo == centro_custo)
 
     rows = (await db.execute(stmt.limit(5000))).all()
 
@@ -151,11 +162,18 @@ async def relatorio_abastecimentos(
             "motorista": r.motorista,
             "combustivel": r.combustivel,
             "tanque": r.tanque,
+            "posto": r.posto,
+            "local": r.posto or r.tanque,
+            "modalidade": r[0].modalidade,
+            "unidade": r.unidade,
             "litros": float(r[0].quantidade_litros),
             "km": r[0].quilometragem,
+            "horimetro": float(r[0].horimetro) if r[0].horimetro is not None else None,
             "consumo_km_l": float(r[0].consumo_km_l) if r[0].consumo_km_l else None,
+            "consumo_l_h": float(r[0].consumo_l_h) if r[0].consumo_l_h else None,
+            "preco_litro": float(r[0].preco_litro) if r[0].preco_litro else None,
             "custo_total": float(r[0].custo_total) if r[0].custo_total else None,
-            "centro_custo": r.centro_custo,
+            "numero_nf": r[0].numero_nf,
             "origem": r[0].origem,
         }
         for r in rows
@@ -167,11 +185,12 @@ async def relatorio_abastecimentos(
     if formato == "csv":
         return _csv_response(
             "abastecimentos.csv",
-            ["Data", "Placa", "Motorista", "Combustível", "Tanque", "Litros", "KM", "Custo"],
+            ["Data", "Placa", "Secretaria", "Motorista", "Combustível", "Local", "Litros", "KM/Horas", "NF", "Custo"],
             [
                 [
-                    d["data"], d["placa"], d["motorista"] or "-", d["combustivel"],
-                    d["tanque"], d["litros"], d["km"], d["custo_total"] or "",
+                    d["data"], d["placa"], d["unidade"] or "-", d["motorista"] or "-", d["combustivel"],
+                    d["local"] or "-", d["litros"], d["horimetro"] if d["horimetro"] is not None else d["km"],
+                    d["numero_nf"] or "", d["custo_total"] or "",
                 ]
                 for d in dados
             ],
@@ -187,23 +206,26 @@ async def relatorio_abastecimentos(
                 f"Motorista: {motorista_id}" if motorista_id else None,
                 f"Combustível: {combustivel_id}" if combustivel_id else None,
                 f"Tanque: {tanque_id}" if tanque_id else None,
-                f"Centro de custo: {centro_custo}" if centro_custo else None,
+                f"Posto: {fornecedor_id}" if fornecedor_id else None,
+                f"Secretaria/unidade: {rows[0].unidade}" if unidade_id and rows else None,
             ],
         )
         rows = [
             [
-                datetime.fromisoformat(d["data"]).replace(tzinfo=timezone.utc).astimezone().date(),
-                d["placa"], d["motorista"] or "-", d["combustivel"], d["tanque"],
-                d["litros"], d["km"], d["custo_total"] or 0,
+                to_display(datetime.fromisoformat(d["data"])).date(),
+                d["placa"], d["unidade"] or "-", d["motorista"] or "-", d["combustivel"], d["local"] or "-",
+                d["litros"], d["horimetro"] if d["horimetro"] is not None else d["km"],
+                d["numero_nf"] or "-", d["custo_total"] or 0,
             ]
             for d in dados
         ]
         return _formato_response(
             formato, "abastecimentos.xlsx", meta,
-            ["Data", "Placa", "Motorista", "Combustível", "Tanque", "Litros (L)", "KM", "Custo (R$)"],
+            ["Data", "Placa", "Secretaria", "Motorista", "Combustível", "Local", "Litros (L)", "KM/Horas",
+             "NF", "Custo (R$)"],
             rows,
-            currency_columns={7}, date_columns={0},
-            totals=[None, None, None, None, None, total_litros, None, total_custo],
+            currency_columns={9}, date_columns={0},
+            totals=[None, None, None, None, None, None, total_litros, None, None, total_custo],
             usuario=user.name,
         )
     return {"total_registros": len(dados), "total_litros": round(total_litros, 2), "total_gasto": round(total_custo, 2), "itens": dados}
@@ -214,24 +236,33 @@ async def relatorio_consumo_veiculos(
     data_inicio: str | None = None,
     data_fim: str | None = None,
     formato: str = "json",
-    user: User = Depends(require_permission(Perm.REPORTS_VIEW)),
+    user: User = Depends(require_permission(Perm.REPORTS_VIEW, escopo=True)),
     db: AsyncSession = Depends(get_db),
 ):
     """Relatório detalhado do veículo (§62): km rodados, litros, custo, custo/km."""
     di = _parse_data(data_inicio) or datetime.now(timezone.utc) - timedelta(days=90)
     df = _parse_data(data_fim, fim=True) or datetime.now(timezone.utc)
 
+    # Litros para consumo contam só combustível — ARLA e outros fluidos
+    # auxiliares entram no custo, mas não na média km/L (ou L/h).
+    eh_combustivel = Combustivel.categoria == "COMBUSTIVEL"
     abast_rows = (
         await db.execute(
             select(
                 Abastecimento.veiculo_id,
                 sa_func.min(Abastecimento.quilometragem),
                 sa_func.max(Abastecimento.quilometragem),
-                sa_func.sum(Abastecimento.quantidade_litros),
+                sa_func.coalesce(
+                    sa_func.sum(Abastecimento.quantidade_litros).filter(eh_combustivel), 0
+                ),
                 sa_func.coalesce(sa_func.sum(Abastecimento.custo_total), 0),
+                sa_func.min(Abastecimento.horimetro),
+                sa_func.max(Abastecimento.horimetro),
             )
+            .join(Combustivel, Combustivel.id == Abastecimento.combustivel_id)
             .where(
                 Abastecimento.organization_id == user.organization_id,
+                filtro_escopo(user, Abastecimento.unidade_id),
                 Abastecimento.status == "CONFIRMADO",
                 Abastecimento.data_abastecimento >= di,
                 Abastecimento.data_abastecimento <= df,
@@ -245,6 +276,7 @@ async def relatorio_consumo_veiculos(
             select(Manutencao.veiculo_id, sa_func.coalesce(sa_func.sum(Manutencao.valor_total), 0))
             .where(
                 Manutencao.organization_id == user.organization_id,
+                filtro_escopo(user, Manutencao.unidade_id),
                 Manutencao.deleted_at.is_(None),
                 Manutencao.status.in_(["CONCLUIDA", "EM_MANUTENCAO"]),
                 Manutencao.data_solicitacao >= di.date(),
@@ -256,15 +288,19 @@ async def relatorio_consumo_veiculos(
     manut_map = {str(v): float(c or 0) for v, c in manut_rows}
 
     itens = []
-    for veiculo_id, km_min, km_max, litros, gasto in abast_rows:
+    for veiculo_id, km_min, km_max, litros, gasto, h_min, h_max in abast_rows:
         veiculo = await db.get(Veiculo, veiculo_id)
         if veiculo is None or veiculo.organization_id != user.organization_id:
             continue
         km_rodados = int(km_max - km_min) if km_max and km_min else 0
+        horas = float(h_max - h_min) if h_max is not None and h_min is not None else 0.0
         litros_f = float(litros or 0)
         custo_comb = float(gasto or 0)
         custo_manut = manut_map.get(str(veiculo_id), 0.0)
+        if veiculo.usa_horimetro:
+            km_rodados = 0
         consumo_medio = round(km_rodados / litros_f, 2) if litros_f > 0 and km_rodados > 0 else None
+        consumo_l_h = round(litros_f / horas, 2) if veiculo.usa_horimetro and horas > 0 else None
         custo_km = round((custo_comb + custo_manut) / km_rodados, 2) if km_rodados > 0 else None
         itens.append(
             {
@@ -277,6 +313,9 @@ async def relatorio_consumo_veiculos(
                 "litros": round(litros_f, 2),
                 "valor_combustivel": round(custo_comb, 2),
                 "consumo_medio": consumo_medio,
+                "usa_horimetro": veiculo.usa_horimetro,
+                "horas_trabalhadas": round(horas, 1) if veiculo.usa_horimetro else None,
+                "consumo_l_h": consumo_l_h,
                 "valor_manutencao": round(custo_manut, 2),
                 "custo_total": round(custo_comb + custo_manut, 2),
                 "custo_por_km": custo_km,
@@ -327,6 +366,132 @@ async def relatorio_consumo_veiculos(
             usuario=user.name,
         )
     return {"periodo": {"inicio": di.date().isoformat(), "fim": df.date().isoformat()}, "itens": itens}
+
+
+@router.get("/secretarias")
+async def relatorio_secretarias(
+    data_inicio: str | None = None,
+    data_fim: str | None = None,
+    formato: str = "json",
+    user: User = Depends(require_permission(Perm.REPORTS_VIEW, escopo=True)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Gasto da frota por secretaria/unidade: combustível (tanque próprio e
+    posto credenciado) e manutenção, no período. Usa a unidade gravada no
+    lançamento — transferir um veículo não reescreve o histórico."""
+    di = _parse_data(data_inicio) or datetime.now(timezone.utc).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    df = _parse_data(data_fim, fim=True) or datetime.now(timezone.utc)
+    org = user.organization_id
+
+    unidades = {
+        u.id: u.nome
+        for u in (
+            await db.execute(select(Unidade).where(Unidade.organization_id == org))
+        ).scalars().all()
+    }
+    veiculos = dict(
+        (
+            await db.execute(
+                select(Veiculo.unidade_id, sa_func.count(Veiculo.id))
+                .where(Veiculo.organization_id == org, Veiculo.deleted_at.is_(None), filtro_escopo(user, Veiculo.unidade_id))
+                .group_by(Veiculo.unidade_id)
+            )
+        ).all()
+    )
+    abast = (
+        await db.execute(
+            select(
+                Abastecimento.unidade_id,
+                sa_func.count(Abastecimento.id),
+                sa_func.coalesce(sa_func.sum(Abastecimento.quantidade_litros), 0),
+                sa_func.coalesce(
+                    sa_func.sum(Abastecimento.custo_total).filter(Abastecimento.modalidade == "TANQUE_PROPRIO"), 0
+                ),
+                sa_func.coalesce(
+                    sa_func.sum(Abastecimento.custo_total).filter(Abastecimento.modalidade == "POSTO_CREDENCIADO"), 0
+                ),
+            )
+            .where(
+                Abastecimento.organization_id == org,
+                filtro_escopo(user, Abastecimento.unidade_id),
+                Abastecimento.status == "CONFIRMADO",
+                Abastecimento.data_abastecimento >= di,
+                Abastecimento.data_abastecimento <= df,
+            )
+            .group_by(Abastecimento.unidade_id)
+        )
+    ).all()
+    manut = dict(
+        (
+            await db.execute(
+                select(Manutencao.unidade_id, sa_func.coalesce(sa_func.sum(Manutencao.valor_total), 0))
+                .where(
+                    Manutencao.organization_id == org,
+                    filtro_escopo(user, Manutencao.unidade_id),
+                    Manutencao.deleted_at.is_(None),
+                    Manutencao.status != "CANCELADA",
+                    Manutencao.data_solicitacao >= di.date(),
+                    Manutencao.data_solicitacao <= df.date(),
+                )
+                .group_by(Manutencao.unidade_id)
+            )
+        ).all()
+    )
+
+    linhas: dict = {}
+    for uid, qtd, litros, tanque, posto in abast:
+        linhas[uid] = {"abastecimentos": qtd, "litros": float(litros), "combustivel_tanque": float(tanque),
+                       "combustivel_posto": float(posto)}
+    chaves = set(linhas) | set(manut) | {k for k, v in veiculos.items() if v}
+    itens = []
+    for uid in chaves:
+        base = linhas.get(uid, {"abastecimentos": 0, "litros": 0.0, "combustivel_tanque": 0.0, "combustivel_posto": 0.0})
+        combustivel = base["combustivel_tanque"] + base["combustivel_posto"]
+        manutencao = float(manut.get(uid) or 0)
+        itens.append({
+            "unidade_id": str(uid) if uid else None,
+            "unidade": unidades.get(uid) or "Sem secretaria definida",
+            "veiculos": int(veiculos.get(uid) or 0),
+            **{k: round(v, 2) if isinstance(v, float) else v for k, v in base.items()},
+            "combustivel_total": round(combustivel, 2),
+            "manutencao": round(manutencao, 2),
+            "total": round(combustivel + manutencao, 2),
+        })
+    itens.sort(key=lambda i: (-i["total"], i["unidade"]))
+    total_geral = round(sum(i["total"] for i in itens), 2)
+    for i in itens:
+        i["participacao_pct"] = round(i["total"] / total_geral * 100, 1) if total_geral else 0.0
+
+    cab = ["Secretaria / unidade", "Veículos", "Abastecimentos", "Litros", "Comb. tanque (R$)",
+           "Comb. posto (R$)", "Manutenção (R$)", "Total (R$)", "% do total"]
+    rows = [
+        [i["unidade"], i["veiculos"], i["abastecimentos"], i["litros"], i["combustivel_tanque"],
+         i["combustivel_posto"], i["manutencao"], i["total"], i["participacao_pct"]]
+        for i in itens
+    ]
+    if formato == "csv":
+        return _csv_response("gastos_por_secretaria.csv", cab, rows)
+    if formato in ("xlsx", "pdf"):
+        meta = RelatorioMeta(
+            titulo="Gastos da Frota por Secretaria",
+            organizacao=await get_organizacao_nome(db, org),
+            periodo=f"{di.date().isoformat()} a {df.date().isoformat()}",
+        )
+        return _formato_response(
+            formato, "gastos_por_secretaria.xlsx", meta, cab, rows,
+            currency_columns={4, 5, 6, 7},
+            totals=[None, sum(i["veiculos"] for i in itens), sum(i["abastecimentos"] for i in itens),
+                    round(sum(i["litros"] for i in itens), 2),
+                    round(sum(i["combustivel_tanque"] for i in itens), 2),
+                    round(sum(i["combustivel_posto"] for i in itens), 2),
+                    round(sum(i["manutencao"] for i in itens), 2), total_geral, None],
+            usuario=user.name,
+        )
+    return {
+        "periodo": {"inicio": di.date().isoformat(), "fim": df.date().isoformat()},
+        "total": total_geral,
+        "itens": itens,
+    }
 
 
 @router.get("/motoristas/cnh")
@@ -464,13 +629,12 @@ async def relatorio_manutencoes(
     tipo: str | None = None,
     data_inicio: str | None = None,
     data_fim: str | None = None,
-    user: User = Depends(require_permission(Perm.REPORTS_VIEW)),
+    user: User = Depends(require_permission(Perm.REPORTS_VIEW, escopo=True)),
     db: AsyncSession = Depends(get_db),
 ):
-    from app.models.combustivel import Oficina
-
     conditions = [
         Manutencao.organization_id == user.organization_id,
+        filtro_escopo(user, Manutencao.unidade_id),
         Manutencao.deleted_at.is_(None),
     ]
     if status:
@@ -487,10 +651,10 @@ async def relatorio_manutencoes(
             select(
                 Manutencao,
                 Veiculo.placa.label("placa"),
-                Oficina.nome.label("oficina"),
+                sa_func.coalesce(Fornecedor.nome_fantasia, Fornecedor.razao_social).label("oficina"),
             )
             .join(Veiculo, Manutencao.veiculo_id == Veiculo.id)
-            .outerjoin(Oficina, Manutencao.oficina_id == Oficina.id)
+            .outerjoin(Fornecedor, Manutencao.fornecedor_id == Fornecedor.id)
             .where(*conditions)
             .order_by(Manutencao.data_solicitacao.desc())
             .limit(2000)
@@ -685,7 +849,7 @@ async def relatorio_veiculo_consolidado(
     formato: str = "json",
     data_inicio: str | None = None,
     data_fim: str | None = None,
-    user: User = Depends(require_permission(Perm.REPORTS_VIEW)),
+    user: User = Depends(require_permission(Perm.REPORTS_VIEW, escopo=True)),
     db: AsyncSession = Depends(get_db),
 ):
     """Relatório consolidado do veículo (PDF/XLSX): identificação, período,
@@ -695,6 +859,7 @@ async def relatorio_veiculo_consolidado(
             select(Veiculo).where(
                 Veiculo.id == veiculo_id,
                 Veiculo.organization_id == user.organization_id,
+                filtro_escopo(user, Veiculo.unidade_id),
                 Veiculo.deleted_at.is_(None),
             )
         )
@@ -716,6 +881,7 @@ async def relatorio_veiculo_consolidado(
                 sa_func.sum(Abastecimento.custo_total),
             ).where(
                 Abastecimento.organization_id == user.organization_id,
+                filtro_escopo(user, Abastecimento.unidade_id),
                 Abastecimento.veiculo_id == veiculo.id,
                 Abastecimento.status == "CONFIRMADO",
                 Abastecimento.data_abastecimento >= di,
@@ -732,6 +898,7 @@ async def relatorio_veiculo_consolidado(
         await db.execute(
             select(sa_func.coalesce(sa_func.sum(Manutencao.valor_total), 0)).where(
                 Manutencao.organization_id == user.organization_id,
+                filtro_escopo(user, Manutencao.unidade_id),
                 Manutencao.veiculo_id == veiculo.id,
                 Manutencao.deleted_at.is_(None),
                 Manutencao.status.in_(["CONCLUIDA", "EM_MANUTENCAO"]),
@@ -750,9 +917,10 @@ async def relatorio_veiculo_consolidado(
             select(Abastecimento, Motorista.nome.label("motorista"), Combustivel.nome.label("combustivel"), Tanque.nome.label("tanque"))
             .outerjoin(Motorista, Abastecimento.motorista_id == Motorista.id)
             .join(Combustivel, Abastecimento.combustivel_id == Combustivel.id)
-            .join(Tanque, Abastecimento.tanque_id == Tanque.id)
+            .outerjoin(Tanque, Abastecimento.tanque_id == Tanque.id)
             .where(
                 Abastecimento.organization_id == user.organization_id,
+                filtro_escopo(user, Abastecimento.unidade_id),
                 Abastecimento.veiculo_id == veiculo.id,
                 Abastecimento.status == "CONFIRMADO",
                 Abastecimento.data_abastecimento >= di,
@@ -765,6 +933,7 @@ async def relatorio_veiculo_consolidado(
         await db.execute(
             select(Manutencao).where(
                 Manutencao.organization_id == user.organization_id,
+                filtro_escopo(user, Manutencao.unidade_id),
                 Manutencao.veiculo_id == veiculo.id,
                 Manutencao.deleted_at.is_(None),
                 Manutencao.data_solicitacao >= di.date(),
@@ -788,7 +957,7 @@ async def relatorio_veiculo_consolidado(
         "placa": veiculo.placa,
         "modelo": f"{veiculo.marca or ''} {veiculo.modelo or ''}".strip(),
         "ano": veiculo.ano_modelo or veiculo.ano_fabricacao,
-        "centro_custo": veiculo.centro_custo,
+        "unidade": (await db.get(Unidade, veiculo.unidade_id)).nome if veiculo.unidade_id else None,
         "departamento": veiculo.departamento,
     }
     indicadores = {
@@ -811,9 +980,9 @@ async def relatorio_veiculo_consolidado(
     )
 
     if formato in ("xlsx", "pdf"):
-        ident_headers = ["Placa", "Modelo", "Ano", "Centro de custo", "Departamento"]
+        ident_headers = ["Placa", "Modelo", "Ano", "Secretaria / unidade", "Departamento"]
         ident_row = [identificacao["placa"], identificacao["modelo"], identificacao["ano"] or "-",
-                     identificacao["centro_custo"] or "-", identificacao["departamento"] or "-"]
+                     identificacao["unidade"] or "-", identificacao["departamento"] or "-"]
 
         ind_headers = ["KM inicial", "KM final", "KM rodados", "Litros", "Valor comb. (R$)",
                        "Consumo médio", "Custo manutenção (R$)", "Custo total (R$)", "Custo/km (R$)"]

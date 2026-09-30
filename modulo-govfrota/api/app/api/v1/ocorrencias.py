@@ -5,7 +5,7 @@ from sqlalchemy import func as sa_func
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import require_permission
+from app.core.auth import filtro_escopo, require_permission
 from app.core.database import get_db
 from app.core.permissions import Perm
 from app.models.auth_models import User
@@ -38,10 +38,13 @@ async def _get_tenant_ocorrencia(
     db: AsyncSession, user: User, ocorrencia_id: uuid.UUID
 ) -> Ocorrencia:
     result = await db.execute(
-        select(Ocorrencia).where(
+        select(Ocorrencia)
+        .join(Veiculo, Ocorrencia.veiculo_id == Veiculo.id)
+        .where(
             Ocorrencia.id == ocorrencia_id,
             Ocorrencia.organization_id == user.organization_id,
             Ocorrencia.deleted_at.is_(None),
+            filtro_escopo(user, Veiculo.unidade_id),
         )
     )
     ocorrencia = result.scalar_one_or_none()
@@ -106,7 +109,7 @@ async def listar(
     skip: int = 0,
     limit: int = 50,
     response: Response = None,  # type: ignore[assignment]
-    user: User = Depends(require_permission(Perm.VEHICLE_VIEW)),
+    user: User = Depends(require_permission(Perm.VEHICLE_VIEW, escopo=True)),
     db: AsyncSession = Depends(get_db),
 ):
     from datetime import datetime, time
@@ -117,6 +120,7 @@ async def listar(
         .outerjoin(Motorista, Ocorrencia.motorista_id == Motorista.id)
         .where(
             Ocorrencia.organization_id == user.organization_id,
+            filtro_escopo(user, Veiculo.unidade_id),
             Ocorrencia.deleted_at.is_(None),
         )
     )
@@ -174,7 +178,7 @@ async def listar(
 @router.get("/{ocorrencia_id}", response_model=OcorrenciaResponse)
 async def obter(
     ocorrencia_id: uuid.UUID,
-    user: User = Depends(require_permission(Perm.VEHICLE_VIEW)),
+    user: User = Depends(require_permission(Perm.VEHICLE_VIEW, escopo=True)),
     db: AsyncSession = Depends(get_db),
 ):
     ocorrencia = await _get_tenant_ocorrencia(db, user, ocorrencia_id)

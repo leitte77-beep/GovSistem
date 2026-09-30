@@ -1,6 +1,10 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    portal_posto,
+    notas_fiscais,
+    secretaria,
+    acessos,
     abastecimentos,
     app_motorista,
     auth,
@@ -16,6 +20,7 @@ from app.api.v1 import (
     ocorrencias,
     relatorios,
     tanques,
+    unidades,
     uploads,
     veiculos,
 )
@@ -37,5 +42,10 @@ api_router.include_router(relatorios.router)
 api_router.include_router(busca.router)
 api_router.include_router(dashboard.router)
 api_router.include_router(configuracoes.router)
+api_router.include_router(unidades.router)
 api_router.include_router(app_motorista.router)
 api_router.include_router(uploads.router)
+api_router.include_router(acessos.router)
+api_router.include_router(secretaria.router)
+api_router.include_router(portal_posto.router)
+api_router.include_router(notas_fiscais.router)
