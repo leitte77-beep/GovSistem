@@ -93,6 +93,7 @@ class VeiculoCreate(BaseModel):
     observacoes: Optional[str] = None
     vencimento_licenciamento: Optional[date] = None
     vencimento_seguro: Optional[date] = None
+    foto_url: Optional[str] = None
 
 
 class VeiculoTanqueAuxIn(BaseModel):
