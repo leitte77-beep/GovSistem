@@ -10,6 +10,7 @@ import {
   Building2,
   CheckCircle2,
   ChevronDown,
+  Eye,
   FileCode2,
   FileText,
   FileX2,
@@ -23,6 +24,7 @@ import {
 } from "lucide-react";
 import { api, FiltroNotasFiscais, Fornecedor, ListaNotasFiscais, NotaFiscalItem, Unidade } from "@/lib/api";
 import { RequirePermission } from "@/components/RequirePermission";
+import { NotaFiscalPreview } from "@/components/abastecimento/NotaFiscalPreview";
 
 const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 function periodo(k: string): [string, string] {
@@ -66,6 +68,7 @@ export default function NotasFiscaisPage() {
   const [busca, setBusca] = useState("");
   const [buscaAtiva, setBuscaAtiva] = useState("");
   const [tipos, setTipos] = useState("NFE_XML,DANFE");
+  const [preview, setPreview] = useState<{ url: string; tipo: "xml" | "pdf"; titulo: string } | null>(null);
   const [dados, setDados] = useState<ListaNotasFiscais | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [baixandoZip, setBaixandoZip] = useState(false);
@@ -123,6 +126,9 @@ export default function NotasFiscaisPage() {
 
   return (
     <RequirePermission perms="refueling.view">
+      {preview && (
+        <NotaFiscalPreview url={preview.url} tipo={preview.tipo} titulo={preview.titulo} onClose={() => setPreview(null)} />
+      )}
       <div className="space-y-6">
         {/* Cabeçalho da página */}
         <section className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -449,6 +455,21 @@ export default function NotasFiscaisPage() {
                       </td>
                       <td className="whitespace-nowrap py-4 pl-3 pr-6">
                         <div className="flex items-center justify-center gap-2">
+                          {(n?.pdf_id || n?.xml_id) && (
+                            <button
+                              className="rounded-lg border border-surface-border p-2 text-text-body transition hover:border-primary/30 hover:bg-[#EFF4FF] hover:text-primary"
+                              title="Visualizar sem baixar"
+                              onClick={() =>
+                                setPreview(
+                                  n?.pdf_id
+                                    ? { url: api.urlNotaFiscal(n.pdf_id), tipo: "pdf", titulo: `NF ${n.numero ?? ""}${n.serie ? `/${n.serie}` : ""} — DANFE`.trim() }
+                                    : { url: api.urlNotaFiscal(n.xml_id!), tipo: "xml", titulo: `NF ${n.numero ?? ""} — XML`.trim() },
+                                )
+                              }
+                            >
+                              <Eye size={16} />
+                            </button>
+                          )}
                           {n?.xml_id && (
                             <button
                               className="rounded-lg border border-surface-border p-2 text-primary transition hover:border-primary/30 hover:bg-[#EFF4FF]"
