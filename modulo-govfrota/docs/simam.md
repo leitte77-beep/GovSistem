@@ -26,7 +26,7 @@ Enviada não reabre mais: cancelamento ou redução de litros vira estorno na co
 1. Configurações → SIM-AM: idPessoa da entidade e CPF do responsável pelo combustível.
 2. Cada combustível: categoria e tipo do objeto da despesa (tabela do TCE). Desmarcar "informar" para lubrificantes.
 3. Cada veículo: Patrimônio (cdBem, até 10 caracteres), código FIPE e ano de fabricação.
-4. Importar as tabelas do TCE (opcional, habilita conferência e sugestão do FIPE):
+4. Tabela FIPE do TCE (código de 7 dígitos, sem hífen): importada em 30/09/2026 com 7.330 modelos, a partir do PDF "Tabela Padrão de Modelos - FIPE" (páginas 3–186, convertido com `pdftotext -layout`). Para reimportar a partir de um CSV:
 
 ```
 docker compose -f infra/docker-compose.yml run --rm --no-deps -v $PWD/fipe.csv:/tmp/t.csv \

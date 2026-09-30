@@ -840,7 +840,7 @@ export function VeiculoFormDrawer({
               </p>
               <div className="mt-3 grid gap-3 sm:grid-cols-2">
                 <Label texto="Código do modelo FIPE">
-                  <input {...campo("simam_cd_modelo_fipe")} maxLength={12} placeholder="Ex.: 005123-4" list="simam-fipe"
+                  <input {...campo("simam_cd_modelo_fipe")} maxLength={12} placeholder="7 dígitos ou digite o modelo" list="simam-fipe"
                     onChange={(e) => { atualizar("simam_cd_modelo_fipe", e.target.value); buscarFipe(e.target.value); }} />
                   <datalist id="simam-fipe">
                     {fipe.map((f) => <option key={f.codigo} value={f.codigo}>{f.descricao}</option>)}

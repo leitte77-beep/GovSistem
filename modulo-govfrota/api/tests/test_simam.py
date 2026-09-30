@@ -32,7 +32,7 @@ async def _cenario(client, _db, make_tenant, setup_frota, *, completo=True):
         assert r.status_code == 200, r.text
         r = await client.patch(
             f"{API}/veiculos/{v.id}",
-            json={"patrimonio": "PAT0001", "ano_fabricacao": 2020, "simam_cd_modelo_fipe": "005123-4"},
+            json={"patrimonio": "PAT0001", "ano_fabricacao": 2020, "simam_cd_modelo_fipe": "0051950"},
             headers=h,
         )
         assert r.status_code == 200, r.text
