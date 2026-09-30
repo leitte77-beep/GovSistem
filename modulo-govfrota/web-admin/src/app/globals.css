@@ -81,6 +81,11 @@
   .skeleton {
     @apply animate-pulse bg-[#E3ECFF] rounded;
   }
+
+  .mercosul-plate {
+    background: linear-gradient(180deg, #0b347b 0%, #0b347b 28%, #ffffff 28%, #ffffff 100%);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  }
 }
 
 @layer utilities {
