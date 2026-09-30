@@ -8,6 +8,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    Integer,
     Index,
     Numeric,
     String,
@@ -47,6 +48,12 @@ class Combustivel(Base, TimestampMixin, SoftDeleteMixin):
     descricao: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
     foto_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     ativo: Mapped[bool] = mapped_column(Boolean(), default=True, nullable=False)
+
+    # SIM-AM/TCE-PR: idTipoCategoriaObjetoDespesa / idTipoObjetoDespesa.
+    # `simam_informar=False` tira o produto dos arquivos (ex.: lubrificante).
+    simam_informar: Mapped[bool] = mapped_column(Boolean(), default=True, server_default="true", nullable=False)
+    simam_categoria: Mapped[Optional[int]] = mapped_column(Integer(), nullable=True)
+    simam_objeto: Mapped[Optional[int]] = mapped_column(Integer(), nullable=True)
 
 
 class Tanque(Base, TimestampMixin, SoftDeleteMixin):

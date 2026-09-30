@@ -128,6 +128,10 @@ export function VeiculoFormDrawer({
     vencimento_seguro: v?.vencimento_seguro ?? "",
     situacao: v?.situacao ?? "DISPONIVEL",
     observacoes: v?.observacoes ?? "",
+    simam_informar: v?.simam_informar ?? true,
+    simam_cd_modelo_fipe: v?.simam_cd_modelo_fipe ?? "",
+    simam_propriedade: v?.simam_propriedade ?? "PROPRIO",
+    simam_tipo_medidor: v?.simam_tipo_medidor ? String(v.simam_tipo_medidor) : "",
   });
 
   const [form, setForm] = useState(() => novoForm(veiculo));
@@ -188,6 +192,17 @@ export function VeiculoFormDrawer({
   };
 
   const tipoHorimetroPadrao = TIPOS_HORIMETRO.has(form.tipo);
+
+  // Sugestões da tabela FIPE do TCE (quando importada).
+  const [fipe, setFipe] = useState<{ codigo: string; descricao: string }[]>([]);
+  const buscaFipe = useRef<ReturnType<typeof setTimeout>>();
+  const buscarFipe = (termo: string) => {
+    clearTimeout(buscaFipe.current);
+    if (termo.trim().length < 3) return;
+    buscaFipe.current = setTimeout(() => {
+      api.simamReferencias("ModeloVeiculoFIPE", termo).then((r) => setFipe(r.itens)).catch(() => setFipe([]));
+    }, 300);
+  };
 
   const escolherFoto = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -331,6 +346,8 @@ export function VeiculoFormDrawer({
         unidade_id: form.unidade_id || null,
         departamento: form.departamento || undefined,
         observacoes: form.observacoes || undefined,
+        simam_cd_modelo_fipe: form.simam_cd_modelo_fipe.trim() || null,
+        simam_tipo_medidor: form.simam_tipo_medidor ? Number(form.simam_tipo_medidor) : null,
       };
       if (veiculo) {
         // A edição não altera KM; a mudança vai pela rota auditada.
@@ -474,8 +491,8 @@ export function VeiculoFormDrawer({
                 <Label texto="Código interno">
                   <input {...campo("codigo_interno")} placeholder="EX.: VH-0001" />
                 </Label>
-                <Label texto="Patrimônio">
-                  <input {...campo("patrimonio")} placeholder="Opcional" />
+                <Label texto="Patrimônio (cdBem)">
+                  <input {...campo("patrimonio")} placeholder="Código patrimonial — até 10 caracteres" />
                 </Label>
                 <Label texto="RENAVAM" erro={erros.renavam}>
                   <input
@@ -816,6 +833,41 @@ export function VeiculoFormDrawer({
             </Secao>
 
             
+            <Secao titulo="SIM-AM / TCE-PR">
+              <p className="text-meta text-text-subtle">
+                Dados do arquivo mensal VeiculoEquipamento. O código patrimonial (cdBem) é o campo Patrimônio;
+                o combustível vem do reservatório principal.
+              </p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <Label texto="Código do modelo FIPE">
+                  <input {...campo("simam_cd_modelo_fipe")} maxLength={12} placeholder="Ex.: 005123-4" list="simam-fipe"
+                    onChange={(e) => { atualizar("simam_cd_modelo_fipe", e.target.value); buscarFipe(e.target.value); }} />
+                  <datalist id="simam-fipe">
+                    {fipe.map((f) => <option key={f.codigo} value={f.codigo}>{f.descricao}</option>)}
+                  </datalist>
+                </Label>
+                <Label texto="Propriedade">
+                  <select {...campo("simam_propriedade")}>
+                    <option value="PROPRIO">Próprio</option>
+                    <option value="TERCEIRO">De terceiro</option>
+                  </select>
+                </Label>
+                <Label texto="Medidor informado ao TCE">
+                  <select {...campo("simam_tipo_medidor")}>
+                    <option value="">Automático ({form.usa_horimetro ? "horímetro" : "hodômetro"})</option>
+                    <option value="1">Hodômetro</option>
+                    <option value="2">Horímetro</option>
+                    <option value="3">Não usa hodômetro/horímetro</option>
+                  </select>
+                </Label>
+                <label className="flex items-center gap-2 self-end pb-2 text-body-sm text-text-body">
+                  <input type="checkbox" checked={form.simam_informar}
+                    onChange={(e) => setForm((f) => ({ ...f, simam_informar: e.target.checked }))} />
+                  Informar este veículo ao SIM-AM
+                </label>
+              </div>
+            </Secao>
+
             <Secao titulo="Situação">
               <div className="grid gap-3 sm:grid-cols-2">
                 <Label texto="Situação">

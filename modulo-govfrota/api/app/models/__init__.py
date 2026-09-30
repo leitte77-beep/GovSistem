@@ -36,8 +36,24 @@ from app.models.anexo import Anexo
 from app.models.acesso_fornecedor import AcessoFornecedor
 from app.models.nota_abastecimento import NotaAbastecimento
 from app.models.manifesto import ManifestoEntrada
+from app.models.simam import (
+    MedicaoDeclarada,
+    SaidaExtraCombustivel,
+    SimamCompetencia,
+    SimamConsumo,
+    SimamEstorno,
+    SimamReferencia,
+    VeiculoMedidor,
+)
 
 __all__ = [
+    "VeiculoMedidor",
+    "MedicaoDeclarada",
+    "SaidaExtraCombustivel",
+    "SimamCompetencia",
+    "SimamConsumo",
+    "SimamEstorno",
+    "SimamReferencia",
     "NotaAbastecimento",
     "ManifestoEntrada",
     "Base",

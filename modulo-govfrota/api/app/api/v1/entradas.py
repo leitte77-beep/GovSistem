@@ -19,6 +19,7 @@ from app.models.enums import OrigemMovimentacao, TipoMovimentacao
 from app.schemas.schemas import EntradaCancelamento, EntradaCreate, EntradaResponse
 from app.services.auditoria import registrar_auditoria
 from app.services.abastecimento import get_configuracoes
+from app.services.simam import competencia as simam
 from app.services.estoque import EstoqueError, aplicar_movimentacao
 
 router = APIRouter(prefix="/entradas", tags=["entradas de combustível"])
@@ -79,7 +80,54 @@ async def _montar_entrada(db: AsyncSession, entrada: EntradaCombustivel) -> Entr
             if entrada.fornecedor else None
         ),
         anexos=anexos,
+        tipo_entrada=entrada.tipo_entrada,
+        simam_numero=entrada.simam_numero,
+        repassador_nome=entrada.repassador_nome,
+        repassador_cpf_cnpj=entrada.repassador_cpf_cnpj,
+        responsavel_cpf=entrada.responsavel_cpf,
+        lei_ato_numero=entrada.lei_ato_numero,
+        lei_ato_ano=entrada.lei_ato_ano,
+        convenio_numero=entrada.convenio_numero,
+        convenio_ano=entrada.convenio_ano,
+        convenio_objeto=entrada.convenio_objeto,
+        nota_explicativa=entrada.nota_explicativa,
     )
+
+
+def _digitos(valor: str | None) -> str | None:
+    return "".join(ch for ch in (valor or "") if ch.isdigit()) or None
+
+
+def _validar_tipo_entrada(body: EntradaCreate, cpf_padrao: str | None) -> dict:
+    """Regras do SIM-AM (EntradaExtraCombustivel) por tipo de entrada."""
+    if body.tipo_entrada == "ORCAMENTARIA":
+        return {c: None for c in _CAMPOS_EXTRA}
+    faltas = []
+    repassador_doc = _digitos(body.repassador_cpf_cnpj)
+    if not (body.repassador_nome or "").strip():
+        faltas.append("repassador")
+    if not repassador_doc or len(repassador_doc) not in (11, 14):
+        faltas.append("CPF/CNPJ do repassador")
+    if body.tipo_entrada == "DOACAO" and not (body.nota_explicativa or "").strip():
+        faltas.append("nota explicativa")
+    if body.tipo_entrada == "CONVENIO" and not (body.convenio_numero and body.convenio_ano and body.convenio_objeto):
+        faltas.append("número, ano e objeto do convênio")
+    cpf = _digitos(body.responsavel_cpf) or cpf_padrao
+    if not cpf or len(cpf) != 11:
+        faltas.append("CPF do servidor responsável pelo combustível")
+    if faltas:
+        raise HTTPException(status_code=422, detail=f"Entrada extraorçamentária: informe {', '.join(faltas)}.")
+    dados = {c: getattr(body, c) for c in _CAMPOS_EXTRA}
+    dados.update(repassador_cpf_cnpj=repassador_doc, responsavel_cpf=cpf)
+    if body.tipo_entrada != "CONVENIO":
+        dados.update(convenio_numero=None, convenio_ano=None, convenio_objeto=None)
+    return dados
+
+
+_CAMPOS_EXTRA = (
+    "repassador_nome", "repassador_cpf_cnpj", "responsavel_cpf", "lei_ato_numero", "lei_ato_ano",
+    "convenio_numero", "convenio_ano", "convenio_objeto", "nota_explicativa",
+)
 
 
 async def _validar_anexos(
@@ -213,9 +261,15 @@ async def criar(
         raise HTTPException(
             status_code=422, detail="O combustível da entrada não corresponde ao combustível do tanque."
         )
-    if config.exigir_nf_entrada and not body.numero_nota:
+    try:
+        await simam.exigir_aberta(db, user.organization_id, body.data_entrada, "novas entradas")
+    except simam.SimamError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.mensagem)
+    extra = _validar_tipo_entrada(body, config.simam_cpf_responsavel)
+    orcamentaria = body.tipo_entrada == "ORCAMENTARIA"
+    if orcamentaria and config.exigir_nf_entrada and not body.numero_nota:
         raise HTTPException(status_code=422, detail="Número da nota fiscal é obrigatório.")
-    if config.exigir_fornecedor_entrada and not body.fornecedor_id:
+    if orcamentaria and config.exigir_fornecedor_entrada and not body.fornecedor_id:
         raise HTTPException(status_code=422, detail="Fornecedor é obrigatório.")
     if body.fornecedor_id:
         fornecedor_ok = (
@@ -247,7 +301,9 @@ async def criar(
     anexos = await _validar_anexos(db, user.organization_id, anexos_ids)
 
     entrada = EntradaCombustivel(
-        **body.model_dump(exclude={"anexos_ids", "valor_unitario", "valor_total"}),
+        **body.model_dump(exclude={"anexos_ids", "valor_unitario", "valor_total", *_CAMPOS_EXTRA}),
+        **extra,
+        simam_numero=None if orcamentaria else await simam.proximo_numero_entrada(db, user.organization_id),
         valor_total=valor_total,
         valor_por_litro=valor_por_litro,
         organization_id=user.organization_id,
@@ -329,6 +385,10 @@ async def cancelar(
     entrada = await _get_entrada(db, user, entrada_id)
     if entrada.cancelada:
         raise HTTPException(status_code=422, detail="Entrada já cancelada.")
+    try:
+        await simam.exigir_aberta(db, user.organization_id, entrada.data_entrada, "cancelamento de entradas")
+    except simam.SimamError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.mensagem)
 
     # Segurança: o estorno não pode gerar estoque negativo. Se o saldo atual do
     # tanque for inferior ao volume da entrada, orienta-se ajuste administrativo.

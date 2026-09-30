@@ -12,6 +12,7 @@ from sqlalchemy import (
     Numeric,
     String,
     BigInteger,
+    Integer,
     Text,
 )
 from sqlalchemy.dialects.postgresql import UUID
@@ -72,6 +73,14 @@ class Veiculo(Base, TimestampMixin, SoftDeleteMixin):
     vencimento_seguro: Mapped[Optional[date]] = mapped_column(Date(), nullable=True)
 
     foto_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+
+    # SIM-AM/TCE-PR (VeiculoEquipamento). O cdBem é o campo `patrimonio`.
+    # Categoria/objeto da despesa vêm do combustível principal.
+    simam_informar: Mapped[bool] = mapped_column(Boolean(), default=True, server_default="true", nullable=False)
+    simam_cd_modelo_fipe: Mapped[Optional[str]] = mapped_column(String(12), nullable=True)
+    simam_propriedade: Mapped[str] = mapped_column(String(10), default="PROPRIO", server_default="PROPRIO", nullable=False)
+    # 1 hodômetro, 2 horímetro, 3 não usa; vazio = deduzido de `usa_horimetro`.
+    simam_tipo_medidor: Mapped[Optional[int]] = mapped_column(Integer(), nullable=True)
 
     abastecimentos: Mapped[list["Abastecimento"]] = relationship(back_populates="veiculo")
     tanques: Mapped[list["VeiculoTanque"]] = relationship(

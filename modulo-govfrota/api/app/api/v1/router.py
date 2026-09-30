@@ -4,6 +4,7 @@ from app.api.v1 import (
     portal_posto,
     notas_fiscais,
     secretaria,
+    simam,
     acessos,
     abastecimentos,
     app_motorista,
@@ -53,3 +54,4 @@ api_router.include_router(acessos.router)
 api_router.include_router(secretaria.router)
 api_router.include_router(portal_posto.router)
 api_router.include_router(notas_fiscais.router)
+api_router.include_router(simam.router)

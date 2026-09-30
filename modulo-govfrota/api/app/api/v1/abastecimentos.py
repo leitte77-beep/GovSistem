@@ -32,6 +32,7 @@ from app.services.abastecimento import (
     registrar_abastecimento,
 )
 from app.services.auditoria import registrar_auditoria
+from app.services.simam import competencia as simam
 from app.services.estoque import EstoqueError, aplicar_movimentacao
 
 router = APIRouter(prefix="/abastecimentos", tags=["abastecimentos"])
@@ -519,6 +520,10 @@ async def cancelar(
     abast = await _get_abastecimento(db, user, abastecimento_id)
     if abast.status != "CONFIRMADO":
         raise HTTPException(status_code=422, detail="Abastecimento já cancelado.")
+    try:
+        await simam.exigir_alteravel(db, user.organization_id, abast, reduz_litros_apenas=True)
+    except simam.SimamError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.mensagem)
 
     if abast.tanque_id is not None:
         try:
@@ -544,6 +549,10 @@ async def cancelar(
     abast.cancelado_em = datetime.now(timezone.utc)
     abast.cancelado_por_id = user.id
     abast.motivo_cancelamento = body.justificativa
+    # Mês já enviado ao TCE: o consumo informado é estornado no mês corrente.
+    estorno = await simam.registrar_estorno(
+        db, user.organization_id, abast, Decimal(abast.quantidade_litros), body.justificativa, user.id
+    )
 
     db.add(
         CorrecaoAbastecimento(
@@ -571,6 +580,8 @@ async def cancelar(
         if abast.tanque_id is not None
         else "Abastecimento cancelado."
     )
+    if estorno is not None:
+        mensagem += f" Estorno SIM-AM nº {estorno.numero}/{estorno.ano} gerado."
     return {"ok": True, "id": str(abast.id), "mensagem": mensagem}
 
 
@@ -594,6 +605,16 @@ async def corrigir(
     anteriores = _snapshot(abast)
     novo_litros = Decimal(body.quantidade_litros) if body.quantidade_litros is not None else Decimal(abast.quantidade_litros)
     novo_km = body.quilometragem if body.quilometragem is not None else abast.quilometragem
+    litros_antes = Decimal(abast.quantidade_litros)
+    so_reduz = (
+        novo_litros <= litros_antes
+        and novo_km == abast.quilometragem
+        and (body.horimetro is None or abast.horimetro is None or Decimal(body.horimetro) == Decimal(abast.horimetro))
+    )
+    try:
+        await simam.exigir_alteravel(db, user.organization_id, abast, reduz_litros_apenas=so_reduz)
+    except simam.SimamError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.mensagem)
 
     # Diferença de estoque decorrente da correção de litros
     diferenca = novo_litros - Decimal(abast.quantidade_litros)
@@ -662,6 +683,10 @@ async def corrigir(
         )
     if abast.custo_medio_litro is not None:
         abast.custo_total = (Decimal(abast.custo_medio_litro) * novo_litros).quantize(Decimal("0.01"))
+
+    await simam.registrar_estorno(
+        db, user.organization_id, abast, litros_antes - novo_litros, body.justificativa, user.id
+    )
 
     novos = _snapshot(abast)
     db.add(

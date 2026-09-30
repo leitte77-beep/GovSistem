@@ -46,3 +46,8 @@ class ConfiguracaoGovFrota(Base, TimestampMixin):
 
     # Manutenção preventiva
     antecedencia_alerta_manutencao_dias: Mapped[int] = mapped_column(Integer(), default=15, nullable=False)
+
+    # SIM-AM/TCE-PR: código da entidade (idPessoa) e CPF do servidor
+    # responsável pelo controle do combustível (padrão das entradas/saídas).
+    simam_id_pessoa: Mapped[Optional[int]] = mapped_column(Integer(), nullable=True)
+    simam_cpf_responsavel: Mapped[Optional[str]] = mapped_column(String(11), nullable=True)

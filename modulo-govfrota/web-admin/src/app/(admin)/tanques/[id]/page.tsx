@@ -16,7 +16,7 @@ import { StatusTanqueBadge } from "@/components/tanque/StatusTanqueBadge";
 import { FotoCombustivel } from "@/components/tanque/FotoCombustivel";
 import { TanqueFormDrawer } from "@/components/tanque/TanqueFormDrawer";
 import { EntradaFormDrawer } from "@/components/tanque/EntradaFormDrawer";
-import { AjusteModal, InventarioModal, TransferenciaModal } from "@/components/tanque/AcoesModals";
+import { AjusteModal, InventarioModal, SaidaExtraModal, TransferenciaModal } from "@/components/tanque/AcoesModals";
 import { ConfirmarModal } from "@/components/tanque/Drawer";
 import { corStatusTanque, rotuloMovimentacao } from "@/lib/combustiveis";
 
@@ -47,7 +47,7 @@ export default function PaginaTanque() {
   // Ações
   const [drawer, setDrawer] = useState(false);
   const [entradaDrawer, setEntradaDrawer] = useState(false);
-  const [acao, setAcao] = useState<"ajuste" | "inventario" | "transferencia" | "inativar" | null>(null);
+  const [acao, setAcao] = useState<"ajuste" | "inventario" | "transferencia" | "saida" | "inativar" | null>(null);
   const [positivo, setPositivo] = useState(true);
 
   const carregar = useCallback(async () => {
@@ -131,6 +131,7 @@ export default function PaginaTanque() {
         { key: "ajuste_pos", label: "Ajuste positivo", icon: <ArrowUpFromLine size={16} />, onClick: () => { setPositivo(true); setAcao("ajuste"); } },
         { key: "ajuste_neg", label: "Ajuste negativo", icon: <ArrowDownToLine size={16} />, onClick: () => { setPositivo(false); setAcao("ajuste"); } },
         { key: "transferencia", label: "Transferir combustível", icon: <Repeat size={16} />, onClick: () => setAcao("transferencia") },
+        { key: "saida", label: "Saída extraordinária (perda, oficina, obra)", icon: <ArrowDownToLine size={16} />, onClick: () => setAcao("saida") },
         { key: "editar", label: "Editar tanque", icon: <Pencil size={16} />, onClick: () => setDrawer(true) },
         { key: "inativar", label: "Inativar", icon: <X size={16} />, cor: "danger" as const, onClick: () => setAcao("inativar") },
       ]
@@ -265,6 +266,9 @@ export default function PaginaTanque() {
         )}
         {acao === "transferencia" && (
           <TransferenciaModal aberto onClose={() => setAcao(null)} tanque={tanque} tanques={todosTanques} onConcluido={recarregar} />
+        )}
+        {acao === "saida" && (
+          <SaidaExtraModal aberto onClose={() => setAcao(null)} tanque={tanque} onConcluido={recarregar} />
         )}
         {acao === "inativar" && (
           <ConfirmarModal

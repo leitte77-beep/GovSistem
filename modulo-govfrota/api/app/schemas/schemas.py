@@ -94,6 +94,10 @@ class VeiculoCreate(BaseModel):
     vencimento_licenciamento: Optional[date] = None
     vencimento_seguro: Optional[date] = None
     foto_url: Optional[str] = None
+    simam_informar: bool = True
+    simam_cd_modelo_fipe: Optional[str] = Field(default=None, max_length=12)
+    simam_propriedade: str = Field(default="PROPRIO", pattern="^(PROPRIO|TERCEIRO)$")
+    simam_tipo_medidor: Optional[int] = Field(default=None, ge=1, le=3)
 
 
 class VeiculoTanqueAuxIn(BaseModel):
@@ -128,6 +132,10 @@ class VeiculoUpdate(BaseModel):
     vencimento_licenciamento: Optional[date] = None
     vencimento_seguro: Optional[date] = None
     foto_url: Optional[str] = None
+    simam_informar: Optional[bool] = None
+    simam_cd_modelo_fipe: Optional[str] = Field(default=None, max_length=12)
+    simam_propriedade: Optional[str] = Field(default=None, pattern="^(PROPRIO|TERCEIRO)$")
+    simam_tipo_medidor: Optional[int] = Field(default=None, ge=1, le=3)
 
 
 class VeiculoTanqueResponse(ORMModel):
@@ -176,6 +184,10 @@ class VeiculoResponse(ORMModel):
     vencimento_licenciamento: Optional[date]
     vencimento_seguro: Optional[date]
     foto_url: Optional[str]
+    simam_informar: bool = True
+    simam_cd_modelo_fipe: Optional[str] = None
+    simam_propriedade: str = "PROPRIO"
+    simam_tipo_medidor: Optional[int] = None
     # Reservatórios estruturados (principal + auxiliares)
     tanques: list[VeiculoTanqueResponse] = []
     # Indicadores calculados (§63) — preenchidos apenas na listagem
@@ -374,6 +386,9 @@ class CombustivelCreate(BaseModel):
     descricao: Optional[str] = None
     foto_url: Optional[str] = None
     ativo: bool = True
+    simam_informar: bool = True
+    simam_categoria: Optional[int] = Field(default=None, ge=1, le=999)
+    simam_objeto: Optional[int] = Field(default=None, ge=1, le=999999999)
 
 
 class CombustivelResponse(ORMModel):
@@ -386,6 +401,9 @@ class CombustivelResponse(ORMModel):
     descricao: Optional[str]
     foto_url: Optional[str]
     ativo: bool
+    simam_informar: bool = True
+    simam_categoria: Optional[int] = None
+    simam_objeto: Optional[int] = None
     # Associados (preenchidos na listagem) — evita N+1 no frontend
     total_tanques: int = 0
     total_veiculos: int = 0
@@ -613,6 +631,17 @@ class EntradaCreate(BaseModel):
     anexo_id: Optional[uuid.UUID] = None
     # Anexos múltiplos (NF PDF/XML/foto). Aceita também o anexo único legado.
     anexos_ids: Optional[list[uuid.UUID]] = None
+    # SIM-AM: tipo e dados das entradas extraorçamentárias.
+    tipo_entrada: str = Field(default="ORCAMENTARIA", pattern="^(ORCAMENTARIA|DOACAO|CONVENIO|AJUSTE_LIQUIDACAO)$")
+    repassador_nome: Optional[str] = Field(default=None, max_length=150)
+    repassador_cpf_cnpj: Optional[str] = Field(default=None, max_length=18)
+    responsavel_cpf: Optional[str] = Field(default=None, max_length=14)
+    lei_ato_numero: Optional[str] = Field(default=None, max_length=20)
+    lei_ato_ano: Optional[int] = None
+    convenio_numero: Optional[str] = Field(default=None, max_length=20)
+    convenio_ano: Optional[int] = None
+    convenio_objeto: Optional[str] = Field(default=None, max_length=250)
+    nota_explicativa: Optional[str] = Field(default=None, max_length=250)
 
 
 class EntradaCancelamento(BaseModel):
@@ -642,6 +671,17 @@ class EntradaResponse(ORMModel):
     fornecedor_nome: Optional[str] = None
     # Anexos associados (id, nome, tipo, mime, url)
     anexos: list[dict] = []
+    tipo_entrada: str = "ORCAMENTARIA"
+    simam_numero: Optional[int] = None
+    repassador_nome: Optional[str] = None
+    repassador_cpf_cnpj: Optional[str] = None
+    responsavel_cpf: Optional[str] = None
+    lei_ato_numero: Optional[str] = None
+    lei_ato_ano: Optional[int] = None
+    convenio_numero: Optional[str] = None
+    convenio_ano: Optional[int] = None
+    convenio_objeto: Optional[str] = None
+    nota_explicativa: Optional[str] = None
 
 
 # ── Manifestos de entrada (NF-e pendentes) ─────────────────────────────────
@@ -759,6 +799,10 @@ class InventarioCreate(BaseModel):
 
 class InventarioConfirmacao(BaseModel):
     justificativa: str = Field(min_length=5, max_length=2000)
+    # Falta no inventário: tipo de saída SIM-AM (1 evaporação, 2 furto,
+    # 3 vazamento, 99 outras). Vazio = ajuste simples (sem SIM-AM).
+    tipo_saida_simam: Optional[int] = None
+    responsavel_cpf: Optional[str] = None
 
 
 class InventarioResponse(ORMModel):
@@ -1089,6 +1133,8 @@ class ConfiguracaoUpdate(BaseModel):
     exigir_fornecedor_entrada: Optional[bool] = None
     alerta_estoque_minimo_dias: Optional[int] = Field(default=None, ge=0, le=365)
     antecedencia_alerta_manutencao_dias: Optional[int] = Field(default=None, ge=1, le=365)
+    simam_id_pessoa: Optional[int] = Field(default=None, ge=1, le=9999999)
+    simam_cpf_responsavel: Optional[str] = Field(default=None, pattern=r"^(\d{11})?$")
 
 
 class ConfiguracaoResponse(ConfiguracaoUpdate):

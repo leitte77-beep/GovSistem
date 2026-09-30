@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { FileText, Fuel, Paperclip, Trash2, Upload } from "lucide-react";
-import { api, Entrada, Fornecedor, Tanque } from "@/lib/api";
+import { api, Entrada, Fornecedor, Tanque, TIPOS_ENTRADA } from "@/lib/api";
 import { mascaraCpfCnpj } from "@/lib/combustiveis";
 import { Drawer, Label, Secao } from "@/components/tanque/Drawer";
 import { FotoCombustivel } from "@/components/tanque/FotoCombustivel";
@@ -36,6 +36,17 @@ export function EntradaFormDrawer({ aberto, onClose, tanques, fornecedores, onSa
     valor_unitario: "",
     valor_total: "",
     observacoes: "",
+    // SIM-AM: entradas que não são compra vão ao EntradaExtraCombustivel.
+    tipo_entrada: "ORCAMENTARIA",
+    repassador_nome: "",
+    repassador_cpf_cnpj: "",
+    responsavel_cpf: "",
+    lei_ato_numero: "",
+    lei_ato_ano: "",
+    convenio_numero: "",
+    convenio_ano: "",
+    convenio_objeto: "",
+    nota_explicativa: "",
   });
   const [anexos, setAnexos] = useState<AnexoLocal[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -57,6 +68,7 @@ export function EntradaFormDrawer({ aberto, onClose, tanques, fornecedores, onSa
   }, [aberto, tanqueInicialId]);
 
   const tanque = tanques.find((t) => t.id === form.tanque_id);
+  const extra = form.tipo_entrada !== "ORCAMENTARIA";
   const fornecedor = fornecedores.find((f) => f.id === form.fornecedor_id);
 
   const capacidadeDisponivel = useMemo(() => {
@@ -154,7 +166,21 @@ export function EntradaFormDrawer({ aberto, onClose, tanques, fornecedores, onSa
         valor_unitario: unitario > 0 ? unitario : undefined,
         observacoes: form.observacoes || undefined,
         anexos_ids: anexos_ids.length ? anexos_ids : undefined,
+        tipo_entrada: form.tipo_entrada,
       };
+      if (extra) {
+        Object.assign(payload, {
+          repassador_nome: form.repassador_nome || undefined,
+          repassador_cpf_cnpj: form.repassador_cpf_cnpj || undefined,
+          responsavel_cpf: form.responsavel_cpf || undefined,
+          lei_ato_numero: form.lei_ato_numero || undefined,
+          lei_ato_ano: form.lei_ato_ano ? Number(form.lei_ato_ano) : undefined,
+          convenio_numero: form.convenio_numero || undefined,
+          convenio_ano: form.convenio_ano ? Number(form.convenio_ano) : undefined,
+          convenio_objeto: form.convenio_objeto || undefined,
+          nota_explicativa: form.nota_explicativa || undefined,
+        });
+      }
       await api.createEntrada(payload);
       toast.success("Entrada registrada — estoque atualizado.");
       onSalvo();
@@ -211,6 +237,46 @@ export function EntradaFormDrawer({ aberto, onClose, tanques, fornecedores, onSa
                 </div>
               </div>
             )}
+          </div>
+        </Secao>
+
+        <Secao titulo="Origem">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Label texto="Tipo de entrada" classe="sm:col-span-2">
+              <select {...campo("tipo_entrada")}>
+                {TIPOS_ENTRADA.map((t) => <option key={t.codigo} value={t.codigo}>{t.nome}</option>)}
+              </select>
+            </Label>
+            {extra && (<>
+              <p className="text-meta text-text-subtle sm:col-span-2">
+                Entrada extraorçamentária: informada ao TCE no arquivo EntradaExtraCombustivel.
+              </p>
+              <Label texto="Repassador (quem entregou) *">
+                <input {...campo("repassador_nome")} maxLength={150} />
+              </Label>
+              <Label texto="CPF/CNPJ do repassador *">
+                <input {...campo("repassador_cpf_cnpj")} inputMode="numeric" maxLength={18} />
+              </Label>
+              <Label texto="CPF do responsável pelo combustível">
+                <input {...campo("responsavel_cpf")} inputMode="numeric" maxLength={14} placeholder="Vazio = o de Configurações" />
+              </Label>
+              <div className="grid grid-cols-2 gap-3">
+                <Label texto="Lei/Ato nº"><input {...campo("lei_ato_numero")} maxLength={20} /></Label>
+                <Label texto="Ano"><input {...campo("lei_ato_ano")} inputMode="numeric" maxLength={4} /></Label>
+              </div>
+              {form.tipo_entrada === "CONVENIO" && (<>
+                <div className="grid grid-cols-2 gap-3">
+                  <Label texto="Convênio nº *"><input {...campo("convenio_numero")} maxLength={20} /></Label>
+                  <Label texto="Ano *"><input {...campo("convenio_ano")} inputMode="numeric" maxLength={4} /></Label>
+                </div>
+                <Label texto="Objeto do convênio *">
+                  <input {...campo("convenio_objeto")} maxLength={250} />
+                </Label>
+              </>)}
+              <Label texto={`Nota explicativa${form.tipo_entrada === "DOACAO" ? " *" : ""}`} classe="sm:col-span-2">
+                <textarea rows={2} {...campo("nota_explicativa")} maxLength={250} />
+              </Label>
+            </>)}
           </div>
         </Secao>
 

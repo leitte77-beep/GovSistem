@@ -625,8 +625,32 @@ async def aplicar_inventario(
         raise HTTPException(status_code=422, detail="Sem diferença para ajustar.")
 
     tanque = await _get_tanque(db, user, inventario.tanque_id)
+    if body.tipo_saida_simam is not None:
+        # Falta no inventário informada ao SIM-AM como saída extraordinária.
+        from app.api.v1.simam import SaidaExtraCreate, registrar_saida_extra
+
+        if inventario.diferenca > 0:
+            raise HTTPException(status_code=422, detail="Sobra de estoque não é saída extraordinária.")
+        if body.tipo_saida_simam not in (1, 2, 3, 99):
+            raise HTTPException(status_code=422, detail="Use evaporação, furto, vazamento ou outras saídas.")
+        saida = await registrar_saida_extra(
+            db,
+            user,
+            SaidaExtraCreate(
+                tanque_id=tanque.id,
+                tipo_saida=body.tipo_saida_simam,
+                data_saida=inventario.data_conferencia,
+                quantidade=abs(inventario.diferenca),
+                responsavel_cpf=body.responsavel_cpf,
+                nota_explicativa=body.justificativa[:250],
+            ),
+            inventario_id=inventario.id,
+        )
+        movimentacao = await db.get(MovimentacaoEstoque, saida.movimentacao_id)
+    else:
+        movimentacao = None
     try:
-        movimentacao = await aplicar_movimentacao(
+        movimentacao = movimentacao or await aplicar_movimentacao(
             db,
             organization_id=user.organization_id,
             tipo="AJUSTE_POSITIVO" if inventario.diferenca > 0 else "AJUSTE_NEGATIVO",

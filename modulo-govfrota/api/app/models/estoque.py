@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Integer,
     Numeric,
     String,
     Text,
@@ -62,6 +63,20 @@ class EntradaCombustivel(Base, TimestampMixin):
     cancelada_em: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     cancelada_por_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
     motivo_cancelamento: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
+
+    # SIM-AM (EntradaExtraCombustivel): ORCAMENTARIA não vai ao arquivo;
+    # DOACAO (1), CONVENIO (2) e AJUSTE_LIQUIDACAO (3) vão.
+    tipo_entrada: Mapped[str] = mapped_column(String(20), default="ORCAMENTARIA", server_default="ORCAMENTARIA", nullable=False)
+    simam_numero: Mapped[Optional[int]] = mapped_column(Integer(), nullable=True)
+    repassador_nome: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    repassador_cpf_cnpj: Mapped[Optional[str]] = mapped_column(String(14), nullable=True)
+    responsavel_cpf: Mapped[Optional[str]] = mapped_column(String(11), nullable=True)
+    lei_ato_numero: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    lei_ato_ano: Mapped[Optional[int]] = mapped_column(Integer(), nullable=True)
+    convenio_numero: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)
+    convenio_ano: Mapped[Optional[int]] = mapped_column(Integer(), nullable=True)
+    convenio_objeto: Mapped[Optional[str]] = mapped_column(String(250), nullable=True)
+    nota_explicativa: Mapped[Optional[str]] = mapped_column(String(250), nullable=True)
 
     tanque: Mapped["Tanque"] = relationship()
     combustivel: Mapped["Combustivel"] = relationship()

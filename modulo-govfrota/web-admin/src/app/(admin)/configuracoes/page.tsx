@@ -168,6 +168,31 @@ export default function ConfiguracoesPage() {
             </div>
           </section>
 
+          <section className="rounded-card border border-surface-border bg-white p-4 shadow-card">
+            <h2 className="mb-1 text-label font-semibold text-text-title">SIM-AM / TCE-PR</h2>
+            <p className="mb-3 text-meta text-text-subtle">
+              Usados nos arquivos mensais de frota e combustível (tela SIM-AM).
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-meta">Código da entidade no TCE (idPessoa)
+                <input inputMode="numeric" maxLength={7} value={config.simam_id_pessoa ?? ""}
+                  onChange={(e) => {
+                    const v = e.target.value.replace(/\D/g, "");
+                    set("simam_id_pessoa")(v ? Number(v) : null);
+                  }}
+                  className="mt-1 w-full rounded-btn border border-surface-border px-3 py-2 text-body-sm" />
+              </label>
+              <label className="text-meta">CPF do responsável pelo controle do combustível
+                <input inputMode="numeric" maxLength={14} value={config.simam_cpf_responsavel ?? ""}
+                  onChange={(e) => set("simam_cpf_responsavel")(e.target.value.replace(/\D/g, "").slice(0, 11) || null)}
+                  className="mt-1 w-full rounded-btn border border-surface-border px-3 py-2 text-body-sm" />
+                <span className="mt-1 block text-text-subtle">
+                  Servidor cadastrado no PessoaAM. Padrão das entradas e saídas extraordinárias.
+                </span>
+              </label>
+            </div>
+          </section>
+
           <div className="flex justify-end">
             <button disabled={salvando} onClick={salvar} className="btn btn-primary">
               {salvando ? "Salvando…" : "Salvar configurações"}

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { api, Tanque } from "@/lib/api";
+import { api, Tanque, TIPOS_SAIDA_SIMAM } from "@/lib/api";
 import { Label, Modal } from "@/components/tanque/Drawer";
 
 function useJustificativa() {
@@ -106,6 +106,8 @@ export function InventarioModal({
   const [fisico, setFisico] = useState("");
   const [resultado, setResultado] = useState<{ id: string; sistema: number; fisico: number; diferenca: number } | null>(null);
   const { justificativa, setJustificativa, valida } = useJustificativa();
+  // Falta no inventário vira saída extraordinária do SIM-AM (motivo obrigatório).
+  const [motivoFalta, setMotivoFalta] = useState("1");
 
   useEffect(() => {
     if (aberto) {
@@ -146,7 +148,11 @@ export function InventarioModal({
     if (!resultado) return;
     setSalvando(true);
     try {
-      await api.aplicarInventario(resultado.id, justificativa.trim() || "Diferença confirmada em inventário físico.");
+      await api.aplicarInventario(
+        resultado.id,
+        justificativa.trim() || "Diferença confirmada em inventário físico.",
+        resultado.diferenca < 0 ? { tipo_saida_simam: Number(motivoFalta) } : undefined,
+      );
       toast.success("Ajuste de inventário aplicado.");
       onConcluido();
       onClose();
@@ -201,11 +207,142 @@ export function InventarioModal({
             <p className="text-meta text-[#1D4ED8]">Foi encontrada uma diferença de {resultado.diferenca > 0 ? "+" : ""}{resultado.diferenca.toLocaleString("pt-BR")} L.</p>
             <p className="text-meta text-text-subtle">Deseja registrar o ajuste? O estoque só será alterado após a confirmação.</p>
           </div>
+          {resultado.diferenca < 0 && (
+            <Label texto="Motivo da falta (SIM-AM) *">
+              <select className="input" value={motivoFalta} onChange={(e) => setMotivoFalta(e.target.value)}>
+                {TIPOS_SAIDA_SIMAM.filter((t) => [1, 2, 3, 99].includes(t.codigo)).map((t) => (
+                  <option key={t.codigo} value={t.codigo}>{t.nome}</option>
+                ))}
+              </select>
+            </Label>
+          )}
           <Label texto="Justificativa *">
             <textarea rows={3} className="input" value={justificativa} onChange={(e) => setJustificativa(e.target.value)} placeholder="Justificativa da diferença" />
           </Label>
         </div>
       )}
+    </Modal>
+  );
+}
+
+// ── Saída extraordinária (SIM-AM) ──────────────────────────────────────────
+
+export function SaidaExtraModal({
+  aberto,
+  onClose,
+  tanque,
+  onConcluido,
+}: {
+  aberto: boolean;
+  onClose: () => void;
+  tanque: Tanque;
+  onConcluido: () => void;
+}) {
+  const vazio = {
+    tipo_saida: "4", data_saida: new Date().toISOString().slice(0, 10), quantidade: "", responsavel_cpf: "",
+    nota_explicativa: "", recebedor_nome: "", recebedor_cpf_cnpj: "", convenio_numero: "", convenio_ano: "", convenio_objeto: "",
+  };
+  const [form, setForm] = useState(vazio);
+  const [arquivo, setArquivo] = useState<File | null>(null);
+  const [salvando, setSalvando] = useState(false);
+
+  useEffect(() => {
+    if (aberto) {
+      setForm(vazio);
+      setArquivo(null);
+      setSalvando(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aberto]);
+
+  const tipo = TIPOS_SAIDA_SIMAM.find((t) => String(t.codigo) === form.tipo_saida);
+  const convenio = form.tipo_saida === "6";
+  const campo = (k: keyof typeof vazio) => ({
+    value: form[k],
+    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+      setForm((f) => ({ ...f, [k]: e.target.value })),
+    className: "input",
+  });
+
+  async function salvar() {
+    setSalvando(true);
+    try {
+      const anexo_id = arquivo ? (await api.upload(arquivo)).id : undefined;
+      await api.simamCriarSaida({
+        tanque_id: tanque.id,
+        tipo_saida: Number(form.tipo_saida),
+        data_saida: form.data_saida,
+        quantidade: form.quantidade,
+        responsavel_cpf: form.responsavel_cpf || undefined,
+        nota_explicativa: form.nota_explicativa || undefined,
+        anexo_id,
+        ...(convenio
+          ? {
+              recebedor_nome: form.recebedor_nome, recebedor_cpf_cnpj: form.recebedor_cpf_cnpj,
+              convenio_numero: form.convenio_numero, convenio_ano: Number(form.convenio_ano) || undefined,
+              convenio_objeto: form.convenio_objeto,
+            }
+          : {}),
+      });
+      toast.success("Saída registrada — estoque atualizado.");
+      onConcluido();
+      onClose();
+    } catch (err) {
+      toast.error((err as Error).message);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  return (
+    <Modal
+      aberto={aberto}
+      onClose={onClose}
+      titulo="Saída extraordinária"
+      rodape={
+        <>
+          <button type="button" className="btn btn-secondary" onClick={onClose} disabled={salvando}>Cancelar</button>
+          <button type="button" className="btn btn-primary" disabled={salvando || !(Number(form.quantidade) > 0)} onClick={salvar}>
+            {salvando ? "Registrando…" : "Registrar saída"}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-3 text-body-sm">
+        <p className="text-meta text-text-subtle">
+          Combustível que saiu do tanque sem ser abastecimento de veículo: perdas, oficina, obras, convênio.
+          Vai para o SIM-AM (SaidaExtraCombustivel).
+        </p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Label texto="Tipo *">
+            <select {...campo("tipo_saida")}>
+              {TIPOS_SAIDA_SIMAM.map((t) => <option key={t.codigo} value={t.codigo}>{t.nome}</option>)}
+            </select>
+          </Label>
+          <Label texto="Data *">
+            <input type="date" {...campo("data_saida")} />
+          </Label>
+          <Label texto="Quantidade (L) *">
+            <input type="number" step="0.001" min={0} {...campo("quantidade")} />
+          </Label>
+          <Label texto="CPF do responsável">
+            <input inputMode="numeric" maxLength={14} placeholder="Vazio = o de Configurações" {...campo("responsavel_cpf")} />
+          </Label>
+          {convenio && (<>
+            <Label texto="Entidade recebedora *"><input maxLength={150} {...campo("recebedor_nome")} /></Label>
+            <Label texto="CPF/CNPJ do recebedor *"><input inputMode="numeric" maxLength={18} {...campo("recebedor_cpf_cnpj")} /></Label>
+            <Label texto="Convênio nº *"><input maxLength={20} {...campo("convenio_numero")} /></Label>
+            <Label texto="Ano do convênio *"><input inputMode="numeric" maxLength={4} {...campo("convenio_ano")} /></Label>
+            <Label texto="Objeto do convênio *"><input maxLength={250} {...campo("convenio_objeto")} /></Label>
+          </>)}
+        </div>
+        <Label texto={`Nota explicativa${tipo?.semNota ? "" : " *"}`}>
+          <textarea rows={2} maxLength={250} {...campo("nota_explicativa")} placeholder="O que aconteceu" />
+        </Label>
+        <Label texto="Documento (boletim, laudo, termo)">
+          <input type="file" accept="application/pdf,image/*" className="input" onChange={(e) => setArquivo(e.target.files?.[0] ?? null)} />
+        </Label>
+      </div>
     </Modal>
   );
 }

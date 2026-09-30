@@ -58,6 +58,7 @@ class OrigemMovimentacao(str, Enum):
     TRANSFERENCIA = "TRANSFERENCIA"
     ESTORNO_ABASTECIMENTO = "ESTORNO_ABASTECIMENTO"
     CANCELAMENTO_ENTRADA = "CANCELAMENTO_ENTRADA"
+    SAIDA_EXTRA = "SAIDA_EXTRA"
 
 
 class StatusAbastecimento(str, Enum):

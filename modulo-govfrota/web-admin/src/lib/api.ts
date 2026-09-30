@@ -344,8 +344,8 @@ export const api = {
   registrarInventario(data: Record<string, unknown>) {
     return request<{ id: string; estoque_sistema: string; estoque_fisico: string; diferenca: string }>("/tanques/inventario", { method: "POST", body: JSON.stringify(data) });
   },
-  aplicarInventario(id: string, justificativa: string) {
-    return request<{ id: string }>(`/tanques/inventario/${id}/aplicar`, { method: "POST", body: JSON.stringify({ justificativa }) });
+  aplicarInventario(id: string, justificativa: string, simam?: { tipo_saida_simam: number; responsavel_cpf?: string }) {
+    return request<{ id: string }>(`/tanques/inventario/${id}/aplicar`, { method: "POST", body: JSON.stringify({ justificativa, ...(simam || {}) }) });
   },
 
   // Entradas de combustível
@@ -620,6 +620,61 @@ export const api = {
     return request<{ itens: AlertaAtual[]; notificacoes_nao_lidas: number }>("/alertas");
   },
 
+  // SIM-AM / TCE-PR
+  simamCompetencias(ano: number) {
+    return request<SimamCompetenciaResumo[]>(`/simam/competencias?ano=${ano}`);
+  },
+  simamCompetencia(ano: number, mes: number) {
+    return request<SimamCompetencia>(`/simam/competencias/${ano}/${mes}`);
+  },
+  simamAcao(ano: number, mes: number, acao: "fechar" | "reabrir" | "exportada", justificativa?: string) {
+    return request<{ ok: boolean; status: string }>(`/simam/competencias/${ano}/${mes}/${acao}`, {
+      method: "POST",
+      body: justificativa ? JSON.stringify({ justificativa }) : undefined,
+    });
+  },
+  async simamBaixarZip(ano: number, mes: number) {
+    const token = getAccessToken();
+    const res = await fetch(`${BASE_URL}/simam/competencias/${ano}/${mes}/arquivo`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: "Falha ao gerar os arquivos." }));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    const objectUrl = URL.createObjectURL(await res.blob());
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = `SIMAM-frota-${ano}-${String(mes).padStart(2, "0")}.zip`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+  },
+  simamMedidores(veiculoId: string) {
+    return request<SimamMedidores>(`/simam/veiculos/${veiculoId}/medidores`);
+  },
+  simamTrocarMedidor(veiculoId: string, data: Record<string, unknown>) {
+    return request<{ sequencial: number }>(`/simam/veiculos/${veiculoId}/trocar-medidor`, { method: "POST", body: JSON.stringify(data) });
+  },
+  simamDeclararMedicao(veiculoId: string, data: Record<string, unknown>) {
+    return request(`/simam/veiculos/${veiculoId}/medicoes-declaradas`, { method: "POST", body: JSON.stringify(data) });
+  },
+  simamCancelarDeclaracao(id: string, justificativa: string) {
+    return request(`/simam/medicoes-declaradas/${id}/cancelar`, { method: "POST", body: JSON.stringify({ justificativa }) });
+  },
+  simamSaidas(tanqueId?: string) {
+    return request<SimamSaida[]>(`/simam/saidas-extra${tanqueId ? `?tanque_id=${tanqueId}` : ""}`);
+  },
+  simamCriarSaida(data: Record<string, unknown>) {
+    return request<SimamSaida>("/simam/saidas-extra", { method: "POST", body: JSON.stringify(data) });
+  },
+  simamReferencias(tabela: string, busca: string) {
+    return request<{ importada: boolean; itens: { codigo: string; descricao: string }[] }>(
+      `/simam/referencias/${tabela}?busca=${encodeURIComponent(busca)}`
+    );
+  },
+
   upload(file: File) {
     const fd = new FormData();
     fd.append("file", file);
@@ -786,6 +841,10 @@ export interface Veiculo extends VeiculoListItem {
   vencimento_seguro: string | null;
   foto_url: string | null;
   tanques?: VeiculoTanque[];
+  simam_informar?: boolean;
+  simam_cd_modelo_fipe?: string | null;
+  simam_propriedade?: "PROPRIO" | "TERCEIRO";
+  simam_tipo_medidor?: number | null;
 }
 export interface VeiculoTanque {
   id: string;
@@ -852,6 +911,9 @@ export interface Combustivel {
   total_tanques?: number;
   total_veiculos?: number;
   preco_referencia?: number | string | null;
+  simam_informar?: boolean;
+  simam_categoria?: number | null;
+  simam_objeto?: number | null;
 }
 export interface ManifestoEntrada {
   id: string;
@@ -950,6 +1012,90 @@ export interface Entrada {
   combustivel_nome?: string | null;
   fornecedor_nome?: string | null;
   anexos?: EntradaAnexo[];
+  tipo_entrada?: TipoEntrada;
+  simam_numero?: number | null;
+  repassador_nome?: string | null;
+  repassador_cpf_cnpj?: string | null;
+  convenio_numero?: string | null;
+  convenio_ano?: number | null;
+  convenio_objeto?: string | null;
+  nota_explicativa?: string | null;
+}
+export type TipoEntrada = "ORCAMENTARIA" | "DOACAO" | "CONVENIO" | "AJUSTE_LIQUIDACAO";
+export const TIPOS_ENTRADA: { codigo: TipoEntrada; nome: string }[] = [
+  { codigo: "ORCAMENTARIA", nome: "Compra (orçamentária)" },
+  { codigo: "DOACAO", nome: "Doação" },
+  { codigo: "CONVENIO", nome: "Convênio" },
+  { codigo: "AJUSTE_LIQUIDACAO", nome: "Ajuste por liquidação quantitativa" },
+];
+export const TIPOS_SAIDA_SIMAM: { codigo: number; nome: string; semNota?: boolean }[] = [
+  { codigo: 1, nome: "Evaporação" },
+  { codigo: 2, nome: "Furto" },
+  { codigo: 3, nome: "Vazamento" },
+  { codigo: 4, nome: "Uso interno em oficinas", semNota: true },
+  { codigo: 5, nome: "Uso em obras e serviços", semNota: true },
+  { codigo: 6, nome: "Convênio", semNota: true },
+  { codigo: 99, nome: "Outras saídas" },
+];
+export interface SimamSaida {
+  id: string;
+  numero: number;
+  ano: number;
+  tanque_id: string;
+  tanque_nome: string | null;
+  tipo_saida: number;
+  tipo_nome: string;
+  data_saida: string;
+  quantidade: string;
+  responsavel_cpf: string;
+  nota_explicativa: string | null;
+  recebedor_nome: string | null;
+  convenio_numero: string | null;
+  convenio_ano: number | null;
+  anexo_url: string | null;
+}
+export interface SimamCompetenciaResumo {
+  ano: number;
+  mes: number;
+  status: "ABERTA" | "FECHADA" | "EXPORTADA";
+  fechada_em: string | null;
+  exportada_em: string | null;
+}
+export interface SimamPendencia {
+  arquivo: string;
+  mensagem: string;
+  link: string | null;
+}
+export interface SimamCompetencia extends SimamCompetenciaResumo {
+  arquivos: Record<string, Record<string, string | number | null>[]>;
+  erros: SimamPendencia[];
+  avisos: SimamPendencia[];
+  arquivo_sha256: string | null;
+  historico: { evento: string; em: string; detalhe: string | null }[];
+  layout: Record<string, string[]>;
+}
+export interface SimamMedidores {
+  tipo_medidor: number;
+  medidores: {
+    id: string;
+    sequencial: number;
+    tipo: number;
+    data_inicio: string;
+    leitura_inicial: string;
+    data_fim: string | null;
+    leitura_final: string | null;
+    motivo: string | null;
+    anexo_url: string | null;
+  }[];
+  declaradas: {
+    id: string;
+    medidor_sequencial: number;
+    data_referencia: string;
+    quantidade: string;
+    justificativa: string;
+    cancelada: boolean;
+    anexo_url: string;
+  }[];
 }
 export interface EntradaHist {
   id: string;
@@ -1556,6 +1702,8 @@ export interface Configuracoes {
   exigir_fornecedor_entrada: boolean;
   alerta_estoque_minimo_dias: number;
   antecedencia_alerta_manutencao_dias: number;
+  simam_id_pessoa: number | null;
+  simam_cpf_responsavel: string | null;
 }
 export interface AuditoriaRegistro {
   id: string;

@@ -24,6 +24,7 @@ import { useAuth } from "@/lib/auth";
 import { StatusBadge } from "@/components/veiculo/StatusBadge";
 import { FotoVeiculo } from "@/components/veiculo/FotoVeiculo";
 import { VeiculoFormDrawer } from "@/components/veiculo/VeiculoFormDrawer";
+import { MedidoresVeiculo } from "@/components/veiculo/MedidoresVeiculo";
 import {
   formatarConsumo,
   formatarData,
@@ -33,7 +34,7 @@ import {
   nomeTipo,
 } from "@/lib/veiculos";
 
-type Aba = "resumo" | "abastecimentos" | "manutencoes" | "ocorrencias" | "custos" | "documentos" | "historico";
+type Aba = "resumo" | "abastecimentos" | "manutencoes" | "ocorrencias" | "custos" | "documentos" | "medidores" | "historico";
 
 const STATUS_MANUT_CLASSE: Record<string, string> = {
   ABERTA: "bg-gray-100 text-gray-600",
@@ -120,6 +121,7 @@ export default function DetalheVeiculoPage() {
     { chave: "ocorrencias", label: "Ocorrências", count: ocorrencias.length },
     { chave: "custos", label: "Custos" },
     { chave: "documentos", label: "Documentos", count: documentos.length },
+    { chave: "medidores", label: "Medidores" },
     { chave: "historico", label: "Histórico" },
   ];
 
@@ -563,6 +565,8 @@ export default function DetalheVeiculoPage() {
             </ul>
           </div>
         )}
+
+        {aba === "medidores" && <MedidoresVeiculo veiculo={veiculo} onMudou={carregar} />}
 
         {aba === "historico" && (
           <div className="rounded-2xl border border-outline-variant/50 bg-surface-card shadow-sm">

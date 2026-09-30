@@ -387,6 +387,16 @@ async def registrar_abastecimento(
 
     config = await get_configuracoes(db, organization_id)
 
+    # Mês já fechado/enviado ao SIM-AM não recebe lançamento novo.
+    from app.services.simam.competencia import SimamError, exigir_aberta
+
+    try:
+        await exigir_aberta(
+            db, organization_id, data_abastecimento or datetime.now(timezone.utc), "novos abastecimentos"
+        )
+    except SimamError as exc:
+        raise HTTPException(status_code=exc.status, detail=exc.mensagem)
+
     if modalidade == TANQUE_PROPRIO:
         if tanque_id is None:
             raise HTTPException(status_code=422, detail="Selecione o tanque de origem do abastecimento.")

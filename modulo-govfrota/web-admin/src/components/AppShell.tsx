@@ -22,6 +22,7 @@ import {
   HelpCircle,
   Landmark,
   Receipt,
+  FileSpreadsheet,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
@@ -40,6 +41,7 @@ const NAV_ITEMS: { href: string; label: string; icon: typeof Truck; perm: string
   { href: "/ocorrencias", label: "Ocorrências", icon: AlertTriangle, perm: "vehicle.view" },
   { href: "/fornecedores", label: "Fornecedores", icon: Building2, perm: "vehicle.view", todas: true },
   { href: "/relatorios", label: "Relatórios", icon: BarChart3, perm: "reports.view" },
+  { href: "/simam", label: "SIM-AM (TCE-PR)", icon: FileSpreadsheet, perm: "reports.view", todas: true },
   { href: "/busca", label: "Pesquisa", icon: Search, perm: "vehicle.view", todas: true },
   { href: "/notificacoes", label: "Alertas", icon: Bell, perm: "vehicle.view" },
   { href: "/auditoria", label: "Auditoria", icon: ShieldCheck, perm: "audit.view", todas: true },
