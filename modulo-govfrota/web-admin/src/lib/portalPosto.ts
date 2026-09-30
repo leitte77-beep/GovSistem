@@ -87,10 +87,14 @@ export interface NotaResumo {
   xml_id: string | null;
   pdf_id: string | null;
   avisos: string[];
+  substituida?: boolean;
+  motivo_substituicao?: string | null;
 }
 
 export interface AbastecimentoPosto {
   id: string;
+  /** AB-2026/000123 */
+  numero: string | null;
   data: string;
   placa: string;
   marca: string | null;
@@ -128,9 +132,15 @@ export const portal = {
   /** nota: PENDENTE (todo o histórico sem nota) | ENVIADA */
   abastecimentos: (p: { inicio?: string; fim?: string; unidade_id?: string; nota?: string }) =>
     req<AbastecimentoPosto[]>(`/abastecimentos${qs(p)}`),
-  enviarNota: (id: string, arquivos: File[]) => {
+  motivosSubstituicao: () => req<{ codigo: string; descricao: string }[]>("/motivos-substituicao"),
+  /** `motivo` é obrigatório quando o abastecimento já tem nota. */
+  enviarNota: (id: string, arquivos: File[], motivo?: { codigo: string; detalhe?: string }) => {
     const fd = new FormData();
     arquivos.forEach((f) => fd.append("arquivos", f));
+    if (motivo) {
+      fd.append("motivo", motivo.codigo);
+      if (motivo.detalhe) fd.append("motivo_detalhe", motivo.detalhe);
+    }
     return req<NotaResumo>(`/abastecimentos/${id}/nota`, { method: "POST", body: fd });
   },
   baixarNota: (abastId: string, notaId: string, nome: string) =>

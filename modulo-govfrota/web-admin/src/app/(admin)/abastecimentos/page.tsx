@@ -418,7 +418,7 @@ export default function AbastecimentosPage() {
           <div className="relative min-w-[280px] flex-1">
             <Search size={16} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-text-subtle" />
             <input
-              placeholder="Buscar por veículo, placa, motorista, posto ou nota fiscal…"
+              placeholder="Buscar por nº (AB-2026/000123 ou 123), placa, motorista, posto ou nota fiscal…"
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
               className="input !bg-surface-bg !pl-10 placeholder:text-text-subtle focus:!bg-surface-card"
@@ -741,6 +741,7 @@ function LinhaAbastecimento({ a, acoes }: { a: Abastecimento; acoes: MenuAcao[] 
             <History size={11} className="text-text-subtle" />
             {formatarDataHora(a.data_abastecimento).split(",")[1]?.trim() ?? ""}
           </span>
+          {a.numero && <span className="mt-0.5 block font-mono text-meta text-text-subtle">{a.numero}</span>}
         </Link>
       </td>
       <td className="px-4 py-4">
@@ -809,7 +810,10 @@ function CardAbastecimento({ a, acoes }: { a: Abastecimento; acoes: MenuAcao[] }
       <div className="flex items-start justify-between gap-2">
         <Link href={`/abastecimentos/${a.id}`} className="min-w-0">
           <div className="font-semibold text-text-title">{nomeVeiculo(a)}</div>
-          <div className="text-meta text-text-subtle">{formatarDataHora(a.data_abastecimento)}</div>
+          <div className="text-meta text-text-subtle">
+            {formatarDataHora(a.data_abastecimento)}
+            {a.numero && <span className="font-mono"> · {a.numero}</span>}
+          </div>
         </Link>
         <MenuAcoes acoes={acoes} />
       </div>

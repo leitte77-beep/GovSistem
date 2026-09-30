@@ -831,6 +831,10 @@ class AbastecimentoCorrecao(BaseModel):
 
 class AbastecimentoResponse(ORMModel):
     id: uuid.UUID
+    # AB-{ano}/{seq:06d}, gerado pelo banco (migration 020).
+    numero: Optional[str] = None
+    # Nota enviada pelo posto (só no detalhe): ver services.notas_abastecimento.resumo_nota
+    nota: Optional[dict] = None
     veiculo_id: uuid.UUID
     motorista_id: Optional[uuid.UUID]
     modalidade: str = "TANQUE_PROPRIO"

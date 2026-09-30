@@ -10,7 +10,7 @@ import uuid
 from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy import func as sa_func
 from sqlalchemy import select
@@ -29,7 +29,7 @@ from app.models.nota_abastecimento import NotaAbastecimento
 from app.models.unidade import Unidade
 from app.models.veiculo import Veiculo
 from app.services.auditoria import registrar_auditoria
-from app.services.notas_abastecimento import ler_arquivo, notas_ativas, receber_nota, resumo_nota
+from app.services.notas_abastecimento import MOTIVOS_SUBSTITUICAO, ler_arquivo, notas_ativas, receber_nota, resumo_nota
 
 router = APIRouter(prefix="/portal-posto", tags=["portal-posto"])
 
@@ -270,6 +270,7 @@ async def abastecimentos(
     return [
         {
             "id": str(a.id),
+            "numero": a.numero,
             "data": to_display(a.data_abastecimento).isoformat(),
             "placa": placa,
             "marca": marca,
@@ -293,14 +294,24 @@ async def _abast_do_posto(db: AsyncSession, acesso: AcessoFornecedor, abastecime
     return abast
 
 
+@router.get("/motivos-substituicao")
+async def motivos_substituicao(_: AcessoFornecedor = Depends(get_fornecedor_com_senha_definitiva)):
+    return [{"codigo": k, "descricao": v} for k, v in MOTIVOS_SUBSTITUICAO.items()]
+
+
 @router.post("/abastecimentos/{abastecimento_id}/nota", status_code=201)
 async def enviar_nota(
     abastecimento_id: uuid.UUID,
     arquivos: list[UploadFile] = File(...),
+    motivo: str | None = Form(default=None),
+    motivo_detalhe: str | None = Form(default=None),
     acesso: AcessoFornecedor = Depends(get_fornecedor_com_senha_definitiva),
     db: AsyncSession = Depends(get_db),
 ):
-    """XML e/ou PDF (DANFE) da nota do abastecimento. O tipo é reconhecido pelo conteúdo."""
+    """XML e/ou PDF (DANFE) da nota do abastecimento. O tipo é reconhecido pelo conteúdo.
+
+    Substituir uma nota vigente exige `motivo` (ver MOTIVOS_SUBSTITUICAO).
+    """
     if not 1 <= len(arquivos) <= 2:
         raise HTTPException(status_code=422, detail="Envie o XML e/ou o PDF da nota (até 2 arquivos).")
     abast = await _abast_do_posto(db, acesso, abastecimento_id)
@@ -311,7 +322,9 @@ async def enviar_nota(
         if tipo in tipos:
             raise HTTPException(status_code=422, detail="Envie no máximo um XML e um PDF.")
         tipos.add(tipo)
-        await receber_nota(db, abast, tipo, (arq.filename or "nota")[:255], conteudo, acesso=acesso)
+        await receber_nota(
+            db, abast, tipo, (arq.filename or "nota")[:255], conteudo, acesso=acesso, motivo=(motivo, motivo_detalhe)
+        )
     await db.commit()
     return resumo_nota((await notas_ativas(db, [abast.id])).get(abast.id))
 

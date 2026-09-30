@@ -6,7 +6,6 @@ import { Download, FileSpreadsheet, FileText } from "lucide-react";
 import {
   api,
   CNHItem,
-  RelatorioAbastecimentos,
   RelatorioConsumo,
   RelatorioEstoque,
   RelatorioManutencoes,
@@ -14,19 +13,34 @@ import {
 } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { RequirePermission } from "@/components/RequirePermission";
+import { AbaAbastecimentos, FILTROS_VAZIOS, FiltrosAbastecimento } from "@/components/relatorios/AbaAbastecimentos";
 
 type Aba = "secretarias" | "abastecimentos" | "consumo" | "estoque" | "manutencoes" | "cnh";
 
 function reais(v: number): string {
-  return `R$ ${v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
+
+const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+/** Atalhos de período: [início, fim] em AAAA-MM-DD (fuso do navegador). */
+function periodo(tipo: "hoje" | "mes" | "mes_passado" | "ano"): [string, string] {
+  const h = new Date();
+  if (tipo === "hoje") return [iso(h), iso(h)];
+  if (tipo === "mes") return [iso(new Date(h.getFullYear(), h.getMonth(), 1)), iso(h)];
+  if (tipo === "mes_passado") return [iso(new Date(h.getFullYear(), h.getMonth() - 1, 1)), iso(new Date(h.getFullYear(), h.getMonth(), 0))];
+  return [iso(new Date(h.getFullYear(), 0, 1)), iso(h)];
+}
+
+const ATALHOS = [["hoje", "Hoje"], ["mes", "Este mês"], ["mes_passado", "Mês passado"], ["ano", "Este ano"]] as const;
 
 export default function RelatoriosPage() {
   const { restrito } = useAuth();
   const [aba, setAba] = useState<Aba>("secretarias");
-  const [dataInicio, setDataInicio] = useState("");
-  const [dataFim, setDataFim] = useState("");
-  const [relAbast, setRelAbast] = useState<RelatorioAbastecimentos | null>(null);
+  const [[dataInicio, dataFim], setPeriodo] = useState<[string, string]>(() => periodo("mes"));
+  const setDataInicio = (v: string) => setPeriodo([v, dataFim]);
+  const setDataFim = (v: string) => setPeriodo([dataInicio, v]);
+  const [filtrosAbast, setFiltrosAbast] = useState<FiltrosAbastecimento>(FILTROS_VAZIOS);
   const [relConsumo, setRelConsumo] = useState<RelatorioConsumo | null>(null);
   const [relEstoque, setRelEstoque] = useState<RelatorioEstoque | null>(null);
   const [relManut, setRelManut] = useState<RelatorioManutencoes | null>(null);
@@ -41,7 +55,6 @@ export default function RelatoriosPage() {
   const carregar = useCallback(async () => {
     try {
       if (aba === "secretarias") setRelSecretarias(await api.relatorioSecretarias({ data_inicio: dataInicio || undefined, data_fim: dataFim || undefined }));
-      if (aba === "abastecimentos") setRelAbast(await api.relatorioAbastecimentos({ data_inicio: dataInicio || undefined, data_fim: dataFim || undefined }));
       if (aba === "consumo") setRelConsumo(await api.relatorioConsumoVeiculos({ data_inicio: dataInicio || undefined, data_fim: dataFim || undefined }));
       if (aba === "estoque") setRelEstoque(await api.relatorioEstoque());
       if (aba === "manutencoes") setRelManut(await api.relatorioManutencoes({ data_inicio: dataInicio || undefined, data_fim: dataFim || undefined }));
@@ -57,6 +70,7 @@ export default function RelatoriosPage() {
     const params = new URLSearchParams({ formato });
     if (dataInicio) params.set("data_inicio", dataInicio);
     if (dataFim) params.set("data_fim", dataFim);
+    if (endpoint === "abastecimentos") Object.entries(filtrosAbast).forEach(([k, v]) => v && params.set(k, v));
     const token = localStorage.getItem("govfrota_access_token");
     fetch(`/api/govfrota/relatorios/${endpoint}?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
@@ -101,7 +115,19 @@ export default function RelatoriosPage() {
       <div className="space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h1 className="text-h2 text-text-title">Relatórios</h1>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex gap-1">
+              {ATALHOS.map(([k, l]) => {
+                const [i, f] = periodo(k);
+                const ativo = dataInicio === i && dataFim === f;
+                return (
+                  <button key={k} onClick={() => setPeriodo([i, f])}
+                    className={`rounded-btn px-2.5 py-1.5 text-meta ${ativo ? "bg-[#1D4ED8] font-medium text-white" : "border border-surface-border bg-white text-text-body hover:bg-surface-bg"}`}>
+                    {l}
+                  </button>
+                );
+              })}
+            </div>
             <label className="text-meta">De
               <input type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)}
                 className="ml-1 rounded-btn border border-surface-border px-2 py-1.5 text-body-sm" />
@@ -139,7 +165,7 @@ export default function RelatoriosPage() {
             <p className="text-body-sm text-text-subtle">
               {new Date(relSecretarias.periodo.inicio + "T12:00").toLocaleDateString("pt-BR")} a{" "}
               {new Date(relSecretarias.periodo.fim + "T12:00").toLocaleDateString("pt-BR")} · total {reais(relSecretarias.total)}
-              {!dataInicio && " (mês atual — escolha o período acima)"}
+              
             </p>
             {relSecretarias.itens.length === 0 ? (
               <p className="rounded-card border border-surface-border bg-white px-4 py-8 text-center text-body-sm text-text-subtle">
@@ -187,38 +213,8 @@ export default function RelatoriosPage() {
           </>
         )}
 
-        {aba === "abastecimentos" && relAbast && (
-          <>
-            <p className="text-body-sm text-text-subtle">
-              {relAbast.total_registros} registros · {relAbast.total_litros.toLocaleString("pt-BR")} L · R$ {relAbast.total_gasto.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-            </p>
-            <div className="overflow-x-auto rounded-card border border-surface-border bg-white shadow-card">
-              <table className="w-full min-w-200 text-body-sm">
-                <thead>
-                  <tr className="border-b border-surface-border bg-surface-bg text-left text-meta text-text-subtle">
-                    <th className="px-4 py-3">Data</th><th className="px-4 py-3">Placa</th><th className="px-4 py-3">Motorista</th>
-                    <th className="px-4 py-3">Combustível</th><th className="px-4 py-3">Local</th><th className="px-4 py-3">Litros</th>
-                    <th className="px-4 py-3">KM / horas</th><th className="px-4 py-3">NF</th><th className="px-4 py-3">Custo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {relAbast.itens.slice(0, 200).map((i, idx) => (
-                    <tr key={idx} className="border-b border-surface-border last:border-0">
-                      <td className="px-4 py-2">{new Date(i.data).toLocaleDateString("pt-BR")}</td>
-                      <td className="px-4 py-2 font-medium">{i.placa}</td>
-                      <td className="px-4 py-2">{i.motorista ?? "—"}</td>
-                      <td className="px-4 py-2">{i.combustivel}</td>
-                      <td className="px-4 py-2">{i.local ?? "—"}</td>
-                      <td className="px-4 py-2">{i.litros.toLocaleString("pt-BR")}</td>
-                      <td className="px-4 py-2">{i.horimetro != null ? `${i.horimetro.toLocaleString("pt-BR")} h` : i.km.toLocaleString("pt-BR")}</td>
-                      <td className="px-4 py-2">{i.numero_nf ?? "—"}</td>
-                      <td className="px-4 py-2">{i.custo_total != null ? `R$ ${i.custo_total.toFixed(2)}` : "—"}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </>
+        {aba === "abastecimentos" && (
+          <AbaAbastecimentos dataInicio={dataInicio} dataFim={dataFim} filtros={filtrosAbast} setFiltros={setFiltrosAbast} publico={publico} />
         )}
 
         {aba === "consumo" && relConsumo && (
@@ -242,10 +238,10 @@ export default function RelatoriosPage() {
                     <td className="px-4 py-2">
                       {i.consumo_l_h ? `${i.consumo_l_h} L/h` : i.consumo_medio ? `${i.consumo_medio} km/L` : "—"}
                     </td>
-                    <td className="px-4 py-2">R$ {i.valor_combustivel.toFixed(2)}</td>
-                    <td className="px-4 py-2">R$ {i.valor_manutencao.toFixed(2)}</td>
-                    <td className="px-4 py-2 font-medium">R$ {i.custo_total.toFixed(2)}</td>
-                    <td className="px-4 py-2">{i.custo_por_km ? `R$ ${i.custo_por_km.toFixed(3)}` : "—"}</td>
+                    <td className="px-4 py-2">{reais(i.valor_combustivel)}</td>
+                    <td className="px-4 py-2">{reais(i.valor_manutencao)}</td>
+                    <td className="px-4 py-2 font-medium">{reais(i.custo_total)}</td>
+                    <td className="px-4 py-2">{i.custo_por_km ? i.custo_por_km.toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 3 }) : "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -274,7 +270,7 @@ export default function RelatoriosPage() {
                   </div>
                   <div className="mt-1 text-meta text-text-subtle">
                     Mínimo {t.estoque_minimo.toLocaleString("pt-BR")} L
-                    {ent && ` · 30d: +${ent.litros.toLocaleString("pt-BR")} L (R$ ${ent.valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })})`}
+                    {ent && ` · 30d: +${ent.litros.toLocaleString("pt-BR")} L (${reais(ent.valor)})`}
                   </div>
                 </div>
               );
@@ -285,7 +281,7 @@ export default function RelatoriosPage() {
         {aba === "manutencoes" && relManut && (
           <>
             <p className="text-body-sm text-text-subtle">
-              {relManut.total_registros} manutenções · R$ {relManut.valor_total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+              {relManut.total_registros} manutenções · {reais(relManut.valor_total)}
             </p>
             <div className="overflow-x-auto rounded-card border border-surface-border bg-white shadow-card">
               <table className="w-full min-w-200 text-body-sm">
@@ -303,7 +299,7 @@ export default function RelatoriosPage() {
                       <td className="px-4 py-2">{m.status.replace("_", " ")}</td>
                       <td className="px-4 py-2">{m.oficina ?? "—"}</td>
                       <td className="px-4 py-2">{new Date(m.data_solicitacao + "T12:00").toLocaleDateString("pt-BR")}</td>
-                      <td className="px-4 py-2">R$ {m.valor_total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</td>
+                      <td className="px-4 py-2">{reais(m.valor_total)}</td>
                     </tr>
                   ))}
                 </tbody>

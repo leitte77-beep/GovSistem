@@ -27,6 +27,7 @@ import { RequirePermission } from "@/components/RequirePermission";
 import { useAuth } from "@/lib/auth";
 import { FotoVeiculo } from "@/components/veiculo/FotoVeiculo";
 import { FotoAnexo } from "@/components/abastecimento/FotoAnexo";
+import { NotaFiscalPreview } from "@/components/abastecimento/NotaFiscalPreview";
 import { BadgeOrigem, BadgeStatus } from "@/components/abastecimento/Badges";
 import { ModalCancelar, ModalCorrigir } from "@/components/abastecimento/ModaisCorrecao";
 import {
@@ -42,8 +43,10 @@ import {
 interface Evento {
   id: string;
   created_at: string;
-  tipo: "REGISTRO" | "CORRECAO" | "CANCELAMENTO";
+  tipo: "REGISTRO" | "CORRECAO" | "CANCELAMENTO" | "NOTA" | "NOTA_SUBSTITUIDA";
   titulo: string;
+  /** Arquivo desta versão da nota (abre no visualizador). */
+  arquivo?: { url: string; tipo: "xml" | "pdf"; titulo: string; ativo: boolean };
   detalhe?: string;
   por?: string | null;
   justificativa?: string | null;
@@ -60,12 +63,16 @@ export default function DetalheAbastecimentoPage() {
   const [eventos, setEventos] = useState<Evento[]>([]);
   const [corrigir, setCorrigir] = useState(false);
   const [cancelar, setCancelar] = useState(false);
+  const [previewNota, setPreviewNota] = useState<{ url: string; tipo: "xml" | "pdf"; titulo: string } | null>(null);
 
   const carregar = useCallback(async () => {
     try {
       const abast = await api.getAbastecimento(id);
       setA(abast);
-      const corrs = await api.correcoesAbastecimento(id);
+      const [corrs, versoes] = await Promise.all([
+        api.correcoesAbastecimento(id),
+        api.historicoNotas(id).catch(() => []),
+      ]);
       const ev: Evento[] = [];
       if (abast.created_at) {
         ev.push({
@@ -115,6 +122,27 @@ export default function DetalheAbastecimentoPage() {
           });
         }
       }
+      for (const v of versoes) {
+        const rotulo = v.tipo === "DANFE" ? "PDF (DANFE)" : "XML";
+        ev.push({
+          id: `nota-${v.id}`,
+          created_at: v.enviada_em ?? "",
+          tipo: v.versao > 1 ? "NOTA_SUBSTITUIDA" : "NOTA",
+          titulo: v.versao > 1 ? `Nota substituída pelo posto — ${rotulo}, versão ${v.versao}` : `Nota enviada pelo posto — ${rotulo}`,
+          detalhe: [v.numero && `NF ${v.numero}`, v.motivo && `Motivo: ${v.motivo}`, !v.ativo && "Versão substituída (só consulta)"]
+            .filter(Boolean)
+            .join(" · ") || undefined,
+          justificativa: v.motivo_detalhe,
+          por: v.enviado_por,
+          arquivo: {
+            url: api.urlNotaFiscal(v.id),
+            tipo: v.tipo === "DANFE" ? "pdf" : "xml",
+            titulo: `${v.numero ? `NF ${v.numero} — ` : ""}${rotulo} · versão ${v.versao}${v.ativo ? "" : " (substituída)"}`,
+            ativo: v.ativo,
+          },
+        });
+      }
+      ev.sort((x, y) => x.created_at.localeCompare(y.created_at));
       setEventos(ev);
     } catch (e) {
       toast.error((e as Error).message);
@@ -133,7 +161,7 @@ export default function DetalheAbastecimentoPage() {
   const modelo = [a.veiculo_marca, a.veiculo_modelo].filter(Boolean).join(" ") || "—";
   const precoRotulo = noPosto ? (a.preco_litro ? "Preço pago / litro" : "Preço / litro (estimado)") : "Custo médio / litro";
   const custoLitro = a.custo_medio_litro ? formatarMoeda(a.custo_medio_litro) : "—";
-  const protocolo = `#${a.id.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
+  const protocolo = a.numero ?? `#${a.id.replace(/-/g, "").slice(0, 8).toUpperCase()}`;
 
   const conformidade = a.status === "CANCELADO"
     ? { classe: "bg-[#FFDAD6] text-[#410002]", icone: <AlertTriangle size={22} className="shrink-0 text-[#BA1A1A]" />, titulo: "Registro cancelado", texto: "Este abastecimento foi cancelado. Consulte o motivo e a trilha de auditoria." }
@@ -143,6 +171,9 @@ export default function DetalheAbastecimentoPage() {
 
   return (
     <RequirePermission perms="refueling.view">
+      {previewNota && (
+        <NotaFiscalPreview url={previewNota.url} tipo={previewNota.tipo} titulo={previewNota.titulo} onClose={() => setPreviewNota(null)} />
+      )}
       {corrigir && (
         <ModalCorrigir
           abastecimento={a}
@@ -169,7 +200,7 @@ export default function DetalheAbastecimentoPage() {
             Voltar para Abastecimentos
           </Link>
           <div className="flex flex-wrap items-center gap-2 text-meta text-text-subtle">
-            <span className="rounded bg-[#F3F4F6] px-2 py-0.5 font-mono uppercase tracking-wide text-on-surface-variant">ID {protocolo}</span>
+            <span className="rounded bg-[#F3F4F6] px-2 py-0.5 font-mono uppercase tracking-wide text-on-surface-variant">Nº {protocolo}</span>
             {a.ip_origem && (
               <>
                 <span className="inline-block h-1.5 w-1.5 rounded-full bg-outline-variant" />
@@ -323,17 +354,41 @@ export default function DetalheAbastecimentoPage() {
                     <span className="text-meta font-medium uppercase tracking-wider text-text-subtle">Nota Fiscal Eletrônica (NF-e)</span>
                     <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        {a.numero_nf ? (
+                        {a.numero_nf || a.nota ? (
                           <span className="inline-flex items-center gap-1.5 rounded bg-[#E5EEFF] px-2.5 py-1 text-meta font-medium text-[#121C2B]">
-                            <FileText size={13} /> NF {a.numero_nf}
+                            <FileText size={13} /> {a.numero_nf ? `NF ${a.numero_nf}` : "Nota enviada pelo posto (PDF)"}
                           </span>
                         ) : (
                           <span className="inline-flex items-center gap-1.5 rounded bg-[#F3F4F6] px-2.5 py-1 text-meta font-medium text-text-subtle">
                             <span className="h-1.5 w-1.5 rounded-full bg-outline" /> Pendente de envio pelo posto
                           </span>
                         )}
+                        {a.nota?.substituida && (
+                          <span
+                            className="inline-flex items-center gap-1.5 rounded bg-[#FFF4D6] px-2.5 py-1 text-meta font-medium text-[#5C4200]"
+                            title="O posto trocou a nota. Veja o motivo e a versão anterior na trilha de auditoria."
+                          >
+                            <AlertTriangle size={13} /> Nota substituída · {a.nota.motivo_substituicao}
+                          </span>
+                        )}
                         {a.chave_nfe && <span className="break-all font-mono text-meta text-text-subtle">{a.chave_nfe}</span>}
                       </div>
+                      {a.nota && (a.nota.pdf_id || a.nota.xml_id) && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-surface-border px-3 py-1.5 text-meta font-medium text-text-body transition hover:border-primary/30 hover:bg-[#EFF4FF] hover:text-primary"
+                            onClick={() =>
+                              setPreviewNota(
+                                a.nota!.pdf_id
+                                  ? { url: api.urlNotaFiscal(a.nota!.pdf_id), tipo: "pdf", titulo: `NF ${a.nota!.numero ?? ""} — DANFE`.trim() }
+                                  : { url: api.urlNotaFiscal(a.nota!.xml_id!), tipo: "xml", titulo: `NF ${a.nota!.numero ?? ""} — XML`.trim() },
+                              )
+                            }
+                          >
+                            <Eye size={14} /> Ver nota
+                          </button>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -418,6 +473,10 @@ export default function DetalheAbastecimentoPage() {
                       ? { dot: "bg-error-vibrant", cor: "text-error-vibrant", label: "Cancelado", icone: <X size={11} /> }
                       : ev.tipo === "CORRECAO"
                         ? { dot: "bg-info-vibrant", cor: "text-info-vibrant", label: "Corrigido", icone: <Pencil size={11} /> }
+                        : ev.tipo === "NOTA_SUBSTITUIDA"
+                        ? { dot: "bg-[#B45309]", cor: "text-[#B45309]", label: "Nota substituída", icone: <FileText size={11} /> }
+                        : ev.tipo === "NOTA"
+                        ? { dot: "bg-info-vibrant", cor: "text-info-vibrant", label: "Nota enviada", icone: <FileText size={11} /> }
                         : { dot: "bg-[#106D34]", cor: "text-[#106D34]", label: "Registrado", icone: <CheckCircle2 size={11} /> };
                   return (
                     <div key={ev.id} className="relative flex flex-col gap-1">
@@ -432,6 +491,14 @@ export default function DetalheAbastecimentoPage() {
                       {ev.detalhe && <p className="text-meta leading-relaxed text-text-subtle">{ev.detalhe}</p>}
                       {ev.justificativa && <p className="text-meta italic text-text-subtle">Justificativa: {ev.justificativa}</p>}
                       {ev.por && <p className="text-meta text-text-subtle/80">por {ev.por}</p>}
+                      {ev.arquivo && (
+                        <button
+                          className="inline-flex w-fit items-center gap-1 text-meta font-medium text-primary hover:underline"
+                          onClick={() => setPreviewNota(ev.arquivo!)}
+                        >
+                          <Eye size={12} /> {ev.arquivo.ativo ? "Ver nota" : "Ver versão anterior"}
+                        </button>
+                      )}
                     </div>
                   );
                 })}

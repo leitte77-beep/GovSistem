@@ -41,6 +41,11 @@ class NotaAbastecimento(Base, TimestampMixin):
     enviado_por_acesso_fornecedor_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
     enviado_por_usuario_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
 
+    # Preenchidos quando este envio substitui uma nota vigente (versao > 1).
+    # Códigos em services.notas_abastecimento.MOTIVOS_SUBSTITUICAO.
+    motivo_substituicao: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+    motivo_detalhe: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
+
     # Lidos do XML (só NFE_XML)
     nfe_chave: Mapped[Optional[str]] = mapped_column(String(44), nullable=True)
     nfe_numero: Mapped[Optional[str]] = mapped_column(String(20), nullable=True)

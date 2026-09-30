@@ -21,9 +21,11 @@ from app.models.combustivel import Combustivel, Fornecedor, Tanque
 from app.models.estoque import EntradaCombustivel, MovimentacaoEstoque
 from app.models.manutencao import Manutencao
 from app.models.motorista import Motorista
+from app.models.nota_abastecimento import NotaAbastecimento
 from app.models.ocorrencia import Ocorrencia
 from app.models.unidade import Unidade
 from app.models.veiculo import Veiculo
+from app.services.notas_abastecimento import notas_ativas
 from app.services.exporters import (
     RelatorioMeta,
     build_pdf,
@@ -104,10 +106,14 @@ async def relatorio_abastecimentos(
     modalidade: str | None = None,
     data_inicio: str | None = None,
     data_fim: str | None = None,
+    situacao_nota: str | None = None,
     user: User = Depends(require_permission(Perm.REPORTS_VIEW, escopo=True)),
     db: AsyncSession = Depends(get_db),
 ):
-    """Abastecimentos por período com filtros combináveis (§32-§33)."""
+    """Abastecimentos por período com filtros combináveis (§32-§33).
+
+    `situacao_nota` (só posto): COM_NOTA | SEM_NOTA | SUBSTITUIDA.
+    """
     conditions = [
         Abastecimento.organization_id == user.organization_id,
         filtro_escopo(user, Abastecimento.unidade_id),
@@ -127,6 +133,15 @@ async def relatorio_abastecimentos(
         conditions.append(Abastecimento.unidade_id == unidade_id)
     if modalidade:
         conditions.append(Abastecimento.modalidade == modalidade.upper())
+    if situacao_nota:
+        com_nota = select(NotaAbastecimento.abastecimento_id).where(NotaAbastecimento.ativo.is_(True))
+        situacao_nota = situacao_nota.upper()
+        if situacao_nota == "COM_NOTA":
+            conditions.append(Abastecimento.id.in_(com_nota))
+        elif situacao_nota == "SEM_NOTA":
+            conditions += [Abastecimento.modalidade == "POSTO_CREDENCIADO", Abastecimento.id.notin_(com_nota)]
+        elif situacao_nota == "SUBSTITUIDA":
+            conditions.append(Abastecimento.id.in_(com_nota.where(NotaAbastecimento.versao > 1)))
     di = _parse_data(data_inicio)
     df = _parse_data(data_fim, fim=True)
     if di:
@@ -138,6 +153,8 @@ async def relatorio_abastecimentos(
         select(
             Abastecimento,
             Veiculo.placa.label("placa"),
+            Veiculo.marca.label("marca"),
+            Veiculo.modelo.label("modelo"),
             Motorista.nome.label("motorista"),
             Combustivel.nome.label("combustivel"),
             Tanque.nome.label("tanque"),
@@ -155,11 +172,28 @@ async def relatorio_abastecimentos(
     )
 
     rows = (await db.execute(stmt.limit(5000))).all()
+    notas = await notas_ativas(db, [r[0].id for r in rows])
+
+    def _nota(a: Abastecimento) -> tuple[str | None, str | None]:
+        """(situação, rótulo da NF). Situação só existe para posto credenciado."""
+        if a.modalidade != "POSTO_CREDENCIADO":
+            return None, a.numero_nf
+        n = notas.get(a.id)
+        if not n:
+            return "PENDENTE", None
+        xml = n.get("NFE_XML")
+        rotulo = xml.nfe_numero if xml and xml.nfe_numero else a.numero_nf or "PDF"
+        if any(v.versao > 1 for v in n.values()):
+            return "SUBSTITUIDA", rotulo
+        return ("ENVIADA" if xml else "SO_PDF"), rotulo
 
     dados = [
         {
+            "id": str(r[0].id),
+            "numero": r[0].numero,
             "data": r[0].data_abastecimento.isoformat(),
             "placa": r.placa,
+            "veiculo": " ".join(x for x in (r.marca, r.modelo) if x) or None,
             "motorista": r.motorista,
             "combustivel": r.combustivel,
             "tanque": r.tanque,
@@ -174,11 +208,15 @@ async def relatorio_abastecimentos(
             "consumo_l_h": float(r[0].consumo_l_h) if r[0].consumo_l_h else None,
             "preco_litro": float(r[0].preco_litro) if r[0].preco_litro else None,
             "custo_total": float(r[0].custo_total) if r[0].custo_total else None,
-            "numero_nf": r[0].numero_nf,
+            "numero_nf": _nota(r[0])[1],
+            "situacao_nota": _nota(r[0])[0],
             "origem": r[0].origem,
         }
         for r in rows
     ]
+
+    def _medida(d: dict) -> str:
+        return f"{d['horimetro']:.1f} h".replace(".", ",") if d["horimetro"] is not None else f"{d['km']:,} km".replace(",", ".")
 
     total_litros = sum(d["litros"] for d in dados)
     total_custo = sum(d["custo_total"] or 0 for d in dados)
@@ -186,11 +224,12 @@ async def relatorio_abastecimentos(
     if formato == "csv":
         return _csv_response(
             "abastecimentos.csv",
-            ["Data", "Placa", "Secretaria", "Motorista", "Combustível", "Local", "Litros", "KM/Horas", "NF", "Custo"],
+            ["Número", "Data", "Placa", "Secretaria", "Motorista", "Combustível", "Local", "Litros", "KM/Horas", "Preço/L", "NF", "Custo"],
             [
                 [
-                    d["data"], d["placa"], d["unidade"] or "-", d["motorista"] or "-", d["combustivel"],
-                    d["local"] or "-", d["litros"], d["horimetro"] if d["horimetro"] is not None else d["km"],
+                    d["numero"] or "", to_display(datetime.fromisoformat(d["data"])).strftime("%d/%m/%Y %H:%M"),
+                    d["placa"], d["unidade"] or "-", d["motorista"] or "-", d["combustivel"],
+                    d["local"] or "-", d["litros"], _medida(d), d["preco_litro"] or "",
                     d["numero_nf"] or "", d["custo_total"] or "",
                 ]
                 for d in dados
@@ -203,30 +242,31 @@ async def relatorio_abastecimentos(
             organizacao=org_nome,
             periodo=f"{data_inicio or 'início'} a {data_fim or 'hoje'}",
             filtros=[
-                f"Veículo: {veiculo_id}" if veiculo_id else None,
-                f"Motorista: {motorista_id}" if motorista_id else None,
-                f"Combustível: {combustivel_id}" if combustivel_id else None,
-                f"Tanque: {tanque_id}" if tanque_id else None,
-                f"Posto: {fornecedor_id}" if fornecedor_id else None,
-                f"Secretaria/unidade: {rows[0].unidade}" if unidade_id and rows else None,
+                f"Veículo: {v.placa}" if veiculo_id and (v := await db.get(Veiculo, veiculo_id)) else None,
+                f"Motorista: {m.nome}" if motorista_id and (m := await db.get(Motorista, motorista_id)) else None,
+                f"Combustível: {c.nome}" if combustivel_id and (c := await db.get(Combustivel, combustivel_id)) else None,
+                f"Tanque: {t.nome}" if tanque_id and (t := await db.get(Tanque, tanque_id)) else None,
+                f"Posto: {f.nome_fantasia or f.razao_social}" if fornecedor_id and (f := await db.get(Fornecedor, fornecedor_id)) else None,
+                f"Secretaria/unidade: {u.nome}" if unidade_id and (u := await db.get(Unidade, unidade_id)) else None,
+                {"COM_NOTA": "Nota: com nota", "SEM_NOTA": "Nota: sem nota", "SUBSTITUIDA": "Nota: substituídas"}.get(situacao_nota or ""),
             ],
         )
         rows = [
             [
-                to_display(datetime.fromisoformat(d["data"])).date(),
+                d["numero"] or "-", to_display(datetime.fromisoformat(d["data"])).date(),
                 d["placa"], d["unidade"] or "-", d["motorista"] or "-", d["combustivel"], d["local"] or "-",
-                d["litros"], d["horimetro"] if d["horimetro"] is not None else d["km"],
+                d["litros"], _medida(d), d["preco_litro"] or 0,
                 d["numero_nf"] or "-", d["custo_total"] or 0,
             ]
             for d in dados
         ]
         return _formato_response(
             formato, "abastecimentos.xlsx", meta,
-            ["Data", "Placa", "Secretaria", "Motorista", "Combustível", "Local", "Litros (L)", "KM/Horas",
-             "NF", "Custo (R$)"],
+            ["Número", "Data", "Placa", "Secretaria", "Motorista", "Combustível", "Local", "Litros (L)", "KM/Horas",
+             "Preço/L (R$)", "NF", "Custo (R$)"],
             rows,
-            currency_columns={9}, date_columns={0},
-            totals=[None, None, None, None, None, None, total_litros, None, None, total_custo],
+            currency_columns={9, 11}, date_columns={1},
+            totals=[None, None, None, None, None, None, None, total_litros, None, None, None, total_custo],
             usuario=user.name,
         )
     return {"total_registros": len(dados), "total_litros": round(total_litros, 2), "total_gasto": round(total_custo, 2), "itens": dados}

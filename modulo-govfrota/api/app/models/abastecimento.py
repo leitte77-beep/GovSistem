@@ -1,9 +1,13 @@
+import re
 import uuid
 from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy import (
+    and_,
+    FetchedValue,
+    Integer,
     Boolean,
     DateTime,
     ForeignKey,
@@ -34,7 +38,10 @@ class Abastecimento(Base, TimestampMixin, SoftDeleteMixin):
         Index("ix_abast_motorista", "motorista_id"),
         Index("ix_abast_tanque", "tanque_id"),
         Index("uq_abast_idempotency", "organization_id", "idempotency_key", unique=True),
+        Index("uq_abast_org_numero", "organization_id", "numero_ano", "numero_seq", unique=True),
     )
+    # numero_ano/numero_seq vêm do gatilho do banco (migration 020): RETURNING no INSERT.
+    __mapper_args__ = {"eager_defaults": True}
 
     organization_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -93,6 +100,9 @@ class Abastecimento(Base, TimestampMixin, SoftDeleteMixin):
     contrato_posto_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("contratos_posto.id"), nullable=True, index=True
     )
+    # Número do abastecimento (AB-{ano}/{seq:06d}), gerado pelo banco por organização e ano.
+    numero_ano: Mapped[int] = mapped_column(Integer(), server_default=FetchedValue(), nullable=False)
+    numero_seq: Mapped[int] = mapped_column(Integer(), server_default=FetchedValue(), nullable=False)
     numero_nf: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     chave_nfe: Mapped[Optional[str]] = mapped_column(String(60), nullable=True)
 
@@ -128,6 +138,10 @@ class Abastecimento(Base, TimestampMixin, SoftDeleteMixin):
     tanque: Mapped[Optional["Tanque"]] = relationship()
     combustivel: Mapped["Combustivel"] = relationship()
 
+    @property
+    def numero(self) -> str:
+        return formatar_numero(self.numero_ano, self.numero_seq)
+
 
 class CorrecaoAbastecimento(Base, TimestampMixin):
     """Histórico de correções/cancelamentos de abastecimento — rastreabilidade total."""
@@ -148,3 +162,37 @@ class CorrecaoAbastecimento(Base, TimestampMixin):
     dados_novos_json: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
     justificativa: Mapped[str] = mapped_column(Text(), nullable=False)
     usuario_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
+
+
+class NumeracaoAbastecimento(Base):
+    """Último número usado por organização e ano (migration 020)."""
+
+    __tablename__ = "abastecimento_numeracao"
+
+    organization_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), primary_key=True
+    )
+    ano: Mapped[int] = mapped_column(Integer(), primary_key=True)
+    ultimo: Mapped[int] = mapped_column(Integer(), nullable=False)
+
+
+def formatar_numero(ano: int | None, seq: int | None) -> str | None:
+    return f"AB-{ano}/{seq:06d}" if ano and seq else None
+
+
+_RE_NUMERO = re.compile(r"^\s*(?:AB\s*-?\s*)?(?:(\d{4})\s*/\s*)?(\d{1,9})\s*$", re.IGNORECASE)
+
+
+def filtro_numero(texto: str | None):
+    """Condição SQL para achar o abastecimento pelo número digitado.
+
+    Aceita "AB-2026/000123", "2026/123" ou só "123" (qualquer ano).
+    Devolve None quando o texto não parece um número.
+    """
+    m = _RE_NUMERO.match(texto or "")
+    if not m:
+        return None
+    cond = Abastecimento.numero_seq == int(m.group(2))
+    if m.group(1):
+        cond = and_(cond, Abastecimento.numero_ano == int(m.group(1)))
+    return cond

@@ -20,7 +20,7 @@ from app.core.database import get_db
 from app.core.permissions import Perm
 from app.core.storage import storage
 from app.core.timezone import get_tz, now_local, to_display
-from app.models.abastecimento import Abastecimento
+from app.models.abastecimento import Abastecimento, filtro_numero
 from app.models.anexo import Anexo
 from app.models.auth_models import User
 from app.models.combustivel import Combustivel, Fornecedor
@@ -29,7 +29,7 @@ from app.models.nota_abastecimento import NotaAbastecimento
 from app.models.unidade import Unidade
 from app.models.veiculo import Veiculo
 from app.services.auditoria import registrar_auditoria
-from app.services.notas_abastecimento import ler_arquivo, notas_ativas, resumo_nota
+from app.services.notas_abastecimento import MOTIVOS_SUBSTITUICAO, TIPOS, ler_arquivo, notas_ativas, resumo_nota
 
 router = APIRouter(prefix="/notas-fiscais", tags=["notas-fiscais"])
 
@@ -65,11 +65,14 @@ def _condicoes(user: User, inicio: date | None, fim: date | None, fornecedor_id,
         cond.append(Abastecimento.id.in_(com_nota))
     elif situacao == "SEM_NOTA":
         cond.append(Abastecimento.id.notin_(com_nota))
+    elif situacao == "SUBSTITUIDA":
+        cond.append(Abastecimento.id.in_(com_nota.where(NotaAbastecimento.versao > 1)))
     if busca and (t := busca.strip()):
         like = f"%{t}%"
         cond.append(or_(
             Veiculo.placa.ilike(like), Abastecimento.numero_nf.ilike(like), Motorista.nome.ilike(like),
             Abastecimento.id.in_(select(NotaAbastecimento.abastecimento_id).where(NotaAbastecimento.nfe_chave.ilike(like))),
+            *([por_numero] if (por_numero := filtro_numero(t)) is not None else []),
         ))
     return cond
 
@@ -125,6 +128,7 @@ async def listar(
         "itens": [
             {
                 "id": str(a.id),
+                "numero": a.numero,
                 "data": to_display(a.data_abastecimento).isoformat(),
                 "placa": placa, "marca": marca, "modelo": modelo, "motorista": mot,
                 "combustivel": comb, "secretaria": unid, "posto": posto,
@@ -200,6 +204,46 @@ async def baixar_zip(
         content=conteudo, media_type="application/zip",
         headers={"Content-Disposition": f'attachment; filename="{nome_zip}"', "X-Content-Type-Options": "nosniff"},
     )
+
+
+@router.get("/abastecimento/{abastecimento_id}/historico")
+async def historico(
+    abastecimento_id: uuid.UUID,
+    user: User = Depends(require_permission(Perm.REFUELING_VIEW, escopo=True)),
+    db: AsyncSession = Depends(get_db),
+):
+    """Todas as versões das notas do abastecimento, inclusive as substituídas."""
+    from app.models.acesso_fornecedor import AcessoFornecedor
+
+    abast = await db.scalar(
+        select(Abastecimento).where(
+            Abastecimento.id == abastecimento_id, Abastecimento.organization_id == user.organization_id,
+            filtro_escopo(user, Abastecimento.unidade_id),
+        )
+    )
+    if abast is None:
+        raise HTTPException(status_code=404, detail="Abastecimento não encontrado.")
+    notas = list(
+        (await db.execute(
+            select(NotaAbastecimento).where(NotaAbastecimento.abastecimento_id == abast.id).order_by(NotaAbastecimento.created_at)
+        )).scalars()
+    )
+    ids_acesso = {n.enviado_por_acesso_fornecedor_id for n in notas if n.enviado_por_acesso_fornecedor_id}
+    ids_user = {n.enviado_por_usuario_id for n in notas if n.enviado_por_usuario_id}
+    acessos = dict((await db.execute(select(AcessoFornecedor.id, AcessoFornecedor.nome).where(AcessoFornecedor.id.in_(ids_acesso)))).all()) if ids_acesso else {}
+    usuarios = dict((await db.execute(select(User.id, User.name).where(User.id.in_(ids_user)))).all()) if ids_user else {}
+    return [
+        {
+            "id": str(n.id), "tipo": n.tipo, "tipo_nome": TIPOS.get(n.tipo, n.tipo), "versao": n.versao, "ativo": n.ativo,
+            "enviada_em": n.created_at.isoformat() if n.created_at else None,
+            "desativada_em": n.desativado_em.isoformat() if n.desativado_em else None,
+            "enviado_por": acessos.get(n.enviado_por_acesso_fornecedor_id) or usuarios.get(n.enviado_por_usuario_id),
+            "nome_arquivo": n.nome_arquivo, "numero": n.nfe_numero, "valor": float(n.nfe_valor_total) if n.nfe_valor_total is not None else None,
+            "motivo": (MOTIVOS_SUBSTITUICAO.get(n.motivo_substituicao or "", "Motivo não informado") if n.versao > 1 else None),
+            "motivo_detalhe": n.motivo_detalhe,
+        }
+        for n in notas
+    ]
 
 
 @router.get("/{nota_id}/arquivo")

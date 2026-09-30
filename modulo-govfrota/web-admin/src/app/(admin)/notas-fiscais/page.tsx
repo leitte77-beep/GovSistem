@@ -35,7 +35,7 @@ function periodo(k: string): [string, string] {
   return [iso(new Date(h.getFullYear(), 0, 1)), iso(h)];
 }
 const ATALHOS = [["7d", "7 dias"], ["mes", "Este mês"], ["mesPassado", "Mês passado"], ["ano", "Este ano"]] as const;
-const SITUACOES = [["COM_NOTA", "Com nota"], ["SEM_NOTA", "Sem nota"], ["", "Todos"]] as const;
+const SITUACOES = [["COM_NOTA", "Com nota"], ["SEM_NOTA", "Sem nota"], ["SUBSTITUIDA", "Substituídas"], ["", "Todos"]] as const;
 const LOTE = 100;
 
 const dataHora = (d: string) => new Date(d).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
@@ -289,7 +289,7 @@ export default function NotasFiscaisPage() {
                 <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-subtle" />
                 <input
                   className="input !pl-10 !pr-9"
-                  placeholder="Buscar por placa, nº da nota, chave de acesso ou motorista…"
+                  placeholder="Buscar por nº do abastecimento, placa, nº da nota, chave ou motorista…"
                   value={busca}
                   onChange={(e) => setBusca(e.target.value)}
                 />
@@ -315,9 +315,11 @@ export default function NotasFiscaisPage() {
                   }`}
                 >
                   {l}
-                  <span className={`rounded-pill px-1.5 text-[10px] font-bold ${situacao === v && v === "COM_NOTA" ? "bg-[#E7F8EC] text-[#106D34]" : "bg-[#E4E7EC] text-text-body"}`}>
-                    {contagem(v)}
-                  </span>
+                  {v !== "SUBSTITUIDA" && (
+                    <span className={`rounded-pill px-1.5 text-[10px] font-bold ${situacao === v && v === "COM_NOTA" ? "bg-[#E7F8EC] text-[#106D34]" : "bg-[#E4E7EC] text-text-body"}`}>
+                      {contagem(v)}
+                    </span>
+                  )}
                 </button>
               ))}
             </div>
@@ -410,6 +412,7 @@ export default function NotasFiscaisPage() {
                           <span className="text-meta font-medium text-text-subtle">
                             {[a.marca, a.modelo].filter(Boolean).join(" ") || "—"}
                           </span>
+                          {a.numero && <span className="font-mono text-meta text-text-subtle">{a.numero}</span>}
                         </div>
                       </td>
                       <td className="whitespace-nowrap px-3 py-4">
@@ -441,6 +444,11 @@ export default function NotasFiscaisPage() {
                               )}
                               {n.avisos.length > 0 && (
                                 <span title={n.avisos.join("\n")}><AlertTriangle size={13} className="text-[#B54708]" /></span>
+                              )}
+                              {n.substituida && (
+                                <span className="rounded bg-[#FFF4D6] px-1.5 text-[10px] font-semibold text-[#5C4200]" title={`Nota substituída pelo posto: ${n.motivo_substituicao}`}>
+                                  Substituída
+                                </span>
                               )}
                             </span>
                             {n.valor != null && (

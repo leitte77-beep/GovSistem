@@ -624,6 +624,9 @@ export const api = {
   listNotasFiscais(params: FiltroNotasFiscais & { skip?: number; limit?: number }) {
     return request<ListaNotasFiscais>(`/notas-fiscais${qs({ ...params })}`);
   },
+  historicoNotas(abastecimentoId: string) {
+    return request<VersaoNota[]>(`/notas-fiscais/abastecimento/${abastecimentoId}/historico`);
+  },
   urlNotaFiscal(notaId: string) {
     return `${BASE_URL}/notas-fiscais/${notaId}/arquivo`;
   },
@@ -961,6 +964,8 @@ export interface FiltroNotasFiscais {
 
 export interface NotaFiscalItem {
   id: string;
+  /** AB-2026/000123 */
+  numero: string | null;
   data: string;
   placa: string;
   marca: string | null;
@@ -981,7 +986,25 @@ export interface NotaFiscalItem {
     xml_id: string | null;
     pdf_id: string | null;
     avisos: string[];
+    substituida?: boolean;
+    motivo_substituicao?: string | null;
   } | null;
+}
+
+export interface VersaoNota {
+  id: string;
+  tipo: "NFE_XML" | "DANFE";
+  tipo_nome: string;
+  versao: number;
+  ativo: boolean;
+  enviada_em: string | null;
+  desativada_em: string | null;
+  enviado_por: string | null;
+  nome_arquivo: string;
+  numero: string | null;
+  valor: number | null;
+  motivo: string | null;
+  motivo_detalhe: string | null;
 }
 
 export interface ListaNotasFiscais {
@@ -1157,6 +1180,8 @@ export interface AlertaAtual {
 }
 export interface Abastecimento {
   id: string;
+  /** AB-2026/000123 */
+  numero?: string | null;
   veiculo_id: string;
   motorista_id: string | null;
   modalidade?: "TANQUE_PROPRIO" | "POSTO_CREDENCIADO" | string;
@@ -1171,6 +1196,8 @@ export interface Abastecimento {
   preco_litro?: string | null;
   numero_nf?: string | null;
   chave_nfe?: string | null;
+  /** Nota enviada pelo posto (só no detalhe). */
+  nota?: NotaFiscalItem["nota"];
   alertas?: string[];
   completou_tanque: boolean | null;
   origem: string;
@@ -1402,8 +1429,12 @@ export interface RelatorioAbastecimentos {
   total_litros: number;
   total_gasto: number;
   itens: {
+    id: string;
+    /** AB-2026/000123 */
+    numero: string | null;
     data: string;
     placa: string;
+    veiculo: string | null;
     motorista: string | null;
     combustivel: string;
     local?: string | null;
@@ -1411,7 +1442,10 @@ export interface RelatorioAbastecimentos {
     litros: number;
     km: number;
     horimetro?: number | null;
+    preco_litro: number | null;
     numero_nf?: string | null;
+    /** Só posto credenciado: ENVIADA | SO_PDF | SUBSTITUIDA | PENDENTE */
+    situacao_nota: "ENVIADA" | "SO_PDF" | "SUBSTITUIDA" | "PENDENTE" | null;
     custo_total: number | null;
   }[];
 }
@@ -1463,7 +1497,7 @@ export interface ResultadoBusca {
   motoristas: { id: string; nome: string }[];
   fornecedores: { id: string; nome: string }[];
   entradas?: { id: string; numero_nota: string | null; litros: number }[];
-  abastecimentos?: { id: string; numero_nf: string | null; placa: string; litros: number }[];
+  abastecimentos?: { id: string; numero: string | null; numero_nf: string | null; placa: string; litros: number }[];
 }
 export interface Configuracoes {
   tipo_organizacao: string;

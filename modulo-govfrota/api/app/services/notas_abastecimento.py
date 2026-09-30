@@ -21,6 +21,24 @@ from app.services.nfe import NFeInvalida, ler_nfe, so_digitos
 
 TIPOS = {"NFE_XML": "XML da nota", "DANFE": "PDF da nota (DANFE)"}
 MAX_XML_BYTES = 5 * 1024 * 1024
+MOTIVOS_SUBSTITUICAO = {
+    "NOTA_CANCELADA": "Nota cancelada na SEFAZ",
+    "VALOR_ERRADO": "Valor ou quantidade errados",
+    "PLACA_ERRADA": "Placa ou veículo errados",
+    "ARQUIVO_ERRADO": "Arquivo errado ou ilegível",
+    "OUTRO": "Outro motivo",
+}
+
+
+def validar_motivo(motivo: str | None, detalhe: str | None) -> tuple[str, str | None]:
+    """Motivo obrigatório para substituir nota; "OUTRO" exige descrição."""
+    motivo = (motivo or "").strip().upper()
+    detalhe = (detalhe or "").strip()[:1000] or None
+    if motivo not in MOTIVOS_SUBSTITUICAO:
+        raise HTTPException(status_code=422, detail="Já existe nota enviada para este abastecimento. Informe o motivo da substituição.")
+    if motivo == "OUTRO" and (not detalhe or len(detalhe) < 10):
+        raise HTTPException(status_code=422, detail="Descreva o motivo da substituição (mínimo 10 caracteres).")
+    return motivo, detalhe
 TOLERANCIA_VALOR = Decimal("0.05")
 
 
@@ -42,7 +60,10 @@ def resumo_nota(notas: dict[str, NotaAbastecimento] | None) -> dict | None:
     xml, pdf = notas.get("NFE_XML"), notas.get("DANFE")
     base = xml or pdf
     avisos = json.loads(xml.avisos) if xml and xml.avisos else []
+    trocada = max((n for n in (xml, pdf) if n and n.versao > 1), key=lambda n: n.created_at, default=None)
     return {
+        "substituida": trocada is not None,
+        "motivo_substituicao": MOTIVOS_SUBSTITUICAO.get(trocada.motivo_substituicao or "", "Motivo não informado") if trocada else None,
         "numero": xml.nfe_numero if xml else None,
         "serie": xml.nfe_serie if xml else None,
         "chave": xml.nfe_chave if xml else None,
@@ -70,6 +91,7 @@ async def _avisos(db: AsyncSession, abast: Abastecimento, nfe) -> list[str]:
 
 async def receber_nota(
     db: AsyncSession, abast: Abastecimento, tipo: str, nome: str, conteudo: bytes, *, acesso=None, user=None,
+    motivo: tuple[str, str | None] | None = None,
 ) -> NotaAbastecimento:
     """Valida, guarda e registra. Não faz commit."""
     tipo = tipo.upper()
@@ -99,6 +121,12 @@ async def receber_nota(
             raise HTTPException(status_code=422, detail="Envie o DANFE em PDF.")
         mime, ext = "application/pdf", ".pdf"
 
+    anteriores = list(
+        (await db.execute(select(NotaAbastecimento).where(NotaAbastecimento.abastecimento_id == abast.id, NotaAbastecimento.tipo == tipo))).scalars()
+    )
+    substitui = any(n.ativo for n in anteriores)
+    if substitui:
+        motivo = validar_motivo(*(motivo or (None, None)))
     avisos = await _avisos(db, abast, nfe) if nfe else []
     hash_arquivo = hashlib.sha256(conteudo).hexdigest()
     anexo = Anexo(
@@ -111,9 +139,6 @@ async def receber_nota(
     await run_in_threadpool(storage.store, chave_storage, conteudo, mime)
     anexo.caminho = chave_storage
 
-    anteriores = list(
-        (await db.execute(select(NotaAbastecimento).where(NotaAbastecimento.abastecimento_id == abast.id, NotaAbastecimento.tipo == tipo))).scalars()
-    )
     agora = datetime.now(timezone.utc)
     for n in anteriores:
         if n.ativo:
@@ -124,6 +149,7 @@ async def receber_nota(
         anexo_id=anexo.id, nome_arquivo=nome, hash_sha256=hash_arquivo, versao=len(anteriores) + 1, ativo=True,
         enviado_por_acesso_fornecedor_id=acesso.id if acesso else None, enviado_por_usuario_id=user.id if user else None,
         avisos=json.dumps(avisos, ensure_ascii=False) if avisos else None,
+        motivo_substituicao=motivo[0] if substitui else None, motivo_detalhe=motivo[1] if substitui else None,
     )
     if nfe is not None:
         nota.nfe_chave = nfe.chave
@@ -136,10 +162,11 @@ async def receber_nota(
     db.add(nota)
     await db.flush()
     await registrar_auditoria(
-        db, organization_id=abast.organization_id, acao="abastecimento.nota_enviar", entidade="abastecimento",
+        db, organization_id=abast.organization_id, acao="abastecimento.nota_substituir" if substitui else "abastecimento.nota_enviar", entidade="abastecimento",
         entidade_id=abast.id, usuario_id=user.id if user else None,
         dados_novos={"tipo": tipo, "arquivo": nome, "hash": hash_arquivo, "versao": nota.versao,
-                     "chave": nfe.chave if nfe else None, "acesso_fornecedor": str(acesso.id) if acesso else None},
+                     "chave": nfe.chave if nfe else None, "acesso_fornecedor": str(acesso.id) if acesso else None,
+                     **({"motivo": motivo[0], "motivo_detalhe": motivo[1]} if substitui else {})},
     )
     return nota
 

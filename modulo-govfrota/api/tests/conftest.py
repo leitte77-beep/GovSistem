@@ -43,6 +43,26 @@ TEST_ENGINE = create_async_engine(
 TEST_SESSION = async_sessionmaker(TEST_ENGINE, class_=AsyncSession, expire_on_commit=False)
 
 
+# Em produção o gatilho do PostgreSQL (migration 020) numera o abastecimento
+# criado sem número; no SQLite os testes que montam Abastecimento na mão
+# recebem um número sequencial aqui.
+from sqlalchemy import event  # noqa: E402
+
+from app.models.abastecimento import Abastecimento  # noqa: E402
+
+
+@event.listens_for(Abastecimento, "before_insert")
+def _numerar_abastecimento_teste(mapper, connection, alvo):
+    if alvo.numero_seq is None:
+        alvo.numero_ano = (alvo.data_abastecimento.year if alvo.data_abastecimento else 2026)
+        # Faixa alta para não colidir com os números do contador da aplicação.
+        _numerar_abastecimento_teste.seq += 1
+        alvo.numero_seq = 900_000 + _numerar_abastecimento_teste.seq
+
+
+_numerar_abastecimento_teste.seq = 0
+
+
 @pytest_asyncio.fixture(autouse=True)
 async def _reset_db():
     async with TEST_ENGINE.begin() as conn:

@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import filtro_escopo, get_client_info, get_user_permissions, require_permission
 from app.core.database import get_db
 from app.core.permissions import Perm
-from app.models.abastecimento import Abastecimento, CorrecaoAbastecimento
+from app.models.abastecimento import Abastecimento, CorrecaoAbastecimento, filtro_numero
 from app.models.auth_models import User
 from app.models.combustivel import Tanque
 from app.models.estoque import MovimentacaoEstoque
@@ -276,6 +276,9 @@ async def listar(
             | Motorista.nome.ilike(like)
             | Abastecimento.numero_nf.ilike(like)
         )
+        por_numero = filtro_numero(search)
+        if por_numero is not None:
+            cond = cond | por_numero
         id_uuid = _parse_uuid(search)
         if id_uuid is not None:
             cond = cond | (Abastecimento.id == id_uuid)
@@ -375,8 +378,12 @@ async def obter(
     user: User = Depends(require_permission(Perm.REFUELING_VIEW, escopo=True)),
     db: AsyncSession = Depends(get_db),
 ):
+    from app.services.notas_abastecimento import notas_ativas, resumo_nota
+
     abast = await _get_abastecimento(db, user, abastecimento_id)
-    return (await _enriquecer(db, user, [abast]))[0]
+    dados = (await _enriquecer(db, user, [abast]))[0]
+    dados.nota = resumo_nota((await notas_ativas(db, [abast.id])).get(abast.id))
+    return dados
 
 
 @router.post("", response_model=AbastecimentoResponse, status_code=201)

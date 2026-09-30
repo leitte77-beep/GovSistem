@@ -48,7 +48,17 @@ function EnviarNota({ a, onFechar, onEnviada }: { a: AbastecimentoPosto; onFecha
   const [arquivos, setArquivos] = useState<File[]>([]);
   const [arrastando, setArrastando] = useState(false);
   const [enviando, setEnviando] = useState(false);
+  const [motivos, setMotivos] = useState<{ codigo: string; descricao: string }[]>([]);
+  const [motivo, setMotivo] = useState("");
+  const [detalhe, setDetalhe] = useState("");
   const input = useRef<HTMLInputElement>(null);
+  // Substitui quando já existe nota vigente do mesmo tipo de algum arquivo escolhido.
+  const substitui = arquivos.some((f) => (f.name.toLowerCase().endsWith(".pdf") ? a.nota?.pdf_id : a.nota?.xml_id));
+  const motivoOk = !substitui || (motivo && (motivo !== "OUTRO" || detalhe.trim().length >= 10));
+
+  useEffect(() => {
+    if (a.nota) portal.motivosSubstituicao().then(setMotivos).catch(() => setMotivos([]));
+  }, [a.nota]);
 
   useEffect(() => {
     const esc = (e: KeyboardEvent) => e.key === "Escape" && onFechar();
@@ -71,7 +81,7 @@ function EnviarNota({ a, onFechar, onEnviada }: { a: AbastecimentoPosto; onFecha
   const enviar = async () => {
     setEnviando(true);
     try {
-      const n = await portal.enviarNota(a.id, arquivos);
+      const n = await portal.enviarNota(a.id, arquivos, substitui ? { codigo: motivo, detalhe: detalhe.trim() || undefined } : undefined);
       if (n.avisos.length) toast(`Nota recebida com aviso: ${n.avisos.join(" ")}`, { icon: "⚠️", duration: 8000 });
       else toast.success(n.numero ? `NF ${n.numero} recebida.` : "Nota recebida.");
       window.dispatchEvent(new Event("posto:nota-enviada"));
@@ -90,7 +100,7 @@ function EnviarNota({ a, onFechar, onEnviada }: { a: AbastecimentoPosto; onFecha
         <div className="flex items-start justify-between gap-3 border-b border-surface-border px-5 py-4">
           <div>
             <h2 className="text-lg font-semibold text-text-title">{a.nota ? "Substituir nota fiscal" : "Enviar nota fiscal"}</h2>
-            <p className="text-body-sm text-text-subtle">{a.placa} · {dataHora(a.data)}</p>
+            <p className="text-body-sm text-text-subtle">{a.numero ? `${a.numero} · ` : ""}{a.placa} · {dataHora(a.data)}</p>
           </div>
           <button className="btn btn-ghost btn-sm" aria-label="Fechar" onClick={onFechar}><X size={18} /></button>
         </div>
@@ -125,12 +135,28 @@ function EnviarNota({ a, onFechar, onEnviada }: { a: AbastecimentoPosto; onFecha
               ))}
             </ul>
           )}
-          {a.nota && <p className="text-meta text-text-subtle">O arquivo novo substitui o anterior do mesmo tipo. O histórico fica guardado.</p>}
+          {a.nota && <p className="text-meta text-text-subtle">O arquivo novo substitui o anterior do mesmo tipo. O histórico fica guardado e a Prefeitura vê o motivo.</p>}
+          {substitui && (
+            <div className="space-y-2 rounded-btn border border-[#F5C26B] bg-[#FFF8EB] p-3">
+              <label htmlFor="motivo-subst" className="block text-body-sm font-medium text-text-title">Motivo da substituição <span className="text-[#BA1A1A]">*</span></label>
+              <select id="motivo-subst" className="input" value={motivo} onChange={(e) => setMotivo(e.target.value)}>
+                <option value="">Selecione…</option>
+                {motivos.map((m) => <option key={m.codigo} value={m.codigo}>{m.descricao}</option>)}
+              </select>
+              <textarea
+                className="input min-h-[64px]"
+                maxLength={1000}
+                placeholder={motivo === "OUTRO" ? "Descreva o motivo (obrigatório)" : "Observação (opcional)"}
+                value={detalhe}
+                onChange={(e) => setDetalhe(e.target.value)}
+              />
+            </div>
+          )}
         </div>
         <div className="flex justify-end gap-2 border-t border-surface-border px-5 py-3">
           <button className="btn btn-ghost" onClick={onFechar}>Cancelar</button>
-          <button className="btn btn-primary" disabled={!arquivos.length || enviando} onClick={enviar}>
-            <Upload size={16} /> {enviando ? "Enviando…" : "Enviar nota"}
+          <button className="btn btn-primary" disabled={!arquivos.length || enviando || !motivoOk} onClick={enviar}>
+            <Upload size={16} /> {enviando ? "Enviando…" : substitui ? "Substituir nota" : "Enviar nota"}
           </button>
         </div>
       </div>
@@ -146,6 +172,7 @@ function Detalhe({ a, onFechar, onEnviar }: { a: AbastecimentoPosto; onFechar: (
   }, [onFechar]);
   const baixar = (id: string, nome: string) => portal.baixarNota(a.id, id, nome).catch((e) => toast.error((e as Error).message));
   const campos: [string, React.ReactNode][] = [
+    ["Número", a.numero ?? "—"],
     ["Data e hora", dataHora(a.data)],
     ["Veículo", <>{a.placa} <span className="text-text-subtle">· {veiculo(a)}</span></>],
     ["Motorista", a.motorista ?? "—"],
@@ -184,6 +211,7 @@ function Detalhe({ a, onFechar, onEnviar }: { a: AbastecimentoPosto; onFechar: (
               <div className="space-y-2 text-body-sm">
                 {n.valor != null && <p className="text-text-body">Valor na nota: <strong>{brl(n.valor)}</strong></p>}
                 {n.chave && <p className="break-all text-meta text-text-subtle">Chave {n.chave}</p>}
+                {n.substituida && <p className="text-meta text-text-subtle">Nota substituída · {n.motivo_substituicao}</p>}
                 {n.avisos.map((v) => (
                   <p key={v} className="flex gap-1.5 rounded-btn bg-[#FFF4D6] px-2 py-1 text-meta text-[#805600]"><AlertTriangle size={14} className="shrink-0" />{v}</p>
                 ))}
@@ -235,7 +263,7 @@ export default function AbastecimentosPosto() {
     const t = busca.trim().toLowerCase();
     if (!t) return lista;
     return lista.filter((a) =>
-      [a.placa, a.marca, a.modelo, a.motorista, a.combustivel, a.secretaria, a.nota?.numero].some((v) => v?.toLowerCase().includes(t)),
+      [a.numero, a.placa, a.marca, a.modelo, a.motorista, a.combustivel, a.secretaria, a.nota?.numero].some((v) => v?.toLowerCase().includes(t)),
     );
   }, [lista, busca]);
 
@@ -265,8 +293,8 @@ export default function AbastecimentosPosto() {
   const exportar = () =>
     baixarCsv(
       `abastecimentos-${filtro === "PENDENTE" ? "sem-nota" : `${inicio}-a-${fim}`}.csv`,
-      ["Data", "Placa", "Marca", "Modelo", "Motorista", "Secretaria", "Combustível", "Litros", "Preço/L", "Valor", "Nota fiscal"],
-      filtrada.map((a) => [dataHora(a.data), a.placa, a.marca, a.modelo, a.motorista, a.secretaria, nomeProprio(a.combustivel), a.litros,
+      ["Número", "Data", "Placa", "Marca", "Modelo", "Motorista", "Secretaria", "Combustível", "Litros", "Preço/L", "Valor", "Nota fiscal"],
+      filtrada.map((a) => [a.numero, dataHora(a.data), a.placa, a.marca, a.modelo, a.motorista, a.secretaria, nomeProprio(a.combustivel), a.litros,
         a.preco_litro, a.valor, a.nota ? (a.nota.numero ?? "PDF") : "Sem nota"]),
     );
 
@@ -290,7 +318,10 @@ export default function AbastecimentosPosto() {
 
   const linha = (a: AbastecimentoPosto) => (
     <tr key={a.id} onClick={() => setAberto(a)} className="cursor-pointer border-b border-surface-border transition last:border-0 hover:bg-[#F9FAFB]">
-      <td className="whitespace-nowrap px-4 py-3 text-text-body">{dataHora(a.data)}</td>
+      <td className="whitespace-nowrap px-4 py-3 text-text-body">
+        {dataHora(a.data)}
+        {a.numero && <p className="font-mono text-meta text-text-subtle">{a.numero}</p>}
+      </td>
       <td className="py-3">
         <div className="flex items-center gap-2">
           <Car className="h-4 w-4 shrink-0 text-text-subtle" />
@@ -361,7 +392,7 @@ export default function AbastecimentosPosto() {
         <div className="flex flex-wrap items-center gap-3">
           <div className="relative min-w-[220px] flex-1">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-text-subtle" />
-            <input className="input !pl-9 !pr-9" placeholder="Buscar por placa, modelo, motorista, secretaria, nº da nota…" value={busca} onChange={(e) => setBusca(e.target.value)} />
+            <input className="input !pl-9 !pr-9" placeholder="Buscar por nº do abastecimento, placa, modelo, motorista, nº da nota…" value={busca} onChange={(e) => setBusca(e.target.value)} />
             {busca && (
               <button type="button" aria-label="Limpar busca" onClick={() => setBusca("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-subtle hover:text-text-title">
                 <X className="h-4 w-4" />
@@ -393,6 +424,7 @@ export default function AbastecimentosPosto() {
                   <div>
                     <p className="font-semibold text-text-title">{a.placa}</p>
                     <p className="text-meta text-text-subtle">{veiculo(a)}</p>
+                    {a.numero && <p className="font-mono text-meta text-text-subtle">{a.numero}</p>}
                   </div>
                   <p className="text-right font-semibold tabular-nums text-text-title">{brl(a.valor)}</p>
                 </div>

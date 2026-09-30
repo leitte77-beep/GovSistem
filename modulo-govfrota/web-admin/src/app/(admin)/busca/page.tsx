@@ -100,8 +100,8 @@ export default function BuscaPage() {
                 <ul className="divide-y divide-surface-border rounded-card border border-surface-border bg-white">
                   {resultado.abastecimentos!.map((a) => (
                     <li key={a.id} className="px-4 py-3 text-body-sm">
-                      <Link href={`/abastecimentos/${a.id}`} className="font-medium text-[#1D4ED8] hover:underline">NF {a.numero_nf || "—"}</Link>
-                      <span className="text-meta text-text-subtle"> · {a.placa} · {a.litros.toLocaleString("pt-BR")} L</span>
+                      <Link href={`/abastecimentos/${a.id}`} className="font-medium text-[#1D4ED8] hover:underline">{a.numero ?? "Abastecimento"}</Link>
+                      <span className="text-meta text-text-subtle"> · NF {a.numero_nf || "—"} · {a.placa} · {a.litros.toLocaleString("pt-BR")} L</span>
                     </li>
                   ))}
                 </ul>

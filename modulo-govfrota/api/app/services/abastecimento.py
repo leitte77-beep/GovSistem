@@ -23,7 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timezone import ensure_aware, to_display
-from app.models.abastecimento import Abastecimento
+from app.models.abastecimento import Abastecimento, NumeracaoAbastecimento
 from app.models.auditoria import Notificacao
 from app.models.combustivel import Combustivel, Fornecedor
 from app.models.configuracoes import ConfiguracaoGovFrota
@@ -53,6 +53,28 @@ ALERTAS = {
 
 # Dois abastecimentos de combustível do mesmo veículo em menos que isso pedem conferência.
 INTERVALO_MINIMO = timedelta(hours=3)
+
+
+async def proximo_numero(db: AsyncSession, organization_id: uuid.UUID, quando: datetime) -> tuple[int, int]:
+    """(ano, sequência) do próximo abastecimento da organização.
+
+    Upsert com trava na linha (org, ano): simultâneos nunca repetem número.
+    O gatilho do PostgreSQL (migration 020) faz o mesmo se o INSERT vier sem número.
+    """
+    if db.get_bind().dialect.name == "postgresql":
+        from sqlalchemy.dialects.postgresql import insert
+    else:
+        from sqlalchemy.dialects.sqlite import insert
+    ano = to_display(ensure_aware(quando)).year
+    stmt = (
+        insert(NumeracaoAbastecimento)
+        .values(organization_id=organization_id, ano=ano, ultimo=1)
+        .on_conflict_do_update(
+            index_elements=["organization_id", "ano"], set_={"ultimo": NumeracaoAbastecimento.ultimo + 1}
+        )
+        .returning(NumeracaoAbastecimento.ultimo)
+    )
+    return ano, int((await db.execute(stmt)).scalar_one())
 
 
 async def get_configuracoes(db: AsyncSession, organization_id: uuid.UUID) -> ConfiguracaoGovFrota:
@@ -519,8 +541,11 @@ async def registrar_abastecimento(
                     f"({Decimal(str(media_litros)).quantize(Decimal('0.1'))} L)."
                 )
 
+    numero_ano, numero_seq = await proximo_numero(db, organization_id, agora)
     abastecimento = Abastecimento(
         organization_id=organization_id,
+        numero_ano=numero_ano,
+        numero_seq=numero_seq,
         veiculo_id=veiculo.id,
         motorista_id=motorista_id,
         modalidade=modalidade,

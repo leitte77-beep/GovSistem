@@ -1,13 +1,13 @@
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from sqlalchemy import false, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import escopo_unidades, get_current_user, require_permission
 from app.core.database import get_db
 from app.core.permissions import Perm
-from app.models.abastecimento import Abastecimento
+from app.models.abastecimento import Abastecimento, filtro_numero
 from app.models.auth_models import User
 from app.models.auditoria import Auditoria, Notificacao
 from app.models.combustivel import Combustivel, Fornecedor, Tanque
@@ -82,13 +82,16 @@ async def busca_global(
             .join(Veiculo, Veiculo.id == Abastecimento.veiculo_id)
             .where(
                 Abastecimento.organization_id == user.organization_id,
-                (Abastecimento.numero_nf.ilike(like)) | (Abastecimento.chave_nfe.ilike(like)),
+                (Abastecimento.numero_nf.ilike(like))
+                | (Abastecimento.chave_nfe.ilike(like))
+                | (filtro_numero(q) if filtro_numero(q) is not None else false()),
             )
+            .order_by(Abastecimento.data_abastecimento.desc())
             .limit(10)
         )
     ).all()
     resultados["abastecimentos"] = [
-        {"id": str(a.id), "numero_nf": a.numero_nf, "placa": placa, "litros": float(a.quantidade_litros)}
+        {"id": str(a.id), "numero": a.numero, "numero_nf": a.numero_nf, "placa": placa, "litros": float(a.quantidade_litros)}
         for a, placa in abastecimentos
     ]
 
