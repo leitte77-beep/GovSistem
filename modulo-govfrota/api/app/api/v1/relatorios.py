@@ -9,6 +9,7 @@ from fastapi.responses import Response, StreamingResponse
 from sqlalchemy import func as sa_func
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.auth import filtro_escopo, get_current_user, require_permission
 from app.core.database import get_db
@@ -554,7 +555,9 @@ async def relatorio_estoque(
     """Estoque atual por tanque + entradas do período."""
     tanques = (
         await db.execute(
-            select(Tanque).where(
+            select(Tanque)
+            .options(selectinload(Tanque.combustivel))
+            .where(
                 Tanque.organization_id == user.organization_id,
                 Tanque.deleted_at.is_(None),
             )

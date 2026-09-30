@@ -548,6 +548,22 @@ class TestExportacao:
         assert body["identificacao"]["placa"] == frota["veiculo"].placa
         assert "indicadores" in body
 
+    async def test_relatorio_estoque_json_e_xlsx(self, client, make_tenant, setup_frota):
+        """Regressão: o combustível do tanque deve vir eager-loaded (sem MissingGreenlet)."""
+        tenant, _ = await self._setup_dados(client, make_tenant, setup_frota)
+        resp = await client.get("/api/govfrota/relatorios/estoque", headers=tenant["headers"])
+        assert resp.status_code == 200, resp.text
+        body = resp.json()
+        assert body["tanques"], "esperava ao menos um tanque"
+        assert body["tanques"][0]["combustivel"], "combustível do tanque não carregado"
+        resp = await client.get("/api/govfrota/relatorios/estoque?formato=xlsx", headers=tenant["headers"])
+        assert resp.status_code == 200, resp.text
+
+    async def test_relatorio_movimentacoes_json(self, client, make_tenant, setup_frota):
+        tenant, _ = await self._setup_dados(client, make_tenant, setup_frota)
+        resp = await client.get("/api/govfrota/relatorios/movimentacoes", headers=tenant["headers"])
+        assert resp.status_code == 200, resp.text
+
 
 # ── CNH: alerta vs bloqueio ───────────────────────────────────────────────
 
