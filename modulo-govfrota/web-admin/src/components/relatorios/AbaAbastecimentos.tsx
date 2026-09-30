@@ -13,6 +13,7 @@ export type FiltrosAbastecimento = {
   fornecedor_id: string;
   combustivel_id: string;
   situacao_nota: string;
+  agrupar_por: string;
 };
 
 export const FILTROS_VAZIOS: FiltrosAbastecimento = {
@@ -22,7 +23,17 @@ export const FILTROS_VAZIOS: FiltrosAbastecimento = {
   fornecedor_id: "",
   combustivel_id: "",
   situacao_nota: "",
+  agrupar_por: "",
 };
+
+const AGRUPAR: Opcao[] = [
+  { id: "secretaria", nome: "Secretaria" },
+  { id: "veiculo", nome: "Veículo" },
+  { id: "motorista", nome: "Motorista" },
+  { id: "posto", nome: "Posto / tanque" },
+  { id: "combustivel", nome: "Combustível" },
+  { id: "dia", nome: "Dia" },
+];
 
 const LIMITE_TELA = 500;
 
@@ -109,12 +120,12 @@ export function AbaAbastecimentos({ dataInicio, dataFim, filtros, setFiltros, pu
   }, [rel]);
 
   const muda = (campo: keyof FiltrosAbastecimento) => (v: string) => setFiltros({ ...filtros, [campo]: v });
-  const algumFiltro = Object.values(filtros).some(Boolean);
+  const algumFiltro = Object.entries(filtros).some(([k, v]) => k !== "agrupar_por" && v);
   const itens: Item[] = (rel?.itens ?? []).slice(0, LIMITE_TELA);
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 rounded-card border border-surface-border bg-white p-4 shadow-card md:grid-cols-3 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 rounded-card border border-surface-border bg-white p-4 shadow-card md:grid-cols-4 xl:grid-cols-7">
         <Filtro rotulo={publico ? "Secretaria" : "Centro de custo"} valor={filtros.unidade_id} onChange={muda("unidade_id")} opcoes={opcoes.unidades} todos="Todas" />
         <Filtro rotulo="Veículo" valor={filtros.veiculo_id} onChange={muda("veiculo_id")} opcoes={opcoes.veiculos} />
         <Filtro rotulo="Motorista" valor={filtros.motorista_id} onChange={muda("motorista_id")} opcoes={opcoes.motoristas} />
@@ -131,8 +142,15 @@ export function AbaAbastecimentos({ dataInicio, dataFim, filtros, setFiltros, pu
             { id: "SUBSTITUIDA", nome: "Substituídas" },
           ]}
         />
+        <Filtro
+          rotulo="Agrupar por"
+          valor={filtros.agrupar_por}
+          onChange={muda("agrupar_por")}
+          todos="Sem agrupamento"
+          opcoes={AGRUPAR.map((o) => (o.id === "secretaria" && !publico ? { ...o, nome: "Centro de custo" } : o))}
+        />
         {algumFiltro && (
-          <button className="btn btn-ghost btn-sm col-span-full justify-self-start" onClick={() => setFiltros(FILTROS_VAZIOS)}>
+          <button className="btn btn-ghost btn-sm col-span-full justify-self-start" onClick={() => setFiltros({ ...FILTROS_VAZIOS, agrupar_por: filtros.agrupar_por })}>
             <FilterX size={14} /> Limpar filtros
           </button>
         )}
@@ -153,6 +171,55 @@ export function AbaAbastecimentos({ dataInicio, dataFim, filtros, setFiltros, pu
               <p className="text-lg font-semibold tabular-nums text-text-title">{v}</p>
             </div>
           ))}
+        </div>
+      )}
+
+      {rel?.grupos && rel.grupos.length > 0 && (
+        <div className="overflow-x-auto rounded-card border border-surface-border bg-white shadow-card">
+          <table className="w-full min-w-[800px] text-body-sm">
+            <thead>
+              <tr className="border-b border-surface-border bg-surface-bg text-left text-meta text-text-subtle">
+                <th className="px-4 py-3">{AGRUPAR.find((a) => a.id === filtros.agrupar_por)?.nome}</th>
+                <th className="px-4 py-3 text-right">Abastecimentos</th>
+                <th className="px-4 py-3 text-right">Veículos</th>
+                <th className="px-4 py-3 text-right">Litros</th>
+                <th className="px-4 py-3 text-right">Preço médio/L</th>
+                <th className="px-4 py-3 text-right">Total</th>
+                <th className="px-4 py-3">Participação</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rel.grupos.map((g) => (
+                <tr key={g.nome} className="border-b border-surface-border last:border-0">
+                  <td className="px-4 py-2 font-medium">{g.nome}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{num(g.abastecimentos, 0)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{num(g.veiculos, 0)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{num(g.litros)}</td>
+                  <td className="px-4 py-2 text-right tabular-nums">{reais(g.preco_medio)}</td>
+                  <td className="px-4 py-2 text-right font-medium tabular-nums">{reais(g.total)}</td>
+                  <td className="px-4 py-2">
+                    <div className="flex items-center gap-2">
+                      <div className="h-2 w-24 overflow-hidden rounded-full bg-surface-bg">
+                        <div className="h-full bg-[#1D4ED8]" style={{ width: `${Math.min(g.participacao_pct, 100)}%` }} />
+                      </div>
+                      <span className="text-meta tabular-nums text-text-subtle">{num(g.participacao_pct, 1)}%</span>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot>
+              <tr className="border-t border-surface-border bg-surface-bg font-semibold">
+                <td className="px-4 py-3">Total</td>
+                <td className="px-4 py-3 text-right tabular-nums">{num(rel.total_registros, 0)}</td>
+                <td className="px-4 py-3 text-right tabular-nums">{num(resumo.veiculos, 0)}</td>
+                <td className="px-4 py-3 text-right tabular-nums">{num(rel.total_litros)}</td>
+                <td className="px-4 py-3 text-right tabular-nums">{reais(rel.preco_medio ?? resumo.precoMedio)}</td>
+                <td className="px-4 py-3 text-right tabular-nums">{reais(rel.total_gasto)}</td>
+                <td className="px-4 py-3" />
+              </tr>
+            </tfoot>
+          </table>
         </div>
       )}
 

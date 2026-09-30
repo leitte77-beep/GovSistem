@@ -1424,10 +1424,23 @@ export interface CNHItem {
   dias_restantes: number;
   situacao?: string;
 }
+export interface GrupoAbastecimentos {
+  nome: string;
+  abastecimentos: number;
+  veiculos: number;
+  litros: number;
+  preco_medio: number | null;
+  total: number;
+  participacao_pct: number;
+}
+
 export interface RelatorioAbastecimentos {
   total_registros: number;
   total_litros: number;
   total_gasto: number;
+  preco_medio?: number | null;
+  /** Só quando `agrupar_por` foi pedido. */
+  grupos?: GrupoAbastecimentos[] | null;
   itens: {
     id: string;
     /** AB-2026/000123 */

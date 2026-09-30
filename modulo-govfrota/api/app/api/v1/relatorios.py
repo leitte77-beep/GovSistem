@@ -27,6 +27,8 @@ from app.models.unidade import Unidade
 from app.models.veiculo import Veiculo
 from app.services.notas_abastecimento import notas_ativas
 from app.services.exporters import (
+    formatar_celula,
+    get_organizacao_meta,
     RelatorioMeta,
     build_pdf,
     build_xlsx,
@@ -48,12 +50,13 @@ def _formato_response(
     totals: list | None = None,
     sections: list | None = None,
     usuario: str = "-",
+    aba_resumo: tuple | None = None,
 ) -> Response:
     """Devolve JSON/XLSX/PDF conforme `formato`."""
     if formato == "xlsx":
         data = build_xlsx(
             meta, headers, rows, currency_columns=currency_columns,
-            date_columns=date_columns, totals=totals,
+            date_columns=date_columns, totals=totals, aba_resumo=aba_resumo,
         )
         media = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     elif formato == "pdf":
@@ -94,6 +97,62 @@ def _parse_data(valor: str | None, fim: bool = False) -> datetime | None:
     return datetime.combine(d, datetime.min.time()).replace(tzinfo=timezone.utc)
 
 
+# chave -> (rótulo, campo do item usado para agrupar)
+AGRUPAMENTOS = {
+    "secretaria": ("Secretaria", "unidade"),
+    "veiculo": ("Veículo", "placa"),
+    "motorista": ("Motorista", "motorista"),
+    "posto": ("Posto / tanque", "local"),
+    "combustivel": ("Combustível", "combustivel"),
+    "dia": ("Dia", "dia"),
+}
+
+
+def _preco_medio(itens: list[dict]) -> float | None:
+    com = [i for i in itens if i["custo_total"]]
+    litros = sum(i["litros"] for i in com)
+    return round(sum(i["custo_total"] for i in com) / litros, 4) if litros else None
+
+
+def _agrupar(dados: list[dict], agrupar_por: str) -> list[dict]:
+    """Subtotais por grupo, do maior gasto para o menor (dia: cronológico)."""
+    campo = AGRUPAMENTOS[agrupar_por][1]
+    total = sum(d["custo_total"] or 0 for d in dados) or 0
+    grupos: dict[str, list[dict]] = {}
+    for d in dados:
+        if campo == "dia":
+            chave = to_display(datetime.fromisoformat(d["data"])).strftime("%d/%m/%Y")
+        else:
+            chave = d.get(campo) or "Não informado"
+        grupos.setdefault(chave, []).append(d)
+    saida = []
+    for nome, itens in grupos.items():
+        valor = sum(i["custo_total"] or 0 for i in itens)
+        saida.append({
+            "nome": nome,
+            "abastecimentos": len(itens),
+            "veiculos": len({i["placa"] for i in itens}),
+            "litros": round(sum(i["litros"] for i in itens), 2),
+            "preco_medio": _preco_medio(itens),
+            "total": round(valor, 2),
+            "participacao_pct": round(valor * 100 / total, 1) if total else 0.0,
+            "itens": itens,
+        })
+    if campo == "dia":
+        saida.sort(key=lambda g: datetime.strptime(g["nome"], "%d/%m/%Y"))
+    else:
+        saida.sort(key=lambda g: (-g["total"], g["nome"]))
+    return saida
+
+
+def _periodo_br(inicio: str | None, fim: str | None) -> str:
+    fmt = lambda v: date.fromisoformat(v).strftime("%d/%m/%Y") if v else None  # noqa: E731
+    try:
+        return f"{fmt(inicio) or 'início'} a {fmt(fim) or 'hoje'}"
+    except ValueError:
+        return f"{inicio or 'início'} a {fim or 'hoje'}"
+
+
 @router.get("/abastecimentos")
 async def relatorio_abastecimentos(
     formato: str = "json",
@@ -107,13 +166,18 @@ async def relatorio_abastecimentos(
     data_inicio: str | None = None,
     data_fim: str | None = None,
     situacao_nota: str | None = None,
+    agrupar_por: str | None = None,
     user: User = Depends(require_permission(Perm.REPORTS_VIEW, escopo=True)),
     db: AsyncSession = Depends(get_db),
 ):
     """Abastecimentos por período com filtros combináveis (§32-§33).
 
     `situacao_nota` (só posto): COM_NOTA | SEM_NOTA | SUBSTITUIDA.
+    `agrupar_por`: secretaria | veiculo | motorista | posto | combustivel | dia —
+    devolve `grupos` com subtotais; no PDF/Excel vira resumo + seções.
     """
+    if agrupar_por and agrupar_por not in AGRUPAMENTOS:
+        raise HTTPException(status_code=422, detail="Agrupamento inválido.")
     conditions = [
         Abastecimento.organization_id == user.organization_id,
         filtro_escopo(user, Abastecimento.unidade_id),
@@ -220,6 +284,7 @@ async def relatorio_abastecimentos(
 
     total_litros = sum(d["litros"] for d in dados)
     total_custo = sum(d["custo_total"] or 0 for d in dados)
+    grupos = _agrupar(dados, agrupar_por) if agrupar_por else None
 
     if formato == "csv":
         return _csv_response(
@@ -236,11 +301,13 @@ async def relatorio_abastecimentos(
             ],
         )
     if formato in ("xlsx", "pdf"):
-        org_nome = await get_organizacao_nome(db, user.organization_id)
+        org_nome, org_cnpj, org_logo = await get_organizacao_meta(db, user.organization_id)
         meta = RelatorioMeta(
             titulo="Relatório de Abastecimentos",
             organizacao=org_nome,
-            periodo=f"{data_inicio or 'início'} a {data_fim or 'hoje'}",
+            cnpj=org_cnpj,
+            logo=org_logo if formato == "pdf" else None,
+            periodo=_periodo_br(data_inicio, data_fim),
             filtros=[
                 f"Veículo: {v.placa}" if veiculo_id and (v := await db.get(Veiculo, veiculo_id)) else None,
                 f"Motorista: {m.nome}" if motorista_id and (m := await db.get(Motorista, motorista_id)) else None,
@@ -249,27 +316,74 @@ async def relatorio_abastecimentos(
                 f"Posto: {f.nome_fantasia or f.razao_social}" if fornecedor_id and (f := await db.get(Fornecedor, fornecedor_id)) else None,
                 f"Secretaria/unidade: {u.nome}" if unidade_id and (u := await db.get(Unidade, unidade_id)) else None,
                 {"COM_NOTA": "Nota: com nota", "SEM_NOTA": "Nota: sem nota", "SUBSTITUIDA": "Nota: substituídas"}.get(situacao_nota or ""),
+                f"Agrupado por: {AGRUPAMENTOS[agrupar_por][0].lower()}" if agrupar_por else None,
             ],
         )
-        rows = [
-            [
+        def _linha(d: dict) -> list:
+            return [
                 d["numero"] or "-", to_display(datetime.fromisoformat(d["data"])).date(),
                 d["placa"], d["unidade"] or "-", d["motorista"] or "-", d["combustivel"], d["local"] or "-",
-                d["litros"], _medida(d), d["preco_litro"] or 0,
-                d["numero_nf"] or "-", d["custo_total"] or 0,
+                d["litros"], _medida(d), d["preco_litro"],
+                d["numero_nf"] or "-", d["custo_total"],
             ]
-            for d in dados
+
+        rows = [_linha(d) for d in dados]
+        preco_medio = _preco_medio(dados)
+        cabecalho_grupos = [AGRUPAMENTOS[agrupar_por][0] if agrupar_por else "", "Abastecimentos", "Veículos", "Litros", "Preço médio/L (R$)", "Total (R$)", "Participação (%)"]
+        linhas_grupos = [
+            [g["nome"], g["abastecimentos"], g["veiculos"], g["litros"], g["preco_medio"], g["total"], g["participacao_pct"]]
+            for g in (grupos or [])
         ]
+        if grupos:
+            linhas_grupos.append(["Total", len(dados), len({d["placa"] for d in dados}), round(total_litros, 2), preco_medio, round(total_custo, 2), 100.0])
+        if formato == "pdf":
+            vazio = [None] * 12
+            data = build_pdf(
+                meta,
+                ["Número", "Data", "Placa", "Secretaria", "Motorista", "Combustível", "Local", "Litros", "KM/Horas", "Preço/L", "NF", "Custo"],
+                rows,
+                usuario=user.name,
+                currency_columns={9, 11},
+                paisagem=True,
+                larguras=[11, 8, 7, 12, 13, 10, 13, 6, 8, 7, 6, 8],
+                totais=["Total geral", None, None, None, None, None, None, round(total_litros, 2), None, preco_medio, None, round(total_custo, 2)],
+                resumo=[
+                    ("Total gasto", formatar_celula(total_custo, True)),
+                    ("Litros", formatar_celula(round(total_litros, 2)) + " L"),
+                    ("Preço médio/L", formatar_celula(preco_medio, True) if preco_medio else "-"),
+                    ("Abastecimentos", formatar_celula(len(dados))),
+                    ("Veículos", formatar_celula(len({d["placa"] for d in dados}))),
+                    ("Sem nota (posto)", formatar_celula(sum(1 for d in dados if d["situacao_nota"] == "PENDENTE"))),
+                ],
+                resumo_grupos=(cabecalho_grupos, linhas_grupos, {4, 5}) if grupos else None,
+                grupos=[
+                    (
+                        f"{g['nome']} — {g['abastecimentos']} abastecimento(s)",
+                        [_linha(d) for d in g["itens"]],
+                        ["Subtotal", *vazio[1:7], g["litros"], None, g["preco_medio"], None, g["total"]],
+                    )
+                    for g in grupos
+                ] if grupos else None,
+                assinaturas=["Responsável pela emissão", "Gestor(a) da frota"],
+            )
+            return Response(content=data, media_type="application/pdf",
+                            headers={"Content-Disposition": 'attachment; filename="abastecimentos.pdf"'})
         return _formato_response(
             formato, "abastecimentos.xlsx", meta,
             ["Número", "Data", "Placa", "Secretaria", "Motorista", "Combustível", "Local", "Litros (L)", "KM/Horas",
              "Preço/L (R$)", "NF", "Custo (R$)"],
             rows,
             currency_columns={9, 11}, date_columns={1},
-            totals=[None, None, None, None, None, None, None, total_litros, None, None, None, total_custo],
+            totals=["Total", None, None, None, None, None, None, total_litros, None, None, None, total_custo],
+            aba_resumo=("Resumo", cabecalho_grupos, linhas_grupos, {4, 5}) if grupos else None,
             usuario=user.name,
         )
-    return {"total_registros": len(dados), "total_litros": round(total_litros, 2), "total_gasto": round(total_custo, 2), "itens": dados}
+    return {
+        "total_registros": len(dados), "total_litros": round(total_litros, 2), "total_gasto": round(total_custo, 2),
+        "preco_medio": _preco_medio(dados),
+        "grupos": [{k: v for k, v in g.items() if k != "itens"} for g in grupos] if grupos is not None else None,
+        "itens": dados,
+    }
 
 
 @router.get("/veiculos/consumo")

@@ -78,3 +78,28 @@ async def test_relatorio_mostra_nota_e_numero(client, _db, make_tenant, setup_fr
     for formato in ("csv", "xlsx", "pdf"):
         r = await client.get(url, params={"data_inicio": "2000-01-01", "formato": formato, "fornecedor_id": str(posto.id)}, headers=admin["headers"])
         assert r.status_code == 200, formato
+
+
+async def test_relatorio_agrupado_com_subtotais(client, _db, make_tenant, setup_frota):
+    admin, *_ = await _cenario(client, _db, make_tenant, setup_frota)
+    url = f"{API}/relatorios/abastecimentos"
+    base = {"data_inicio": "2000-01-01"}
+    rel = (await client.get(url, params={**base, "agrupar_por": "secretaria"}, headers=admin["headers"])).json()
+    grupos = rel["grupos"]
+    assert len(grupos) >= 2
+    assert sum(g["abastecimentos"] for g in grupos) == rel["total_registros"]
+    assert round(sum(g["total"] for g in grupos), 2) == rel["total_gasto"]
+    assert [g["total"] for g in grupos] == sorted((g["total"] for g in grupos), reverse=True)
+    assert "itens" not in grupos[0]
+
+    assert (await client.get(url, params={**base, "agrupar_por": "xyz"}, headers=admin["headers"])).status_code == 422
+    for agrup in ("veiculo", "dia", "posto"):
+        for formato in ("pdf", "xlsx"):
+            r = await client.get(url, params={**base, "agrupar_por": agrup, "formato": formato}, headers=admin["headers"])
+            assert r.status_code == 200, (agrup, formato)
+    r = await client.get(url, params={**base, "agrupar_por": "secretaria", "formato": "xlsx"}, headers=admin["headers"])
+    from openpyxl import load_workbook
+    import io
+
+    wb = load_workbook(io.BytesIO(r.content))
+    assert wb.sheetnames[0] == "Resumo"
