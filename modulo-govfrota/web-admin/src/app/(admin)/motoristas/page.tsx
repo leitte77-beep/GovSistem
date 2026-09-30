@@ -4,20 +4,24 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import {
+  AlertTriangle,
+  CheckCircle2,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
   ChevronsRight,
+  Download,
   Eye,
   KeyRound,
   Pencil,
   Plus,
   Search,
+  ShieldCheck,
   SlidersHorizontal,
+  UserCheck,
   Users,
   X,
-  CheckCircle2,
   XCircle,
 } from "lucide-react";
 import { api, Motorista, MotoristaListItem, Paginado } from "@/lib/api";
@@ -68,10 +72,20 @@ const ACESSO_OPCOES = [
   { valor: "BLOQUEADO", rotulo: "Bloqueado" },
 ];
 
+interface Stats {
+  total: number;
+  ativos: number;
+  validas: number;
+  aVencer: number;
+  bloqueados: number;
+  comAcesso: number;
+}
+
 export default function MotoristasPage() {
   const { hasPermission } = useAuth();
   const podeGerir = hasPermission("driver.manage");
   const [dados, setDados] = useState<Paginado<MotoristaListItem> | null>(null);
+  const [stats, setStats] = useState<Stats | null>(null);
   const [busca, setBusca] = useState("");
   const [buscaEfetiva, setBuscaEfetiva] = useState("");
   const [filtros, setFiltros] = useState<Filtros>(FILTROS_VAZIO);
@@ -95,6 +109,26 @@ export default function MotoristasPage() {
       if (buscaTimer.current) clearTimeout(buscaTimer.current);
     };
   }, [busca]);
+
+  const carregarStatss = useCallback(async () => {
+    try {
+      const d = await api.listMotoristas({ limit: 500, sort_by: "nome", order: "asc" });
+      const itens = d.itens;
+      setStats({
+        total: d.total,
+        ativos: itens.filter((m) => m.ativo).length,
+        validas: itens.filter((m) => situacaoCnh(m.cnh_validade) === "VALIDA").length,
+        aVencer: itens.filter((m) => {
+          const dias = diasRestantesCnh(m.cnh_validade);
+          return dias !== null && dias >= 0 && dias <= 90;
+        }).length,
+        bloqueados: itens.filter((m) => m.acesso_bloqueado).length,
+        comAcesso: itens.filter((m) => m.acesso_login).length,
+      });
+    } catch {
+      setStats(null);
+    }
+  }, []);
 
   const carregar = useCallback(async () => {
     try {
@@ -120,6 +154,10 @@ export default function MotoristasPage() {
   useEffect(() => {
     carregar();
   }, [carregar]);
+
+  useEffect(() => {
+    carregarStatss();
+  }, [carregarStatss]);
 
   function ordenarPor(coluna: Sortable) {
     if (sortBy === coluna) setOrder((o) => (o === "asc" ? "desc" : "asc"));
@@ -182,6 +220,7 @@ export default function MotoristasPage() {
       await api.updateMotorista(m.id, { ...completo, ativo: !m.ativo });
       toast.success(m.ativo ? "Motorista desativado." : "Motorista ativado.");
       carregar();
+      carregarStatss();
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -197,6 +236,7 @@ export default function MotoristasPage() {
       }
       toast.success(m.acesso_bloqueado ? "Acesso desbloqueado." : "Acesso bloqueado.");
       carregar();
+      carregarStatss();
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -227,11 +267,21 @@ export default function MotoristasPage() {
       }
       return lista;
     },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [podeGerir]
   );
 
   const inicio = total === 0 ? 0 : (pagina - 1) * limit + 1;
   const fim = Math.min(pagina * limit, total);
+
+  const pctAtivos = stats && stats.total > 0 ? Math.round((stats.ativos / stats.total) * 100) : 0;
+
+  const visualizacoes = [
+    { chave: "todos", label: "Todos", count: stats?.total ?? dados?.total, ativo: !filtros.ativo && !filtros.situacao_cnh && !filtros.acesso_status && !filtros.cnh_categoria, onClick: limparFiltros },
+    { chave: "ativos", label: "Ativos / Regulares", count: stats?.ativos, ativo: filtros.ativo === "true", onClick: () => { setFiltros({ ...FILTROS_VAZIO, ativo: "true" }); setPagina(1); } },
+    { chave: "vencer", label: "CNH a vencer (60d)", count: stats?.aVencer, ativo: filtros.situacao_cnh === "A_VENCER_60", onClick: () => { setFiltros({ ...FILTROS_VAZIO, situacao_cnh: "A_VENCER_60" }); setPagina(1); } },
+    { chave: "bloqueados", label: "Bloqueados", count: stats?.bloqueados, ativo: filtros.acesso_status === "BLOQUEADO", onClick: () => { setFiltros({ ...FILTROS_VAZIO, acesso_status: "BLOQUEADO" }); setPagina(1); } },
+  ];
 
   return (
     <RequirePermission perms={["driver.manage", "vehicle.view"]}>
@@ -242,147 +292,164 @@ export default function MotoristasPage() {
           setEditando(null);
         }}
         motorista={editando}
-        onSalvo={carregar}
+        onSalvo={() => {
+          carregar();
+          carregarStatss();
+        }}
       />
 
       <div className="flex flex-col gap-6">
-        {/* Page Header */}
-        <div className="flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-end">
+        {/* Cabeçalho */}
+        <section className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
           <div>
-            <h1 className="text-3xl font-bold tracking-tight text-on-background">Motoristas</h1>
-            <p className="mt-1 text-[15px] text-on-surface-variant">
-              Gerencie motoristas, CNHs e níveis de acesso ao sistema.
+            <div className="mb-1 flex flex-wrap items-center gap-2">
+              <span className="rounded-pill border border-[#BFDBFE] bg-[#EFF6FF] px-2.5 py-0.5 text-[11px] font-semibold text-[#1D4ED8]">
+                Módulo Operacional • Exercício 2026
+              </span>
+              <span className="text-meta text-text-subtle">•</span>
+              <span className="text-meta font-medium text-text-subtle">Gestão de Pessoal e Condutores</span>
+            </div>
+            <h1 className="text-2xl font-extrabold tracking-tight text-text-title sm:text-3xl">Motoristas</h1>
+            <p className="mt-1 max-w-2xl text-body-sm text-text-subtle">
+              Gerencie motoristas, CNHs e níveis de acesso ao sistema de frotas públicas.
             </p>
           </div>
-          {podeGerir && (
-            <button
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-secondary px-5 py-2.5 text-sm font-medium text-white shadow-md shadow-secondary/20 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-lg hover:shadow-secondary/30"
-              onClick={() => {
-                setEditando(null);
-                setDrawerAberto(true);
-              }}
+          <div className="flex items-center gap-2.5">
+            <Link
+              href="/relatorios"
+              className="inline-flex items-center gap-2 rounded-xl border border-outline-variant bg-surface-card px-3.5 py-2 text-meta font-semibold text-text-body shadow-sm transition-colors hover:bg-surface-container-low"
             >
-              <Plus size={18} />
-              Novo motorista
-            </button>
-          )}
-        </div>
-
-        {/* Barra de busca + status + filtros */}
-        <div className="flex flex-col items-stretch justify-between gap-2 rounded-2xl border border-outline-variant/30 bg-surface-card p-2 shadow-sm md:flex-row md:items-center">
-          <div className="relative w-full md:flex-1 md:max-w-md">
-            <Search size={20} className="absolute left-4 top-1/2 -translate-y-1/2 text-on-surface-variant/60" />
-            <input
-              placeholder="Buscar por nome, CPF ou matrícula..."
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              className="w-full rounded-xl border-none bg-transparent py-3 pl-12 pr-4 text-sm text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:ring-0"
-            />
-          </div>
-          <div className="mx-2 hidden h-8 w-px bg-outline-variant/30 md:block" />
-          <div className="flex w-full items-center gap-2 p-1 md:w-auto">
-            <div className="relative w-full md:w-48">
-              <select
-                value={filtros.ativo}
-                onChange={(e) => aplicarFiltro("ativo", e.target.value)}
-                className="w-full cursor-pointer appearance-none rounded-xl border border-outline-variant/40 bg-surface-container-lowest py-2.5 pl-4 pr-10 text-sm text-on-surface shadow-sm transition-colors hover:border-outline-variant/80 focus:border-secondary/50 focus:outline-none focus:ring-1 focus:ring-secondary/50"
+              <Download size={16} className="text-text-subtle" /> Exportar Relatório
+            </Link>
+            {podeGerir && (
+              <button
+                className="inline-flex items-center gap-1.5 rounded-xl bg-primary px-4 py-2 text-meta font-semibold text-white shadow-sm transition-all hover:bg-primary-800 active:scale-[0.98]"
+                onClick={() => {
+                  setEditando(null);
+                  setDrawerAberto(true);
+                }}
               >
-                <option value="">Todos os status</option>
-                <option value="true">Ativo</option>
-                <option value="false">Inativo</option>
-              </select>
-              <ChevronDown
-                size={18}
-                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-on-surface-variant/70"
+                <Plus size={16} strokeWidth={2.5} /> Novo motorista
+              </button>
+            )}
+          </div>
+        </section>
+
+        {/* Indicadores */}
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Kpi titulo="Total de Motoristas" valor={stats?.total ?? total} sub={`${pctAtivos}% ativos`} tom="blue" icone={<Users size={18} />} />
+          <Kpi titulo="CNHs Válidas" valor={stats?.validas ?? "—"} sub="Em conformidade" tom="emerald" icone={<UserCheck size={18} />} />
+          <Kpi titulo="A Vencer (90 dias)" valor={stats?.aVencer ?? "—"} sub={stats?.aVencer ? "Requer atenção" : "Nenhum alerta crítico"} tom="amber" icone={<AlertTriangle size={18} />} alerta={(stats?.aVencer ?? 0) > 0} />
+          <Kpi titulo="Acesso ao App" valor={stats?.comAcesso ?? "—"} sub={stats?.bloqueados ? `${stats.bloqueados} bloqueado(s)` : "Sem bloqueios"} tom="indigo" icone={<ShieldCheck size={18} />} />
+        </section>
+
+        {/* Busca e filtros */}
+        <section className="space-y-3 rounded-2xl border border-outline-variant/50 bg-surface-card p-4 shadow-sm">
+          <div className="flex flex-col items-stretch justify-between gap-3 lg:flex-row lg:items-center">
+            <div className="relative flex-1">
+              <Search size={18} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-text-subtle" />
+              <input
+                placeholder="Buscar por nome, CPF ou matrícula…"
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                className="input !bg-surface-bg !pl-11 focus:!bg-surface-card"
               />
             </div>
-            <button
-              onClick={() => setMostrarFiltros((m) => !m)}
-              className="inline-flex w-full items-center justify-center gap-2 rounded-xl border border-outline-variant/40 bg-surface-container-lowest px-4 py-2.5 text-sm font-medium text-on-surface shadow-sm transition-colors hover:border-outline-variant/80 hover:bg-surface-container-low md:w-auto"
-            >
-              <SlidersHorizontal size={18} className="text-on-surface-variant" />
-              Filtros
-              <ChevronDown
-                size={14}
-                className={`transition-transform ${mostrarFiltros ? "rotate-180" : ""}`}
-              />
-              {chips.length > 0 && (
-                <span className="ml-1 flex h-5 w-5 items-center justify-center rounded-full bg-secondary text-[10px] text-white">
-                  {chips.length}
-                </span>
-              )}
-            </button>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <div className="relative min-w-[170px]">
+                <select
+                  value={filtros.ativo}
+                  onChange={(e) => aplicarFiltro("ativo", e.target.value)}
+                  className="input appearance-none pr-9 font-medium"
+                >
+                  <option value="">Todos os status</option>
+                  <option value="true">Ativos / Regulares</option>
+                  <option value="false">Inativos</option>
+                </select>
+                <ChevronDown size={18} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-text-subtle" />
+              </div>
+              <div className="relative hidden min-w-[150px] sm:block">
+                <select
+                  value={filtros.cnh_categoria}
+                  onChange={(e) => aplicarFiltro("cnh_categoria", e.target.value)}
+                  className="input appearance-none pr-9 font-medium"
+                >
+                  <option value="">Categorias CNH</option>
+                  {CATEGORIAS_CNH.map((c) => (
+                    <option key={c} value={c}>Cat. {c}</option>
+                  ))}
+                </select>
+                <ChevronDown size={18} className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-text-subtle" />
+              </div>
+              <button
+                onClick={() => setMostrarFiltros((m) => !m)}
+                className="inline-flex items-center gap-2 rounded-xl border border-outline-variant/50 bg-surface-container-low px-3.5 py-2 text-meta font-semibold text-text-body transition-colors hover:bg-surface-container"
+              >
+                <SlidersHorizontal size={16} className="text-text-subtle" /> Filtros
+                {chips.length > 0 && (
+                  <span className="rounded-pill bg-primary px-1.5 text-[10px] font-bold text-white">{chips.length}</span>
+                )}
+              </button>
+            </div>
           </div>
-        </div>
 
-        {/* Filtros expandidos */}
-        {mostrarFiltros && (
-          <div className="grid gap-3 rounded-2xl border border-outline-variant/30 bg-white p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-3">
-            <Label texto="Situação da CNH">
-              <select
-                className="input"
-                value={filtros.situacao_cnh}
-                onChange={(e) => aplicarFiltro("situacao_cnh", e.target.value)}
+          {/* Visualizações rápidas */}
+          <div className="flex flex-wrap items-center gap-1.5 border-t border-outline-variant/30 pt-3">
+            <span className="mr-1 text-[11px] font-medium text-text-subtle">Visualização:</span>
+            {visualizacoes.map((v) => (
+              <button
+                key={v.chave}
+                onClick={v.onClick}
+                className={`rounded-pill px-2.5 py-1 text-[11px] font-semibold transition-colors ${
+                  v.ativo ? "bg-[#0E1B2E] text-white shadow-sm" : "bg-[#F3F4F6] text-text-subtle hover:bg-surface-container"
+                }`}
               >
-                <option value="">Todas</option>
-                {SITUACAO_CNH_OPCOES.map((o) => (
-                  <option key={o.valor} value={o.valor}>
-                    {o.rotulo}
-                  </option>
-                ))}
-              </select>
-            </Label>
-            <Label texto="Situação do acesso">
-              <select
-                className="input"
-                value={filtros.acesso_status}
-                onChange={(e) => aplicarFiltro("acesso_status", e.target.value)}
-              >
-                <option value="">Todos</option>
-                {ACESSO_OPCOES.map((o) => (
-                  <option key={o.valor} value={o.valor}>
-                    {o.rotulo}
-                  </option>
-                ))}
-              </select>
-            </Label>
-            <Label texto="Categoria CNH">
-              <select
-                className="input"
-                value={filtros.cnh_categoria}
-                onChange={(e) => aplicarFiltro("cnh_categoria", e.target.value)}
-              >
-                <option value="">Todas</option>
-                {CATEGORIAS_CNH.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </Label>
+                {v.label}
+                {v.count != null && <span className="ml-1 opacity-80">({v.count})</span>}
+              </button>
+            ))}
           </div>
-        )}
+
+          {mostrarFiltros && (
+            <div className="grid gap-3 border-t border-outline-variant/30 pt-3 sm:grid-cols-2 lg:grid-cols-3">
+              <Label texto="Situação da CNH">
+                <select className="input" value={filtros.situacao_cnh} onChange={(e) => aplicarFiltro("situacao_cnh", e.target.value)}>
+                  <option value="">Todas</option>
+                  {SITUACAO_CNH_OPCOES.map((o) => (
+                    <option key={o.valor} value={o.valor}>{o.rotulo}</option>
+                  ))}
+                </select>
+              </Label>
+              <Label texto="Situação do acesso">
+                <select className="input" value={filtros.acesso_status} onChange={(e) => aplicarFiltro("acesso_status", e.target.value)}>
+                  <option value="">Todos</option>
+                  {ACESSO_OPCOES.map((o) => (
+                    <option key={o.valor} value={o.valor}>{o.rotulo}</option>
+                  ))}
+                </select>
+              </Label>
+              <Label texto="Categoria CNH">
+                <select className="input" value={filtros.cnh_categoria} onChange={(e) => aplicarFiltro("cnh_categoria", e.target.value)}>
+                  <option value="">Todas</option>
+                  {CATEGORIAS_CNH.map((c) => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </Label>
+            </div>
+          )}
+        </section>
 
         {/* Chips de filtros ativos */}
         {chips.length > 0 && (
           <div className="flex flex-wrap items-center gap-2">
             {chips.map((c) => (
-              <span
-                key={c.chave}
-                className="inline-flex items-center gap-1 rounded-full bg-primary-container px-3 py-1 text-meta font-medium text-[#1D5BD6]"
-              >
+              <span key={c.chave} className="inline-flex items-center gap-1 rounded-pill bg-[#EFF6FF] px-3 py-1 text-meta font-medium text-[#1D4ED8] ring-1 ring-inset ring-[#BFDBFE]">
                 {c.label}
-                <button onClick={() => removerChip(c.chave)} aria-label="Remover filtro">
-                  <X size={13} />
-                </button>
+                <button onClick={() => removerChip(c.chave)} aria-label="Remover filtro"><X size={13} /></button>
               </span>
             ))}
-            <button
-              className="text-meta font-medium text-[#1D5BD6] hover:underline"
-              onClick={limparFiltros}
-            >
-              Limpar filtros
-            </button>
+            <button className="text-meta font-semibold text-primary hover:underline" onClick={limparFiltros}>Limpar filtros</button>
           </div>
         )}
 
@@ -407,39 +474,17 @@ export default function MotoristasPage() {
 
         {/* Tabela desktop */}
         {dados && total > 0 && (
-          <div className="hidden w-full flex-col overflow-hidden rounded-2xl border border-outline-variant/40 bg-surface-card shadow-sm md:flex">
+          <div className="hidden w-full flex-col overflow-hidden rounded-2xl border border-outline-variant/50 bg-surface-card shadow-sm md:flex">
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[900px] text-left text-sm text-on-surface">
+              <table className="w-full min-w-[900px] text-left text-text-body">
                 <thead>
-                  <tr className="border-b border-outline-variant/40 bg-surface-container-lowest/80 text-xs font-semibold uppercase tracking-wider text-on-surface-variant">
-                    <Th
-                      className="w-[35%]"
-                      sortable="nome"
-                      sortBy={sortBy}
-                      order={order}
-                      onClick={() => ordenarPor("nome")}
-                    >
-                      Motorista
-                    </Th>
-                    <th className="px-6 py-5 font-semibold">CNH</th>
-                    <Th
-                      sortable="cnh_validade"
-                      sortBy={sortBy}
-                      order={order}
-                      onClick={() => ordenarPor("cnh_validade")}
-                    >
-                      Validade
-                    </Th>
-                    <th className="px-6 py-5 font-semibold">Acesso</th>
-                    <Th
-                      sortable="ativo"
-                      sortBy={sortBy}
-                      order={order}
-                      onClick={() => ordenarPor("ativo")}
-                    >
-                      Status
-                    </Th>
-                    <th className="px-6 py-5 text-center font-semibold w-[80px]">Ações</th>
+                  <tr className="border-b border-outline-variant/40 bg-[#F3F4F6] text-[11px] font-bold uppercase tracking-wider text-text-subtle">
+                    <Th className="w-[35%]" sortable="nome" sortBy={sortBy} order={order} onClick={() => ordenarPor("nome")}>Motorista</Th>
+                    <th className="px-4 py-3.5">CNH</th>
+                    <Th sortable="cnh_validade" sortBy={sortBy} order={order} onClick={() => ordenarPor("cnh_validade")}>Validade</Th>
+                    <th className="px-4 py-3.5">Acesso</th>
+                    <Th sortable="ativo" sortBy={sortBy} order={order} onClick={() => ordenarPor("ativo")}>Status</Th>
+                    <th className="w-[80px] px-5 py-3.5 text-center">Ações</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-outline-variant/20">
@@ -451,70 +496,30 @@ export default function MotoristasPage() {
             </div>
 
             {/* Paginação */}
-            <div className="flex flex-col items-center justify-between gap-4 border-t border-outline-variant/30 bg-surface-container-lowest/50 px-6 py-4 text-sm font-medium text-on-surface-variant sm:flex-row">
+            <div className="flex flex-col items-center justify-between gap-4 border-t border-outline-variant/30 bg-[#F9FAFB] px-5 py-4 text-body-sm text-text-subtle sm:flex-row">
               <span>
-                Mostrando {inicio}-{fim} de {total} motorista{total === 1 ? "" : "s"}
+                Mostrando <strong className="text-text-body">{inicio}-{fim}</strong> de <strong className="text-text-body">{total}</strong> motorista{total === 1 ? "" : "s"}
               </span>
-              <div className="flex items-center gap-6">
+              <div className="flex items-center gap-4">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs">Linhas por página:</span>
+                  <span className="text-meta">Linhas por página:</span>
                   <div className="relative">
                     <select
                       value={limit}
-                      onChange={(e) => {
-                        setLimit(Number(e.target.value));
-                        setPagina(1);
-                      }}
-                      className="cursor-pointer appearance-none rounded-lg border border-outline-variant/40 bg-surface-card py-1.5 pl-3 pr-8 text-sm text-on-surface shadow-sm transition-colors hover:border-outline-variant/80 focus:border-secondary focus:outline-none focus:ring-1 focus:ring-secondary/50"
+                      onChange={(e) => { setLimit(Number(e.target.value)); setPagina(1); }}
+                      className="cursor-pointer appearance-none rounded-lg border border-outline-variant/50 bg-surface-card py-1.5 pl-3 pr-8 text-body-sm text-text-body shadow-sm focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary/40"
                     >
-                      {LIMITES.map((l) => (
-                        <option key={l} value={l}>
-                          {l}
-                        </option>
-                      ))}
+                      {LIMITES.map((l) => <option key={l} value={l}>{l}</option>)}
                     </select>
-                    <ChevronDown
-                      size={16}
-                      className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant"
-                    />
+                    <ChevronDown size={16} className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-text-subtle" />
                   </div>
                 </div>
                 <div className="flex items-center gap-1.5">
-                  <button
-                    className="rounded-lg border border-outline-variant/30 p-1.5 text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface disabled:opacity-40"
-                    disabled={pagina <= 1}
-                    onClick={() => setPagina(1)}
-                    aria-label="Primeira página"
-                  >
-                    <ChevronsLeft size={18} />
-                  </button>
-                  <button
-                    className="rounded-lg border border-outline-variant/30 p-1.5 text-on-surface-variant transition-colors hover:bg-surface-container hover:text-on-surface disabled:opacity-40"
-                    disabled={pagina <= 1}
-                    onClick={() => setPagina((p) => Math.max(1, p - 1))}
-                    aria-label="Página anterior"
-                  >
-                    <ChevronLeft size={18} />
-                  </button>
-                  <span className="px-2 font-semibold text-on-surface">
-                    {pagina} / {totalPaginas}
-                  </span>
-                  <button
-                    className="rounded-lg border border-outline-variant/40 bg-surface-card p-1.5 text-on-surface shadow-sm transition-colors hover:bg-surface-container disabled:opacity-40"
-                    disabled={pagina >= totalPaginas}
-                    onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
-                    aria-label="Próxima página"
-                  >
-                    <ChevronRight size={18} />
-                  </button>
-                  <button
-                    className="rounded-lg border border-outline-variant/40 bg-surface-card p-1.5 text-on-surface shadow-sm transition-colors hover:bg-surface-container disabled:opacity-40"
-                    disabled={pagina >= totalPaginas}
-                    onClick={() => setPagina(totalPaginas)}
-                    aria-label="Última página"
-                  >
-                    <ChevronsRight size={18} />
-                  </button>
+                  <button className="rounded-lg border border-outline-variant/40 bg-surface-card p-1.5 text-text-subtle shadow-sm transition-colors hover:bg-surface-container disabled:opacity-40" disabled={pagina <= 1} onClick={() => setPagina(1)} aria-label="Primeira página"><ChevronsLeft size={18} /></button>
+                  <button className="rounded-lg border border-outline-variant/40 bg-surface-card p-1.5 text-text-subtle shadow-sm transition-colors hover:bg-surface-container disabled:opacity-40" disabled={pagina <= 1} onClick={() => setPagina((p) => Math.max(1, p - 1))} aria-label="Página anterior"><ChevronLeft size={18} /></button>
+                  <span className="px-2 font-semibold text-text-body">{pagina} / {totalPaginas}</span>
+                  <button className="rounded-lg border border-outline-variant/40 bg-surface-card p-1.5 text-text-subtle shadow-sm transition-colors hover:bg-surface-container disabled:opacity-40" disabled={pagina >= totalPaginas} onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))} aria-label="Próxima página"><ChevronRight size={18} /></button>
+                  <button className="rounded-lg border border-outline-variant/40 bg-surface-card p-1.5 text-text-subtle shadow-sm transition-colors hover:bg-surface-container disabled:opacity-40" disabled={pagina >= totalPaginas} onClick={() => setPagina(totalPaginas)} aria-label="Última página"><ChevronsRight size={18} /></button>
                 </div>
               </div>
             </div>
@@ -533,30 +538,34 @@ export default function MotoristasPage() {
         {/* Paginação mobile */}
         {dados && total > 0 && (
           <div className="flex flex-wrap items-center justify-between gap-3 md:hidden">
-            <span className="text-meta text-on-surface-variant">
-              {inicio}-{fim} de {total}
-            </span>
+            <span className="text-meta text-text-subtle">{inicio}-{fim} de {total}</span>
             <div className="flex items-center gap-2">
-              <button
-                className="rounded-lg border border-outline-variant/30 p-1.5 text-on-surface-variant transition-colors disabled:opacity-40"
-                disabled={pagina <= 1}
-                onClick={() => setPagina((p) => Math.max(1, p - 1))}
-              >
-                <ChevronLeft size={16} />
-              </button>
-              <span className="text-meta text-on-surface-variant">
-                {pagina} / {totalPaginas}
-              </span>
-              <button
-                className="rounded-lg border border-outline-variant/30 p-1.5 text-on-surface-variant transition-colors disabled:opacity-40"
-                disabled={pagina >= totalPaginas}
-                onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}
-              >
-                <ChevronRight size={16} />
-              </button>
+              <button className="rounded-lg border border-outline-variant/40 bg-surface-card p-1.5 text-text-subtle transition-colors disabled:opacity-40" disabled={pagina <= 1} onClick={() => setPagina((p) => Math.max(1, p - 1))}><ChevronLeft size={16} /></button>
+              <span className="text-meta text-text-subtle">{pagina} / {totalPaginas}</span>
+              <button className="rounded-lg border border-outline-variant/40 bg-surface-card p-1.5 text-text-subtle transition-colors disabled:opacity-40" disabled={pagina >= totalPaginas} onClick={() => setPagina((p) => Math.min(totalPaginas, p + 1))}><ChevronRight size={16} /></button>
             </div>
           </div>
         )}
+
+        {/* Banner de auditoria */}
+        <aside className="flex flex-col items-center justify-between gap-4 rounded-2xl bg-gradient-to-r from-[#0E1B2E] to-[#172554] p-5 text-white shadow-md sm:flex-row">
+          <div className="flex items-center gap-3.5">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-white/10">
+              <ShieldCheck size={22} className="text-[#86EFAC]" />
+            </div>
+            <div>
+              <h2 className="text-body-sm font-bold text-white">Auditoria de Condutores</h2>
+              <p className="mt-0.5 max-w-3xl text-meta leading-relaxed text-[#BFDBFE]">
+                Habilitações, categorias e níveis de acesso são registrados com trilha de auditoria para conferência e prestação de contas.
+              </p>
+            </div>
+          </div>
+          {hasPermission("audit.view") && (
+            <Link href="/auditoria" className="shrink-0 rounded-xl bg-white px-3.5 py-2 text-meta font-semibold text-[#0E1B2E] shadow-sm transition-colors hover:bg-blue-50">
+              Log de Auditoria
+            </Link>
+          )}
+        </aside>
       </div>
     </RequirePermission>
   );
@@ -564,27 +573,48 @@ export default function MotoristasPage() {
 
 /* ────────────  Subcomponentes  ──────────── */
 
+const TONS_KPI: Record<string, string> = {
+  blue: "bg-[#EFF6FF] text-primary",
+  emerald: "bg-[#E7F8EC] text-[#106D34]",
+  amber: "bg-[#FFF4D6] text-[#805600]",
+  indigo: "bg-[#EEF2FF] text-[#4338CA]",
+};
+
+function Kpi({ titulo, valor, sub, icone, tom, alerta = false }: { titulo: string; valor: React.ReactNode; sub: React.ReactNode; icone: React.ReactNode; tom: keyof typeof TONS_KPI; alerta?: boolean }) {
+  return (
+    <div className="flex flex-col justify-between rounded-xl border border-outline-variant/50 bg-surface-card p-4 shadow-sm transition-colors hover:border-outline-variant">
+      <div className="flex items-center justify-between">
+        <span className="text-meta font-semibold text-text-subtle">{titulo}</span>
+        <span className={`flex h-8 w-8 items-center justify-center rounded-lg ${TONS_KPI[tom]}`}>{icone}</span>
+      </div>
+      <div className="mt-2 flex items-baseline justify-between gap-2">
+        <span className="text-2xl font-black tracking-tight text-text-title">{valor}</span>
+        {alerta ? (
+          <span className="inline-flex items-center gap-1 rounded-pill border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-[#B91C1C]">
+            <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-rose-600" /> atenção
+          </span>
+        ) : null}
+      </div>
+      <div className="mt-2 text-meta font-medium text-text-subtle">{sub}</div>
+    </div>
+  );
+}
+
 function BadgeCnh({ validade }: { validade: string | null }) {
   const info = situacaoCnhInfo(situacaoCnh(validade));
   const isVencida = validade && new Date(validade.length === 10 ? validade + "T12:00" : validade) < new Date();
-  const isAtencao = validade && !isVencida && diasRestantesCnh(validade)! <= 60;
-  const tom =
-    isVencida
-      ? "bg-error-vibrant/10 text-error-vibrant"
-      : isAtencao
-      ? "bg-warning-vibrant/10 text-warning-vibrant"
-      : "bg-success-vibrant/10 text-success-vibrant";
-  const dotTom = isVencida
-    ? "bg-error-vibrant"
+  const isAtencao = validade && !isVencida && (diasRestantesCnh(validade) ?? 999) <= 60;
+  const tom = isVencida
+    ? "bg-[#FFDAD6] text-[#BA1A1A]"
     : isAtencao
-    ? "bg-warning-vibrant"
-    : "bg-success-vibrant";
+      ? "bg-[#FFDD9A] text-[#805600]"
+      : "bg-[#9DF6B3] text-[#106D34]";
+  const dotTom = isVencida ? "bg-[#BA1A1A]" : isAtencao ? "bg-[#805600]" : "bg-[#106D34]";
+  const rotulo = isVencida ? "Vencida" : isAtencao ? "A vencer" : info.rotulo;
   return (
-    <span
-      className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold ${tom}`}
-    >
+    <span className={`inline-flex items-center gap-1 rounded-pill px-2 py-0.5 text-[11px] font-bold ${tom}`}>
       <span className={`h-1.5 w-1.5 rounded-full ${dotTom}`} />
-      {info.rotulo === "Sem CNH" ? "Sem CNH" : info.rotulo === "Válida" ? "Válida" : info.rotulo}
+      {rotulo}
     </span>
   );
 }
@@ -592,39 +622,25 @@ function BadgeCnh({ validade }: { validade: string | null }) {
 function BadgeAcesso({ m }: { m: MotoristaListItem }) {
   const sem = !m.acesso_login;
   const bloqueado = !sem && m.acesso_bloqueado;
-  let classe: string;
-  if (sem) classe = "bg-surface-container-highest text-on-surface-variant";
-  else if (bloqueado) classe = "bg-warning-vibrant/10 text-warning-vibrant";
-  else if (m.acesso_login) classe = "bg-info-vibrant/10 text-info-vibrant";
-  else classe = "bg-surface-container-highest text-on-surface-variant";
-  const rotulo = sem ? "Sem acesso" : bloqueado ? "Bloqueado" : "Admin";
-  return (
-    <span
-      className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-bold ${classe}`}
-    >
-      {rotulo}
-    </span>
-  );
+  const classe = sem
+    ? "bg-[#F3F4F6] text-text-subtle"
+    : bloqueado
+      ? "bg-[#FFDD9A] text-[#805600]"
+      : "bg-[#EFF6FF] text-primary";
+  const rotulo = sem ? "Sem acesso" : bloqueado ? "Bloqueado" : "Ativo";
+  return <span className={`inline-flex items-center rounded-md px-2.5 py-0.5 text-[11px] font-bold ${classe}`}>{rotulo}</span>;
 }
 
 function BadgeStatus({ ativo }: { ativo: boolean }) {
   if (ativo) {
     return (
-      <span
-        title="Ativo"
-        aria-label="Ativo"
-        className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-success-vibrant/20 bg-success-vibrant/10 text-success-vibrant"
-      >
+      <span title="Ativo" aria-label="Ativo" className="mx-auto inline-flex h-7 w-7 items-center justify-center rounded-full border border-emerald-200 bg-[#E7F8EC] text-[#106D34]">
         <CheckCircle2 size={15} />
       </span>
     );
   }
   return (
-    <span
-      title="Inativo"
-      aria-label="Inativo"
-      className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-outline-variant/40 bg-surface-container-highest text-on-surface-variant"
-    >
+    <span title="Inativo" aria-label="Inativo" className="mx-auto inline-flex h-7 w-7 items-center justify-center rounded-full border border-outline-variant/40 bg-[#F3F4F6] text-text-subtle">
       <XCircle size={15} />
     </span>
   );
@@ -632,66 +648,48 @@ function BadgeStatus({ ativo }: { ativo: boolean }) {
 
 function LinhaMotorista({ m, acoes }: { m: MotoristaListItem; acoes: MenuAcao[] }) {
   return (
-    <tr className="group cursor-pointer transition-colors hover:bg-surface-container-lowest">
-      <td className="px-6 py-4">
-        <Link href={`/motoristas/${m.id}`} className="flex items-center gap-4">
+    <tr className="group cursor-pointer border-b border-outline-variant/20 transition-colors last:border-0 hover:bg-[#EFF6FF]/50">
+      <td className="px-5 py-4">
+        <Link href={`/motoristas/${m.id}`} className="flex items-center gap-3.5">
           <AvatarMotorista src={m.foto_url} nome={m.nome} className="h-10 w-10 flex-shrink-0 text-sm" />
           <div className="flex min-w-0 flex-col">
-            <span className="text-[15px] font-semibold text-on-surface transition-colors group-hover:text-secondary">
-              {m.nome}
-            </span>
-            <span className="mt-0.5 text-[12px] font-medium text-on-surface-variant/80">
-              {mascararCpf(m.cpf)}
-              {m.matricula ? ` • Matrícula ${m.matricula}` : ""}
+            <span className="text-body-sm font-bold text-text-title transition-colors group-hover:text-primary">{m.nome}</span>
+            <span className="mt-0.5 text-meta font-medium text-text-subtle">
+              {mascararCpf(m.cpf)}{m.matricula ? ` • Matrícula ${m.matricula}` : ""}
             </span>
           </div>
         </Link>
       </td>
-      <td className="px-6 py-4">
-        <div className="flex items-center gap-3">
-          <span className="rounded-md bg-surface-container-high px-2.5 py-1 text-xs font-bold tracking-wide text-on-surface-variant">
+      <td className="px-4 py-4">
+        <div className="flex items-center gap-2">
+          <span className="rounded-md border border-[#BFDBFE] bg-[#EFF6FF] px-2 py-0.5 text-[11px] font-bold text-[#1D4ED8]">
             {m.cnh_categoria ?? "—"}
           </span>
-          <span className="font-medium text-on-surface">{m.cnh_numero ?? "—"}</span>
+          <span className="font-mono text-meta font-semibold text-text-body">{m.cnh_numero ?? "—"}</span>
         </div>
       </td>
-      <td className="px-6 py-4">
+      <td className="px-4 py-4">
         {m.cnh_validade ? (
           <div className="flex flex-col items-start gap-1.5">
-            <span
-              className={`font-medium ${
-                new Date(m.cnh_validade.length === 10 ? m.cnh_validade + "T12:00" : m.cnh_validade) <
-                new Date()
-                  ? "text-warning-vibrant"
-                  : "text-on-surface"
-              }`}
-            >
-              {new Date(m.cnh_validade + "T12:00").toLocaleDateString("pt-BR")}
-            </span>
+            <span className="text-body-sm font-medium text-text-body">{new Date(m.cnh_validade + "T12:00").toLocaleDateString("pt-BR")}</span>
             <BadgeCnh validade={m.cnh_validade} />
           </div>
         ) : (
-          <span className="text-on-surface-variant">—</span>
+          <span className="text-text-subtle">—</span>
         )}
       </td>
-      <td className="px-6 py-4">
+      <td className="px-4 py-4">
         <div className="flex flex-col items-start gap-1.5">
           <BadgeAcesso m={m} />
           {m.ultimo_acesso && (
-            <span className="text-[11px] text-on-surface-variant/70">
-              Último:{" "}
-              {new Date(m.ultimo_acesso).toLocaleDateString("pt-BR", {
-                day: "2-digit",
-                month: "2-digit",
-              })}
+            <span className="text-[11px] text-text-subtle">
+              Último: {new Date(m.ultimo_acesso).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}
             </span>
           )}
         </div>
       </td>
-      <td className="px-6 py-4">
-        <BadgeStatus ativo={m.ativo} />
-      </td>
-      <td className="px-6 py-4 text-center">
+      <td className="px-4 py-4 text-center"><BadgeStatus ativo={m.ativo} /></td>
+      <td className="px-5 py-4 text-center">
         <div className="opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
           <MenuAcoes acoes={acoes} />
         </div>
@@ -702,27 +700,20 @@ function LinhaMotorista({ m, acoes }: { m: MotoristaListItem; acoes: MenuAcao[] 
 
 function CardMotorista({ m, acoes }: { m: MotoristaListItem; acoes: MenuAcao[] }) {
   return (
-    <div className="rounded-2xl border border-outline-variant/40 bg-surface-card p-4 shadow-sm">
+    <div className="rounded-2xl border border-outline-variant/50 bg-surface-card p-4 shadow-sm">
       <div className="flex items-start gap-3">
         <AvatarMotorista src={m.foto_url} nome={m.nome} className="h-12 w-12 flex-shrink-0 text-base" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
-            <Link href={`/motoristas/${m.id}`} className="truncate font-semibold text-on-surface">
-              {m.nome}
-            </Link>
+            <Link href={`/motoristas/${m.id}`} className="truncate font-semibold text-text-title">{m.nome}</Link>
             <MenuAcoes acoes={acoes} />
           </div>
-          <div className="text-meta text-on-surface-variant">
-            {mascararCpf(m.cpf)}
-            {m.matricula ? ` • Matrícula ${m.matricula}` : ""}
-          </div>
+          <div className="text-meta text-text-subtle">{mascararCpf(m.cpf)}{m.matricula ? ` • Matrícula ${m.matricula}` : ""}</div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span className="rounded-md bg-surface-container-high px-2.5 py-1 text-xs font-bold tracking-wide text-on-surface-variant">
-              {m.cnh_categoria ?? "—"}
-            </span>
+            <span className="rounded-md border border-[#BFDBFE] bg-[#EFF6FF] px-2 py-0.5 text-[11px] font-bold text-[#1D4ED8]">{m.cnh_categoria ?? "—"}</span>
             <BadgeCnh validade={m.cnh_validade} />
           </div>
-          <div className="mt-2 flex flex-wrap items-center gap-2 text-meta">
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             <BadgeAcesso m={m} />
             <BadgeStatus ativo={m.ativo} />
           </div>
@@ -732,49 +723,23 @@ function CardMotorista({ m, acoes }: { m: MotoristaListItem; acoes: MenuAcao[] }
   );
 }
 
-function Th({
-  children,
-  sortable,
-  sortBy,
-  order,
-  onClick,
-  className = "",
-}: {
-  children: React.ReactNode;
-  sortable?: Sortable;
-  sortBy?: Sortable;
-  order?: "asc" | "desc";
-  onClick?: () => void;
-  className?: string;
-}) {
+function Th({ children, sortable, sortBy, order, onClick, className = "" }: { children: React.ReactNode; sortable?: Sortable; sortBy?: Sortable; order?: "asc" | "desc"; onClick?: () => void; className?: string }) {
   const ativo = sortable && sortBy === sortable;
   return (
-    <th className={`px-6 py-5 ${className}`}>
+    <th className={`px-4 py-3.5 ${className}`}>
       {sortable ? (
-        <button
-          onClick={onClick}
-          className={`inline-flex items-center gap-1.5 transition-colors hover:text-secondary ${
-            ativo ? "text-secondary" : ""
-          }`}
-        >
+        <button onClick={onClick} className={`inline-flex items-center gap-1.5 font-bold uppercase tracking-wider transition-colors hover:text-primary ${ativo ? "text-primary" : ""}`}>
           {children}
-          {ativo &&
-            (order === "asc" ? (
-              <ChevronDown size={16} className="text-secondary" />
-            ) : (
-              <ChevronDown size={16} className="rotate-180 text-secondary" />
-            ))}
+          {ativo && <ChevronDown size={14} className={order === "asc" ? "rotate-180" : ""} />}
         </button>
-      ) : (
-        children
-      )}
+      ) : children}
     </th>
   );
 }
 
 function Label({ texto, children }: { texto: string; children: React.ReactNode }) {
   return (
-    <label className="text-meta text-on-surface-variant">
+    <label className="text-meta text-text-subtle">
       <span className="block text-xs font-semibold uppercase tracking-wide">{texto}</span>
       <span className="mt-1 block">{children}</span>
     </label>
