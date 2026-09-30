@@ -88,3 +88,25 @@ async def test_envio_le_pdf_confere_valor_e_lote_sugere(client, _db, make_tenant
     # Reanalisar a nota já enviada avisa onde ela está.
     lote = (await client.post(f"{P}/notas/analisar", files=[("arquivos", ("a.pdf", danfe_pdf("240,00", 1), "application/pdf"))], headers=h)).json()
     assert lote[0]["ja_enviada"]["id"] == s1
+
+
+async def test_painel_do_posto_traz_contrato_combustivel_e_comparacao(client, _db, make_tenant, setup_frota):
+    from decimal import Decimal
+
+    from app.models.combustivel import ContratoPosto
+
+    admin, _s, _e, posto, itens, _f = await _cenario(client, _db, make_tenant, setup_frota)
+    contrato = ContratoPosto(organization_id=admin["org"].id, fornecedor_id=posto.id, combustivel_id=itens["s1"].combustivel_id,
+                             numero="12/2026", preco_litro=Decimal("6"), litros_contratados=Decimal("1000"))
+    _db.add(contrato)
+    await _db.flush()
+    itens["s1"].contrato_posto_id = contrato.id
+    await _db.commit()
+    acesso = await _criar_acesso(client, admin, posto, "posto.painel")
+    h = await _entrar(client, "posto.painel", acesso["senha_provisoria"])
+    p = (await client.get(f"{P}/painel", headers=h)).json()
+    assert p["veiculos"] >= 1 and "anterior" in p
+    assert p["por_combustivel"] and p["por_combustivel"][0]["preco_medio"] == 6.0
+    c = p["contratos"][0]
+    assert c["numero"] == "12/2026" and c["litros_usados"] == 40.0 and c["saldo"] == 960.0
+    assert all("litros" in s for s in p["por_secretaria"])

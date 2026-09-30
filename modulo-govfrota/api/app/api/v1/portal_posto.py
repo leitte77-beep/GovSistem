@@ -173,20 +173,35 @@ async def painel(
     no_periodo = [*base, Abastecimento.data_abastecimento >= ini, Abastecimento.data_abastecimento <= fim_dt]
     linhas = (
         await db.execute(
-            select(Abastecimento.id, Abastecimento.data_abastecimento, Abastecimento.quantidade_litros, Abastecimento.custo_total, Unidade.nome)
+            select(Abastecimento.id, Abastecimento.data_abastecimento, Abastecimento.quantidade_litros, Abastecimento.custo_total,
+                   Unidade.nome, Abastecimento.veiculo_id, Combustivel.nome)
             .outerjoin(Unidade, Unidade.id == Abastecimento.unidade_id)
+            .join(Combustivel, Combustivel.id == Abastecimento.combustivel_id)
             .where(*no_periodo)
         )
     ).all()
     diario: dict[date, list[float]] = defaultdict(lambda: [0.0, 0.0])
-    por_sec: dict[str, list[float]] = defaultdict(lambda: [0, 0.0])
-    for _, quando, l, v, sec in linhas:
+    por_sec: dict[str, list[float]] = defaultdict(lambda: [0, 0.0, 0.0])
+    por_comb: dict[str, list[float]] = defaultdict(lambda: [0.0, 0.0])
+    for _, quando, l, v, sec, _veic, comb in linhas:
         acc = diario[to_display(quando).date()]
         acc[0] += float(l or 0)
         acc[1] += float(v or 0)
         ps = por_sec[sec or "Sem secretaria"]
         ps[0] += 1
         ps[1] += float(v or 0)
+        ps[2] += float(l or 0)
+        pc = por_comb[comb]
+        pc[0] += float(l or 0)
+        pc[1] += float(v or 0)
+
+    # Mesmo número de dias imediatamente antes, para comparar.
+    dias = (df - di).days + 1
+    ant_ini, ant_fim = _limites(di - timedelta(days=dias), di - timedelta(days=1))
+    anterior = (await db.execute(
+        select(sa_func.coalesce(sa_func.sum(Abastecimento.custo_total), 0), sa_func.coalesce(sa_func.sum(Abastecimento.quantidade_litros), 0))
+        .where(*base, Abastecimento.data_abastecimento >= ant_ini, Abastecimento.data_abastecimento <= ant_fim)
+    )).one()
 
     # Pendência de nota: todo o histórico, não só o período.
     com_nota = select(NotaAbastecimento.abastecimento_id).where(NotaAbastecimento.ativo.is_(True))
@@ -197,17 +212,50 @@ async def painel(
         )
     ).one()
     notas = await notas_ativas(db, [r[0] for r in linhas])
-    com_aviso = sum(1 for n in notas.values() if n.get("NFE_XML") is not None and n["NFE_XML"].avisos)
+    com_aviso = sum(1 for n in notas.values() if any(v.avisos for v in n.values()))
+
+    # Contratos deste posto com a prefeitura (só os do próprio posto).
+    from app.models.combustivel import ContratoPosto
+
+    contratos = []
+    for c, comb_nome in (await db.execute(
+        select(ContratoPosto, Combustivel.nome).join(Combustivel, Combustivel.id == ContratoPosto.combustivel_id).where(
+            ContratoPosto.organization_id == acesso.organization_id, ContratoPosto.fornecedor_id == acesso.fornecedor_id,
+            ContratoPosto.deleted_at.is_(None), ContratoPosto.ativo.is_(True),
+        ).order_by(ContratoPosto.data_fim.nulls_last())
+    )).all():
+        usado = float(await db.scalar(
+            select(sa_func.coalesce(sa_func.sum(Abastecimento.quantidade_litros), 0)).where(
+                Abastecimento.contrato_posto_id == c.id, Abastecimento.status == "CONFIRMADO", Abastecimento.deleted_at.is_(None),
+            )
+        ) or 0)
+        contratado = float(c.litros_contratados)
+        contratos.append({
+            "numero": c.numero, "combustivel": comb_nome, "preco_litro": float(c.preco_litro),
+            "inicio": c.data_inicio.isoformat() if c.data_inicio else None, "fim": c.data_fim.isoformat() if c.data_fim else None,
+            "litros_contratados": contratado, "litros_usados": round(usado, 2), "saldo": round(contratado - usado, 2),
+            "pct_usado": round(usado * 100 / contratado, 1) if contratado else 0.0,
+        })
+
     return {
         "periodo": {"inicio": di.isoformat(), "fim": df.isoformat()},
         "abastecimentos": len(linhas),
+        "veiculos": len({r[5] for r in linhas}),
         "litros": round(sum(float(r[2] or 0) for r in linhas), 2),
         "valor": round(sum(float(r[3] or 0) for r in linhas), 2),
+        "anterior": {"valor": float(anterior[0] or 0), "litros": float(anterior[1] or 0),
+                     "inicio": (di - timedelta(days=dias)).isoformat(), "fim": (di - timedelta(days=1)).isoformat()},
         "diario": [{"dia": d.isoformat(), "litros": round(l, 2), "valor": round(v, 2)} for d, (l, v) in sorted(diario.items())],
         "por_secretaria": sorted(
-            ({"secretaria": k, "abastecimentos": int(c), "valor": round(v, 2)} for k, (c, v) in por_sec.items()),
+            ({"secretaria": k, "abastecimentos": int(c), "valor": round(v, 2), "litros": round(l, 2)} for k, (c, v, l) in por_sec.items()),
             key=lambda x: -x["valor"],
         ),
+        "por_combustivel": sorted(
+            ({"combustivel": k, "litros": round(l, 2), "valor": round(v, 2), "preco_medio": round(v / l, 4) if l else None}
+             for k, (l, v) in por_comb.items()),
+            key=lambda x: -x["valor"],
+        ),
+        "contratos": contratos,
         "notas": {
             "pendentes": int(pend[0] or 0),
             "valor_pendente": float(pend[1] or 0),

@@ -72,8 +72,15 @@ export interface PainelPosto {
   abastecimentos: number;
   litros: number;
   valor: number;
+  veiculos: number;
+  anterior: { valor: number; litros: number; inicio: string; fim: string };
   diario: { dia: string; litros: number; valor: number }[];
-  por_secretaria: { secretaria: string; abastecimentos: number; valor: number }[];
+  por_secretaria: { secretaria: string; abastecimentos: number; valor: number; litros: number }[];
+  por_combustivel: { combustivel: string; litros: number; valor: number; preco_medio: number | null }[];
+  contratos: {
+    numero: string | null; combustivel: string; preco_litro: number; inicio: string | null; fim: string | null;
+    litros_contratados: number; litros_usados: number; saldo: number; pct_usado: number;
+  }[];
   notas: { pendentes: number; valor_pendente: number; enviadas_no_periodo: number; com_aviso: number };
 }
 
