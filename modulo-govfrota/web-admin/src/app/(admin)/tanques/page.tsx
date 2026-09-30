@@ -4,8 +4,25 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import {
-  ChevronLeft, ChevronRight, Droplets, Fuel, PackagePlus, Pencil, Plus,
-  Search, SlidersHorizontal, ArrowDownToLine, Scale, Repeat, Eye, X,
+  AlertTriangle,
+  ArrowDownToLine,
+  ChevronLeft,
+  ChevronRight,
+  Droplets,
+  FileDown,
+  Fuel,
+  History,
+  PackagePlus,
+  Pencil,
+  Plus,
+  Repeat,
+  Ruler,
+  Scale,
+  Search,
+  ShieldCheck,
+  SlidersHorizontal,
+  X,
+  Eye,
 } from "lucide-react";
 import { api, Combustivel, Entrada, Fornecedor, Tanque } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
@@ -98,14 +115,13 @@ export default function CombustiveisPage() {
   }, [carregarBase]);
 
   useEffect(() => {
-    if (aba === "entradas") carregarEntradas();
-  }, [aba, carregarEntradas]);
+    carregarEntradas();
+  }, [carregarEntradas]);
 
   const recarregar = () => {
     carregarBase();
-    if (aba === "entradas") carregarEntradas();
+    carregarEntradas();
   };
-
 
   const tanquesFiltrados = useMemo(() => {
     const q = buscaTanque.trim().toLowerCase();
@@ -124,45 +140,158 @@ export default function CombustiveisPage() {
     return combustiveis.filter((c) => c.nome.toLowerCase().includes(q));
   }, [combustiveis, buscaCombustivel]);
 
+  // KPIs reais
+  const volumeTotal = tanques.reduce((s, t) => s + Number(t.estoque_atual || 0), 0);
+  const capacidadeTotal = tanques.reduce((s, t) => s + Number(t.capacidade_maxima || 0), 0);
+  const pctGlobal = capacidadeTotal > 0 ? (volumeTotal / capacidadeTotal) * 100 : 0;
+  const tanquesAtivos = tanques.filter((t) => t.ativo).length;
+  const criticos = tanques.filter((t) => (t.percentual_disponivel ?? 100) < 20).length;
+  const litrosNum = (v: number) => v.toLocaleString("pt-BR", { maximumFractionDigits: 2 });
+
   return (
     <RequirePermission perms="refueling.view">
-      <div className="space-y-5">
-        {/* Cabeçalho */}
-        <div>
-          <h1 className="text-h1 text-text-title">Combustíveis</h1>
-          <p className="mt-1 text-body-sm text-text-subtle">
-            Controle tanques, entradas, estoque e movimentações de combustível. Fornecedores e postos
-            credenciados ficam em <Link href="/fornecedores" className="text-[#1D4ED8] hover:underline">Fornecedores</Link>.
-          </p>
+      <div className="flex flex-col gap-6">
+        {/* Banner de contexto */}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="h-2.5 w-2.5 rounded-full bg-[#106D34]" />
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-[#106D34]">Estoque de Combustíveis • Reservatórios</span>
+            <span className="text-outline-variant">•</span>
+            <span className="text-meta text-text-subtle">Controle de tanques, entradas e movimentações</span>
+          </div>
+          <div className="flex items-center gap-2">
+            {podeGerenciar && (
+              <>
+                <button
+                  className="inline-flex items-center gap-2 rounded-lg bg-surface-container px-3 py-2 text-meta font-semibold text-text-body transition-colors hover:bg-surface-container-high"
+                  onClick={() => setEntradaDrawer({ aberto: true })}
+                >
+                  <ArrowDownToLine size={16} className="text-primary" /> Registrar Entrada NF-e
+                </button>
+                <button
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-meta font-semibold text-white shadow-sm transition-all hover:bg-primary-800 active:scale-95"
+                  onClick={() => setTanqueDrawer({ aberto: true, item: null })}
+                >
+                  <Plus size={16} /> Novo tanque
+                </button>
+              </>
+            )}
+          </div>
         </div>
 
-        {/* Abas */}
-        <div className="flex flex-wrap gap-1 border-b border-surface-border">
-          {ABAS.map((a) => (
-            <button
-              key={a.chave}
-              onClick={() => setAba(a.chave)}
-              className={`px-4 py-2 text-body-sm ${aba === a.chave ? "border-b-2 border-[#1D4ED8] font-medium text-[#1D4ED8]" : "text-text-body hover:text-text-title"}`}
-            >
-              {a.label}
+        {/* Título */}
+        <div className="flex flex-col justify-between gap-3 md:flex-row md:items-end">
+          <div>
+            <h1 className="text-h1 tracking-tight text-text-title">Combustíveis</h1>
+            <p className="mt-0.5 max-w-4xl text-body-sm text-text-subtle">
+              Controle de tanques municipais, entradas de NF-e, estoque e movimentações de combustível. Fornecedores e postos credenciados ficam em{" "}
+              <Link href="/fornecedores" className="inline-flex items-center gap-0.5 font-medium text-primary hover:underline">
+                Fornecedores
+              </Link>
+              .
+            </p>
+          </div>
+        </div>
+
+        {/* KPIs */}
+        <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="flex flex-col justify-between rounded-xl border border-outline-variant/50 bg-surface-card p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-meta font-medium text-text-subtle">Volume Total em Estoque</span>
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#EFF4FF] text-primary"><Droplets size={16} /></span>
+            </div>
+            <div className="mt-2">
+              <div className="text-h2 font-black tracking-tight text-text-title">{litrosNum(volumeTotal)} <span className="text-meta font-normal text-text-subtle">L</span></div>
+              <div className="mt-0.5 text-meta text-text-subtle">Capacidade global: {litrosNum(capacidadeTotal)} L ({pctGlobal.toFixed(1)}%)</div>
+            </div>
+            <div className="mt-2 h-1.5 w-full overflow-hidden rounded-pill bg-surface-container">
+              <div className="h-full rounded-pill bg-primary" style={{ width: `${Math.min(100, pctGlobal)}%` }} />
+            </div>
+          </div>
+
+          <div className="flex flex-col justify-between rounded-xl border border-outline-variant/50 bg-surface-card p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-meta font-medium text-text-subtle">Tanques em Operação</span>
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#E7F8EC] text-[#106D34]"><Fuel size={16} /></span>
+            </div>
+            <div className="mt-2">
+              <div className="text-h2 font-black tracking-tight text-text-title">{tanquesAtivos}</div>
+              <div className="mt-0.5 text-meta text-text-subtle">{tanques.length} tanque(s) cadastrado(s)</div>
+            </div>
+            <span className="mt-2 inline-flex w-fit items-center gap-1 rounded-pill bg-[#E7F8EC] px-2 py-0.5 text-[11px] font-semibold text-[#106D34]">Operação regular</span>
+          </div>
+
+          <div className="flex flex-col justify-between rounded-xl border border-outline-variant/50 bg-surface-card p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-meta font-medium text-text-subtle">Nível Crítico (&lt; 20%)</span>
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#FFF4D6] text-[#805600]"><AlertTriangle size={16} /></span>
+            </div>
+            <div className="mt-2">
+              <div className="text-h2 font-black tracking-tight text-text-title">{criticos}</div>
+              <div className="mt-0.5 text-meta text-text-subtle">{criticos ? "Requer reposição" : "Nenhum tanque em nível crítico"}</div>
+            </div>
+            {criticos > 0 && (
+              <span className="mt-2 inline-flex w-fit items-center gap-1 rounded-pill border border-rose-200 bg-rose-50 px-2 py-0.5 text-[11px] font-bold text-[#B91C1C]">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-rose-600" /> atenção
+              </span>
+            )}
+          </div>
+
+          <div className="flex flex-col justify-between rounded-xl border border-outline-variant/50 bg-surface-card p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-meta font-medium text-text-subtle">Entradas de Combustível</span>
+              <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#EEF2FF] text-[#4338CA]"><PackagePlus size={16} /></span>
+            </div>
+            <div className="mt-2">
+              <div className="text-h2 font-black tracking-tight text-text-title">{totalEntradas}</div>
+              <div className="mt-0.5 text-meta text-text-subtle">registro(s) de NF-e</div>
+            </div>
+            <button onClick={() => setAba("entradas")} className="mt-2 inline-flex w-fit items-center gap-1 text-[11px] font-semibold text-primary hover:underline">
+              Abrir entradas <ChevronRight size={12} />
             </button>
-          ))}
+          </div>
+        </section>
+
+        {/* Abas */}
+        <div className="w-fit max-w-full overflow-x-auto">
+          <div className="flex items-center gap-2 rounded-xl bg-surface-container-low p-1.5">
+            {ABAS.map((a) => {
+              const contagem = a.chave === "estoque" ? tanques.length : a.chave === "entradas" ? totalEntradas : combustiveis.length;
+              const ativa = aba === a.chave;
+              return (
+                <button
+                  key={a.chave}
+                  onClick={() => setAba(a.chave)}
+                  className={`inline-flex items-center gap-2 whitespace-nowrap rounded-lg px-3.5 py-2 text-meta font-semibold transition-all ${
+                    ativa ? "bg-surface-card text-primary shadow-sm" : "text-text-subtle hover:bg-surface-card/60 hover:text-text-title"
+                  }`}
+                >
+                  {a.label}
+                  <span className={`rounded-pill px-2 py-0.5 text-[11px] font-semibold ${ativa ? "bg-[#DBEAFE] text-primary" : "bg-surface-container text-text-subtle"}`}>
+                    {contagem}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {carregando ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {[1, 2, 3].map((i) => <div key={i} className="h-44 animate-pulse rounded-card bg-surface-bg" />)}
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-2">
+            {[1, 2].map((i) => <div key={i} className="h-64 animate-pulse rounded-2xl bg-surface-bg" />)}
           </div>
         ) : (
           <>
             {aba === "estoque" && (
               <EstoqueTab
                 tanques={tanquesFiltrados}
+                combustiveis={combustiveis}
                 busca={buscaTanque}
                 setBusca={setBuscaTanque}
                 podeGerenciar={podeGerenciar}
                 onBuscaLimpar={() => setBuscaTanque("")}
                 onNovo={() => setTanqueDrawer({ aberto: true, item: null })}
+                onNovoCombustivel={() => setCombDrawer({ aberto: true, item: null })}
                 onVer={(t) => {}}
                 onEntrada={(t) => setEntradaDrawer({ aberto: true, tanqueInicial: t.id })}
                 onAjuste={(t, positivo) => { setAcaoTanque({ tipo: "ajuste", positivo }); setTanqueDrawer({ aberto: false, item: t }); }}
@@ -201,7 +330,6 @@ export default function CombustiveisPage() {
                 onInativar={(c) => setInativarCombustivel(c)}
               />
             )}
-
           </>
         )}
 
@@ -315,11 +443,13 @@ export default function CombustiveisPage() {
 
 function EstoqueTab(props: {
   tanques: Tanque[];
+  combustiveis: Combustivel[];
   busca: string;
   setBusca: (v: string) => void;
   podeGerenciar: boolean;
   onBuscaLimpar: () => void;
   onNovo: () => void;
+  onNovoCombustivel: () => void;
   onVer: (t: Tanque) => void;
   onEntrada: (t: Tanque) => void;
   onAjuste: (t: Tanque, positivo: boolean) => void;
@@ -329,15 +459,16 @@ function EstoqueTab(props: {
   onInativar: (t: Tanque) => void;
 }) {
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="relative max-w-sm flex-1">
-          <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-subtle" />
+    <div className="space-y-6">
+      {/* Busca e filtros */}
+      <div className="flex flex-col gap-3 rounded-xl border border-outline-variant/50 bg-surface-card p-3 shadow-sm sm:flex-row sm:items-center sm:justify-between">
+        <div className="relative max-w-lg flex-1">
+          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-subtle" />
           <input
             value={props.busca}
             onChange={(e) => props.setBusca(e.target.value)}
-            placeholder="Buscar por nome, código ou combustível…"
-            className="input pl-9"
+            placeholder="Buscar por nome do reservatório, código ou combustível…"
+            className="input !bg-surface-bg !pl-10 focus:!bg-surface-card"
           />
         </div>
         {props.podeGerenciar && (
@@ -360,12 +491,68 @@ function EstoqueTab(props: {
           />
         )
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
           {props.tanques.map((t) => (
             <CardTanque key={t.id} tanque={t} {...props} />
           ))}
         </div>
       )}
+
+      {/* Tipos de combustível homologados */}
+      {props.combustiveis.length > 0 && (
+        <section className="rounded-2xl border border-outline-variant/50 bg-surface-card p-5 shadow-sm">
+          <div className="flex flex-col justify-between gap-2 border-b border-outline-variant/30 pb-3 sm:flex-row sm:items-center">
+            <div>
+              <h2 className="text-body font-bold text-text-title">Tipos de Combustível Homologados</h2>
+              <p className="mt-0.5 text-meta text-text-subtle">Catálogo de combustíveis usados pela frota e vínculos com tanques e veículos.</p>
+            </div>
+            {props.podeGerenciar && (
+              <button className="btn btn-secondary btn-sm self-start sm:self-auto" onClick={props.onNovoCombustivel}>
+                <Plus size={14} /> Novo tipo
+              </button>
+            )}
+          </div>
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+            {props.combustiveis.map((c) => (
+              <div key={c.id} className="flex items-center justify-between gap-3 rounded-xl bg-surface-container-low/60 p-3 transition-colors hover:bg-surface-container-low">
+                <div className="flex items-center gap-3">
+                  <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-surface-container-highest text-primary"><Fuel size={20} /></span>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-body-sm font-semibold text-text-title">{c.nome}</span>
+                      <span className="rounded-pill bg-surface-container px-2 py-0.5 text-[11px] text-text-subtle capitalize">{c.unidade}</span>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2 text-meta text-text-subtle">
+                      <span className="rounded-pill bg-[#EFF6FF] px-2 py-0.5 font-medium text-primary">{c.total_tanques ?? 0} tanque(s)</span>
+                      <span>•</span>
+                      <span>{c.total_veiculos ?? 0} veículo(s) vinculado(s)</span>
+                    </div>
+                  </div>
+                </div>
+                <span className={`inline-flex items-center gap-1 rounded-pill px-2.5 py-0.5 text-[11px] font-semibold ${c.ativo ? "bg-[#E7F8EC] text-[#106D34]" : "bg-[#F3F4F6] text-text-subtle"}`}>
+                  <span className={`h-1.5 w-1.5 rounded-full ${c.ativo ? "bg-[#106D34]" : "bg-gray-400"}`} /> {c.ativo ? "Ativo" : "Inativo"}
+                </span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Banner de auditoria */}
+      <div className="flex flex-col items-center justify-between gap-4 rounded-2xl bg-surface-container-low p-5 shadow-sm md:flex-row">
+        <div className="flex items-start gap-3.5">
+          <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-surface-container-highest text-primary"><ShieldCheck size={22} /></span>
+          <div>
+            <h4 className="text-body-sm font-semibold text-text-title">Auditoria de Estoque &amp; Controle de Perdas</h4>
+            <p className="mt-0.5 max-w-3xl text-meta text-text-subtle">
+              Aferições de régua e movimentações de estoque são registradas com trilha de auditoria para conciliação fiscal e prestação de contas.
+            </p>
+          </div>
+        </div>
+        <Link href="/relatorios" className="btn btn-secondary btn-sm shrink-0 self-end md:self-auto">
+          <FileDown size={15} /> Relatórios fiscais
+        </Link>
+      </div>
     </div>
   );
 }
@@ -386,7 +573,10 @@ function CardTanque(props: {
   const temCapacidade = capacidade > 0;
   const pct = t.percentual_disponivel;
   const barra = temCapacidade ? Math.max(0, Math.min(pct ?? 0, 100)) : 0;
+  const estoqueMin = Number(t.estoque_minimo);
+  const minPct = temCapacidade && estoqueMin > 0 ? Math.min(100, (estoqueMin / capacidade) * 100) : 0;
   const ultima = t.ultima_movimentacao;
+  const critico = (pct ?? 100) < 20;
 
   const acoes = [
     { key: "ver", label: "Ver tanque", icon: <Eye size={16} />, href: `/tanques/${t.id}` },
@@ -403,53 +593,86 @@ function CardTanque(props: {
   ];
 
   return (
-    <div className="group flex flex-col overflow-hidden rounded-card border border-surface-border bg-white shadow-card transition-shadow hover:shadow-elevated">
-      <Link href={`/tanques/${t.id}`} className="relative block h-36 w-full bg-surface-bg">
-        <FotoCombustivel
-          src={t.foto_url}
-          alt={`Foto do ${t.nome}`}
-          className="h-full w-full object-cover"
-          fallback={<Droplets className="h-10 w-10" />}
-          rounded="rounded-none"
-        />
-        <div className="absolute right-2 top-2">
-          <StatusTanqueBadge ativo={t.ativo} status={t.status_estoque} estoqueAtual={t.estoque_atual} />
-        </div>
-      </Link>
-
-      <div className="flex flex-1 flex-col p-4">
-        <div className="flex items-start justify-between gap-2">
+    <div className="flex flex-col overflow-hidden rounded-2xl border border-outline-variant/50 bg-surface-card p-5 shadow-sm transition-shadow hover:shadow-md">
+      {/* Cabeçalho */}
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-center gap-3.5">
+          <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl ${critico ? "bg-[#FFDAD6] text-[#BA1A1A]" : "bg-[#E7F8EC] text-[#106D34]"}`}>
+            <Droplets size={26} />
+          </span>
           <div>
-            <Link href={`/tanques/${t.id}`} className="text-h3 font-semibold text-text-title hover:text-[#1D4ED8]">{t.nome}</Link>
-            <p className="flex items-center gap-1 text-meta text-text-subtle">
-              <Fuel size={12} /> {t.combustivel_nome ?? "—"}
-            </p>
-          </div>
-          <div className="opacity-100">
-            <MenuAcoes acoes={acoes} />
+            <div className="flex flex-wrap items-center gap-2">
+              <Link href={`/tanques/${t.id}`} className="text-h3 font-bold tracking-tight text-text-title hover:text-primary">{t.nome}</Link>
+              <span className="rounded-pill bg-surface-container px-2.5 py-0.5 font-mono text-[11px] uppercase text-text-subtle">
+                {t.codigo ? `#${t.codigo}` : "#—"}{t.localizacao ? ` • ${t.localizacao}` : ""}
+              </span>
+            </div>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <StatusTanqueBadge ativo={t.ativo} status={t.status_estoque} estoqueAtual={t.estoque_atual} />
+              <span className="inline-flex items-center gap-1 text-meta font-semibold text-[#106D34]">
+                <span className="h-2 w-2 animate-pulse rounded-full bg-[#106D34]" /> {t.ativo ? "Em operação" : "Inativo"}
+              </span>
+            </div>
           </div>
         </div>
+        <MenuAcoes acoes={acoes} />
+      </div>
 
-        <div className="mt-3">
-          <p className="text-body text-text-title">
-            {Number(t.estoque_atual).toLocaleString("pt-BR")} <span className="text-text-subtle">de {temCapacidade ? `${capacidade.toLocaleString("pt-BR")} L` : "capacidade"}</span>
-          </p>
-          <div className="mt-2 h-3 overflow-hidden rounded-full bg-surface-bg">
-            <div className={`h-full ${corStatusTanque(t.status_estoque)}`} style={{ width: `${barra}%` }} />
-          </div>
-          <p className="mt-1 text-meta text-text-subtle">
-            {temCapacidade ? `${(pct ?? 0).toFixed(0)}% disponível` : "Capacidade não informada"}
-            {Number(t.estoque_minimo) > 0 && <> · mínimo {Number(t.estoque_minimo).toLocaleString("pt-BR")} L</>}
-          </p>
+      {/* Tag de combustível */}
+      <div className="mt-4 flex flex-wrap items-center gap-2 rounded-lg bg-surface-container-low p-2.5">
+        <span className="rounded-md bg-primary px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white">{t.combustivel_nome ?? "—"}</span>
+        <span className="text-meta text-text-subtle">Unidade: <strong className="text-text-body">{t.combustivel_unidade ?? "L"}</strong></span>
+        {ultima && (
+          <>
+            <span className="text-outline-variant">•</span>
+            <span className="text-meta text-text-subtle">Última mov.: <strong className="text-text-body">{rotuloMovimentacao(ultima.tipo, "")}</strong></span>
+          </>
+        )}
+      </div>
+
+      {/* Métrica principal */}
+      <div className="mt-4 flex items-baseline justify-between gap-3">
+        <div className="flex items-baseline gap-2">
+          <span className="text-3xl font-bold tracking-tight text-text-title">{Number(t.estoque_atual).toLocaleString("pt-BR")}</span>
+          <span className="text-h3 font-medium text-text-subtle">L</span>
         </div>
+        <div className="text-right">
+          <span className="block text-meta text-text-subtle">Capacidade total</span>
+          <span className="text-body font-semibold text-text-title">{temCapacidade ? `${capacidade.toLocaleString("pt-BR")} L` : "—"}</span>
+        </div>
+      </div>
 
-        <div className="mt-3 border-t border-surface-border pt-2 text-meta text-text-subtle">
-          {ultima ? (
-            <span>
-              Última: <strong className="font-medium text-text-body">{rotuloMovimentacao(ultima.tipo, "")}</strong> · {new Date(ultima.created_at).toLocaleDateString("pt-BR")}
-            </span>
-          ) : (
-            <span>Última movimentação: —</span>
+      {/* Medidor de nível */}
+      <div className="mt-3">
+        <div className="relative flex h-4 w-full items-center overflow-hidden rounded-pill bg-surface-container-high shadow-inner">
+          {minPct > 0 && <div className="absolute bottom-0 top-0 z-10 w-0.5 bg-[#BA1A1A]" style={{ left: `${minPct}%` }} title={`Mínimo: ${estoqueMin.toLocaleString("pt-BR")} L`} />}
+          <div className={`h-full rounded-pill transition-all duration-500 ${corStatusTanque(t.status_estoque)}`} style={{ width: `${barra}%` }} />
+        </div>
+        <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-meta text-text-subtle">
+          <span className="inline-flex items-center gap-1 font-medium text-[#BA1A1A]">
+            <AlertTriangle size={12} /> Mínimo: {estoqueMin > 0 ? `${estoqueMin.toLocaleString("pt-BR")} L` : "—"}
+          </span>
+          <span className="font-semibold text-text-body">{temCapacidade ? `${(pct ?? 0).toFixed(1)}% do volume útil` : "Capacidade não informada"}</span>
+          <span className="font-mono text-text-subtle">{temCapacidade ? `${capacidade.toLocaleString("pt-BR")} L (100%)` : "—"}</span>
+        </div>
+      </div>
+
+      {/* Rodapé de operações */}
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-outline-variant/30 pt-3">
+        <span className="inline-flex items-center gap-1.5 text-meta text-text-subtle">
+          <History size={14} /> {ultima ? `Última movimentação em ${new Date(ultima.created_at).toLocaleDateString("pt-BR")}` : "Sem movimentações"}
+        </span>
+        <div className="flex items-center gap-1.5">
+          <Link href={`/tanques/${t.id}`} className="inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-meta font-semibold text-primary transition-colors hover:bg-surface-container">
+            <History size={15} /> Log de medição
+          </Link>
+          {props.podeGerenciar && (
+            <button
+              onClick={() => props.onInventario(t)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-meta font-semibold text-white shadow-sm transition-all hover:bg-primary-800 active:scale-95"
+            >
+              <Ruler size={15} /> Lançar Régua
+            </button>
           )}
         </div>
       </div>
@@ -521,44 +744,44 @@ function EntradasTab(props: {
         />
       ) : (
         <>
-          <div className="overflow-x-auto rounded-card border border-surface-border bg-white shadow-card">
-            <table className="w-full min-w-200 text-body-sm">
+          <div className="overflow-x-auto rounded-2xl border border-outline-variant/50 bg-surface-card shadow-sm">
+            <table className="w-full min-w-[1100px] text-body-sm">
               <thead>
-                <tr className="border-b border-surface-border bg-surface-bg text-left text-meta text-text-subtle">
-                  <th className="px-4 py-3">Data</th>
-                  <th className="px-4 py-3">Tanque</th>
-                  <th className="px-4 py-3">Combustível</th>
-                  <th className="px-4 py-3">Fornecedor</th>
-                  <th className="px-4 py-3">Litros</th>
-                  <th className="px-4 py-3">NF</th>
-                  <th className="px-4 py-3">Valor total</th>
-                  <th className="px-4 py-3">R$/L</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3">Ações</th>
+                <tr className="border-b border-outline-variant/40 bg-[#F3F4F6] text-left text-[11px] font-bold uppercase tracking-wider text-text-subtle">
+                  <th className="px-4 py-3.5">Data</th>
+                  <th className="px-4 py-3.5">Tanque</th>
+                  <th className="px-4 py-3.5">Combustível</th>
+                  <th className="px-4 py-3.5">Fornecedor</th>
+                  <th className="px-4 py-3.5">Litros</th>
+                  <th className="px-4 py-3.5">NF</th>
+                  <th className="px-4 py-3.5">Valor total</th>
+                  <th className="px-4 py-3.5">R$/L</th>
+                  <th className="px-4 py-3.5">Status</th>
+                  <th className="px-4 py-3.5">Ações</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="divide-y divide-outline-variant/20">
                 {entradas.map((e) => (
-                  <tr key={e.id} className="border-b border-surface-border last:border-0 hover:bg-surface-bg/50">
+                  <tr key={e.id} className="transition-colors hover:bg-[#EFF4FF]/40">
                     <td className="px-4 py-3">{new Date(e.data_entrada + "T12:00").toLocaleDateString("pt-BR")}</td>
                     <td className="px-4 py-3 font-medium text-text-title">{e.tanque_nome ?? "—"}</td>
                     <td className="px-4 py-3">{e.combustivel_nome ?? "—"}</td>
                     <td className="px-4 py-3">{e.fornecedor_nome ?? "—"}</td>
-                    <td className="px-4 py-3 font-medium">{Number(e.quantidade_litros).toLocaleString("pt-BR")} L</td>
+                    <td className="px-4 py-3 font-medium tabular-nums">{Number(e.quantidade_litros).toLocaleString("pt-BR")} L</td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-1.5">
                         {e.numero_nota ?? "—"}
                         {(e.anexos?.length ?? 0) > 0 && (
-                          <span className="rounded-pill bg-[#EFF6FF] px-1.5 py-0.5 text-meta font-medium text-[#1D4ED8]">
+                          <span className="rounded-pill bg-[#EFF6FF] px-1.5 py-0.5 text-meta font-medium text-primary">
                             {e.anexos!.length} doc(s)
                           </span>
                         )}
                       </span>
                     </td>
-                    <td className="px-4 py-3">{e.valor_total ? `R$ ${Number(e.valor_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}</td>
-                    <td className="px-4 py-3">{e.valor_por_litro ? `R$ ${Number(e.valor_por_litro).toFixed(4)}` : "—"}</td>
+                    <td className="px-4 py-3 tabular-nums">{e.valor_total ? `R$ ${Number(e.valor_total).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}` : "—"}</td>
+                    <td className="px-4 py-3 tabular-nums">{e.valor_por_litro ? `R$ ${Number(e.valor_por_litro).toFixed(4)}` : "—"}</td>
                     <td className="px-4 py-3">
-                      <span className={`rounded-pill px-2 py-0.5 text-meta font-medium ${e.cancelada ? "bg-[#FFDAD6] text-[#BA1A1A]" : "bg-[#9DF6B3] text-[#106D34]"}`}>
+                      <span className={`rounded-pill px-2 py-0.5 text-meta font-medium ${e.cancelada ? "bg-[#FFDAD6] text-[#BA1A1A]" : "bg-[#E7F8EC] text-[#106D34]"}`}>
                         {e.cancelada ? "Cancelada" : "Confirmada"}
                       </span>
                     </td>
@@ -640,20 +863,20 @@ function CombustiveisTab(props: {
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {props.combustiveis.map((c) => (
-            <div key={c.id} className="flex items-start gap-3 rounded-card border border-surface-border bg-white p-4 shadow-card">
+            <div key={c.id} className="flex items-start gap-3 rounded-2xl border border-outline-variant/50 bg-surface-card p-4 shadow-sm">
               <FotoCombustivel
                 src={c.foto_url}
                 alt={`Ícone ${c.nome}`}
-                className="h-12 w-12 flex-shrink-0 object-cover"
+                className="h-12 w-12 flex-shrink-0 rounded-xl object-cover"
                 fallback={<Fuel className="h-6 w-6" />}
               />
               <div className="flex-1">
                 <p className="font-medium text-text-title">{c.nome}</p>
                 <p className="text-meta text-text-subtle capitalize">{c.unidade}</p>
                 <div className="mt-1 flex flex-wrap gap-1">
-                  <span className="rounded-pill bg-[#EFF6FF] px-2 py-0.5 text-meta text-[#1D4ED8]">{c.total_tanques ?? 0} tanque(s)</span>
+                  <span className="rounded-pill bg-[#EFF6FF] px-2 py-0.5 text-meta text-primary">{c.total_tanques ?? 0} tanque(s)</span>
                   <span className="rounded-pill bg-surface-bg px-2 py-0.5 text-meta text-text-subtle">{c.total_veiculos ?? 0} veículo(s)</span>
-                  <span className={`rounded-pill px-2 py-0.5 text-meta font-medium ${c.ativo ? "bg-[#9DF6B3] text-[#106D34]" : "bg-surface-bg text-text-subtle"}`}>
+                  <span className={`rounded-pill px-2 py-0.5 text-meta font-medium ${c.ativo ? "bg-[#E7F8EC] text-[#106D34]" : "bg-surface-bg text-text-subtle"}`}>
                     {c.ativo ? "Ativo" : "Inativo"}
                   </span>
                 </div>
