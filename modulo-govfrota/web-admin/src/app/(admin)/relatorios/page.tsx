@@ -6,6 +6,7 @@ import { Download, FileSpreadsheet, FileText } from "lucide-react";
 import {
   api,
   CNHItem,
+  RelatorioCatalogo,
   RelatorioConsumo,
   RelatorioEstoque,
   RelatorioManutencoes,
@@ -14,8 +15,18 @@ import {
 import { useAuth } from "@/lib/auth";
 import { RequirePermission } from "@/components/RequirePermission";
 import { AbaAbastecimentos, FILTROS_VAZIOS, FiltrosAbastecimento } from "@/components/relatorios/AbaAbastecimentos";
+import {
+  FILTROS_GENERICOS_VAZIOS,
+  FiltrosGenericos,
+  parametros,
+  RelatorioGenerico,
+} from "@/components/relatorios/RelatorioGenerico";
 
 type Aba = "secretarias" | "abastecimentos" | "consumo" | "estoque" | "manutencoes" | "cnh";
+/** Relatório escolhido: uma das telas próprias, um do catálogo ("cat:chave") ou a prestação de contas. */
+type Sel = Aba | `cat:${string}` | "prestacao";
+
+const CATEGORIAS = ["Combustível", "Controle", "Frota", "Pessoas", "Secretarias", "Auditoria"];
 
 function reais(v: number): string {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -36,7 +47,11 @@ const ATALHOS = [["hoje", "Hoje"], ["mes", "Este mês"], ["mes_passado", "Mês p
 
 export default function RelatoriosPage() {
   const { restrito } = useAuth();
-  const [aba, setAba] = useState<Aba>("secretarias");
+  const [sel, setSel] = useState<Sel>("abastecimentos");
+  const aba = (sel.startsWith("cat:") || sel === "prestacao" ? null : sel) as Aba | null;
+  const [catalogo, setCatalogo] = useState<RelatorioCatalogo[]>([]);
+  const [filtrosGen, setFiltrosGen] = useState<FiltrosGenericos>(FILTROS_GENERICOS_VAZIOS);
+  const defCat = sel.startsWith("cat:") ? catalogo.find((c) => c.chave === sel.slice(4)) ?? null : null;
   const [[dataInicio, dataFim], setPeriodo] = useState<[string, string]>(() => periodo("mes"));
   const setDataInicio = (v: string) => setPeriodo([v, dataFim]);
   const setDataFim = (v: string) => setPeriodo([dataInicio, v]);
@@ -50,6 +65,7 @@ export default function RelatoriosPage() {
 
   useEffect(() => {
     api.getConfiguracoes().then((c) => setPublico(c.tipo_organizacao !== "PRIVADO")).catch(() => {});
+    api.catalogoRelatorios().then(setCatalogo).catch(() => setCatalogo([]));
   }, []);
 
   const carregar = useCallback(async () => {
@@ -68,11 +84,20 @@ export default function RelatoriosPage() {
 
   function exportar(endpoint: string, formato: "csv" | "xlsx" | "pdf") {
     const params = new URLSearchParams({ formato });
-    if (dataInicio) params.set("data_inicio", dataInicio);
-    if (dataFim) params.set("data_fim", dataFim);
+    if (defCat) {
+      Object.entries(parametros(defCat, dataInicio, dataFim, filtrosGen)).forEach(([k, v]) => params.set(k, v));
+    } else if (endpoint.startsWith("/")) {
+      params.set("inicio", dataInicio);
+      params.set("fim", dataFim);
+      if (filtrosGen.unidade_id) params.set("unidade_id", filtrosGen.unidade_id);
+    } else {
+      if (dataInicio) params.set("data_inicio", dataInicio);
+      if (dataFim) params.set("data_fim", dataFim);
+    }
     if (endpoint === "abastecimentos") Object.entries(filtrosAbast).forEach(([k, v]) => v && params.set(k, v));
     const token = localStorage.getItem("govfrota_access_token");
-    fetch(`/api/govfrota/relatorios/${endpoint}?${params}`, {
+    const base = endpoint.startsWith("/") ? `/api/govfrota${endpoint}` : `/api/govfrota/relatorios/${endpoint}`;
+    fetch(`${base}?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
     })
       .then((r) => {
@@ -83,7 +108,7 @@ export default function RelatoriosPage() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;
-        a.download = `${endpoint.replace("/", "-")}.${formato}`;
+        a.download = `${endpoint.replace(/^\//, "").replace(/\//g, "-")}.${formato}`;
         a.click();
         URL.revokeObjectURL(url);
       })
@@ -98,17 +123,24 @@ export default function RelatoriosPage() {
     manutencoes: "manutencoes",
     cnh: "motoristas/cnh",
   };
+  const endpointSel = aba ? endpointDaAba[aba] : defCat ? `catalogo/${defCat.chave}` : "/secretaria/prestacao-contas";
 
-  const abas = [
-    { chave: "secretarias", label: publico ? "Por secretaria" : "Por centro de custo" },
-    { chave: "abastecimentos", label: "Abastecimentos" },
-    { chave: "consumo", label: "Consumo por veículo" },
-    { chave: "estoque", label: "Estoque" },
-    { chave: "manutencoes", label: "Manutenções" },
-    { chave: "cnh", label: "CNHs" },
-  ] as const;
+  // Telas próprias + catálogo da API, agrupados por categoria.
+  const proprios: { sel: Sel; titulo: string; categoria: string; org?: boolean }[] = [
+    { sel: "abastecimentos", titulo: "Abastecimentos", categoria: "Combustível" },
+    { sel: "estoque", titulo: "Estoque dos tanques", categoria: "Combustível", org: true },
+    { sel: "consumo", titulo: "Consumo por veículo", categoria: "Frota" },
+    { sel: "manutencoes", titulo: "Manutenções", categoria: "Frota" },
+    { sel: "cnh", titulo: "Validade das CNHs", categoria: "Pessoas", org: true },
+    { sel: "secretarias", titulo: publico ? "Gasto por secretaria" : "Gasto por centro de custo", categoria: "Secretarias" },
+    { sel: "prestacao", titulo: "Prestação de contas (PDF)", categoria: "Secretarias" },
+  ];
   // Estoque e CNHs são da organização toda — fora do alcance de quem vê só a secretaria.
-  const abasVisiveis = abas.filter((a) => !(restrito && (a.chave === "estoque" || a.chave === "cnh")));
+  const menu = [
+    ...proprios.filter((p) => !(restrito && p.org)),
+    ...catalogo.map((c) => ({ sel: `cat:${c.chave}` as Sel, titulo: c.titulo, categoria: c.categoria })),
+  ];
+  const tituloSel = menu.find((m) => m.sel === sel)?.titulo ?? "";
 
   return (
     <RequirePermission perms="reports.view">
@@ -139,26 +171,67 @@ export default function RelatoriosPage() {
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-1 border-b border-surface-border">
-          {abasVisiveis.map((a) => (
-            <button key={a.chave} onClick={() => setAba(a.chave)}
-              className={`px-4 py-2 text-body-sm ${aba === a.chave ? "border-b-2 border-[#1D4ED8] font-medium text-[#1D4ED8]" : "text-text-body"}`}>
-              {a.label}
-            </button>
-          ))}
-        </div>
+        <div className="grid gap-4 lg:grid-cols-[240px_minmax(0,1fr)]">
+          <nav aria-label="Relatórios" className="hidden space-y-4 self-start rounded-card border border-surface-border bg-white p-3 shadow-card lg:block">
+            {CATEGORIAS.map((cat) => {
+              const itens = menu.filter((m) => m.categoria === cat);
+              if (!itens.length) return null;
+              return (
+                <div key={cat}>
+                  <p className="px-2 pb-1 text-meta font-semibold uppercase tracking-wide text-text-subtle">{cat}</p>
+                  {itens.map((m) => (
+                    <button key={m.sel} onClick={() => setSel(m.sel)}
+                      className={`block w-full rounded-btn px-2 py-1.5 text-left text-body-sm ${sel === m.sel ? "bg-[#EFF4FF] font-medium text-[#1D4ED8]" : "text-text-body hover:bg-surface-bg"}`}>
+                      {m.titulo}
+                    </button>
+                  ))}
+                </div>
+              );
+            })}
+          </nav>
 
-        <div className="flex flex-wrap gap-2">
-          <button onClick={() => exportar(endpointDaAba[aba], "csv")} className="btn btn-secondary btn-sm inline-flex items-center gap-1">
-            <Download size={14} /> CSV
-          </button>
-          <button onClick={() => exportar(endpointDaAba[aba], "xlsx")} className="btn btn-secondary btn-sm inline-flex items-center gap-1">
-            <FileSpreadsheet size={14} /> Excel (XLSX)
-          </button>
-          <button onClick={() => exportar(endpointDaAba[aba], "pdf")} className="btn btn-secondary btn-sm inline-flex items-center gap-1">
-            <FileText size={14} /> PDF
-          </button>
-        </div>
+          <div className="min-w-0 space-y-4">
+            <select aria-label="Relatório" className="input lg:hidden" value={sel} onChange={(e) => setSel(e.target.value as Sel)}>
+              {CATEGORIAS.map((cat) => (
+                <optgroup key={cat} label={cat}>
+                  {menu.filter((m) => m.categoria === cat).map((m) => <option key={m.sel} value={m.sel}>{m.titulo}</option>)}
+                </optgroup>
+              ))}
+            </select>
+
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="text-lg font-semibold text-text-title">{tituloSel}</h2>
+              <div className="flex flex-wrap gap-2">
+                {sel !== "prestacao" && (
+                  <button onClick={() => exportar(endpointSel, "csv")} className="btn btn-secondary btn-sm inline-flex items-center gap-1">
+                    <Download size={14} /> CSV
+                  </button>
+                )}
+                <button onClick={() => exportar(endpointSel, "xlsx")} className="btn btn-secondary btn-sm inline-flex items-center gap-1">
+                  <FileSpreadsheet size={14} /> Excel (XLSX)
+                </button>
+                <button onClick={() => exportar(endpointSel, "pdf")} className="btn btn-primary btn-sm inline-flex items-center gap-1">
+                  <FileText size={14} /> PDF
+                </button>
+              </div>
+            </div>
+
+            {defCat && (
+              <RelatorioGenerico def={defCat} dataInicio={dataInicio} dataFim={dataFim} filtros={filtrosGen} setFiltros={setFiltrosGen} publico={publico} />
+            )}
+
+            {sel === "prestacao" && (
+              <div className="space-y-3 rounded-card border border-surface-border bg-white p-5 shadow-card">
+                <p className="text-body-sm text-text-body">
+                  Relatório gerencial do período escolhido acima: consumo, veículos, motoristas, notas fiscais e contratos, pronto para assinatura.
+                  Sem secretaria escolhida, sai consolidado.
+                </p>
+                <label className="flex max-w-sm flex-col gap-1 text-meta text-text-subtle">
+                  {publico ? "Secretaria" : "Centro de custo"}
+                  <SelectUnidade valor={filtrosGen.unidade_id} onChange={(v) => setFiltrosGen({ ...filtrosGen, unidade_id: v })} />
+                </label>
+              </div>
+            )}
 
         {aba === "secretarias" && relSecretarias && (
           <>
@@ -324,7 +397,22 @@ export default function RelatoriosPage() {
             ))}
           </ul>
         )}
+          </div>
+        </div>
       </div>
     </RequirePermission>
+  );
+}
+
+function SelectUnidade({ valor, onChange }: { valor: string; onChange: (v: string) => void }) {
+  const [unidades, setUnidades] = useState<{ id: string; nome: string }[]>([]);
+  useEffect(() => {
+    api.listUnidades(true).then(setUnidades).catch(() => setUnidades([]));
+  }, []);
+  return (
+    <select className="input !py-1.5 text-body-sm" value={valor} onChange={(e) => onChange(e.target.value)}>
+      <option value="">Todas (consolidado)</option>
+      {unidades.map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
+    </select>
   );
 }

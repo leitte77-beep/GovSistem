@@ -582,6 +582,12 @@ export const api = {
   relatorioManutencoes(params?: Record<string, unknown>) {
     return request<RelatorioManutencoes>(`/relatorios/manutencoes${qs(params)}`);
   },
+  catalogoRelatorios() {
+    return request<RelatorioCatalogo[]>("/relatorios/catalogo");
+  },
+  relatorioCatalogo(chave: string, params?: Record<string, unknown>) {
+    return request<RelatorioCatalogoDados>(`/relatorios/catalogo/${chave}${qs(params)}`);
+  },
   relatorioSecretarias(params?: Record<string, unknown>) {
     return request<RelatorioSecretarias>(`/relatorios/secretarias${qs(params)}`);
   },
@@ -1424,6 +1430,27 @@ export interface CNHItem {
   dias_restantes: number;
   situacao?: string;
 }
+export interface RelatorioCatalogo {
+  chave: string;
+  titulo: string;
+  categoria: string;
+  descricao: string;
+  /** periodo | fim | unidade | veiculo | motorista | posto */
+  filtros: string[];
+  exige: string[];
+}
+
+export interface RelatorioCatalogoDados {
+  titulo: string;
+  periodo: { inicio: string; fim: string };
+  colunas: { chave: string; rotulo: string; tipo: string; peso: number; total: boolean }[];
+  linhas: Record<string, unknown>[];
+  totais: Record<string, number>;
+  resumo: { rotulo: string; valor: string }[];
+  aviso: string | null;
+  link: "abastecimento" | "veiculo" | null;
+}
+
 export interface GrupoAbastecimentos {
   nome: string;
   abastecimentos: number;

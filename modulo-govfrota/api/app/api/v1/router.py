@@ -20,6 +20,7 @@ from app.api.v1 import (
     motoristas,
     ocorrencias,
     relatorios,
+    relatorios_catalogo,
     tanques,
     unidades,
     uploads,
@@ -40,6 +41,7 @@ api_router.include_router(manifestos.router)
 api_router.include_router(abastecimentos.router)
 api_router.include_router(manutencoes.router)
 api_router.include_router(ocorrencias.router)
+api_router.include_router(relatorios_catalogo.router)
 api_router.include_router(relatorios.router)
 api_router.include_router(busca.router)
 api_router.include_router(dashboard.router)
