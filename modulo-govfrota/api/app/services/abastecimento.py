@@ -19,7 +19,7 @@ from decimal import Decimal
 
 from fastapi import HTTPException, status
 from sqlalchemy import func as sa_func
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.timezone import ensure_aware, to_display
@@ -49,7 +49,31 @@ ALERTAS = {
     "SALDO_EXCEDIDO": "Litros acima do saldo do contrato com o posto",
     "SEM_CONTRATO": "Posto sem contrato vigente para o combustível",
     "INTERVALO_CURTO": "Abastecimento muito próximo do anterior",
+    # Só em registros feitos sem internet (fila offline do app): o
+    # abastecimento já aconteceu, então em vez de recusar na sincronização o
+    # registro entra com o alerta para o setor de frota revisar.
+    "MEDICAO_INFERIOR": "KM/horímetro abaixo do último registrado (registro offline)",
+    "QUANTIDADE_ACIMA_CAPACIDADE": "Litros acima da capacidade do veículo (registro offline)",
+    "COMBUSTIVEL_INCOMPATIVEL": "Combustível incompatível com o veículo (registro offline)",
+    "VEICULO_BAIXADO": "Veículo baixado (registro offline)",
+    "POSTO_NAO_CREDENCIADO": "Posto inativo ou descredenciado (registro offline)",
+    "ESTOQUE_INSUFICIENTE": "Tanque ficou com estoque negativo (registro offline)",
+    "SEM_FOTO": "Foto obrigatória ausente (registro offline)",
+    "CNH_VENCIDA": "Motorista com CNH vencida (registro offline)",
 }
+
+
+def conferir_offline(
+    registrado_offline: bool, alertas: list[str], avisos: dict, codigo: str, validar
+) -> None:
+    """Roda a validação; em registro offline a recusa vira alerta de revisão."""
+    try:
+        validar()
+    except HTTPException as exc:
+        if not registrado_offline:
+            raise
+        alertas.append(codigo)
+        avisos[codigo.lower()] = exc.detail
 
 # Dois abastecimentos de combustível do mesmo veículo em menos que isso pedem conferência.
 INTERVALO_MINIMO = timedelta(hours=3)
@@ -370,6 +394,8 @@ async def registrar_abastecimento(
     ip_origem: str | None = None,
     permitir_estoque_negativo: bool | None = None,
     idempotency_key: str | None = None,
+    registrado_offline: bool = False,
+    alertas_iniciais: list[str] | None = None,
 ) -> tuple[Abastecimento, dict]:
     """Registra um abastecimento aplicando todas as validações de negócio.
 
@@ -378,12 +404,19 @@ async def registrar_abastecimento(
     litros acima da média), que também ficam gravados no registro.
     """
     avisos: dict = {}
+    alertas: list[str] = list(alertas_iniciais or [])
 
-    if veiculo.situacao == "BAIXADO":
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="Veículo baixado não pode receber abastecimentos.",
-        )
+    def conferir(codigo: str, validar) -> None:
+        conferir_offline(registrado_offline, alertas, avisos, codigo, validar)
+
+    def _baixado() -> None:
+        if veiculo.situacao == "BAIXADO":
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="Veículo baixado não pode receber abastecimentos.",
+            )
+
+    conferir("VEICULO_BAIXADO", _baixado)
 
     config = await get_configuracoes(db, organization_id)
 
@@ -405,7 +438,15 @@ async def registrar_abastecimento(
     elif modalidade == POSTO_CREDENCIADO:
         if fornecedor_id is None:
             raise HTTPException(status_code=422, detail="Selecione o posto onde abasteceu.")
-        await posto_credenciado_valido(db, organization_id, fornecedor_id)
+        try:
+            await posto_credenciado_valido(db, organization_id, fornecedor_id)
+        except HTTPException as exc:
+            # Offline: aceita posto desativado depois, mas nunca um de outra org.
+            existe = await db.get(Fornecedor, fornecedor_id)
+            if not registrado_offline or existe is None or existe.organization_id != organization_id:
+                raise
+            alertas.append("POSTO_NAO_CREDENCIADO")
+            avisos["posto_nao_credenciado"] = exc.detail
         tanque_id = None
         if preco_litro is not None and preco_litro <= 0:
             raise HTTPException(status_code=422, detail="Preço por litro deve ser maior que zero.")
@@ -423,8 +464,9 @@ async def registrar_abastecimento(
     capacidade, rotulo, tanques_veiculo = await _reservatorio_veiculo(
         db, veiculo.id, combustivel_id
     )
-    _validar_combustivel_compativel(combustivel_id, tanques_veiculo)
-    _validar_quantidade(quantidade_litros, capacidade, rotulo)
+    conferir("COMBUSTIVEL_INCOMPATIVEL", lambda: _validar_combustivel_compativel(combustivel_id, tanques_veiculo))
+    _validar_quantidade(quantidade_litros, None, rotulo)  # zero/absurdo: sempre recusa
+    conferir("QUANTIDADE_ACIMA_CAPACIDADE", lambda: _validar_quantidade(quantidade_litros, capacidade, rotulo))
 
     # Medição: máquinas usam horímetro; a km do veículo fica como está.
     if veiculo.usa_horimetro:
@@ -433,17 +475,17 @@ async def registrar_abastecimento(
         horimetro = Decimal(horimetro)
         if horimetro < 0:
             raise HTTPException(status_code=422, detail="Horímetro inválido.")
-        _validar_medicao(
+        conferir("MEDICAO_INFERIOR", lambda: _validar_medicao(
             Decimal(veiculo.horimetro_atual or 0), horimetro, config.tolerancia_km_percentual, "h"
-        )
+        ))
         quilometragem = veiculo.quilometragem_atual
     else:
         horimetro = None
         if quilometragem is None:
             raise HTTPException(status_code=422, detail="Informe a quilometragem do veículo.")
-        _validar_quilometragem(veiculo, quilometragem, config.tolerancia_km_percentual)
-
-    alertas: list[str] = []
+        conferir("MEDICAO_INFERIOR", lambda: _validar_quilometragem(
+            veiculo, quilometragem, config.tolerancia_km_percentual
+        ))
     if await _detectar_duplicidade(
         db,
         organization_id,
@@ -495,6 +537,10 @@ async def registrar_abastecimento(
 
     if permitir_estoque_negativo is None:
         permitir_estoque_negativo = config.permitir_estoque_negativo
+    # Offline o combustível já saiu do tanque: o estoque pode ficar negativo.
+    estoque_forcado = registrado_offline and not permitir_estoque_negativo
+    if registrado_offline:
+        permitir_estoque_negativo = True
 
     anterior = await _registro_anterior(
         db, organization_id, veiculo.id, produto.categoria, agora
@@ -610,6 +656,11 @@ async def registrar_abastecimento(
     await db.flush()
     if movimentacao is not None:
         movimentacao.referencia_id = abastecimento.id
+        if estoque_forcado and Decimal(movimentacao.saldo_apos) < 0:
+            alertas.append("ESTOQUE_INSUFICIENTE")
+            avisos["estoque_insuficiente"] = (
+                f"Tanque ficou com {movimentacao.saldo_apos} L — confira o estoque."
+            )
 
     # Atualiza a medição do veículo somente para frente
     if quilometragem > veiculo.quilometragem_atual:
@@ -692,6 +743,105 @@ async def media_consumo_veiculo(
         conditions.append(Abastecimento.id != excluir_id)
     avg = await db.scalar(select(sa_func.avg(coluna)).where(*conditions))
     return Decimal(str(avg)).quantize(Decimal("0.01")) if avg else None
+
+
+async def _registro_seguinte(
+    db: AsyncSession, abast: Abastecimento, categoria: str
+) -> Abastecimento | None:
+    """Próximo abastecimento confirmado do veículo (mesma categoria de produto)."""
+    return (
+        await db.execute(
+            select(Abastecimento)
+            .join(Combustivel, Combustivel.id == Abastecimento.combustivel_id)
+            .where(
+                Abastecimento.organization_id == abast.organization_id,
+                Abastecimento.veiculo_id == abast.veiculo_id,
+                Abastecimento.status == "CONFIRMADO",
+                Abastecimento.id != abast.id,
+                Abastecimento.data_abastecimento >= abast.data_abastecimento,
+                Combustivel.categoria == categoria,
+            )
+            .order_by(Abastecimento.data_abastecimento.asc(), Abastecimento.created_at.asc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+
+
+async def _reavaliar_consumo(
+    db: AsyncSession, abast: Abastecimento, veiculo: Veiculo, categoria: str, desvio_pct: int
+) -> None:
+    """Recalcula consumo e os alertas que dependem da medição (consumo fora do
+    padrão, sem deslocamento) de um registro já gravado. Os demais alertas
+    (duplicidade, horário, intervalo…) não dependem da medição e ficam como estão."""
+    anterior = await _registro_anterior(
+        db, abast.organization_id, abast.veiculo_id, categoria, abast.data_abastecimento, excluir_id=abast.id
+    )
+    alertas = [a for a in alertas_do_registro(abast) if a not in ("CONSUMO_FORA_PADRAO", "SEM_DESLOCAMENTO")]
+    litros = Decimal(abast.quantidade_litros)
+    consumo = consumo_h = None
+    if anterior is not None:
+        if veiculo.usa_horimetro:
+            if abast.horimetro is not None:
+                consumo_h = calcular_consumo_horas(anterior.horimetro, Decimal(abast.horimetro), litros)
+                if anterior.horimetro is not None and Decimal(abast.horimetro) == Decimal(anterior.horimetro):
+                    alertas.append("SEM_DESLOCAMENTO")
+        else:
+            consumo = calcular_consumo(anterior.quilometragem, abast.quilometragem, litros)
+            if abast.quilometragem == anterior.quilometragem:
+                alertas.append("SEM_DESLOCAMENTO")
+    abast.consumo_km_l = consumo
+    abast.consumo_l_h = consumo_h
+
+    atual = consumo if consumo is not None else consumo_h
+    if atual is not None and desvio_pct > 0:
+        media = await media_consumo_veiculo(
+            db, abast.organization_id, veiculo.id, excluir_id=abast.id, por_hora=veiculo.usa_horimetro
+        )
+        if media and abs(atual - media) / media * Decimal("100") > Decimal(desvio_pct):
+            alertas.append("CONSUMO_FORA_PADRAO")
+    abast.alertas = json.dumps(alertas) if alertas else None
+    if not alertas:
+        # O aviso "Conferir abastecimento" deixou de valer: some do sino e da lista.
+        await db.execute(
+            delete(Notificacao).where(
+                Notificacao.organization_id == abast.organization_id,
+                Notificacao.tipo == "ABASTECIMENTO_ALERTA",
+                Notificacao.link == f"/abastecimentos/{abast.id}",
+            )
+        )
+
+
+async def recalcular_apos_correcao(
+    db: AsyncSession, abast: Abastecimento, veiculo: Veiculo | None
+) -> None:
+    """Depois de corrigir litros/km/horímetro: refaz consumo e alertas do próprio
+    registro e do seguinte (cujo consumo usa esta medição como base) e acerta a
+    medição atual do veículo pela maior registrada — inclusive para baixo, quando
+    a correção desfaz um erro de digitação."""
+    if veiculo is None:
+        return
+    await db.flush()
+    produto = await db.get(Combustivel, abast.combustivel_id)
+    if produto is None or produto.categoria == "FLUIDO_AUXILIAR":
+        return
+    config = await get_configuracoes(db, abast.organization_id)
+    await _reavaliar_consumo(db, abast, veiculo, produto.categoria, config.alerta_consumo_desvio_pct)
+    seguinte = await _registro_seguinte(db, abast, produto.categoria)
+    if seguinte is not None:
+        await db.flush()
+        await _reavaliar_consumo(db, seguinte, veiculo, produto.categoria, config.alerta_consumo_desvio_pct)
+
+    filtro = (
+        Abastecimento.organization_id == abast.organization_id,
+        Abastecimento.veiculo_id == veiculo.id,
+        Abastecimento.status == "CONFIRMADO",
+    )
+    maior_km = await db.scalar(select(sa_func.max(Abastecimento.quilometragem)).where(*filtro))
+    if maior_km is not None:
+        veiculo.quilometragem_atual = maior_km
+    maior_h = await db.scalar(select(sa_func.max(Abastecimento.horimetro)).where(*filtro))
+    if maior_h is not None:
+        veiculo.horimetro_atual = maior_h
 
 
 def alertas_do_registro(abast: Abastecimento) -> list[str]:

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { Download, FileSpreadsheet, FileText } from "lucide-react";
@@ -188,6 +189,14 @@ export default function RelatoriosPage() {
                 </div>
               );
             })}
+            {!restrito && (
+              <div>
+                <p className="px-2 pb-1 text-meta font-semibold uppercase tracking-wide text-text-subtle">Prestação de contas</p>
+                <Link href="/simam" className="block w-full rounded-btn px-2 py-1.5 text-left text-body-sm text-text-body hover:bg-surface-bg">
+                  SIM-AM (TCE-PR)
+                </Link>
+              </div>
+            )}
           </nav>
 
           <div className="min-w-0 space-y-4">
@@ -198,6 +207,11 @@ export default function RelatoriosPage() {
                 </optgroup>
               ))}
             </select>
+            {!restrito && (
+              <Link href="/simam" className="block text-body-sm text-[#1D4ED8] hover:underline lg:hidden">
+                Prestação de contas: SIM-AM (TCE-PR) →
+              </Link>
+            )}
 
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-lg font-semibold text-text-title">{tituloSel}</h2>

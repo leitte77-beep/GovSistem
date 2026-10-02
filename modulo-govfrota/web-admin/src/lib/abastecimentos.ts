@@ -42,6 +42,18 @@ export const ALERTAS: Record<string, string> = {
   FORA_DO_HORARIO: "Fora do horário",
   SEM_DESLOCAMENTO: "Sem deslocamento",
   LITROS_ACIMA_MEDIA: "Litros acima da média",
+  INTERVALO_CURTO: "Intervalo curto",
+  SALDO_EXCEDIDO: "Saldo do contrato excedido",
+  SEM_CONTRATO: "Sem contrato vigente",
+  // Registro feito sem internet: aceito na sincronização, mas para revisar.
+  MEDICAO_INFERIOR: "KM/horímetro abaixo do último (offline)",
+  QUANTIDADE_ACIMA_CAPACIDADE: "Acima da capacidade (offline)",
+  COMBUSTIVEL_INCOMPATIVEL: "Combustível incompatível (offline)",
+  VEICULO_BAIXADO: "Veículo baixado (offline)",
+  POSTO_NAO_CREDENCIADO: "Posto descredenciado (offline)",
+  ESTOQUE_INSUFICIENTE: "Estoque negativo (offline)",
+  SEM_FOTO: "Sem foto obrigatória (offline)",
+  CNH_VENCIDA: "CNH vencida (offline)",
 };
 
 export function rotuloAlerta(codigo: string): string {

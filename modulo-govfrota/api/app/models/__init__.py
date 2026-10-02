@@ -35,6 +35,8 @@ from app.models.auditoria import Auditoria, Notificacao
 from app.models.anexo import Anexo
 from app.models.acesso_fornecedor import AcessoFornecedor
 from app.models.nota_abastecimento import NotaAbastecimento
+from app.models.chamado_suporte import ChamadoSuporte
+from app.models.uso_veiculo import UsoVeiculo
 from app.models.manifesto import ManifestoEntrada
 from app.models.simam import (
     MedicaoDeclarada,
@@ -47,6 +49,8 @@ from app.models.simam import (
 )
 
 __all__ = [
+    "UsoVeiculo",
+    "ChamadoSuporte",
     "VeiculoMedidor",
     "MedicaoDeclarada",
     "SaidaExtraCombustivel",

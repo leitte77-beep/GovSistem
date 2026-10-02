@@ -95,11 +95,11 @@ function Detalhe({ a, onFechar, onEnviar }: { a: AbastecimentoPosto; onFechar: (
 
 function Cartao({ rotulo, valor, detalhe, icone: Icone }: { rotulo: string; valor: string; detalhe?: string; icone: typeof Fuel }) {
   return (
-    <div className="flex items-center gap-3 rounded-2xl border border-surface-border bg-white p-4 shadow-card">
-      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[#F1F5FF] text-[#1D4ED8]"><Icone size={18} /></span>
+    <div className="pp-cartao flex items-center gap-3 rounded-2xl border border-[#E3E8F2] bg-white p-4">
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-[#3B82F6] to-[#1D4ED8] text-white shadow-lg shadow-[#1D4ED8]/25"><Icone size={18} /></span>
       <div className="min-w-0">
         <p className="text-meta text-text-subtle">{rotulo}</p>
-        <p className="truncate text-xl font-semibold tabular-nums text-text-title">{valor}</p>
+        <p className="truncate text-2xl font-bold tabular-nums text-text-title">{valor}</p>
         {detalhe && <p className="text-meta tabular-nums text-text-subtle">{detalhe}</p>}
       </div>
     </div>
@@ -241,34 +241,34 @@ export default function AbastecimentosPosto() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="pp-sobe flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h1 className="text-h1 tracking-tight text-text-title">Abastecimentos</h1>
+          <h1 className="text-[32px] font-bold leading-tight tracking-tight text-text-title">Abastecimentos</h1>
           <p className="text-body-sm text-text-subtle">Envie o PDF da nota fiscal de cada abastecimento feito pelos veículos da prefeitura.</p>
         </div>
         <div className="flex gap-2">
           <button className="btn btn-secondary btn-sm" onClick={exportar} disabled={!filtrada.length}><Download size={14} /> Exportar</button>
-          <button className="btn btn-primary btn-sm" onClick={() => setLote(true)}><Files size={14} /> Enviar notas em lote</button>
+          <button className="btn btn-primary btn-sm shadow-lg shadow-[#1D5BD6]/25" onClick={() => setLote(true)}><Files size={14} /> Enviar notas em lote</button>
         </div>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,2fr)]">
+      <div className="pp-sobe pp-sobe-1 grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,2fr)]">
         {tudoEmDia ? (
-          <div className="flex items-center gap-4 rounded-2xl bg-gradient-to-br from-[#E7F8EC] to-[#F4FCF6] p-5 ring-1 ring-[#B7E4C7]">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-[#16A34A] shadow-sm"><CheckCircle2 size={26} /></span>
+          <div className="flex items-center gap-4 rounded-3xl bg-gradient-to-br from-[#D9F7E6] via-[#EEFBF3] to-white p-5 ring-1 ring-[#B7E4C7]">
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#34D399] to-[#059669] text-white shadow-lg shadow-[#059669]/30"><CheckCircle2 size={26} /></span>
             <div>
               <p className="text-lg font-semibold text-[#0B3D20]">Tudo em dia</p>
               <p className="text-body-sm text-[#106D34]">Todos os abastecimentos já têm nota fiscal.</p>
             </div>
           </div>
         ) : (
-          <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-gradient-to-br from-[#FFF4D6] to-[#FFFBF0] p-5 ring-1 ring-[#F5D78E]">
+          <div className="flex flex-wrap items-center justify-between gap-4 rounded-3xl bg-gradient-to-br from-[#FFF1CC] via-[#FFF7E0] to-white p-5 ring-1 ring-[#F5D78E]">
             <div>
               <p className="text-body-sm font-medium text-[#805600]">Notas pendentes</p>
               <p className="text-3xl font-bold tabular-nums text-[#5C4200]">{pendentes?.qtd ?? "…"}</p>
               <p className="text-body-sm tabular-nums text-[#805600]">{pendentes ? `${brl(pendentes.valor)} aguardando nota` : ""}</p>
             </div>
-            <button className="btn btn-primary" onClick={() => { setFiltro("PENDENTE"); setBusca(""); }}>
+            <button className="btn btn-primary pp-pulso" onClick={() => { setFiltro("PENDENTE"); setBusca(""); }}>
               <Upload size={16} /> Enviar agora
             </button>
           </div>
@@ -276,9 +276,9 @@ export default function AbastecimentosPosto() {
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <Cartao icone={Fuel} rotulo={semPeriodo ? "Sem nota (todas as datas)" : "Abastecimentos"} valor={String(filtrada.length)} detalhe={brl(tot.valor)} />
           <Cartao icone={Fuel} rotulo="Litros" valor={litros(tot.l)} />
-          <div className="rounded-2xl border border-surface-border bg-white p-4 shadow-card">
+          <div className="pp-cartao rounded-2xl border border-[#E3E8F2] bg-white p-4">
             <p className="text-meta text-text-subtle">Com nota</p>
-            <p className="text-xl font-semibold tabular-nums text-text-title">{tot.com} <span className="text-body-sm font-normal text-text-subtle">de {filtrada.length}</span></p>
+            <p className="text-2xl font-bold tabular-nums text-text-title">{tot.com} <span className="text-body-sm font-normal text-text-subtle">de {filtrada.length}</span></p>
             <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[#EEF2F7]">
               <div className={`h-full rounded-full ${pct === 100 ? "bg-[#16A34A]" : "bg-[#1D4ED8]"}`} style={{ width: `${pct}%` }} />
             </div>
@@ -286,11 +286,11 @@ export default function AbastecimentosPosto() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="pp-sobe pp-sobe-2 flex flex-wrap items-center gap-3 rounded-2xl border border-[#E3E8F2] bg-white p-2">
         <div role="tablist" className="inline-flex rounded-xl bg-[#EEF2F7] p-1">
           {FILTROS.map((f) => (
             <button key={f.v} type="button" role="tab" aria-selected={filtro === f.v} onClick={() => setFiltro(f.v)}
-              className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-body-sm transition ${filtro === f.v ? "bg-white font-semibold text-text-title shadow-sm" : "text-text-subtle hover:text-text-title"}`}>
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-body-sm transition ${filtro === f.v ? "bg-[#1D5BD6] font-semibold text-white shadow-md shadow-[#1D5BD6]/30" : "text-text-subtle hover:text-text-title"}`}>
               {f.l}
               {f.v === "PENDENTE" && !!pendentes?.qtd && (
                 <span className="rounded-pill bg-[#D92D20] px-1.5 text-[10px] font-bold leading-4 text-white">{pendentes.qtd}</span>
@@ -328,8 +328,10 @@ export default function AbastecimentosPosto() {
       {carregando ? (
         <div className="space-y-2">{[0, 1, 2, 3].map((i) => <div key={i} className="h-16 animate-pulse rounded-2xl bg-white shadow-card" />)}</div>
       ) : filtrada.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-surface-border bg-white px-4 py-14 text-center">
-          {semPeriodo && !busca ? <CheckCircle2 className="h-10 w-10 text-[#16A34A]" /> : <Fuel className="h-10 w-10 text-text-subtle" />}
+        <div className="pp-sobe pp-sobe-3 flex flex-col items-center gap-2 rounded-3xl border border-dashed border-[#CBD5E8] bg-gradient-to-b from-white to-[#F7F9FE] px-4 py-16 text-center">
+          <span className={`mb-1 flex h-16 w-16 items-center justify-center rounded-2xl shadow-lg ${semPeriodo && !busca ? "bg-gradient-to-br from-[#34D399] to-[#059669] text-white shadow-[#059669]/30" : "bg-white text-text-subtle"}`}>
+            {semPeriodo && !busca ? <CheckCircle2 className="h-8 w-8" /> : <Fuel className="h-8 w-8" />}
+          </span>
           <p className="text-body font-medium text-text-title">{semPeriodo && !busca ? "Nenhuma nota pendente" : "Nenhum abastecimento encontrado"}</p>
           <p className="text-body-sm text-text-subtle">{busca ? "Tente outro termo de busca." : semPeriodo ? "Todos os abastecimentos já têm nota fiscal." : "Escolha outro período."}</p>
         </div>
@@ -343,7 +345,7 @@ export default function AbastecimentosPosto() {
                   <span className="first-letter:uppercase">{g.nome}</span><span className="tabular-nums">{brl(g.valor)}</span>
                 </p>
                 {g.itens.map((a) => (
-                  <div key={a.id} onClick={() => setAberto(a)} className="space-y-3 rounded-2xl border border-surface-border bg-white p-4 shadow-card">
+                  <div key={a.id} onClick={() => setAberto(a)} className="space-y-3 rounded-2xl border border-[#E3E8F2] bg-white p-4 shadow-sm">
                     <div className="flex items-start justify-between gap-2">
                       <div className="space-y-1.5">
                         <p className="font-mono text-meta font-semibold text-[#1D4ED8]">{a.numero}</p>
@@ -370,7 +372,7 @@ export default function AbastecimentosPosto() {
           </div>
 
           {/* Desktop: tabela */}
-          <div className="hidden overflow-hidden rounded-2xl border border-surface-border bg-white shadow-card md:block">
+          <div className="hidden overflow-hidden rounded-3xl border border-[#E3E8F2] bg-white md:block">
             <div className="max-h-[70vh] overflow-auto">
               <table className="w-full text-body-sm">
                 <thead className="sticky top-0 z-10 bg-[#F8FAFC]/95 backdrop-blur">

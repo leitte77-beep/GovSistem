@@ -16,6 +16,7 @@ from sqlalchemy import func as sa_func
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.timezone import ensure_aware
 from app.models.abastecimento import Abastecimento
 from app.models.combustivel import Tanque
 from app.models.manutencao import PlanoPreventivo
@@ -138,6 +139,28 @@ async def alertas_atuais(db: AsyncSession, organization_id: uuid.UUID) -> list[d
             "OCORRENCIA", "CRITICO" if o.gravidade == "CRITICA" else "ALERTA",
             f"Ocorrência {o.gravidade.lower()} — {placa}", o.descricao[:160], f"/ocorrencias/{o.id}",
         ))
+
+    # Uso de veículo esquecido em aberto
+    from app.api.v1.usos import HORAS_ALERTA_USO_ABERTO
+    from app.models.uso_veiculo import UsoVeiculo
+
+    limite = datetime.now(timezone.utc) - timedelta(hours=HORAS_ALERTA_USO_ABERTO)
+    usos = (
+        await db.execute(
+            select(UsoVeiculo, Veiculo.placa, Motorista.nome)
+            .join(Veiculo, Veiculo.id == UsoVeiculo.veiculo_id)
+            .join(Motorista, Motorista.id == UsoVeiculo.motorista_id)
+            .where(
+                UsoVeiculo.organization_id == organization_id,
+                UsoVeiculo.status == "EM_USO",
+                UsoVeiculo.saida_em < limite,
+            )
+        )
+    ).all()
+    for u, placa, nome in usos:
+        horas = int((datetime.now(timezone.utc) - ensure_aware(u.saida_em)).total_seconds() // 3600)
+        itens.append(_alerta("USO_ABERTO", "ALERTA", f"Uso em aberto há {horas} h — {placa}",
+                             f"{nome} saiu para {u.destino} e não registrou a chegada.", f"/usos?uso={u.id}"))
 
     # CNH vencida ou vencendo
     motoristas = (

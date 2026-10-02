@@ -58,6 +58,14 @@ ALERTAS = {
     "INTERVALO_CURTO": "Intervalo curto entre abastecimentos",
     "SALDO_EXCEDIDO": "Saldo do contrato excedido",
     "SEM_CONTRATO": "Sem contrato vigente",
+    "MEDICAO_INFERIOR": "KM/horímetro abaixo do último (offline)",
+    "QUANTIDADE_ACIMA_CAPACIDADE": "Acima da capacidade (offline)",
+    "COMBUSTIVEL_INCOMPATIVEL": "Combustível incompatível (offline)",
+    "VEICULO_BAIXADO": "Veículo baixado (offline)",
+    "POSTO_NAO_CREDENCIADO": "Posto descredenciado (offline)",
+    "ESTOQUE_INSUFICIENTE": "Estoque negativo (offline)",
+    "SEM_FOTO": "Sem foto obrigatória (offline)",
+    "CNH_VENCIDA": "CNH vencida (offline)",
 }
 
 

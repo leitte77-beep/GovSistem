@@ -5,7 +5,7 @@ import Link from "next/link";
 import toast from "react-hot-toast";
 import {
   AlertTriangle, ArrowDownRight, ArrowRight, ArrowUpRight, Car, CheckCircle2, Droplets, FileSignature, Files, Fuel,
-  HelpCircle, Upload, Wallet,
+  HelpCircle, LifeBuoy, Sparkles, Upload, Wallet,
 } from "lucide-react";
 import {
   AbastecimentoPosto, brl, isoLocal, lembrarPeriodo, litros, MePosto, nomeProprio, PainelPosto, periodoDe, periodoLembrado, portal,
@@ -25,18 +25,20 @@ function Cartao({ rotulo, valor, detalhe, icone: Icone, href, tom = "azul", chil
   tom?: "azul" | "verde" | "ambar" | "vermelho"; children?: React.ReactNode;
 }) {
   const cores = {
-    azul: "bg-[#F1F5FF] text-[#1D4ED8]",
-    verde: "bg-[#E7F8EC] text-[#16A34A]",
-    ambar: "bg-[#FFF4D6] text-[#B45309]",
-    vermelho: "bg-[#FEE4E2] text-[#B42318]",
+    azul: "from-[#3B82F6] to-[#1D4ED8] shadow-[#1D4ED8]/30",
+    verde: "from-[#34D399] to-[#059669] shadow-[#059669]/30",
+    ambar: "from-[#FBBF24] to-[#D97706] shadow-[#D97706]/30",
+    vermelho: "from-[#F87171] to-[#DC2626] shadow-[#DC2626]/30",
   }[tom];
+  const faixa = { azul: "bg-[#1D4ED8]", verde: "bg-[#059669]", ambar: "bg-[#D97706]", vermelho: "bg-[#DC2626]" }[tom];
   const corpo = (
-    <div className="h-full rounded-2xl border border-surface-border bg-white p-4 shadow-card transition hover:shadow-elevated">
+    <div className="pp-cartao relative h-full overflow-hidden rounded-2xl border border-[#E3E8F2] bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,.04)]">
+      <span className={`absolute inset-x-0 top-0 h-1 ${faixa}`} aria-hidden />
       <div className="flex items-start justify-between gap-2">
-        <p className="text-meta font-medium text-text-subtle">{rotulo}</p>
-        <span className={`flex h-9 w-9 items-center justify-center rounded-xl ${cores}`}><Icone size={17} /></span>
+        <p className="text-[13px] font-medium text-text-subtle">{rotulo}</p>
+        <span className={`flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br text-white shadow-lg ${cores}`}><Icone size={18} /></span>
       </div>
-      <p className="mt-1 text-2xl font-semibold tabular-nums tracking-tight text-text-title">{valor}</p>
+      <p className="mt-2 text-[28px] font-bold leading-tight tabular-nums tracking-tight text-text-title">{valor}</p>
       {detalhe && <div className="text-meta tabular-nums text-text-subtle">{detalhe}</div>}
       {children}
     </div>
@@ -151,40 +153,65 @@ export default function InicioPosto() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="pp-sobe flex flex-wrap items-end justify-between gap-3">
         <div>
-          <p className="text-body-sm text-text-subtle">{saudacao()}{me ? `, ${me.nome.split(" ")[0]}` : ""}</p>
-          <h1 className="text-h1 tracking-tight text-text-title">Resumo</h1>
+          <p className="inline-flex items-center gap-1.5 text-body-sm font-medium text-[#1D5BD6]"><Sparkles size={14} aria-hidden /> {saudacao()}{me ? `, ${me.nome.split(" ")[0]}` : ""}</p>
+          <h1 className="text-[32px] font-bold leading-tight tracking-tight text-text-title">Resumo do posto</h1>
           <p className="text-body-sm text-text-subtle">Movimento da Prefeitura no seu posto de {br(p.periodo.inicio)} a {br(p.periodo.fim)}.</p>
         </div>
         <SeletorPeriodo inicio={inicio} fim={fim} onChange={mudaPeriodo} />
       </div>
 
       {n.pendentes > 0 ? (
-        <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl bg-gradient-to-br from-[#FFF4D6] to-[#FFFBF0] p-5 ring-1 ring-[#F5D78E]">
-          <div className="flex items-center gap-4">
-            <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-[#B45309] shadow-sm"><FileSignature size={24} /></span>
+        <div className="pp-sobe pp-sobe-1 relative flex flex-wrap items-center justify-between gap-4 overflow-hidden rounded-3xl bg-gradient-to-br from-[#FFF1CC] via-[#FFF7E0] to-white p-6 ring-1 ring-[#F5D78E]">
+          <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-[#FBBF24]/20 blur-2xl" aria-hidden />
+          <div className="relative flex items-center gap-4">
+            <span className="pp-pulso flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#FBBF24] to-[#D97706] text-white shadow-lg"><FileSignature size={26} /></span>
             <div>
               <p className="text-lg font-semibold text-[#5C4200]">{n.pendentes} abastecimento(s) aguardando nota fiscal</p>
               <p className="text-body-sm tabular-nums text-[#805600]">{brl(n.valor_pendente)} a faturar · todas as datas</p>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="relative flex flex-wrap gap-2">
             <button className="btn btn-secondary" onClick={() => setLote(true)}><Files size={16} /> Enviar em lote</button>
             <Link href="/posto/abastecimentos?nota=PENDENTE" className="btn btn-primary"><Upload size={16} /> Enviar agora</Link>
           </div>
         </div>
       ) : (
-        <div className="flex items-center gap-4 rounded-2xl bg-gradient-to-br from-[#E7F8EC] to-[#F4FCF6] p-5 ring-1 ring-[#B7E4C7]">
-          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-[#16A34A] shadow-sm"><CheckCircle2 size={26} /></span>
-          <div>
-            <p className="text-lg font-semibold text-[#0B3D20]">Tudo em dia</p>
-            <p className="text-body-sm text-[#106D34]">Todos os abastecimentos já têm nota fiscal.</p>
+        <div className="pp-sobe pp-sobe-1 relative flex items-center gap-4 overflow-hidden rounded-3xl bg-gradient-to-br from-[#D9F7E6] via-[#EEFBF3] to-white p-6 ring-1 ring-[#B7E4C7]">
+          <div className="pointer-events-none absolute -right-10 -top-10 h-40 w-40 rounded-full bg-[#34D399]/20 blur-2xl" aria-hidden />
+          <span className="relative flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-[#34D399] to-[#059669] text-white shadow-lg shadow-[#059669]/30"><CheckCircle2 size={28} /></span>
+          <div className="relative">
+            <p className="text-xl font-bold text-[#0B3D20]">Tudo em dia</p>
+            <p className="text-body-sm text-[#106D34]">Todos os abastecimentos já têm nota fiscal. Bom trabalho!</p>
           </div>
         </div>
       )}
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <section className="pp-sobe pp-sobe-2 grid gap-3 sm:grid-cols-3">
+        {[
+          { icone: Upload, titulo: "Enviar nota", texto: "PDF de um abastecimento", href: "/posto/abastecimentos?nota=PENDENTE", cor: "from-[#3B82F6] to-[#1D4ED8]" },
+          { icone: Files, titulo: "Enviar em lote", texto: "Vários PDFs de uma vez", onClick: () => setLote(true), cor: "from-[#818CF8] to-[#4F46E5]" },
+          { icone: LifeBuoy, titulo: "Suporte", texto: "Problema ou correção", href: "/posto/suporte", cor: "from-[#2DD4BF] to-[#0D9488]" },
+        ].map((a) => {
+          const conteudo = (
+            <>
+              <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-white shadow-md ${a.cor}`}><a.icone size={19} /></span>
+              <span className="min-w-0 flex-1 text-left">
+                <span className="block font-semibold text-text-title">{a.titulo}</span>
+                <span className="block text-meta text-text-subtle">{a.texto}</span>
+              </span>
+              <ArrowRight size={16} className="text-text-subtle transition group-hover:translate-x-1 group-hover:text-[#1D4ED8]" />
+            </>
+          );
+          const cls = "pp-cartao group flex w-full items-center gap-3 rounded-2xl border border-[#E3E8F2] bg-white p-4";
+          return a.href
+            ? <Link key={a.titulo} href={a.href} className={cls}>{conteudo}</Link>
+            : <button key={a.titulo} type="button" onClick={a.onClick} className={cls}>{conteudo}</button>;
+        })}
+      </section>
+
+      <section className="pp-sobe pp-sobe-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Cartao icone={Wallet} rotulo="Faturado no período" valor={brl(p.valor)} href="/posto/abastecimentos?nota=TODOS"
           detalhe={
             <span className="inline-flex flex-wrap items-center gap-1">
@@ -210,18 +237,18 @@ export default function InicioPosto() {
           detalhe="valor ou CNPJ diferente do abastecimento" href={n.com_aviso ? "/posto/abastecimentos?aviso=1" : undefined} />
       </section>
 
-      <section className="grid gap-3 lg:grid-cols-3">
-        <div className="rounded-2xl border border-surface-border bg-white p-5 shadow-card lg:col-span-2">
+      <section className="pp-sobe pp-sobe-4 grid gap-3 lg:grid-cols-3">
+        <div className="rounded-3xl border border-[#E3E8F2] bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,.04)] lg:col-span-2">
           <div className="mb-4 flex flex-wrap items-baseline justify-between gap-2">
-            <h2 className="text-label font-semibold text-text-title">Movimento por dia</h2>
+            <h2 className="text-base font-semibold text-text-title">Movimento por dia</h2>
             <p className="text-body-sm text-text-subtle">
               <Fuel className="mr-1 inline h-4 w-4" />{p.abastecimentos} · <Droplets className="mx-1 inline h-4 w-4" />{litros(p.litros)} ·{" "}
               <strong className="text-text-title">{brl(p.valor)}</strong>
             </p>
           </div>
           {diasComMovimento === 0 ? (
-            <div className="flex h-44 flex-col items-center justify-center gap-1 rounded-xl bg-[#F8FAFC] text-center">
-              <Fuel className="h-7 w-7 text-text-subtle" />
+            <div className="flex h-44 flex-col items-center justify-center gap-2 rounded-2xl bg-gradient-to-b from-[#F5F8FF] to-white text-center ring-1 ring-dashed ring-[#DCE4F5]">
+              <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-[#1D5BD6] shadow-sm"><Fuel className="h-6 w-6" /></span>
               <p className="text-body-sm text-text-subtle">Sem abastecimentos no período.</p>
             </div>
           ) : (
@@ -234,8 +261,8 @@ export default function InicioPosto() {
           )}
         </div>
 
-        <div className="rounded-2xl border border-surface-border bg-white p-5 shadow-card">
-          <h2 className="text-label font-semibold text-text-title">Por secretaria</h2>
+        <div className="rounded-3xl border border-[#E3E8F2] bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,.04)]">
+          <h2 className="text-base font-semibold text-text-title">Por secretaria</h2>
           {p.por_secretaria.length === 0 ? (
             <p className="mt-4 text-body-sm text-text-subtle">Nenhum abastecimento no período.</p>
           ) : (
@@ -264,9 +291,9 @@ export default function InicioPosto() {
         </div>
       </section>
 
-      <section className="grid gap-3 lg:grid-cols-2">
-        <div className="rounded-2xl border border-surface-border bg-white p-5 shadow-card">
-          <h2 className="text-label font-semibold text-text-title">Contrato com a prefeitura</h2>
+      <section className="pp-sobe pp-sobe-5 grid gap-3 lg:grid-cols-2">
+        <div className="rounded-3xl border border-[#E3E8F2] bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,.04)]">
+          <h2 className="text-base font-semibold text-text-title">Contrato com a prefeitura</h2>
           {p.contratos.length === 0 ? (
             <p className="mt-3 text-body-sm text-text-subtle">Nenhum contrato ativo cadastrado para o seu posto.</p>
           ) : (
@@ -302,8 +329,8 @@ export default function InicioPosto() {
           )}
         </div>
 
-        <div className="rounded-2xl border border-surface-border bg-white p-5 shadow-card">
-          <h2 className="text-label font-semibold text-text-title">Combustíveis no período</h2>
+        <div className="rounded-3xl border border-[#E3E8F2] bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,.04)]">
+          <h2 className="text-base font-semibold text-text-title">Combustíveis no período</h2>
           {p.por_combustivel.length === 0 ? (
             <p className="mt-3 text-body-sm text-text-subtle">Nenhum abastecimento no período.</p>
           ) : (
@@ -326,9 +353,9 @@ export default function InicioPosto() {
         </div>
       </section>
 
-      <section className="overflow-hidden rounded-2xl border border-surface-border bg-white shadow-card">
+      <section className="pp-sobe pp-sobe-5 overflow-hidden rounded-3xl border border-[#E3E8F2] bg-white">
         <div className="flex items-center justify-between border-b border-surface-border px-5 py-3.5">
-          <h2 className="text-label font-semibold text-text-title">Últimos abastecimentos</h2>
+          <h2 className="text-base font-semibold text-text-title">Últimos abastecimentos</h2>
           <Link href="/posto/abastecimentos?nota=TODOS" className="inline-flex items-center gap-1 text-body-sm font-medium text-[#1D4ED8] hover:underline">
             Ver todos <ArrowRight size={14} />
           </Link>
@@ -365,7 +392,7 @@ export default function InicioPosto() {
         )}
       </section>
 
-      <details className="group rounded-2xl border border-surface-border bg-white p-5 text-body-sm text-text-body shadow-card" open={n.enviadas_no_periodo === 0 && n.pendentes > 0}>
+      <details className="group rounded-3xl border border-[#E3E8F2] bg-white p-6 text-body-sm text-text-body shadow-card" open={n.enviadas_no_periodo === 0 && n.pendentes > 0}>
         <summary className="flex cursor-pointer list-none items-center gap-2 font-medium text-text-title">
           <HelpCircle className="h-4 w-4 text-text-subtle" /> Como enviar as notas
           <span className="ml-auto text-meta text-text-subtle group-open:hidden">mostrar</span>

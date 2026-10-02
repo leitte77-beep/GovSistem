@@ -3,6 +3,7 @@ import hashlib
 import json
 import uuid
 from datetime import datetime, timezone
+from dataclasses import dataclass
 from decimal import Decimal
 
 from fastapi import HTTPException
@@ -14,7 +15,10 @@ from app.core.config import settings
 from app.core.storage import build_key, storage
 from app.models.abastecimento import Abastecimento
 from app.models.anexo import Anexo
-from app.models.combustivel import Fornecedor
+from app.models.auditoria import Notificacao
+from app.models.auth_models import Organization
+from app.models.combustivel import ContratoPosto, Fornecedor
+from app.models.veiculo import Veiculo
 from app.models.nota_abastecimento import NotaAbastecimento
 from app.services.auditoria import registrar_auditoria
 from app.services.danfe import ler_danfe
@@ -80,31 +84,84 @@ def resumo_nota(notas: dict[str, NotaAbastecimento] | None) -> dict | None:
     }
 
 
-async def _avisos(db: AsyncSession, abast: Abastecimento, nfe) -> list[str]:
+UNIDADES_LITRO = {"L", "LT", "LTS", "LITRO", "LITROS"}
+
+
+def _br(v: Decimal, casas: int = 2) -> str:
+    return f"{v:,.{casas}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+@dataclass
+class Conferencia:
+    avisos: list[str]
+    # Preço/L da nota acima do contrato: (preço nota, preço contrato, diferença total em R$)
+    acima_contrato: tuple[Decimal, Decimal, Decimal] | None = None
+
+
+async def preco_contratado(db: AsyncSession, abast: Abastecimento) -> Decimal | None:
+    """Preço/L do contrato aplicado ao abastecimento (gravado no registro; senão, o do contrato)."""
+    if abast.contrato_posto_id:
+        contrato = await db.get(ContratoPosto, abast.contrato_posto_id)
+        if contrato is not None:
+            return Decimal(contrato.preco_litro)
+    return Decimal(abast.preco_litro) if abast.preco_litro is not None else None
+
+
+async def conferir(
+    db: AsyncSession, abast: Abastecimento, *, emitente_cnpj: str | None, destinatario_cnpjs: list[str],
+    valor: Decimal | None, litros: Decimal | None, preco: Decimal | None, km: int | None, placas: list[str] | None,
+    autorizada: bool = True,
+) -> Conferencia:
+    """Compara o que foi lido na nota (XML ou PDF) com o abastecimento registrado."""
     avisos: list[str] = []
     posto = await db.get(Fornecedor, abast.fornecedor_id)
     cnpj_posto = so_digitos(posto.cpf_cnpj) if posto else ""
-    if cnpj_posto and nfe.emitente_cnpj and nfe.emitente_cnpj != cnpj_posto:
+    if cnpj_posto and emitente_cnpj and emitente_cnpj != cnpj_posto:
         avisos.append("O CNPJ do emitente da nota é diferente do CNPJ do posto.")
-    if abast.custo_total is not None and abs(nfe.valor_total - Decimal(abast.custo_total)) > TOLERANCIA_VALOR:
-        avisos.append(f"Valor da nota ({nfe.valor_total}) diferente do abastecimento ({Decimal(abast.custo_total):.2f}).")
-    if not nfe.autorizada:
-        avisos.append("XML sem protocolo de autorização da SEFAZ.")
-    return avisos
+    org = await db.get(Organization, abast.organization_id)
+    cnpj_org = so_digitos(org.cnpj) if org and org.cnpj else ""
+    if cnpj_org and destinatario_cnpjs and cnpj_org not in destinatario_cnpjs:
+        avisos.append("O destinatário da nota não é o CNPJ da Prefeitura.")
 
+    litros_reg = Decimal(abast.quantidade_litros)
+    litros_ok = litros is None or abs(litros - litros_reg) <= Decimal("0.01")
+    if not litros_ok:
+        avisos.append(f"Litros da nota ({_br(litros, 3)} L) diferentes do abastecimento ({_br(litros_reg, 3)} L).")
 
-async def _avisos_pdf(db: AsyncSession, abast: Abastecimento, d) -> list[str]:
-    """Conferência do que foi lido no PDF (quando foi possível ler)."""
-    avisos: list[str] = []
-    posto = await db.get(Fornecedor, abast.fornecedor_id)
-    cnpj_posto = so_digitos(posto.cpf_cnpj) if posto else ""
-    if cnpj_posto and d.emitente_cnpj and d.emitente_cnpj != cnpj_posto:
-        avisos.append("O CNPJ do emitente da nota é diferente do CNPJ do posto.")
-    if d.valor_total is not None and abast.custo_total is not None and abs(d.valor_total - Decimal(abast.custo_total)) > TOLERANCIA_VALOR:
+    if preco is None and valor is not None and litros:
+        preco = (valor / litros).quantize(Decimal("0.0001"))
+    contratado = await preco_contratado(db, abast)
+    acima = None
+    if preco is not None and contratado is not None and preco - contratado > Decimal("0.005"):
+        base = litros if litros is not None else litros_reg
+        diferenca = ((preco - contratado) * base).quantize(Decimal("0.01"))
+        acima = (preco, contratado, diferenca)
         avisos.append(
-            f"Valor da nota (R$ {d.valor_total:.2f}) diferente do abastecimento (R$ {Decimal(abast.custo_total):.2f}).".replace(".", ",", 2)
+            f"Preço da nota (R$ {_br(preco)}/L) acima do contrato (R$ {_br(contratado)}/L): R$ {_br(diferenca)} a mais."
         )
-    return avisos
+    elif valor is not None and abast.custo_total is not None and abs(valor - Decimal(abast.custo_total)) > TOLERANCIA_VALOR:
+        avisos.append(f"Valor da nota (R$ {_br(valor)}) diferente do abastecimento (R$ {_br(Decimal(abast.custo_total))}).")
+
+    if km is not None and abast.quilometragem and km != abast.quilometragem:
+        avisos.append(f"Km da nota ({km}) diferente do registrado ({abast.quilometragem}).")
+    if placas:
+        veiculo = await db.get(Veiculo, abast.veiculo_id)
+        placa = (veiculo.placa if veiculo else "").replace("-", "").upper()
+        if placa and placa not in placas:
+            avisos.append(f"A placa na nota ({', '.join(placas)}) não é a do veículo ({placa}).")
+    if not autorizada:
+        avisos.append("XML sem protocolo de autorização da SEFAZ.")
+    return Conferencia(avisos, acima)
+
+
+def _litros_xml(nfe) -> tuple[Decimal | None, Decimal | None]:
+    itens = [it for it in nfe.itens if (it.unidade or "").strip().upper() in UNIDADES_LITRO]
+    if not itens:
+        return None, None
+    litros = sum((it.quantidade for it in itens), Decimal("0"))
+    total = sum((it.valor_total for it in itens), Decimal("0"))
+    preco = itens[0].valor_unitario if len(itens) == 1 else (total / litros).quantize(Decimal("0.0001"))
+    return litros, preco
 
 
 async def receber_nota(
@@ -156,7 +213,36 @@ async def receber_nota(
     substitui = any(n.ativo for n in anteriores)
     if substitui:
         motivo = validar_motivo(*(motivo or (None, None)))
-    avisos = await _avisos(db, abast, nfe) if nfe else (await _avisos_pdf(db, abast, danfe) if danfe else [])
+    if nfe is not None:
+        litros_nf, preco_nf = _litros_xml(nfe)
+        conf = await conferir(
+            db, abast, emitente_cnpj=nfe.emitente_cnpj, destinatario_cnpjs=[nfe.destinatario_cnpj] if nfe.destinatario_cnpj else [],
+            valor=nfe.valor_total, litros=litros_nf, preco=preco_nf, km=None, placas=None, autorizada=nfe.autorizada,
+        )
+    elif danfe is not None and danfe.texto:
+        litros_nf, preco_nf = danfe.litros, danfe.preco_unitario
+        conf = await conferir(
+            db, abast, emitente_cnpj=danfe.emitente_cnpj,
+            destinatario_cnpjs=[c for c in danfe.cnpjs if c != danfe.emitente_cnpj],
+            valor=danfe.valor_total, litros=danfe.litros, preco=danfe.preco_unitario, km=danfe.km, placas=danfe.placas,
+        )
+    else:
+        litros_nf = preco_nf = None
+        conf = Conferencia([])
+    avisos = conf.avisos
+    if conf.acima_contrato is not None:
+        from app.services.abastecimento import get_configuracoes
+
+        config = await get_configuracoes(db, abast.organization_id)
+        preco_n, preco_c, dif = conf.acima_contrato
+        if config.bloquear_nota_preco_acima_contrato:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    f"Nota recusada: preço de R$ {_br(preco_n)}/L acima do contrato (R$ {_br(preco_c)}/L), "
+                    f"R$ {_br(dif)} a mais. A Prefeitura exige a nota pelo preço do contrato — emita uma nota corrigida."
+                ),
+            )
     hash_arquivo = hashlib.sha256(conteudo).hexdigest()
     anexo = Anexo(
         organization_id=abast.organization_id, nome_arquivo=nome, caminho="", mime_type=mime, tamanho_bytes=len(conteudo),
@@ -200,8 +286,21 @@ async def receber_nota(
             nota.nfe_emissao = danfe.emissao.replace(tzinfo=get_tz())
         if danfe.numero:
             abast.numero_nf = danfe.numero
+    nota.nfe_litros = litros_nf
+    nota.nfe_preco_unitario = preco_nf
+    nota.nfe_km = danfe.km if danfe is not None else None
     db.add(nota)
     await db.flush()
+    if conf.acima_contrato is not None:
+        veiculo = await db.get(Veiculo, abast.veiculo_id)
+        db.add(Notificacao(
+            organization_id=abast.organization_id,
+            tipo="NOTA_PRECO_ACIMA_CONTRATO",
+            titulo=f"Nota acima do preço do contrato — {veiculo.placa if veiculo else abast.numero}",
+            descricao=next(a for a in avisos if a.startswith("Preço da nota")),
+            severidade="ALERTA",
+            link=f"/abastecimentos/{abast.id}",
+        ))
     await registrar_auditoria(
         db, organization_id=abast.organization_id, acao="abastecimento.nota_substituir" if substitui else "abastecimento.nota_enviar", entidade="abastecimento",
         entidade_id=abast.id, usuario_id=user.id if user else None,

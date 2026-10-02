@@ -30,7 +30,7 @@ from app.models.nota_abastecimento import NotaAbastecimento
 from app.models.unidade import Unidade
 from app.models.veiculo import Veiculo
 from app.services.auditoria import registrar_auditoria
-from app.services.notas_abastecimento import MOTIVOS_SUBSTITUICAO, ler_arquivo, notas_ativas, receber_nota, resumo_nota
+from app.services.notas_abastecimento import MOTIVOS_SUBSTITUICAO, preco_contratado, ler_arquivo, notas_ativas, receber_nota, resumo_nota
 
 router = APIRouter(prefix="/portal-posto", tags=["portal-posto"])
 
@@ -354,9 +354,12 @@ async def analisar_lote(
 ):
     """Lê vários PDFs e sugere o abastecimento de cada um. Não grava nada.
 
-    Pontuação: nº AB no texto (100), valor igual (50), placa (30), data de
-    emissão no mesmo dia (20; até 2 dias, 10). Sugestão só com 50+ pontos e
-    sem empate no topo — o posto confere antes de enviar.
+    Pontuação: nº AB no texto (100), litros iguais (50), km igual (40),
+    placa (30), valor igual (50), emissão no mesmo dia (15; até 2 dias, 5).
+    Litros e km não dependem do preço — a nota com preço de bomba ainda casa.
+    Sugestão só com 50+ pontos e sem empate no topo — o posto confere antes
+    de enviar. Preço acima do contrato vem sinalizado (e se o município
+    recusa esse caso, `bloqueada`).
     """
     from starlette.concurrency import run_in_threadpool
 
@@ -385,13 +388,17 @@ async def analisar_lote(
         return {
             "id": str(a.id), "numero": a.numero, "data": to_display(a.data_abastecimento).isoformat(), "placa": placa,
             "valor": float(a.custo_total) if a.custo_total is not None else None, "tem_nota": a.id in notas,
+            "litros": float(a.quantidade_litros),
         }
 
+    from app.services.abastecimento import get_configuracoes
+
+    bloquear_preco = (await get_configuracoes(db, acesso.organization_id)).bloquear_nota_preco_acima_contrato
     resultado = []
     for i, arq in enumerate(arquivos):
         conteudo = await arq.read()
         item = {"indice": i, "arquivo": arq.filename or f"nota-{i + 1}.pdf", "erro": None, "leitura": None,
-                "sugestao": None, "confianca": None, "candidatos": [], "ja_enviada": None}
+                "sugestao": None, "confianca": None, "candidatos": [], "ja_enviada": None, "preco_acima": None}
         if not conteudo.startswith(b"%PDF"):
             item["erro"] = "Não é um PDF."
             resultado.append(item)
@@ -405,6 +412,9 @@ async def analisar_lote(
             "texto": d.texto, "chave": d.chave, "numero": d.numero, "serie": d.serie,
             "valor": float(d.valor_total) if d.valor_total is not None else None,
             "emissao": d.emissao.isoformat() if d.emissao else None,
+            "litros": float(d.litros) if d.litros is not None else None,
+            "preco_unitario": float(d.preco_unitario) if d.preco_unitario is not None else None,
+            "km": d.km, "placas": d.placas,
         }
         if d.chave and d.chave in chaves_usadas and chaves_usadas[d.chave] in por_id:
             a, placa = por_id[chaves_usadas[d.chave]]
@@ -414,13 +424,17 @@ async def analisar_lote(
             p = 0
             if (a.numero_ano, a.numero_seq) in d.numeros_ab:
                 p += 100
-            if d.valor_total is not None and a.custo_total is not None and abs(d.valor_total - a.custo_total) <= Decimal("0.05"):
+            if d.litros is not None and abs(d.litros - Decimal(a.quantidade_litros)) <= Decimal("0.01"):
                 p += 50
+            if d.km is not None and a.quilometragem and d.km == a.quilometragem:
+                p += 40
             if placa and placa.replace("-", "").upper() in d.placas:
                 p += 30
+            if d.valor_total is not None and a.custo_total is not None and abs(d.valor_total - a.custo_total) <= Decimal("0.05"):
+                p += 50
             if d.emissao:
                 dias = abs((to_display(a.data_abastecimento).date() - d.emissao.date()).days)
-                p += 20 if dias == 0 else (10 if dias <= 2 else 0)
+                p += 15 if dias == 0 else (5 if dias <= 2 else 0)
             if p:
                 p += 0 if a.id in notas else 5
                 pontos.append((p, a, placa))
@@ -429,7 +443,19 @@ async def analisar_lote(
         if pontos and pontos[0][0] >= 50 and (len(pontos) == 1 or pontos[1][0] < pontos[0][0]):
             topo = pontos[0][0]
             item["sugestao"] = str(pontos[0][1].id)
-            item["confianca"] = "alta" if topo >= 100 or topo >= 75 else "media"
+            item["confianca"] = "alta" if topo >= 100 else "media"
+            sugerido = pontos[0][1]
+            preco_nf = d.preco_unitario
+            if preco_nf is None and d.valor_total is not None and d.litros:
+                preco_nf = d.valor_total / d.litros
+            contratado = await preco_contratado(db, sugerido)
+            if preco_nf is not None and contratado is not None and preco_nf - contratado > Decimal("0.005"):
+                base = d.litros if d.litros is not None else Decimal(sugerido.quantidade_litros)
+                item["preco_acima"] = {
+                    "preco_nota": float(preco_nf), "preco_contrato": float(contratado),
+                    "diferenca": float(((preco_nf - contratado) * base).quantize(Decimal("0.01"))),
+                    "bloqueada": bloquear_preco,
+                }
         resultado.append(item)
     return resultado
 

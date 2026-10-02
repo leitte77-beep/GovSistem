@@ -1,0 +1,8 @@
+{
+  "appId": "br.com.govsistem.govfrota.motorista",
+  "appName": "GovFrota Motorista",
+  "webDir": "www",
+  "android": {
+    "allowMixedContent": false
+  }
+}

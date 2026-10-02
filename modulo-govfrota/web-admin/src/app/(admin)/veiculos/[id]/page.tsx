@@ -13,12 +13,12 @@ import {
   Gauge,
   Pencil,
   ShieldCheck,
-  Trash2,
-  Upload,
   Wrench,
   X,
 } from "lucide-react";
-import { api, Abastecimento, Combustivel, DocumentoVeiculo, Manutencao, Ocorrencia, Veiculo } from "@/lib/api";
+import DocumentosVeiculo from "@/components/veiculo/DocumentosVeiculo";
+import { api, Abastecimento, Combustivel, DocumentoVeiculo, Manutencao, Ocorrencia, UsoVeiculo, Veiculo } from "@/lib/api";
+import { BadgeStatusUso, dataHora, duracaoUso, medicaoUso } from "@/components/uso/uso";
 import { RequirePermission } from "@/components/RequirePermission";
 import { useAuth } from "@/lib/auth";
 import { StatusBadge } from "@/components/veiculo/StatusBadge";
@@ -34,7 +34,7 @@ import {
   nomeTipo,
 } from "@/lib/veiculos";
 
-type Aba = "resumo" | "abastecimentos" | "manutencoes" | "ocorrencias" | "custos" | "documentos" | "medidores" | "historico";
+type Aba = "resumo" | "abastecimentos" | "uso" | "manutencoes" | "ocorrencias" | "custos" | "documentos" | "medidores" | "historico";
 
 const STATUS_MANUT_CLASSE: Record<string, string> = {
   ABERTA: "bg-gray-100 text-gray-600",
@@ -60,6 +60,7 @@ export default function DetalheVeiculoPage() {
   const [manutencoes, setManutencoes] = useState<Manutencao[]>([]);
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([]);
   const [documentos, setDocumentos] = useState<DocumentoVeiculo[]>([]);
+  const [usos, setUsos] = useState<{ itens: UsoVeiculo[]; total: number }>({ itens: [], total: 0 });
   const [combustiveis, setCombustiveis] = useState<Combustivel[]>([]);
   const [tipoOrganizacao, setTipoOrganizacao] = useState("PUBLICO");
   const [aba, setAba] = useState<Aba>("resumo");
@@ -73,6 +74,7 @@ export default function DetalheVeiculoPage() {
       setManutencoes(await api.listManutencoes({ veiculo_id: id }));
       setOcorrencias((await api.listOcorrencias({ veiculo_id: id })).itens);
       setDocumentos(await api.listDocumentos(id));
+      setUsos(await api.listUsos({ veiculo_id: id, limit: 50 }));
     } catch (e) {
       toast.error((e as Error).message);
     }
@@ -117,6 +119,7 @@ export default function DetalheVeiculoPage() {
   const abas: { chave: Aba; label: string; count?: number }[] = [
     { chave: "resumo", label: "Resumo" },
     { chave: "abastecimentos", label: "Abastecimentos", count: abastecimentos.length },
+    { chave: "uso", label: "Diário de Bordo", count: usos.total },
     { chave: "manutencoes", label: "Manutenções", count: manutencoes.length },
     { chave: "ocorrencias", label: "Ocorrências", count: ocorrencias.length },
     { chave: "custos", label: "Custos" },
@@ -130,19 +133,6 @@ export default function DetalheVeiculoPage() {
     try {
       await api.updateVeiculo(id, { situacao: "BAIXADO" });
       toast.success("Veículo baixado.");
-      carregar();
-    } catch (e) {
-      toast.error((e as Error).message);
-    }
-  }
-
-  async function adicionarDocumento() {
-    const descricao = window.prompt("Descrição do documento (ex.: CRLV, seguro):");
-    if (!descricao) return;
-    const vencimento = window.prompt("Vencimento (AAAA-MM-DD) — opcional:");
-    try {
-      await api.criarDocumento(id, { descricao, vencimento: vencimento || undefined });
-      toast.success("Documento anexado.");
       carregar();
     } catch (e) {
       toast.error((e as Error).message);
@@ -218,7 +208,7 @@ export default function DetalheVeiculoPage() {
           <div className="flex flex-col justify-between gap-6 xl:flex-row xl:items-center">
             <div className="flex items-start gap-5 sm:items-center">
               <div className="flex h-24 w-24 shrink-0 items-center justify-center rounded-2xl border border-outline-variant/50 bg-gradient-to-b from-surface-bg to-[#EFF4FF] p-2 shadow-inner">
-                <FotoVeiculo src={veiculo.foto_url} className="h-full w-full rounded-xl" />
+                <FotoVeiculo src={veiculo.foto_url} className="h-full w-full rounded-xl" ampliavel />
               </div>
               <div className="space-y-1.5">
                 <div className="flex flex-wrap items-center gap-2.5">
@@ -492,6 +482,39 @@ export default function DetalheVeiculoPage() {
           </Tabela>
         )}
 
+        {aba === "uso" && (
+          <Tabela>
+            <thead className="bg-surface-container-lowest text-left text-meta uppercase text-text-subtle">
+              <tr>
+                <th className="px-4 py-3">Saída</th>
+                <th className="px-4 py-3">Chegada</th>
+                <th className="px-4 py-3">Motorista</th>
+                <th className="px-4 py-3">Destino / finalidade</th>
+                <th className="px-4 py-3 text-right">Percorrido</th>
+                <th className="px-4 py-3">Duração</th>
+                <th className="px-4 py-3">Situação</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-outline-variant/20">
+              {usos.itens.length === 0 && <Vazio colSpan={7} texto="Sem registros de uso." />}
+              {usos.itens.map((u) => (
+                <tr key={u.id} className="hover:bg-surface-container-lowest">
+                  <td className="px-4 py-3"><Link href={`/usos?uso=${u.id}`} className="text-primary hover:underline">{dataHora(u.saida_em)}</Link></td>
+                  <td className="px-4 py-3">{dataHora(u.chegada_em)}</td>
+                  <td className="px-4 py-3">{u.motorista_nome}</td>
+                  <td className="max-w-xs px-4 py-3">
+                    <span className="block truncate">{u.destino}</span>
+                    <span className="block truncate text-meta text-text-subtle">{u.finalidade}</span>
+                  </td>
+                  <td className="px-4 py-3 text-right">{medicaoUso(u.percorrido, u.usa_horimetro)}</td>
+                  <td className="px-4 py-3">{duracaoUso(u.duracao_min)}</td>
+                  <td className="px-4 py-3"><BadgeStatusUso u={u} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </Tabela>
+        )}
+
         {aba === "ocorrencias" && (
           <div className="rounded-2xl border border-outline-variant/50 bg-surface-card shadow-sm">
             <ul className="divide-y divide-outline-variant/20">
@@ -523,47 +546,7 @@ export default function DetalheVeiculoPage() {
         )}
 
         {aba === "documentos" && (
-          <div className="rounded-2xl border border-outline-variant/50 bg-surface-card p-4 shadow-sm">
-            <div className="mb-2 flex items-center justify-between">
-              <h3 className="text-body-sm font-semibold text-text-title">Documentos do veículo</h3>
-              {hasPermission("vehicle.manage") && (
-                <button className="btn btn-secondary btn-sm" onClick={adicionarDocumento}>
-                  <Upload size={14} /> Adicionar documento
-                </button>
-              )}
-            </div>
-            <ul className="divide-y divide-outline-variant/20">
-              {documentos.length === 0 && <li className="py-4 text-text-subtle">Nenhum documento anexado.</li>}
-              {documentos.map((d) => (
-                <li key={d.id} className="flex items-center justify-between py-3">
-                  <div>
-                    <span className="text-body-sm">{d.descricao}</span>
-                    {d.vencimento && (
-                      <span className={`ml-2 text-meta ${new Date(d.vencimento + "T12:00") < new Date() ? "text-[#BA1A1A]" : "text-text-subtle"}`}>
-                        {new Date(d.vencimento + "T12:00") < new Date() ? "Vencido" : `Vence em ${formatarData(d.vencimento)}`}
-                      </span>
-                    )}
-                  </div>
-                  {hasPermission("vehicle.manage") && (
-                    <button
-                      className="text-[#BA1A1A] hover:underline"
-                      onClick={async () => {
-                        try {
-                          await api.excluirDocumento(id, d.id);
-                          toast.success("Documento removido.");
-                          carregar();
-                        } catch (e) {
-                          toast.error((e as Error).message);
-                        }
-                      }}
-                    >
-                      <Trash2 size={15} />
-                    </button>
-                  )}
-                </li>
-              ))}
-            </ul>
-          </div>
+          <DocumentosVeiculo veiculoId={id} documentos={documentos} podeEditar={hasPermission("vehicle.manage")} onMudou={carregar} />
         )}
 
         {aba === "medidores" && <MedidoresVeiculo veiculo={veiculo} onMudou={carregar} />}

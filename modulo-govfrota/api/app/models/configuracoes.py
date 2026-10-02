@@ -42,6 +42,8 @@ class ConfiguracaoGovFrota(Base, TimestampMixin):
     permitir_estoque_negativo: Mapped[bool] = mapped_column(Boolean(), default=False, nullable=False)
     exigir_nf_entrada: Mapped[bool] = mapped_column(Boolean(), default=True, nullable=False)
     exigir_fornecedor_entrada: Mapped[bool] = mapped_column(Boolean(), default=True, nullable=False)
+    # Nota do posto com preço/L acima do contrato: sempre avisa; bloqueia só se o município ligar.
+    bloquear_nota_preco_acima_contrato: Mapped[bool] = mapped_column(Boolean(), default=False, nullable=False)
     alerta_estoque_minimo_dias: Mapped[int] = mapped_column(Integer(), default=7, nullable=False)
 
     # Manutenção preventiva

@@ -197,13 +197,22 @@ class VeiculoResponse(ORMModel):
     proxima_manutencao: Optional[dict] = None
 
 
+# CRLV | SEGURO | IPVA | NF_MANUTENCAO | SOLICITACAO | VISTORIA | MULTA | OUTRO
 class DocumentoVeiculoCreate(BaseModel):
     descricao: str = Field(min_length=1, max_length=255)
-    tipo: Optional[str] = None
+    tipo: Optional[str] = Field(default=None, max_length=50)
     vencimento: Optional[date] = None
     arquivo_url: Optional[str] = None
     anexo_id: Optional[uuid.UUID] = None
-    observacoes: Optional[str] = None
+    observacoes: Optional[str] = Field(default=None, max_length=2000)
+
+
+class DocumentoVeiculoUpdate(BaseModel):
+    descricao: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    tipo: Optional[str] = Field(default=None, max_length=50)
+    vencimento: Optional[date] = None
+    anexo_id: Optional[uuid.UUID] = None
+    observacoes: Optional[str] = Field(default=None, max_length=2000)
 
 
 class DocumentoVeiculoResponse(ORMModel):
@@ -214,6 +223,12 @@ class DocumentoVeiculoResponse(ORMModel):
     vencimento: Optional[date]
     anexo_id: Optional[uuid.UUID]
     observacoes: Optional[str]
+    created_at: Optional[datetime] = None
+    # Dados do arquivo anexado (preenchidos na listagem).
+    arquivo_nome: Optional[str] = None
+    arquivo_mime: Optional[str] = None
+    arquivo_tamanho: Optional[int] = None
+    enviado_por: Optional[str] = None
 
 
 # ── Motoristas ──────────────────────────────────────────────────────────────
@@ -875,7 +890,7 @@ class AbastecimentoCancelar(BaseModel):
 
 class AbastecimentoCorrecao(BaseModel):
     quantidade_litros: Optional[Decimal] = None
-    quilometragem: Optional[int] = None
+    quilometragem: Optional[int] = Field(default=None, ge=0)
     horimetro: Optional[Decimal] = Field(default=None, ge=0)
     # Posto credenciado: acerto pelo valor da nota fiscal.
     preco_litro: Optional[Decimal] = Field(default=None, gt=0)
@@ -914,6 +929,8 @@ class AbastecimentoResponse(ORMModel):
     consumo_km_l: Optional[Decimal]
     foto_bomba_url: Optional[str]
     foto_painel_url: Optional[str]
+    latitude: Optional[Decimal] = None
+    longitude: Optional[Decimal] = None
     observacoes: Optional[str]
     status: str
     ip_origem: Optional[str]
@@ -1105,6 +1122,8 @@ class OcorrenciaResponse(ORMModel):
     gravidade: str
     status: str
     foto_url: Optional[str]
+    latitude: Optional[Decimal] = None
+    longitude: Optional[Decimal] = None
     data_ocorrencia: date
     manutencao_id: Optional[uuid.UUID]
     origem: str
@@ -1142,6 +1161,7 @@ class ConfiguracaoUpdate(BaseModel):
     permitir_estoque_negativo: Optional[bool] = None
     exigir_nf_entrada: Optional[bool] = None
     exigir_fornecedor_entrada: Optional[bool] = None
+    bloquear_nota_preco_acima_contrato: Optional[bool] = None
     alerta_estoque_minimo_dias: Optional[int] = Field(default=None, ge=0, le=365)
     antecedencia_alerta_manutencao_dias: Optional[int] = Field(default=None, ge=1, le=365)
     simam_id_pessoa: Optional[int] = Field(default=None, ge=1, le=9999999)
@@ -1185,6 +1205,12 @@ class OcorrenciaAppCreate(BaseModel):
     gravidade: str = "MEDIA"
     quilometragem: Optional[int] = None
     foto_url: Optional[str] = None
+    # Fila offline do app: id gerado no celular (reenvio não duplica) e
+    # momento do registro, que pode ser bem anterior ao envio.
+    id: Optional[uuid.UUID] = None
+    registrado_em: Optional[datetime] = None
+    latitude: Optional[Decimal] = Field(default=None, ge=-90, le=90)
+    longitude: Optional[Decimal] = Field(default=None, ge=-180, le=180)
 
 
 # ── Auditoria / notificações ────────────────────────────────────────────────

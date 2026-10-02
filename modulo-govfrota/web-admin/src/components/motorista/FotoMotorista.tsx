@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Car } from "lucide-react";
+import { urlDaApi } from "@/lib/api";
 
 const DRIVER_TOKEN_KEY = "govfrota_motorista_token";
 
@@ -26,7 +27,7 @@ export function FotoMotorista({ src, alt = "Foto do veículo", className, iconSi
       return;
     }
     const token = localStorage.getItem(DRIVER_TOKEN_KEY);
-    fetch(src, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+    fetch(urlDaApi(src), { headers: token ? { Authorization: `Bearer ${token}` } : {} })
       .then((r) => {
         if (!r.ok) throw new Error("falha");
         return r.blob();

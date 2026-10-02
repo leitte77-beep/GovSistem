@@ -20,6 +20,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.auth import get_client_info, get_current_motorista
 from app.core.config import settings
+from app.core.timezone import to_display
 from app.core.database import get_db
 from app.core.security import create_driver_token, verify_secret
 from app.models.abastecimento import Abastecimento
@@ -34,6 +35,7 @@ from app.schemas.schemas import (
     VeiculoAppResponse,
 )
 from app.services.abastecimento import (
+    conferir_offline,
     find_abastecimento_by_idempotency,
     get_configuracoes,
     registrar_abastecimento,
@@ -279,6 +281,11 @@ class AbastecimentoAppCreate(BaseModel):
     # Momento em que o motorista registrou no celular — difere do envio quando
     # o abastecimento foi feito sem internet e sincronizado depois.
     data_abastecimento: datetime | None = None
+    # Veio da fila offline do celular: recusas de conferência (KM, fotos,
+    # estoque...) viram alertas para o setor de frota revisar.
+    registrado_offline: bool = False
+    latitude: Decimal | None = Field(default=None, ge=-90, le=90)
+    longitude: Decimal | None = Field(default=None, ge=-180, le=180)
 
 
 async def _tanques_proprios(db: AsyncSession, org: uuid.UUID, combustivel_id: uuid.UUID | None = None):
@@ -373,7 +380,7 @@ async def listar_locais(
     }
 
 
-def _data_informada(valor: datetime | None) -> datetime:
+def _data_informada(valor: datetime | None, rotulo: str = "Abastecimento") -> datetime:
     """Data do registro no celular, limitada a uma janela plausível."""
     from datetime import timedelta
 
@@ -383,12 +390,12 @@ def _data_informada(valor: datetime | None) -> datetime:
     if valor.tzinfo is None:
         valor = valor.replace(tzinfo=timezone.utc)
     if valor > agora + timedelta(minutes=10):
-        raise HTTPException(status_code=422, detail="Data do abastecimento no futuro. Confira o relógio do celular.")
+        raise HTTPException(status_code=422, detail=f"Data do registro ({rotulo.lower()}) no futuro. Confira o relógio do celular.")
     if valor < agora - timedelta(hours=settings.OFFLINE_MAX_HORAS):
         raise HTTPException(
             status_code=422,
             detail=(
-                f"Abastecimento registrado há mais de {settings.OFFLINE_MAX_HORAS} horas. "
+                f"{rotulo} registrado há mais de {settings.OFFLINE_MAX_HORAS} horas. "
                 "Peça ao setor de frota para lançar pelo painel."
             ),
         )
@@ -476,13 +483,26 @@ async def novo_abastecimento(
 
     config = await get_configuracoes(db, org)
 
-    # Fotos obrigatórias conforme configuração da organização
-    if config.foto_bomba_obrigatoria and not body.foto_bomba_url:
-        raise HTTPException(status_code=422, detail="Foto da bomba é obrigatória.")
-    if config.foto_km_obrigatoria and not body.foto_painel_url:
-        raise HTTPException(status_code=422, detail="Foto da quilometragem é obrigatória.")
+    offline = body.registrado_offline
+    alertas: list[str] = []
+    avisos: dict = {}
 
-    await validar_motorista_habilitado(motorista, config)
+    # Fotos obrigatórias conforme configuração da organização
+    def _fotos() -> None:
+        if config.foto_bomba_obrigatoria and not body.foto_bomba_url:
+            raise HTTPException(status_code=422, detail="Foto da bomba é obrigatória.")
+        if config.foto_km_obrigatoria and not body.foto_painel_url:
+            raise HTTPException(status_code=422, detail="Foto da quilometragem é obrigatória.")
+
+    conferir_offline(offline, alertas, avisos, "SEM_FOTO", _fotos)
+
+    try:
+        await validar_motorista_habilitado(motorista, config)
+    except HTTPException as exc:
+        # Inativo/bloqueado continua recusando; CNH vencida offline vira alerta.
+        if not (offline and "CNH" in str(exc.detail)):
+            raise
+        alertas.append("CNH_VENCIDA")
 
     info = get_client_info(request)
     try:
@@ -510,7 +530,11 @@ async def novo_abastecimento(
             ip_origem=info.get("ip_address"),
             idempotency_key=body.idempotency_key,
             permitir_estoque_negativo=False,
+            registrado_offline=offline,
+            alertas_iniciais=alertas,
         )
+        abastecimento.latitude = body.latitude
+        abastecimento.longitude = body.longitude
         await db.commit()
     except EstoqueError as e:
         await db.rollback()
@@ -602,7 +626,17 @@ async def informar_problema(
     if veiculo_ok is None:
         raise HTTPException(status_code=404, detail="Veículo não encontrado.")
 
+    # Id gerado no celular (fila offline): reenviar não duplica.
+    if body.id is not None:
+        existente = await db.get(Ocorrencia, body.id)
+        if existente is not None:
+            if existente.motorista_id != motorista.id:
+                raise HTTPException(status_code=409, detail="Identificador já utilizado.")
+            return {"ok": True, "id": str(existente.id), "mensagem": "Problema registrado com sucesso."}
+    quando = _data_informada(body.registrado_em, "Problema")
+
     ocorrencia = Ocorrencia(
+        **({"id": body.id} if body.id is not None else {}),
         organization_id=motorista.organization_id,
         veiculo_id=body.veiculo_id,
         motorista_id=motorista.id,
@@ -611,7 +645,9 @@ async def informar_problema(
         gravidade=body.gravidade.upper() if body.gravidade else "MEDIA",
         quilometragem=body.quilometragem,
         foto_url=body.foto_url,
-        data_ocorrencia=datetime.now(timezone.utc).date(),
+        latitude=body.latitude,
+        longitude=body.longitude,
+        data_ocorrencia=to_display(quando).date(),
         origem="APP_MOTORISTA",
     )
     db.add(ocorrencia)

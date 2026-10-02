@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import toast from "react-hot-toast";
 import {
   AlertTriangle, CalendarDays, CheckCircle2, ChevronDown, FileText, FileUp, Files, RotateCcw, Upload, X,
@@ -75,8 +76,10 @@ export function Modal({ titulo, subtitulo, largo, onFechar, children, rodape }: 
   titulo: string; subtitulo?: React.ReactNode; largo?: boolean; onFechar: () => void; children: React.ReactNode; rodape?: React.ReactNode;
 }) {
   useEsc(onFechar);
-  return (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#0F172A]/50 backdrop-blur-[2px] sm:items-center sm:p-4" onClick={onFechar}>
+  // Portal no body e sem backdrop-blur: o Chrome não repinta o blur por cima do
+  // visualizador de PDF (iframe) e deixava uma faixa sem escurecer no topo.
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-[#0F172A]/60 sm:items-center sm:p-4" onClick={onFechar}>
       <div role="dialog" aria-modal="true" aria-label={titulo} onClick={(e) => e.stopPropagation()}
         className={`flex max-h-[92vh] w-full flex-col rounded-t-2xl bg-white shadow-elevated sm:rounded-2xl ${largo ? "max-w-5xl" : "max-w-lg"}`}>
         <div className="flex items-start justify-between gap-3 border-b border-surface-border px-6 py-4">
@@ -89,7 +92,8 @@ export function Modal({ titulo, subtitulo, largo, onFechar, children, rodape }: 
         <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
         {rodape && <div className="flex flex-wrap justify-end gap-2 border-t border-surface-border px-6 py-3">{rodape}</div>}
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 
@@ -235,7 +239,7 @@ export function EnvioLote({ onFechar, onConcluido }: { onFechar: () => void; onC
     try {
       const r = await portal.analisarNotas(pdfs);
       setAnalise(r);
-      setEscolha(Object.fromEntries(r.filter((x) => x.sugestao && !x.ja_enviada).map((x) => [x.indice, x.sugestao!])));
+      setEscolha(Object.fromEntries(r.filter((x) => x.sugestao && !x.ja_enviada && !x.preco_acima?.bloqueada).map((x) => [x.indice, x.sugestao!])));
     } catch (e) {
       toast.error((e as Error).message);
     } finally {
@@ -248,7 +252,7 @@ export function EnvioLote({ onFechar, onConcluido }: { onFechar: () => void; onC
     const lista: { id: string; rotulo: string; tem_nota: boolean }[] = [];
     for (const c of item.candidatos) {
       vistos.add(c.id);
-      lista.push({ id: c.id, rotulo: `${c.numero ?? ""} · ${c.placa} · ${dataCurta(c.data)} · ${brl(c.valor)}${c.tem_nota ? " (já tem nota)" : ""}`, tem_nota: c.tem_nota });
+      lista.push({ id: c.id, rotulo: `${c.numero ?? ""} · ${c.placa} · ${dataCurta(c.data)}${c.litros != null ? ` · ${litros(c.litros)}` : ""} · ${brl(c.valor)}${c.tem_nota ? " (já tem nota)" : ""}`, tem_nota: c.tem_nota });
     }
     for (const p of pendentes) {
       if (!vistos.has(p.id)) lista.push({ id: p.id, rotulo: `${p.numero ?? ""} · ${p.placa} · ${dataCurta(p.data)} · ${brl(p.valor)}`, tem_nota: false });
@@ -341,6 +345,12 @@ export function EnvioLote({ onFechar, onConcluido }: { onFechar: () => void; onC
                           <>
                             <p>{it.leitura.numero ? `NF ${it.leitura.numero}` : "Número não identificado"}</p>
                             <p className="tabular-nums">{it.leitura.valor != null ? brl(it.leitura.valor) : "Valor não identificado"}</p>
+                            {it.leitura.litros != null && (
+                              <p className="tabular-nums">{litros(it.leitura.litros)}{it.leitura.preco_unitario != null ? ` × ${brl(it.leitura.preco_unitario)}/L` : ""}</p>
+                            )}
+                            {(it.leitura.placas?.length || it.leitura.km != null) ? (
+                              <p className="text-text-subtle">{it.leitura.placas?.join(", ")}{it.leitura.km != null ? ` · km ${it.leitura.km.toLocaleString("pt-BR")}` : ""}</p>
+                            ) : null}
                             {it.leitura.emissao && <p className="text-text-subtle">Emissão {dataCurta(it.leitura.emissao)}</p>}
                           </>
                         ) : <span className="text-text-subtle">PDF sem texto (escaneado)</span>}
@@ -357,6 +367,12 @@ export function EnvioLote({ onFechar, onConcluido }: { onFechar: () => void; onC
                             </select>
                             {sel && sel === it.sugestao && (
                               <p className="mt-1 text-meta text-[#106D34]">Sugestão {it.confianca === "alta" ? "com alta confiança" : "— confira"}</p>
+                            )}
+                            {it.preco_acima && sel === it.sugestao && (
+                              <p className={`mt-1 rounded-lg px-2 py-1 text-meta ${it.preco_acima.bloqueada ? "bg-[#FEE4E2] text-[#B42318]" : "bg-[#FFF4D6] text-[#805600]"}`}>
+                                Preço {brl(it.preco_acima.preco_nota)}/L acima do contrato ({brl(it.preco_acima.preco_contrato)}/L): {brl(it.preco_acima.diferenca)} a mais.{" "}
+                                {it.preco_acima.bloqueada ? "A Prefeitura não aceita esta nota — emita pelo preço do contrato." : "Será enviada com aviso à Prefeitura."}
+                              </p>
                             )}
                             {sel && repetidos.has(sel) && <p className="mt-1 text-meta text-[#B42318]">Abastecimento escolhido para mais de uma nota.</p>}
                           </>

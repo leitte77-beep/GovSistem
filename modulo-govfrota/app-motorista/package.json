@@ -1,0 +1,22 @@
+{
+  "name": "govfrota-app-motorista",
+  "version": "1.0.0",
+  "private": true,
+  "description": "App Android do motorista (GovFrota) — Capacitor empacotando as telas de web-admin/src/app/motorista.",
+  "scripts": {
+    "web": "bash scripts/build-web.sh",
+    "sync": "npm run web && npx cap sync android",
+    "apk": "npm run sync && bash scripts/build-apk.sh"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.6.9",
+    "@capacitor/app": "^7.1.2",
+    "@capacitor/camera": "^7.0.5",
+    "@capacitor/core": "^7.6.9",
+    "@capacitor/geolocation": "^7.1.8",
+    "@capacitor/network": "^7.0.4"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.6.9"
+  }
+}

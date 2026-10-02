@@ -106,6 +106,7 @@ export interface CandidatoNota {
   data: string;
   placa: string;
   valor: number | null;
+  litros?: number;
   tem_nota: boolean;
   pontos?: number;
 }
@@ -114,11 +115,16 @@ export interface AnaliseNota {
   indice: number;
   arquivo: string;
   erro: string | null;
-  leitura: { texto: boolean; chave: string | null; numero: string | null; serie: string | null; valor: number | null; emissao: string | null } | null;
+  leitura: {
+    texto: boolean; chave: string | null; numero: string | null; serie: string | null; valor: number | null; emissao: string | null;
+    litros?: number | null; preco_unitario?: number | null; km?: number | null; placas?: string[];
+  } | null;
   sugestao: string | null;
   confianca: "alta" | "media" | null;
   candidatos: CandidatoNota[];
   ja_enviada: CandidatoNota | null;
+  /** Preço/L da nota acima do contrato (para a sugestão). `bloqueada`: o município recusa essa nota. */
+  preco_acima: { preco_nota: number; preco_contrato: number; diferenca: number; bloqueada: boolean } | null;
 }
 
 export interface AbastecimentoPosto {
@@ -151,7 +157,32 @@ async function baixarArquivo(url: string, nome: string, auth: string | null) {
   setTimeout(() => URL.revokeObjectURL(href), 60000);
 }
 
+export type TipoChamado = "PROBLEMA" | "CORRECAO" | "DUVIDA" | "SUGESTAO";
+export type StatusChamado = "ABERTO" | "EM_ANDAMENTO" | "RESOLVIDO";
+
+export interface Chamado {
+  id: string;
+  protocolo: string;
+  tipo: TipoChamado;
+  assunto: string;
+  descricao: string;
+  abastecimento_id: string | null;
+  abastecimento_numero: string | null;
+  aberto_por: string;
+  contato: string | null;
+  status: StatusChamado;
+  resposta: string | null;
+  respondido_por: string | null;
+  respondido_em: string | null;
+  created_at: string;
+  updated_at: string;
+  posto?: string | null;
+}
+
 export const portal = {
+  suporte: () => req<Chamado[]>("/suporte"),
+  abrirChamado: (body: { tipo: TipoChamado; assunto: string; descricao: string; abastecimento?: string; contato?: string }) =>
+    req<Chamado>("/suporte", { method: "POST", body: JSON.stringify(body) }),
   login: (login: string, senha: string) =>
     req<{ access_token: string; deve_trocar_senha: boolean }>("/login", { method: "POST", body: JSON.stringify({ login, senha }) }),
   trocarSenha: (senha_atual: string, nova_senha: string) =>

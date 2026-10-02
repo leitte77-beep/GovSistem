@@ -1,6 +1,8 @@
 from fastapi import APIRouter
 
 from app.api.v1 import (
+    suporte,
+    usos,
     portal_posto,
     notas_fiscais,
     secretaria,
@@ -55,3 +57,6 @@ api_router.include_router(secretaria.router)
 api_router.include_router(portal_posto.router)
 api_router.include_router(notas_fiscais.router)
 api_router.include_router(simam.router)
+api_router.include_router(suporte.router)
+api_router.include_router(usos.router)
+api_router.include_router(usos.router_app)

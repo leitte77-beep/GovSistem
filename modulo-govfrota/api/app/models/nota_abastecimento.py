@@ -53,4 +53,8 @@ class NotaAbastecimento(Base, TimestampMixin):
     nfe_emissao: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
     nfe_emitente_cnpj: Mapped[Optional[str]] = mapped_column(String(14), nullable=True)
     nfe_valor_total: Mapped[Optional[Decimal]] = mapped_column(Numeric(15, 2), nullable=True)
+    # Lidos do item/observações da nota (XML ou PDF com texto).
+    nfe_litros: Mapped[Optional[Decimal]] = mapped_column(Numeric(14, 3), nullable=True)
+    nfe_preco_unitario: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 4), nullable=True)
+    nfe_km: Mapped[Optional[int]] = mapped_column(Integer(), nullable=True)
     avisos: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)

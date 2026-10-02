@@ -1,8 +1,9 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
-import { Pencil, Plus, Trash2 } from "lucide-react";
+import { ChevronRight, Pencil, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { api, Configuracoes, Unidade } from "@/lib/api";
 import { RequirePermission } from "@/components/RequirePermission";
 import { useAuth } from "@/lib/auth";
@@ -42,6 +43,7 @@ function Numero({ label, ajuda, valor, min, max, onChange }: {
 }
 
 export default function ConfiguracoesPage() {
+  const { hasPermission } = useAuth();
   const [config, setConfig] = useState<Configuracoes | null>(null);
   const [salvando, setSalvando] = useState(false);
 
@@ -79,6 +81,18 @@ export default function ConfiguracoesPage() {
     <RequirePermission perms={["config.manage", "vehicle.view"]}>
       <div className="max-w-3xl space-y-4">
         <h1 className="text-h2 text-text-title">Configurações do GovFrota</h1>
+
+        {hasPermission("audit.view") && (
+          <Link href="/auditoria"
+            className="flex items-center gap-3 rounded-card border border-surface-border bg-white p-4 shadow-card hover:bg-surface-bg">
+            <ShieldCheck size={20} className="text-[#1D4ED8]" />
+            <span className="flex-1">
+              <span className="block text-label font-semibold text-text-title">Auditoria</span>
+              <span className="block text-meta text-text-subtle">Histórico de quem fez o quê no sistema</span>
+            </span>
+            <ChevronRight size={18} className="text-text-subtle" />
+          </Link>
+        )}
 
         <section className="rounded-card border border-surface-border bg-white p-4 shadow-card">
           <h2 className="mb-3 text-label font-semibold text-text-title">Geral</h2>
@@ -152,6 +166,9 @@ export default function ConfiguracoesPage() {
             <Toggle label="Permitir estoque negativo (padrão: NÃO)" valor={config.permitir_estoque_negativo} onChange={set("permitir_estoque_negativo")} />
             <Toggle label="Exigir NF na entrada" valor={config.exigir_nf_entrada} onChange={set("exigir_nf_entrada")} />
             <Toggle label="Exigir fornecedor na entrada" valor={config.exigir_fornecedor_entrada} onChange={set("exigir_fornecedor_entrada")} />
+            <Toggle label="Recusar nota do posto com preço acima do contrato"
+              ajuda="Desligado: a nota é aceita com aviso e a Prefeitura é notificada. Ligado: o posto precisa emitir a nota pelo preço do contrato."
+              valor={config.bloquear_nota_preco_acima_contrato} onChange={set("bloquear_nota_preco_acima_contrato")} />
             <div className="grid gap-3 pt-2 sm:grid-cols-2">
               <Numero label="Avisar quando o estoque durar menos de (dias)" min={0} max={365}
                 ajuda="Calculado pelo consumo dos últimos 30 dias. 0 desliga."

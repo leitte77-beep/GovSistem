@@ -1,4 +1,13 @@
-const BASE_URL = "/api/govfrota";
+// No site, a API fica na mesma origem. No app Android (build estático em
+// app-motorista/) as telas vêm de dentro do APK, então a API precisa de
+// endereço completo: NEXT_PUBLIC_API_ORIGIN=https://frota.govsistem.com.br.
+const API_ORIGIN = process.env.NEXT_PUBLIC_API_ORIGIN || "";
+const BASE_URL = `${API_ORIGIN}/api/govfrota`;
+
+/** Endereço utilizável de um arquivo que a API devolveu como caminho relativo. */
+export function urlDaApi(caminho: string): string {
+  return caminho.startsWith("/") ? `${API_ORIGIN}${caminho}` : caminho;
+}
 const ACCESS_TOKEN_KEY = "govfrota_access_token";
 const DRIVER_TOKEN_KEY = "govfrota_motorista_token";
 
@@ -41,6 +50,8 @@ async function request<T>(
 ): Promise<T> {
   const isFormData = options.body instanceof FormData;
   const res = await fetch(`${BASE_URL}${path}`, {
+    // Medições (km/horímetro) e situações mudam a cada lançamento: nunca reaproveitar resposta guardada.
+    cache: "no-store",
     ...options,
     headers: { ...getHeaders(tokenKey, isFormData), ...((options.headers as Record<string, string>) || {}) },
   });
@@ -157,6 +168,18 @@ export const driverApi = {
     return request<{ ok: boolean; mensagem: string }>("/app/motorista/problemas", { method: "POST", body: JSON.stringify(dados) }, DRIVER_TOKEN_KEY);
   },
 
+  usoAtual() {
+    return request<UsoVeiculo | null>("/app/motorista/usos/atual", {}, DRIVER_TOKEN_KEY);
+  },
+
+  registrarSaida(dados: { id?: string; veiculo_id: string; finalidade: string; destino: string; medicao: number; foto_url?: string; registrado_em?: string }) {
+    return request<UsoVeiculo & { avisos: string[] }>("/app/motorista/usos", { method: "POST", body: JSON.stringify(dados) }, DRIVER_TOKEN_KEY);
+  },
+
+  registrarChegada(usoId: string, dados: { medicao: number; foto_url?: string; registrado_em?: string; registrado_offline?: boolean }) {
+    return request<UsoVeiculo>(`/app/motorista/usos/${usoId}/chegada`, { method: "POST", body: JSON.stringify(dados) }, DRIVER_TOKEN_KEY);
+  },
+
   async uploadFoto(file: File): Promise<string> {
     const fd = new FormData();
     fd.append("file", file);
@@ -231,6 +254,9 @@ export const api = {
   },
   criarDocumento(veiculoId: string, data: Record<string, unknown>) {
     return request(`/veiculos/${veiculoId}/documentos`, { method: "POST", body: JSON.stringify(data) });
+  },
+  editarDocumento(veiculoId: string, docId: string, data: Record<string, unknown>) {
+    return request<DocumentoVeiculo>(`/veiculos/${veiculoId}/documentos/${docId}`, { method: "PATCH", body: JSON.stringify(data) });
   },
   excluirDocumento(veiculoId: string, docId: string) {
     return request<void>(`/veiculos/${veiculoId}/documentos/${docId}`, { method: "DELETE" });
@@ -613,6 +639,12 @@ export const api = {
   marcarLida(id: string) {
     return request<{ ok: boolean }>(`/notificacoes/${id}/marcar-lida`, { method: "POST" });
   },
+  chamadosSuporte(status?: string) {
+    return request<import("@/lib/portalPosto").Chamado[]>(`/suporte${qs({ status })}`);
+  },
+  responderChamado(id: string, body: { status: string; resposta?: string }) {
+    return request<import("@/lib/portalPosto").Chamado>(`/suporte/${id}/responder`, { method: "POST", body: JSON.stringify(body) });
+  },
   marcarTodasLidas() {
     return request<{ ok: boolean }>("/notificacoes/marcar-todas-lidas", { method: "POST" });
   },
@@ -711,6 +743,47 @@ export const api = {
     setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
   },
 
+  // Diário de Bordo (uso de veículos)
+  listUsos(params?: FiltroUsos & { skip?: number; limit?: number }) {
+    return requestPaginado<UsoVeiculo>(`/usos${qs(params)}`);
+  },
+  resumoUsos(params?: FiltroUsos) {
+    return request<{ total: number; concluidos: number; km: number; horas: number; com_alerta: number; veiculos: number }>(`/usos/resumo${qs(params)}`);
+  },
+  usosEmUso() {
+    return request<UsoVeiculo[]>("/usos/em-uso");
+  },
+  getUso(id: string) {
+    return request<UsoVeiculo>(`/usos/${id}`);
+  },
+  encerrarUso(id: string, dados: { medicao: number; motivo: string; chegada_em?: string | null }) {
+    return request<UsoVeiculo>(`/usos/${id}/encerrar`, { method: "POST", body: JSON.stringify(dados) });
+  },
+  lancarUso(dados: {
+    veiculo_id: string; motorista_id: string; finalidade: string; destino: string;
+    saida_em: string; medicao_saida: number; chegada_em: string; medicao_chegada: number;
+  }) {
+    return request<UsoVeiculo & { avisos: string[] }>("/usos", { method: "POST", body: JSON.stringify(dados) });
+  },
+  async exportarUsos(formato: "xlsx" | "pdf", params: FiltroUsos) {
+    const token = getAccessToken();
+    const res = await fetch(`${BASE_URL}/usos/exportar${qs({ ...params, formato })}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ detail: "Falha ao exportar." }));
+      throw new Error(err.detail || `HTTP ${res.status}`);
+    }
+    const objectUrl = URL.createObjectURL(await res.blob());
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = `diario-de-bordo.${formato}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 60000);
+  },
+
   // Anexos (NF PDF/XML/foto): visualizar e baixar exigem autenticação.
   async abrirAnexo(anexo: { url: string; nome?: string; mime?: string | null }) {
     const token = getAccessToken();
@@ -757,6 +830,43 @@ export function getAccessToken(): string | null {
 }
 
 // ── Tipos do app do motorista ─────────────────────────────────────────────────
+
+export interface UsoVeiculo {
+  id: string;
+  veiculo_id: string;
+  veiculo_placa: string | null;
+  veiculo_modelo: string | null;
+  motorista_id: string;
+  motorista_nome: string | null;
+  unidade_id: string | null;
+  unidade_nome: string | null;
+  finalidade: string;
+  destino: string;
+  usa_horimetro: boolean;
+  saida_em: string;
+  medicao_saida: number;
+  foto_saida_url: string | null;
+  chegada_em: string | null;
+  medicao_chegada: number | null;
+  foto_chegada_url: string | null;
+  percorrido: number | null;
+  duracao_min: number;
+  status: "EM_USO" | "CONCLUIDO" | "ENCERRADO_GESTOR";
+  origem: "APP_MOTORISTA" | "PAINEL";
+  motivo_encerramento: string | null;
+  alertas: { tipo: string; mensagem: string }[];
+  atrasado: boolean;
+}
+
+export type FiltroUsos = {
+  veiculo_id?: string;
+  motorista_id?: string;
+  unidade_id?: string;
+  status?: string;
+  data_inicio?: string;
+  data_fim?: string;
+  search?: string;
+};
 
 export interface VeiculoApp {
   id: string;
@@ -859,9 +969,17 @@ export interface VeiculoTanque {
 }
 export interface DocumentoVeiculo {
   id: string;
+  veiculo_id?: string;
   descricao: string;
   tipo: string | null;
   vencimento: string | null;
+  anexo_id?: string | null;
+  observacoes?: string | null;
+  created_at?: string | null;
+  arquivo_nome?: string | null;
+  arquivo_mime?: string | null;
+  arquivo_tamanho?: number | null;
+  enviado_por?: string | null;
 }
 export interface MotoristaListItem {
   id: string;
@@ -1710,6 +1828,7 @@ export interface Configuracoes {
   permitir_estoque_negativo: boolean;
   exigir_nf_entrada: boolean;
   exigir_fornecedor_entrada: boolean;
+  bloquear_nota_preco_acima_contrato: boolean;
   alerta_estoque_minimo_dias: number;
   antecedencia_alerta_manutencao_dias: number;
   simam_id_pessoa: number | null;

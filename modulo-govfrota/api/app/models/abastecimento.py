@@ -122,6 +122,9 @@ class Abastecimento(Base, TimestampMixin, SoftDeleteMixin):
 
     foto_bomba_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     foto_painel_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # Onde o celular estava no registro (GPS; nulo se o motorista negou).
+    latitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(9, 6), nullable=True)
+    longitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(9, 6), nullable=True)
 
     observacoes: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
 

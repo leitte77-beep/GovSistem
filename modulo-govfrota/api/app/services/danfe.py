@@ -15,7 +15,8 @@ from decimal import Decimal, InvalidOperation
 
 MAX_PAGINAS = 3
 
-_RE_CHAVE = re.compile(r"(?<!\d)((?:\d[\s.]?){43}\d)(?!\d)")
+# Blocos da chave podem vir separados por espaço simples, duplo ou ponto, conforme o emissor.
+_RE_CHAVE = re.compile(r"(?<!\d)((?:\d[\s.]{0,3}){43}\d)(?!\d)")
 _RE_MOEDA = r"(\d{1,3}(?:\.\d{3})*,\d{2})"
 _ROTULOS_TOTAL = (
     r"VALOR\s+TOTAL\s+DA\s+NOTA",
@@ -23,11 +24,21 @@ _ROTULOS_TOTAL = (
     r"VALOR\s+TOTAL\s+R\$",
     r"VALOR\s+TOTAL",
     r"TOTAL\s+DA\s+NOTA",
+    r"VALOR\s+NOTA",
+    r"RESUMO\s+PAGAMENTO",
 )
 _RE_EMISSAO = re.compile(
     r"(?:DATA\s+(?:DA|DE)\s+EMISS[ÃA]O|EMISS[ÃA]O)[^\d]{0,40}(\d{2}/\d{2}/\d{4})(?:\s+(\d{2}:\d{2}(?::\d{2})?))?",
     re.IGNORECASE,
 )
+# Protocolo de autorização: "141260398338360 - 01/10/2026 11:18:47" (≈ emissão).
+_RE_PROTOCOLO = re.compile(r"\b\d{15}\s*-\s*(\d{2}/\d{2}/\d{4})\s+(\d{2}:\d{2}(?::\d{2})?)")
+# Linha do item: unidade em litros, quantidade, valor unitário e valor total.
+_RE_ITEM_LITROS = re.compile(
+    r"\b(?:L|LT|LTS|LITROS?)\s+(\d{1,3}(?:\.\d{3})*,\d{1,4})\s+(\d{1,3},\d{2,4})\s+(\d{1,3}(?:\.\d{3})*,\d{2})(?!\d)"
+)
+_RE_KM = re.compile(r"\bKM\s*[:=]?\s*(\d{1,3}(?:\.\d{3})+|\d{1,7})\b")
+_RE_CNPJ = re.compile(r"\b(\d{2}\.\d{3}\.\d{3}/\d{4}-\d{2})\b")
 _RE_NUMERO_AB = re.compile(r"AB\s*-?\s*(\d{4})\s*/\s*(\d{1,9})", re.IGNORECASE)
 _RE_PLACA = re.compile(r"\b([A-Z]{3}-?\d[A-Z0-9]\d{2})\b")
 
@@ -43,6 +54,11 @@ class Danfe:
     emissao: datetime | None = None
     numeros_ab: list[tuple[int, int]] = field(default_factory=list)
     placas: list[str] = field(default_factory=list)
+    # Itens em litros (combustível): soma das quantidades e preço unitário.
+    litros: Decimal | None = None
+    preco_unitario: Decimal | None = None
+    km: int | None = None
+    cnpjs: list[str] = field(default_factory=list)
 
 
 def chave_valida(chave: str) -> bool:
@@ -61,6 +77,16 @@ def _moeda(v: str) -> Decimal | None:
         return Decimal(v.replace(".", "").replace(",", "."))
     except InvalidOperation:
         return None
+
+
+def _itens_litros(texto: str) -> list[tuple[Decimal, Decimal, Decimal]]:
+    """(quantidade, unitário, total) de cada item em litros cuja conta fecha."""
+    itens = []
+    for m in _RE_ITEM_LITROS.finditer(texto.upper()):
+        q, u, t = (_moeda(g) for g in m.groups())
+        if q and u and t and abs(q * u - t) <= Decimal("0.05"):
+            itens.append((q, u, t))
+    return itens
 
 
 def extrair_texto(conteudo: bytes) -> str:
@@ -94,12 +120,27 @@ def interpretar(texto: str) -> Danfe:
             d.valor_total = v
             break
 
-    m = _RE_EMISSAO.search(texto)
+    for regex in (_RE_EMISSAO, _RE_PROTOCOLO):
+        m = regex.search(texto)
+        if m:
+            try:
+                d.emissao = datetime.strptime(f"{m.group(1)} {m.group(2) or '00:00'}"[:16], "%d/%m/%Y %H:%M")
+                break
+            except ValueError:
+                d.emissao = None
+
+    itens = _itens_litros(texto)
+    if itens:
+        d.litros = sum((q for q, _, _ in itens), Decimal("0"))
+        total_itens = sum((t for _, _, t in itens), Decimal("0"))
+        d.preco_unitario = itens[0][1] if len(itens) == 1 else (total_itens / d.litros).quantize(Decimal("0.0001"))
+        if d.valor_total is None:
+            d.valor_total = total_itens
+
+    m = _RE_KM.search(maiusculo)
     if m:
-        try:
-            d.emissao = datetime.strptime(f"{m.group(1)} {m.group(2) or '00:00'}"[:16], "%d/%m/%Y %H:%M")
-        except ValueError:
-            d.emissao = None
+        d.km = int(m.group(1).replace(".", ""))
+    d.cnpjs = sorted({re.sub(r"\D", "", c) for c in _RE_CNPJ.findall(texto)})
 
     d.numeros_ab = [(int(a), int(s)) for a, s in _RE_NUMERO_AB.findall(texto)]
     d.placas = sorted({p.replace("-", "") for p in _RE_PLACA.findall(maiusculo)})

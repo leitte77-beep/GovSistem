@@ -344,7 +344,7 @@ services:
       POSTGRES_DB: ${GOVFROTA_POSTGRES_DB:-govfrota}
       POSTGRES_USER: ${POSTGRES_USER:-doe_user}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-doe_password}
-      CORS_ORIGINS: '["http://localhost:7601","http://localhost:7602","https://frota.govsistem.com.br"]'
+      CORS_ORIGINS: '["http://localhost:7601","http://localhost:7602","https://frota.govsistem.com.br","https://localhost"]'
       DEBUG: ${API_DEBUG:-true}
       SECRET_KEY: ${GOVFROTA_SECRET_KEY:-govfrota-dev-secret-key-change-in-production}
       SAAS_JWT_SECRET: ${SAAS_JWT_SECRET:-dev-saas-secret-key-change-in-production}

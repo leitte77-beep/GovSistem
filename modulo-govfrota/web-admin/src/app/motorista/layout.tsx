@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
+import { SincronizadorOffline } from "@/components/motorista/SincronizadorOffline";
 
 export const metadata: Metadata = {
   title: "GovFrota Motorista",
@@ -32,6 +33,7 @@ export default function MotoristaLayout({ children }: { children: React.ReactNod
   return (
     <>
       {children}
+      <SincronizadorOffline />
       <Script id="pwa-register" strategy="afterInteractive">
         {`if ('serviceWorker' in navigator) {
           window.addEventListener('load', function () {

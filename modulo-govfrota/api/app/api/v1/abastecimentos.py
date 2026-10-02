@@ -29,6 +29,7 @@ from app.schemas.schemas import (
 from app.services.abastecimento import (
     find_abastecimento_by_idempotency,
     get_configuracoes,
+    recalcular_apos_correcao,
     registrar_abastecimento,
 )
 from app.services.auditoria import registrar_auditoria
@@ -655,17 +656,15 @@ async def corrigir(
         )
 
     abast.quantidade_litros = novo_litros
-    if novo_km >= abast.quilometragem:
-        abast.quilometragem = novo_km
+    # A correção existe justamente para desfazer erro de digitação — inclusive
+    # km digitado a mais (ex.: 280.000 no lugar de 28.000). Antes só aceitava
+    # para cima e ignorava o valor em silêncio.
+    abast.quilometragem = novo_km
     veiculo = await db.get(Veiculo, abast.veiculo_id)
-    if veiculo and veiculo.organization_id == user.organization_id and novo_km > veiculo.quilometragem_atual:
-        veiculo.quilometragem_atual = novo_km
+    if veiculo is not None and veiculo.organization_id != user.organization_id:
+        veiculo = None
     if body.horimetro is not None:
         abast.horimetro = body.horimetro
-        if veiculo and veiculo.organization_id == user.organization_id and body.horimetro > Decimal(
-            veiculo.horimetro_atual or 0
-        ):
-            veiculo.horimetro_atual = body.horimetro
 
     # Posto credenciado: preço e NF vindos da nota fiscal.
     if abast.modalidade == "POSTO_CREDENCIADO":
@@ -687,6 +686,9 @@ async def corrigir(
     await simam.registrar_estorno(
         db, user.organization_id, abast, litros_antes - novo_litros, body.justificativa, user.id
     )
+
+    # Consumo, alertas de medição (deste e do próximo registro) e km atual do veículo.
+    await recalcular_apos_correcao(db, abast, veiculo)
 
     novos = _snapshot(abast)
     db.add(

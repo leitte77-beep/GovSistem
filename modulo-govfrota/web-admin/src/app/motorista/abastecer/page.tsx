@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
-import { Camera, Check, ChevronLeft, CloudOff, MapPin, RefreshCw, WifiOff } from "lucide-react";
+import { Camera, Check, ChevronLeft, ChevronRight, CloudOff, Droplets, Fuel, Gauge, Loader2, MapPin, RefreshCw, Search, ShieldCheck, WifiOff, X } from "lucide-react";
 import { AuthError, driverApi, LocaisAbastecimento, VeiculoApp } from "@/lib/api";
 import {
   AbastecimentoPendente,
@@ -16,6 +16,7 @@ import {
   sincronizarPendentes,
 } from "@/lib/filaOffline";
 import { FotoMotorista } from "@/components/motorista/FotoMotorista";
+import { useLocalizacao } from "@/lib/localizacao";
 
 interface ConfigMotorista {
   foto_bomba_obrigatoria: boolean;
@@ -42,13 +43,10 @@ function numero(v: string): number {
   return Number(v);
 }
 
-function reais(v: number): string {
-  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
 export default function AbastecerPage() {
   const router = useRouter();
   const [passo, setPasso] = useState<1 | 2 | 3>(1);
+  const localizacao = useLocalizacao();
   const [veiculos, setVeiculos] = useState<VeiculoApp[]>([]);
   const [locais, setLocais] = useState<LocaisAbastecimento>({ tanques: [], postos: [] });
   const [config, setConfig] = useState<ConfigMotorista>({ foto_bomba_obrigatoria: false, foto_km_obrigatoria: false });
@@ -61,7 +59,6 @@ export default function AbastecerPage() {
   const [localChave, setLocalChave] = useState("");
   const [litros, setLitros] = useState("");
   const [medicao, setMedicao] = useState("");
-  const [numeroNf, setNumeroNf] = useState("");
   const [completouTanque, setCompletouTanque] = useState<boolean | null>(null);
   // Foto: URL já enviada ao servidor OU arquivo guardado para enviar depois.
   const [fotoBomba, setFotoBomba] = useState<{ url: string | null; arquivo: File | null; preview: string } | null>(null);
@@ -157,8 +154,11 @@ export default function AbastecerPage() {
     opcoesLocal.length === 1 ? opcoesLocal[0] : opcoesLocal.find((l) => chaveLocal(l) === localChave);
   const noPosto = localEfetivo?.tipo === "POSTO";
 
-  const veiculosFiltrados = veiculos.filter((v) =>
-    v.placa.toLowerCase().includes(buscaPlaca.replace(/[- ]/g, "").toLowerCase())
+  const termo = buscaPlaca.trim().toLowerCase();
+  const veiculosFiltrados = veiculos.filter(
+    (v) =>
+      v.placa.toLowerCase().includes(termo.replace(/[- ]/g, "")) ||
+      [v.marca, v.modelo].filter(Boolean).join(" ").toLowerCase().includes(termo)
   );
 
   const ultimoKm = veiculo?.quilometragem_atual ?? 0;
@@ -169,13 +169,7 @@ export default function AbastecerPage() {
     !isNaN(valorMedicao) &&
     (veiculo?.usa_horimetro ? ultimoHorimetro != null && valorMedicao < ultimoHorimetro : valorMedicao < ultimoKm);
   const litrosNum = numero(litros);
-  // Posto: preço do contrato (o motorista não informa valor).
-  const precoContrato = noPosto
-    ? locais.postos
-        .find((p) => p.id === localEfetivo?.id)
-        ?.precos?.find((c) => c.combustivel_id === combustivelEfetivo)?.preco_litro ?? null
-    : null;
-  const valorEstimado = precoContrato != null && litrosNum > 0 ? precoContrato * litrosNum : null;
+  // Posto: o valor vem do contrato e é aplicado pelo sistema — o motorista não vê nem informa valores.
 
   const fotosFaltando =
     (config.foto_bomba_obrigatoria && !fotoBomba) || (config.foto_km_obrigatoria && !fotoPainel);
@@ -194,7 +188,6 @@ export default function AbastecerPage() {
     setMedicao("");
     setCompletouTanque(null);
     setLitros("");
-    setNumeroNf("");
     setFotoBomba(null);
     setFotoPainel(null);
     setIdempotencyKey("");
@@ -239,6 +232,7 @@ export default function AbastecerPage() {
     if (!idempotencyKey) setIdempotencyKey(chave);
     const v = veiculo!;
     const dados: Record<string, unknown> = {
+      ...localizacao(),
       veiculo_id: v.id,
       combustivel_id: combustivelEfetivo || undefined,
       quantidade_litros: String(litrosNum),
@@ -250,7 +244,6 @@ export default function AbastecerPage() {
     };
     if (localEfetivo?.tipo === "POSTO") {
       dados.fornecedor_id = localEfetivo.id;
-      if (numeroNf.trim()) dados.numero_nf = numeroNf.trim();
     } else if (localEfetivo) {
       dados.tanque_id = localEfetivo.id;
     }
@@ -379,61 +372,98 @@ export default function AbastecerPage() {
     );
   }
 
-  return (
-    <main
-      className="min-h-screen bg-[#F8F9FF] p-5"
-      style={{ paddingTop: "calc(env(safe-area-inset-top) + 1.25rem)", paddingBottom: "calc(env(safe-area-inset-bottom) + 1.25rem)" }}
-    >
-      <div className="mx-auto max-w-[480px]">
-        <header className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            {passo > 1 && (
-              <button onClick={() => setPasso((p) => (p === 2 ? 1 : 2))} aria-label="Voltar" className="rounded-full p-2 text-[#424750] hover:bg-white">
-                <ChevronLeft size={24} />
-              </button>
-            )}
-            <h1 className="text-xl font-bold text-[#181C22]">
-              {passo === 1 ? "Qual veículo?" : passo === 2 ? "Novo abastecimento" : "Confira o abastecimento"}
-            </h1>
-          </div>
-          <Link href="/motorista" className="rounded-full px-4 py-2 text-sm text-[#424750] hover:bg-white">Cancelar</Link>
-        </header>
+  const ETAPAS = ["Veículo", "Dados", "Conferir"];
+  const titulo = passo === 1 ? "Qual veículo?" : passo === 2 ? "Novo abastecimento" : "Confira e confirme";
+  const nomeVeiculo = veiculo ? [veiculo.marca, veiculo.modelo].filter(Boolean).join(" ") || "—" : "";
+  const campo =
+    "w-full rounded-2xl border-2 border-[#E2E8F0] bg-white px-4 text-[17px] outline-none transition focus:border-[#1D5BD6]";
 
+  return (
+    <main className="min-h-[100dvh] bg-[#F1F4FA] text-[#0F172A]">
+      <style>{`
+        @keyframes ab-sobe { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+        .ab-sobe { animation: ab-sobe .4s cubic-bezier(.2,.8,.2,1) both; }
+        @media (prefers-reduced-motion: reduce) { .ab-sobe { animation: none !important; } }
+      `}</style>
+
+      {/* Cabeçalho com etapas */}
+      <header className="sticky top-0 z-20 bg-gradient-to-br from-[#1D5BD6] to-[#153B8F] px-5 pb-4 text-white shadow-lg"
+        style={{ paddingTop: "calc(env(safe-area-inset-top) + .75rem)" }}>
+        <div className="mx-auto max-w-[480px]">
+          <div className="flex items-center gap-2">
+            {passo > 1 ? (
+              <button onClick={() => setPasso((p) => (p === 2 ? 1 : 2))} aria-label="Voltar"
+                className="-ml-2 flex h-11 w-11 items-center justify-center rounded-2xl active:bg-white/15">
+                <ChevronLeft size={26} />
+              </button>
+            ) : (
+              <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15"><Fuel size={22} /></span>
+            )}
+            <h1 className="min-w-0 flex-1 truncate text-[20px] font-bold">{titulo}</h1>
+            <Link href="/motorista" aria-label="Cancelar" className="flex h-11 items-center gap-1 rounded-2xl px-3 text-[15px] font-medium text-white/85 active:bg-white/15">
+              <X size={18} /> Cancelar
+            </Link>
+          </div>
+          <ol className="mt-3 grid grid-cols-3 gap-2" aria-label="Etapas">
+            {ETAPAS.map((e, i) => {
+              const n = i + 1;
+              const feito = passo > n;
+              const atual = passo === n;
+              return (
+                <li key={e} aria-current={atual ? "step" : undefined}>
+                  <div className={`h-1.5 rounded-full transition-all ${feito || atual ? "bg-white" : "bg-white/25"}`} />
+                  <span className={`mt-1.5 flex items-center gap-1 text-[12px] font-medium ${atual ? "text-white" : "text-white/60"}`}>
+                    {feito && <Check size={12} />} {e}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-[480px] px-5 pt-5" style={{ paddingBottom: passo === 1 ? "calc(env(safe-area-inset-bottom) + 1.5rem)" : "calc(env(safe-area-inset-bottom) + 7rem)" }}>
         {(!online || dadosDoCache) && (
-          <div className="mb-4 flex items-start gap-2 rounded-xl bg-[#FFF4D6] px-3 py-2 text-sm text-[#5C4200]">
-            <WifiOff size={18} className="mt-0.5 flex-shrink-0" />
+          <div className="mb-4 flex items-start gap-3 rounded-2xl bg-[#FFF4D6] px-4 py-3 text-[14px] text-[#5C4200] ring-1 ring-[#FCD98A]">
+            <WifiOff size={20} className="mt-0.5 flex-shrink-0" />
             <span>Sem internet. Pode abastecer normalmente: o registro fica guardado no celular e é enviado quando o sinal voltar.</span>
           </div>
         )}
 
         {/* Passo 1 — Veículo */}
         {passo === 1 && (
-          <div className="space-y-3">
-            <input
-              placeholder="Buscar placa…"
-              value={buscaPlaca}
-              onChange={(e) => setBuscaPlaca(e.target.value)}
-              className="w-full rounded-xl border border-[#C3C6D1] bg-white px-4 py-3 text-lg outline-none focus:border-[#1D5BD6]"
-            />
+          <div className="ab-sobe space-y-3">
+            <div className="relative">
+              <Search size={20} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#94A3B8]" aria-hidden />
+              <input
+                placeholder="Buscar placa ou modelo…"
+                value={buscaPlaca}
+                onChange={(e) => setBuscaPlaca(e.target.value)}
+                autoCapitalize="characters"
+                autoCorrect="off"
+                className={`${campo} h-14 pl-12 uppercase placeholder:normal-case`}
+              />
+            </div>
             {veiculosFiltrados.length === 0 ? (
-              <div className="rounded-xl border border-[#C3C6D1]/40 bg-white px-4 py-8 text-center text-sm text-[#737781]">
+              <div className="rounded-3xl bg-white px-4 py-10 text-center text-[15px] text-[#64748B] ring-1 ring-[#E2E8F0]">
                 Nenhum veículo encontrado.
               </div>
             ) : (
-              <ul className="space-y-2">
+              <ul className="space-y-2.5">
                 {veiculosFiltrados.map((v) => (
                   <li key={v.id}>
                     <button
                       onClick={() => selecionarVeiculo(v)}
-                      className="flex w-full items-center gap-3 rounded-xl border border-[#C3C6D1]/30 bg-white p-3 text-left shadow-card active:bg-[#EFF4FF]"
+                      className="flex w-full items-center gap-4 rounded-3xl bg-white p-3 pr-4 text-left shadow-[0_6px_18px_-12px_rgba(15,23,42,.35)] ring-1 ring-[#E2E8F0] transition active:scale-[.98] active:bg-[#EFF4FF]"
                     >
-                      <FotoMotorista src={v.foto_url} className="h-14 w-16 flex-shrink-0 rounded-lg" />
-                      <div className="min-w-0">
-                        <div className="font-mono text-lg font-bold text-[#1D5BD6]">{v.placa}</div>
-                        <div className="truncate text-sm text-[#424750]">
+                      <FotoMotorista src={v.foto_url} className="h-16 w-20 flex-shrink-0 rounded-2xl" />
+                      <div className="min-w-0 flex-1">
+                        <span className="inline-block rounded-md border-2 border-[#0F172A] bg-white px-2 font-mono text-[17px] font-bold leading-6">{v.placa}</span>
+                        <div className="mt-1 truncate text-[15px] text-[#475569]">
                           {[v.marca, v.modelo].filter(Boolean).join(" ") || "—"}
                         </div>
                       </div>
+                      <ChevronRight size={22} className="shrink-0 text-[#94A3B8]" />
                     </button>
                   </li>
                 ))}
@@ -444,162 +474,137 @@ export default function AbastecerPage() {
 
         {/* Passo 2 — Dados */}
         {passo === 2 && veiculo && (
-          <div className="space-y-5">
-            <div className="flex items-center gap-3 rounded-xl border border-[#C3C6D1]/30 bg-white p-3 shadow-card">
-              <FotoMotorista src={veiculo.foto_url} className="h-14 w-16 flex-shrink-0 rounded-lg" />
-              <div>
-                <div className="font-mono text-lg font-bold text-[#1D5BD6]">{veiculo.placa}</div>
-                <div className="text-sm text-[#424750]">
-                  {[veiculo.marca, veiculo.modelo].filter(Boolean).join(" ") || "—"}
-                </div>
+          <div className="ab-sobe space-y-5">
+            <div className="flex items-center gap-4 rounded-3xl bg-white p-3 pr-4 ring-1 ring-[#E2E8F0]">
+              <FotoMotorista src={veiculo.foto_url} className="h-16 w-20 flex-shrink-0 rounded-2xl" />
+              <div className="min-w-0 flex-1">
+                <span className="inline-block rounded-md border-2 border-[#0F172A] bg-white px-2 font-mono text-[17px] font-bold leading-6">{veiculo.placa}</span>
+                <div className="mt-1 truncate text-[15px] text-[#475569]">{nomeVeiculo}</div>
               </div>
+              <button onClick={() => setPasso(1)} className="shrink-0 rounded-xl px-2 py-2 text-[14px] font-medium text-[#1D5BD6] active:bg-[#EFF4FF]">Trocar</button>
             </div>
 
             {/* Combustível / produto */}
-            <div>
-              <span className="mb-2 block text-sm font-medium text-[#424750]">O que foi abastecido?</span>
+            <section className="rounded-3xl bg-white p-4 ring-1 ring-[#E2E8F0]">
+              <span className="mb-2 flex items-center gap-2 text-[15px] font-semibold"><Droplets size={18} className="text-[#1D5BD6]" /> O que foi abastecido?</span>
               {combustiveisVeiculo.length <= 1 ? (
-                <div className="rounded-xl border border-[#C3C6D1]/30 bg-white px-4 py-3 text-lg font-semibold text-[#181C22]">
+                <div className="rounded-2xl bg-[#F1F5FF] px-4 py-3 text-[17px] font-bold">
                   {combustiveisVeiculo[0]?.nome ?? "Veículo sem combustível cadastrado"}
                 </div>
               ) : (
                 <div className="grid gap-2">
-                  {combustiveisVeiculo.map((c) => (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => {
-                        setCombustivelId(c.id);
-                        setLocalChave("");
-                      }}
-                      className={`rounded-xl px-4 py-3 text-lg font-medium ${
-                        combustivelEfetivo === c.id ? "bg-[#1D5BD6] text-white" : "border border-[#C3C6D1] bg-white text-[#181C22]"
-                      }`}
-                    >
-                      {c.nome.toUpperCase()}
-                    </button>
-                  ))}
+                  {combustiveisVeiculo.map((c) => {
+                    const ativo = combustivelEfetivo === c.id;
+                    return (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => {
+                          setCombustivelId(c.id);
+                          setLocalChave("");
+                        }}
+                        className={`flex items-center justify-between rounded-2xl px-4 py-3.5 text-[17px] font-semibold transition ${
+                          ativo ? "bg-[#1D5BD6] text-white shadow-md" : "bg-[#F8FAFC] ring-2 ring-[#E2E8F0]"
+                        }`}
+                      >
+                        {c.nome.toUpperCase()} {ativo && <Check size={20} />}
+                      </button>
+                    );
+                  })}
                 </div>
               )}
-            </div>
 
-            {/* Onde abasteceu */}
-            {combustivelEfetivo && (
-              <div>
-                <span className="mb-2 block text-sm font-medium text-[#424750]">
-                  {opcoesLocal.length > 1 ? "Onde abasteceu?" : "Abastecendo em"}
-                </span>
-                {opcoesLocal.length === 0 ? (
-                  <div className="rounded-xl border border-[#FFDD9A] bg-[#FFF8E6] px-4 py-3 text-sm text-[#5C4200]">
-                    Nenhum tanque ou posto credenciado para este combustível. Avise o setor de frota.
-                  </div>
-                ) : opcoesLocal.length === 1 ? (
-                  <div className="flex items-center gap-2 rounded-xl border border-[#C3C6D1]/30 bg-white px-4 py-3">
-                    <MapPin size={18} className="text-[#737781]" />
-                    <div>
-                      <div className="text-lg font-semibold text-[#181C22]">{opcoesLocal[0].nome}</div>
-                      {opcoesLocal[0].detalhe && <div className="text-xs text-[#737781]">{opcoesLocal[0].detalhe}</div>}
+              {/* Onde abasteceu */}
+              {combustivelEfetivo && (
+                <div className="mt-4">
+                  <span className="mb-2 flex items-center gap-2 text-[15px] font-semibold"><MapPin size={18} className="text-[#1D5BD6]" /> {opcoesLocal.length > 1 ? "Onde abasteceu?" : "Abastecendo em"}</span>
+                  {opcoesLocal.length === 0 ? (
+                    <div className="rounded-2xl bg-[#FFF8E6] px-4 py-3 text-[14px] text-[#5C4200] ring-1 ring-[#FCD98A]">
+                      Nenhum tanque ou posto credenciado para este combustível. Avise o setor de frota.
                     </div>
-                  </div>
-                ) : (
-                  <div className="grid gap-2">
-                    {opcoesLocal.map((l) => {
-                      const ativo = localEfetivo && chaveLocal(localEfetivo) === chaveLocal(l);
-                      return (
-                        <button
-                          key={chaveLocal(l)}
-                          type="button"
-                          onClick={() => setLocalChave(chaveLocal(l))}
-                          className={`rounded-xl px-4 py-3 text-left ${ativo ? "bg-[#1D5BD6] text-white" : "border border-[#C3C6D1] bg-white text-[#181C22]"}`}
-                        >
-                          <div className="text-lg font-medium">{l.nome}</div>
-                          <div className={`text-xs ${ativo ? "text-white/80" : "text-[#737781]"}`}>
-                            {l.tipo === "POSTO" ? "Posto credenciado" : "Tanque próprio"}
-                            {l.tipo === "POSTO" && l.detalhe ? ` · ${l.detalhe}` : ""}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Litros */}
-            <label className="block">
-              <span className="mb-1 block text-sm font-medium text-[#424750]">
-                {produtoSelecionado ? `Litros de ${produtoSelecionado.nome}` : "Litros abastecidos"}
-              </span>
-              <input
-                inputMode="decimal"
-                placeholder="0,00"
-                value={litros}
-                onChange={(e) => setLitros(e.target.value.replace(/[^\d.,]/g, ""))}
-                className="w-full rounded-xl border border-[#C3C6D1] bg-white px-4 py-5 text-3xl font-semibold outline-none focus:border-[#1D5BD6]"
-              />
-            </label>
-
-            {/* Posto: valor vem do contrato com o posto; nota é opcional */}
-            {noPosto && (
-              <div className="space-y-3">
-                <div className="rounded-xl border border-[#C3C6D1] bg-[#F1F3FA] px-4 py-3">
-                  {precoContrato != null ? (
-                    <>
-                      <span className="block text-sm font-medium text-[#424750]">
-                        Preço contratado: {reais(precoContrato)} por litro
-                      </span>
-                      <span className="block text-xl font-semibold text-[#181C22]">
-                        {valorEstimado != null ? reais(valorEstimado) : "—"}
-                      </span>
-                    </>
+                  ) : opcoesLocal.length === 1 ? (
+                    <div className="rounded-2xl bg-[#F1F5FF] px-4 py-3">
+                      <div className="text-[17px] font-bold">{opcoesLocal[0].nome}</div>
+                      {opcoesLocal[0].detalhe && <div className="text-[13px] text-[#64748B]">{opcoesLocal[0].detalhe}</div>}
+                    </div>
                   ) : (
-                    <span className="block text-sm text-[#424750]">
-                      O valor é definido pelo setor de frota conforme o contrato com o posto.
-                    </span>
+                    <div className="grid gap-2">
+                      {opcoesLocal.map((l) => {
+                        const ativo = localEfetivo && chaveLocal(localEfetivo) === chaveLocal(l);
+                        return (
+                          <button
+                            key={chaveLocal(l)}
+                            type="button"
+                            onClick={() => setLocalChave(chaveLocal(l))}
+                            className={`rounded-2xl px-4 py-3 text-left transition ${ativo ? "bg-[#1D5BD6] text-white shadow-md" : "bg-[#F8FAFC] ring-2 ring-[#E2E8F0]"}`}
+                          >
+                            <div className="text-[17px] font-semibold">{l.nome}</div>
+                            <div className={`text-[13px] ${ativo ? "text-white/80" : "text-[#64748B]"}`}>
+                              {l.tipo === "POSTO" ? "Posto credenciado" : "Tanque próprio"}
+                              {l.tipo === "POSTO" && l.detalhe ? ` · ${l.detalhe}` : ""}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
-                <label className="block">
-                  <span className="mb-1 block text-sm font-medium text-[#424750]">Nº da nota</span>
-                  <input
-                    inputMode="numeric"
-                    placeholder="Opcional"
-                    value={numeroNf}
-                    onChange={(e) => setNumeroNf(e.target.value.replace(/[^\d]/g, "").slice(0, 20))}
-                    className="w-full rounded-xl border border-[#C3C6D1] bg-white px-4 py-4 text-xl font-semibold outline-none focus:border-[#1D5BD6]"
-                  />
-                </label>
-              </div>
-            )}
+              )}
+            </section>
 
-            {/* KM / Horímetro */}
-            <div>
+            {/* Litros e medição */}
+            <section className="space-y-4 rounded-3xl bg-white p-4 ring-1 ring-[#E2E8F0]">
               <label className="block">
-                <span className="mb-1 block text-sm font-medium text-[#424750]">
-                  {veiculo.usa_horimetro ? "Horímetro atual (horas)" : "KM atual do veículo"}
-                </span>
-                <input
-                  inputMode="decimal"
-                  placeholder="0"
-                  value={medicao}
-                  onChange={(e) => setMedicao(e.target.value.replace(/[^\d.,]/g, ""))}
-                  className="w-full rounded-xl border border-[#C3C6D1] bg-white px-4 py-5 text-3xl font-semibold outline-none focus:border-[#1D5BD6]"
-                />
+                <span className="mb-2 flex items-center gap-2 text-[15px] font-semibold"><Fuel size={18} className="text-[#1D5BD6]" /> {produtoSelecionado ? `Litros de ${produtoSelecionado.nome}` : "Litros abastecidos"}</span>
+                <div className="relative">
+                  <input
+                    inputMode="decimal"
+                    enterKeyHint="next"
+                    placeholder="0,00"
+                    value={litros}
+                    onChange={(e) => setLitros(e.target.value.replace(/[^\d.,]/g, ""))}
+                    className={`${campo} h-[72px] pr-14 text-[32px] font-bold`}
+                  />
+                  <span className="pointer-events-none absolute right-5 top-1/2 -translate-y-1/2 text-[20px] font-bold text-[#94A3B8]">L</span>
+                </div>
               </label>
-              <p className="mt-1 text-xs text-[#737781]">
-                {veiculo.usa_horimetro
-                  ? ultimoHorimetro != null && `Último horímetro registrado: ${ultimoHorimetro.toLocaleString("pt-BR")} h`
-                  : `Último KM registrado: ${ultimoKm.toLocaleString("pt-BR")} km`}
-              </p>
-              {medicaoMenorQueUltima && (
-                <p className="mt-1 text-sm font-medium text-[#BA1A1A]">
-                  {veiculo.usa_horimetro ? "O horímetro informado é menor que o último registro." : "O KM informado é menor que o último registro."}
+
+              <label className="block">
+                <span className="mb-2 flex items-center gap-2 text-[15px] font-semibold"><Gauge size={18} className="text-[#1D5BD6]" /> {veiculo.usa_horimetro ? "Horímetro atual" : "KM atual do veículo"}</span>
+                <div className="relative">
+                  <input
+                    inputMode="decimal"
+                    enterKeyHint="done"
+                    placeholder="0"
+                    value={medicao}
+                    onChange={(e) => setMedicao(e.target.value.replace(/[^\d.,]/g, ""))}
+                    className={`${campo} h-[72px] pr-16 text-[32px] font-bold ${medicaoMenorQueUltima ? "!border-[#DC2626]" : ""}`}
+                  />
+                  <span className="pointer-events-none absolute right-5 top-1/2 -translate-y-1/2 text-[18px] font-bold text-[#94A3B8]">{veiculo.usa_horimetro ? "h" : "km"}</span>
+                </div>
+                <p className="mt-1.5 text-[13px] text-[#64748B]">
+                  {veiculo.usa_horimetro
+                    ? ultimoHorimetro != null && `Último registrado: ${ultimoHorimetro.toLocaleString("pt-BR")} h`
+                    : `Último registrado: ${ultimoKm.toLocaleString("pt-BR")} km`}
+                </p>
+                {medicaoMenorQueUltima && (
+                  <p className="mt-1 text-[14px] font-semibold text-[#B91C1C]">
+                    {veiculo.usa_horimetro ? "O horímetro informado é menor que o último registro." : "O KM informado é menor que o último registro."}
+                  </p>
+                )}
+              </label>
+
+              {noPosto && (
+                <p className="flex items-start gap-2 rounded-2xl bg-[#F1F5FF] px-3 py-2.5 text-[13px] text-[#334155]">
+                  <ShieldCheck size={16} className="mt-0.5 shrink-0 text-[#1D5BD6]" />
+                  O valor é calculado pelo contrato com o posto. Você só informa os litros e o km.
                 </p>
               )}
-            </div>
+            </section>
 
             {/* Tanque cheio */}
-            <div>
-              <span className="mb-2 block text-sm font-medium text-[#424750]">
+            <section className="rounded-3xl bg-white p-4 ring-1 ring-[#E2E8F0]">
+              <span className="mb-2 block text-[15px] font-semibold">
                 Completou o tanque?{config.exigir_tanque_cheio && <span className="text-[#BA1A1A]"> *</span>}
               </span>
               <div className="grid grid-cols-2 gap-3">
@@ -608,48 +613,87 @@ export default function AbastecerPage() {
                     key={String(val)}
                     type="button"
                     onClick={() => setCompletouTanque(completouTanque === val ? null : val)}
-                    className={`rounded-xl py-4 text-lg font-bold transition-colors ${
+                    className={`flex h-14 items-center justify-center gap-2 rounded-2xl text-[17px] font-bold transition ${
                       completouTanque === val
                         ? val
-                          ? "bg-[#106D34] text-white ring-2 ring-[#9DF6B3]"
-                          : "bg-[#805600] text-white ring-2 ring-[#FFDD9A]"
-                        : "border border-[#C3C6D1] bg-white text-[#181C22]"
+                          ? "bg-[#16A34A] text-white shadow-md"
+                          : "bg-[#B45309] text-white shadow-md"
+                        : "bg-[#F8FAFC] ring-2 ring-[#E2E8F0]"
                     }`}
                   >
-                    {val ? "SIM" : "NÃO"}
+                    {completouTanque === val && <Check size={20} />} {val ? "Sim" : "Não"}
                   </button>
                 ))}
               </div>
-            </div>
+            </section>
 
             {/* Fotos */}
-            <div className="space-y-3">
+            <section className="grid grid-cols-2 gap-3">
               <CampoFoto
-                rotulo={veiculo.usa_horimetro ? "Foto do painel / horímetro" : "Foto do painel / KM"}
+                rotulo={veiculo.usa_horimetro ? "Painel / horímetro" : "Painel / KM"}
                 obrigatoria={config.foto_km_obrigatoria}
                 foto={fotoPainel}
                 aoTirar={(e) => tirarFoto(e, setFotoPainel)}
                 aoLimpar={() => setFotoPainel(null)}
               />
               <CampoFoto
-                rotulo={noPosto ? "Foto da bomba ou do cupom" : "Foto da bomba"}
+                rotulo={noPosto ? "Bomba ou cupom" : "Bomba"}
                 obrigatoria={config.foto_bomba_obrigatoria}
                 foto={fotoBomba}
                 aoTirar={(e) => tirarFoto(e, setFotoBomba)}
                 aoLimpar={() => setFotoBomba(null)}
               />
+            </section>
+          </div>
+        )}
+
+        {/* Passo 3 — Resumo e confirmação */}
+        {passo === 3 && veiculo && (
+          <div className="ab-sobe space-y-4">
+            <div className="overflow-hidden rounded-3xl bg-white ring-1 ring-[#E2E8F0]">
+              <div className="flex items-center gap-4 bg-gradient-to-br from-[#EFF4FF] to-white p-4">
+                <FotoMotorista src={veiculo.foto_url} className="h-14 w-16 flex-shrink-0 rounded-xl" />
+                <div className="min-w-0">
+                  <span className="inline-block rounded-md border-2 border-[#0F172A] bg-white px-2 font-mono text-[16px] font-bold leading-6">{veiculo.placa}</span>
+                  <div className="mt-0.5 truncate text-[14px] text-[#475569]">{nomeVeiculo}</div>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 divide-x divide-[#E2E8F0] border-y border-[#E2E8F0]">
+                <div className="p-4 text-center">
+                  <p className="text-[13px] text-[#64748B]">Litros</p>
+                  <p className="text-[28px] font-bold leading-tight">{litrosNum.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}</p>
+                </div>
+                <div className="p-4 text-center">
+                  <p className="text-[13px] text-[#64748B]">{veiculo.usa_horimetro ? "Horímetro" : "KM"}</p>
+                  <p className="text-[28px] font-bold leading-tight">
+                    {veiculo.usa_horimetro ? valorMedicao.toLocaleString("pt-BR") : Math.round(valorMedicao || 0).toLocaleString("pt-BR")}
+                  </p>
+                </div>
+              </div>
+              <div className="px-4 py-2">
+                <LinhaResumo rotulo="Combustível" valor={produtoSelecionado?.nome ?? "—"} />
+                <LinhaResumo rotulo="Local" valor={localEfetivo?.nome ?? "—"} />
+                <LinhaResumo rotulo="Tanque cheio" valor={completouTanque === null ? "—" : completouTanque ? "Sim" : "Não"} />
+                <LinhaResumo rotulo="Data e hora" valor={new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })} />
+                <LinhaResumo rotulo="Foto do painel" valor={fotoPainel ? "✓ Tirada" : "—"} />
+                <LinhaResumo rotulo="Foto da bomba" valor={fotoBomba ? "✓ Tirada" : "—"} />
+              </div>
             </div>
+            <p className="flex items-start gap-2 px-1 text-[13px] text-[#64748B]">
+              <ShieldCheck size={16} className="mt-0.5 shrink-0 text-[#1D5BD6]" />
+              Ao confirmar, este registro fica assinado com o seu acesso (login e PIN), com data e hora.
+            </p>
+          </div>
+        )}
+      </div>
 
-            <button
-              onClick={() => setPasso(3)}
-              disabled={!podeConfirmar}
-              className="w-full rounded-xl bg-[#1D5BD6] py-5 text-xl font-bold text-white disabled:opacity-50"
-            >
-              CONFERIR ABASTECIMENTO
-            </button>
-
-            {!podeConfirmar && (litros !== "" || medicao !== "") && (
-              <p className="text-center text-sm text-[#805600]">
+      {/* Botão principal fixo no rodapé (etapas 2 e 3) */}
+      {passo > 1 && veiculo && (
+        <div className="fixed inset-x-0 bottom-0 z-20 border-t border-[#E2E8F0] bg-white/95 px-5 pt-3 backdrop-blur"
+          style={{ paddingBottom: "calc(env(safe-area-inset-bottom) + .75rem)" }}>
+          <div className="mx-auto max-w-[480px]">
+            {passo === 2 && !podeConfirmar && (litros !== "" || medicao !== "") && (
+              <p className="mb-2 text-center text-[13px] font-medium text-[#92400E]">
                 {!localEfetivo && combustivelEfetivo && opcoesLocal.length > 1
                   ? "Escolha onde abasteceu."
                   : tanqueCheioFaltando
@@ -657,56 +701,35 @@ export default function AbastecerPage() {
                     : "Preencha os campos e as fotos obrigatórias para continuar."}
               </p>
             )}
+            {passo === 2 ? (
+              <button
+                onClick={() => setPasso(3)}
+                disabled={!podeConfirmar}
+                className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#1D5BD6] to-[#153B8F] text-[18px] font-bold text-white shadow-[0_12px_24px_-10px_rgba(29,91,214,.7)] transition active:scale-[.98] disabled:opacity-45 disabled:shadow-none"
+              >
+                Conferir <ChevronRight size={22} />
+              </button>
+            ) : (
+              <button
+                disabled={!podeConfirmar || enviando}
+                onClick={confirmar}
+                className="flex h-14 w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#16A34A] to-[#15803D] text-[18px] font-bold text-white shadow-[0_12px_24px_-10px_rgba(22,163,74,.7)] transition active:scale-[.98] disabled:opacity-50"
+              >
+                {enviando ? <><Loader2 size={20} className="animate-spin" /> Registrando…</> : <><Check size={22} /> Confirmar abastecimento</>}
+              </button>
+            )}
           </div>
-        )}
-
-        {/* Passo 3 — Resumo e confirmação */}
-        {passo === 3 && veiculo && (
-          <div className="space-y-5">
-            <div className="rounded-2xl border border-[#C3C6D1]/30 bg-white p-5 shadow-card">
-              <h2 className="mb-4 text-base font-bold text-[#181C22]">Confira o abastecimento</h2>
-              <LinhaResumo rotulo="Veículo" valor={`${veiculo.placa} • ${[veiculo.marca, veiculo.modelo].filter(Boolean).join(" ")}`} />
-              <LinhaResumo rotulo="Combustível" valor={produtoSelecionado?.nome ?? "—"} />
-              <LinhaResumo rotulo="Local" valor={localEfetivo?.nome ?? "—"} />
-              <LinhaResumo rotulo="Quantidade" valor={`${litrosNum.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} L`} />
-              {noPosto && valorEstimado != null && <LinhaResumo rotulo="Valor (contrato)" valor={reais(valorEstimado)} />}
-              {noPosto && numeroNf && <LinhaResumo rotulo="Nota fiscal" valor={numeroNf} />}
-              <LinhaResumo
-                rotulo={veiculo.usa_horimetro ? "Horímetro" : "KM"}
-                valor={
-                  veiculo.usa_horimetro
-                    ? `${valorMedicao.toLocaleString("pt-BR")} h`
-                    : `${Math.round(valorMedicao || 0).toLocaleString("pt-BR")} km`
-                }
-              />
-              <LinhaResumo rotulo="Tanque cheio" valor={completouTanque === null ? "—" : completouTanque ? "Sim" : "Não"} />
-              <LinhaResumo rotulo="Data e hora" valor={new Date().toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })} />
-              <LinhaResumo rotulo="Foto da bomba" valor={fotoBomba ? "✓" : "—"} />
-              <LinhaResumo rotulo="Foto do painel" valor={fotoPainel ? "✓" : "—"} />
-            </div>
-            <p className="text-center text-xs text-[#737781]">
-              Ao confirmar, este registro fica assinado com o seu acesso (login e PIN), com data e hora.
-            </p>
-
-            <button
-              disabled={!podeConfirmar || enviando}
-              onClick={confirmar}
-              className="w-full rounded-xl bg-[#1D5BD6] py-5 text-xl font-bold text-white disabled:opacity-50"
-            >
-              {enviando ? "REGISTRANDO ABASTECIMENTO…" : "CONFIRMAR ABASTECIMENTO"}
-            </button>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
     </main>
   );
 }
 
 function LinhaResumo({ rotulo, valor }: { rotulo: string; valor: string }) {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-[#C3C6D1]/20 py-2 last:border-0">
-      <span className="text-sm text-[#737781]">{rotulo}</span>
-      <span className="text-right text-sm font-semibold text-[#181C22]">{valor}</span>
+    <div className="flex items-center justify-between gap-3 border-b border-[#F1F5F9] py-2.5 last:border-0">
+      <span className="text-[14px] text-[#64748B]">{rotulo}</span>
+      <span className="text-right text-[15px] font-semibold">{valor}</span>
     </div>
   );
 }
@@ -725,32 +748,36 @@ function CampoFoto({
   aoLimpar: () => void;
 }) {
   return (
-    <div className="rounded-xl border-2 border-dashed border-[#C3C6D1] bg-white p-3">
-      <div className="mb-1 flex items-center justify-between">
-        <span className="text-sm font-medium text-[#424750]">{rotulo}</span>
-        <span className={`text-xs font-semibold ${obrigatoria ? "text-[#BA1A1A]" : "text-[#737781]"}`}>
-          {obrigatoria ? "* Obrigatória" : "Opcional"}
-        </span>
-      </div>
+    <div className="overflow-hidden rounded-3xl bg-white ring-1 ring-[#E2E8F0]">
       {foto ? (
-        <div className="space-y-2">
-          <img src={foto.preview} alt={`Foto: ${rotulo}`} className="h-40 w-full rounded-lg object-cover" />
-          {!foto.url && (
-            <p className="flex items-center gap-1 text-xs text-[#805600]">
-              <CloudOff size={14} /> Guardada no celular — sobe junto com o abastecimento.
-            </p>
-          )}
-          <button
-            type="button"
-            onClick={aoLimpar}
-            className="flex w-full items-center justify-center gap-1 rounded-lg border border-[#C3C6D1] py-2 text-sm font-medium text-[#424750]"
-          >
-            <RefreshCw size={16} /> Tirar novamente
-          </button>
+        <div>
+          <div className="relative">
+            <img src={foto.preview} alt={`Foto: ${rotulo}`} className="h-32 w-full object-cover" />
+            <span className="absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-full bg-[#16A34A] text-white shadow"><Check size={16} /></span>
+          </div>
+          <div className="p-2.5">
+            <p className="truncate text-[13px] font-semibold">{rotulo}</p>
+            {!foto.url && (
+              <p className="mt-0.5 flex items-center gap-1 text-[11px] text-[#92400E]">
+                <CloudOff size={12} /> Guardada no celular
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={aoLimpar}
+              className="mt-1.5 flex h-9 w-full items-center justify-center gap-1 rounded-xl bg-[#F1F5F9] text-[13px] font-medium text-[#475569] active:bg-[#E2E8F0]"
+            >
+              <RefreshCw size={14} /> Tirar de novo
+            </button>
+          </div>
         </div>
       ) : (
-        <label className="flex cursor-pointer items-center justify-center gap-2 py-4 text-lg font-medium text-[#424750]">
-          <Camera size={24} /> Tirar foto
+        <label className="flex h-full min-h-[150px] cursor-pointer flex-col items-center justify-center gap-2 p-3 text-center active:bg-[#F8FAFF]">
+          <span className={`flex h-14 w-14 items-center justify-center rounded-2xl ${obrigatoria ? "bg-[#FEE4E2] text-[#B42318]" : "bg-[#E5EEFF] text-[#1D5BD6]"}`}><Camera size={26} /></span>
+          <span className="text-[14px] font-semibold leading-tight">{rotulo}</span>
+          <span className={`text-[12px] font-medium ${obrigatoria ? "text-[#B42318]" : "text-[#64748B]"}`}>
+            {obrigatoria ? "Obrigatória" : "Opcional"}
+          </span>
           <input type="file" accept="image/*" capture="environment" hidden onChange={aoTirar} />
         </label>
       )}

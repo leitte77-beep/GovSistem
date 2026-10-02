@@ -1,11 +1,13 @@
 import uuid
 from datetime import date
+from decimal import Decimal
 from typing import Optional
 
 from sqlalchemy import (
     Date,
     ForeignKey,
     Index,
+    Numeric,
     String,
     BigInteger,
     Text,
@@ -43,6 +45,9 @@ class Ocorrencia(Base, TimestampMixin, SoftDeleteMixin):
     gravidade: Mapped[str] = mapped_column(String(15), default="MEDIA", nullable=False)
     status: Mapped[str] = mapped_column(String(30), default="ABERTA", nullable=False)
     foto_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
+    # Onde o celular estava no registro (GPS; nulo se o motorista negou).
+    latitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(9, 6), nullable=True)
+    longitude: Mapped[Optional[Decimal]] = mapped_column(Numeric(9, 6), nullable=True)
     data_ocorrencia: Mapped[date] = mapped_column(Date(), nullable=False)
     manutencao_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), ForeignKey("manutencoes.id"), nullable=True

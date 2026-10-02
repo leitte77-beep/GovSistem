@@ -12,6 +12,7 @@ from app.core.auth import filtro_escopo, require_permission
 from app.core.database import get_db
 from app.core.permissions import Perm
 from app.models.abastecimento import Abastecimento
+from app.models.anexo import Anexo
 from app.models.auth_models import User
 from app.models.combustivel import Combustivel
 from app.models.manutencao import Manutencao, PlanoPreventivo
@@ -22,6 +23,7 @@ from app.schemas.schemas import (
     AlterarKmRequest,
     DocumentoVeiculoCreate,
     DocumentoVeiculoResponse,
+    DocumentoVeiculoUpdate,
     VeiculoCreate,
     VeiculoResponse,
     VeiculoTanqueResponse,
@@ -698,6 +700,32 @@ async def alterar_quilometragem(
 # ── Documentos do veículo ────────────────────────────────────────────────────
 
 
+async def _anexo_da_org(db: AsyncSession, user: User, anexo_id: uuid.UUID | None) -> None:
+    if anexo_id is None:
+        return
+    anexo = await db.get(Anexo, anexo_id)
+    if anexo is None or anexo.organization_id != user.organization_id:
+        raise HTTPException(status_code=422, detail="Arquivo não encontrado. Envie o arquivo novamente.")
+
+
+async def _documentos_com_arquivo(db: AsyncSession, docs: list[VeiculoDocumento]) -> list[DocumentoVeiculoResponse]:
+    ids = [d.anexo_id for d in docs if d.anexo_id]
+    anexos = {a.id: a for a in (await db.execute(select(Anexo).where(Anexo.id.in_(ids)))).scalars()} if ids else {}
+    usuarios_ids = {a.enviado_por_usuario_id for a in anexos.values() if a.enviado_por_usuario_id}
+    nomes = (
+        dict((await db.execute(select(User.id, User.name).where(User.id.in_(usuarios_ids)))).all()) if usuarios_ids else {}
+    )
+    saida = []
+    for d in docs:
+        r = DocumentoVeiculoResponse.model_validate(d)
+        a = anexos.get(d.anexo_id) if d.anexo_id else None
+        if a is not None:
+            r.arquivo_nome, r.arquivo_mime, r.arquivo_tamanho = a.nome_arquivo, a.mime_type, a.tamanho_bytes
+            r.enviado_por = nomes.get(a.enviado_por_usuario_id)
+        saida.append(r)
+    return saida
+
+
 @router.get("/{veiculo_id}/documentos", response_model=list[DocumentoVeiculoResponse])
 async def listar_documentos(
     veiculo_id: uuid.UUID,
@@ -713,7 +741,7 @@ async def listar_documentos(
         )
         .order_by(VeiculoDocumento.created_at.desc())
     )
-    return result.scalars().all()
+    return await _documentos_com_arquivo(db, list(result.scalars().all()))
 
 
 @router.post("/{veiculo_id}/documentos", response_model=DocumentoVeiculoResponse, status_code=201)
@@ -724,15 +752,64 @@ async def criar_documento(
     db: AsyncSession = Depends(get_db),
 ):
     await _get_veiculo_tenant(db, user, veiculo_id)
+    await _anexo_da_org(db, user, body.anexo_id)
     documento = VeiculoDocumento(
         **body.model_dump(),
         organization_id=user.organization_id,
         veiculo_id=veiculo_id,
     )
     db.add(documento)
+    await db.flush()
+    await registrar_auditoria(
+        db, organization_id=user.organization_id, acao="veiculo.documento_incluir", entidade="veiculo",
+        entidade_id=veiculo_id, usuario_id=user.id,
+        dados_novos={"documento": str(documento.id), "tipo": documento.tipo, "descricao": documento.descricao,
+                     "vencimento": documento.vencimento.isoformat() if documento.vencimento else None,
+                     "anexo": str(documento.anexo_id) if documento.anexo_id else None},
+    )
     await db.commit()
     await db.refresh(documento)
+    return (await _documentos_com_arquivo(db, [documento]))[0]
+
+
+async def _get_documento(db: AsyncSession, user: User, veiculo_id: uuid.UUID, documento_id: uuid.UUID) -> VeiculoDocumento:
+    documento = (
+        await db.execute(
+            select(VeiculoDocumento).where(
+                VeiculoDocumento.id == documento_id,
+                VeiculoDocumento.organization_id == user.organization_id,
+                VeiculoDocumento.veiculo_id == veiculo_id,
+            )
+        )
+    ).scalar_one_or_none()
+    if documento is None:
+        raise HTTPException(status_code=404, detail="Documento não encontrado.")
     return documento
+
+
+@router.patch("/{veiculo_id}/documentos/{documento_id}", response_model=DocumentoVeiculoResponse)
+async def editar_documento(
+    veiculo_id: uuid.UUID,
+    documento_id: uuid.UUID,
+    body: DocumentoVeiculoUpdate,
+    user: User = Depends(require_permission(Perm.VEHICLE_MANAGE)),
+    db: AsyncSession = Depends(get_db),
+):
+    await _get_veiculo_tenant(db, user, veiculo_id)
+    documento = await _get_documento(db, user, veiculo_id, documento_id)
+    dados = body.model_dump(exclude_unset=True)
+    await _anexo_da_org(db, user, dados.get("anexo_id"))
+    anteriores = {k: str(getattr(documento, k)) if getattr(documento, k) is not None else None for k in dados}
+    for k, v in dados.items():
+        setattr(documento, k, v)
+    await registrar_auditoria(
+        db, organization_id=user.organization_id, acao="veiculo.documento_editar", entidade="veiculo",
+        entidade_id=veiculo_id, usuario_id=user.id, dados_anteriores=anteriores,
+        dados_novos={k: str(v) if v is not None else None for k, v in dados.items()},
+    )
+    await db.commit()
+    await db.refresh(documento)
+    return (await _documentos_com_arquivo(db, [documento]))[0]
 
 
 @router.delete("/{veiculo_id}/documentos/{documento_id}", status_code=204)
@@ -742,15 +819,13 @@ async def excluir_documento(
     user: User = Depends(require_permission(Perm.VEHICLE_MANAGE)),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await db.execute(
-        select(VeiculoDocumento).where(
-            VeiculoDocumento.id == documento_id,
-            VeiculoDocumento.organization_id == user.organization_id,
-            VeiculoDocumento.veiculo_id == veiculo_id,
-        )
+    await _get_veiculo_tenant(db, user, veiculo_id)
+    documento = await _get_documento(db, user, veiculo_id, documento_id)
+    await registrar_auditoria(
+        db, organization_id=user.organization_id, acao="veiculo.documento_excluir", entidade="veiculo",
+        entidade_id=veiculo_id, usuario_id=user.id,
+        dados_anteriores={"documento": str(documento.id), "tipo": documento.tipo, "descricao": documento.descricao,
+                          "anexo": str(documento.anexo_id) if documento.anexo_id else None},
     )
-    documento = result.scalar_one_or_none()
-    if documento is None:
-        raise HTTPException(status_code=404, detail="Documento não encontrado.")
     await db.delete(documento)
     await db.commit()
