@@ -31,7 +31,10 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     networks:
+      # Fica nas duas redes para que tanto o compose base (GovFrota) quanto o
+      # prod.yml (GovTask) enxerguem o host `postgres` como `postgres`.
       - internal
+      - doe-network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-doe_user} -d ${POSTGRES_DB:-doe}"]
       interval: 10s
@@ -520,3 +523,8 @@ networks:
     internal: true
   public:
     driver: bridge
+  # Rede criada pelo docker-compose.yml base (projeto `infra`), compartilhada
+  # aqui para o postgres permanecer acessível pelo GovFrota.
+  doe-network:
+    name: infra_doe-network
+    external: true
