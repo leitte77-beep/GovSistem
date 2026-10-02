@@ -10,6 +10,7 @@
  */
 
 import { AuthError, driverApi, UsoVeiculo } from "@/lib/api";
+import { motoristaAtual } from "@/lib/sessaoMotorista";
 
 const DB_NOME = "govfrota-motorista";
 const STORE = "abastecimentos-pendentes";
@@ -26,6 +27,13 @@ export interface AbastecimentoPendente {
   resumo: { placa: string; litros: string; local: string | null };
   /** Recusado pelo servidor (ex.: KM inválido): não é reenviado sozinho. */
   erro?: string | null;
+  /** Quem registrou: celular compartilhado só envia com o login do dono. */
+  motorista_id?: string | null;
+}
+
+/** Item é do motorista logado? (itens antigos, sem dono, contam como dele) */
+function doAtual(item: { motorista_id?: string | null }): boolean {
+  return !item.motorista_id || item.motorista_id === motoristaAtual();
 }
 
 function abrir(): Promise<IDBDatabase> {
@@ -69,12 +77,13 @@ async function operar<T>(
 }
 
 export function guardarPendente(item: AbastecimentoPendente): Promise<IDBValidKey> {
-  return operar("readwrite", (s) => s.put(item));
+  const comDono = { ...item, motorista_id: item.motorista_id ?? motoristaAtual() };
+  return operar("readwrite", (s) => s.put(comDono));
 }
 
 export async function listarPendentes(): Promise<AbastecimentoPendente[]> {
   try {
-    const itens = await operar<AbastecimentoPendente[]>("readonly", (s) => s.getAll());
+    const itens = (await operar<AbastecimentoPendente[]>("readonly", (s) => s.getAll())).filter(doAtual);
     return itens.sort((a, b) => a.registrado_em.localeCompare(b.registrado_em));
   } catch {
     return [];
@@ -129,6 +138,7 @@ export interface EnvioPendente {
   /** Texto curto para a lista de pendentes na tela inicial. */
   resumo: string;
   erro?: string | null;
+  motorista_id?: string | null;
 }
 
 export function novoId(): string {
@@ -141,12 +151,13 @@ export function novoId(): string {
 }
 
 export function guardarEnvio(item: EnvioPendente): Promise<IDBValidKey> {
-  return operar("readwrite", (s) => s.put(item), STORE_ENVIOS);
+  const comDono = { ...item, motorista_id: item.motorista_id ?? motoristaAtual() };
+  return operar("readwrite", (s) => s.put(comDono), STORE_ENVIOS);
 }
 
 export async function listarEnvios(): Promise<EnvioPendente[]> {
   try {
-    const itens = await operar<EnvioPendente[]>("readonly", (s) => s.getAll(), STORE_ENVIOS);
+    const itens = (await operar<EnvioPendente[]>("readonly", (s) => s.getAll(), STORE_ENVIOS)).filter(doAtual);
     return itens.sort((a, b) => a.registrado_em.localeCompare(b.registrado_em));
   } catch {
     return [];

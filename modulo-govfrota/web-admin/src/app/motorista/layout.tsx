@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
+import { ExigeSessao } from "@/components/motorista/ExigeSessao";
 import { SincronizadorOffline } from "@/components/motorista/SincronizadorOffline";
 
 export const metadata: Metadata = {
@@ -32,7 +33,7 @@ export const viewport: Viewport = {
 export default function MotoristaLayout({ children }: { children: React.ReactNode }) {
   return (
     <>
-      {children}
+      <ExigeSessao>{children}</ExigeSessao>
       <SincronizadorOffline />
       <Script id="pwa-register" strategy="afterInteractive">
         {`if ('serviceWorker' in navigator) {

@@ -83,6 +83,16 @@ export default function InicioMotoristaPage() {
         setNome(m.nome.split(" ")[0]);
         setOrgNome(m.organization_name);
         salvarCache("me", { nome: m.nome.split(" ")[0], org: m.organization_name });
+        salvarCache("config", {
+          foto_bomba_obrigatoria: m.foto_bomba_obrigatoria,
+          foto_km_obrigatoria: m.foto_km_obrigatoria,
+          exigir_tanque_cheio: m.exigir_tanque_cheio,
+        });
+        // Com sinal, já guarda veículos e locais: assim abastecer, usar o
+        // veículo e informar problema funcionam sem internet mesmo que o
+        // motorista nunca tenha aberto essas telas online.
+        driverApi.veiculos().then((vs) => salvarCache("veiculos", vs)).catch(() => {});
+        driverApi.locais().then((ls) => salvarCache("locais", ls)).catch(() => {});
       })
       .catch((e) => {
         // Sem internet o motorista continua no app; só a sessão expirada volta ao login.

@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { ArrowRight, Eye, EyeOff, Fuel, Loader2, Lock, ShieldCheck, Truck, User, UserRound } from "lucide-react";
 import { driverApi } from "@/lib/api";
+import { ehFalhaDeRede } from "@/lib/filaOffline";
+import { entrarOffline, lembrarLogin } from "@/lib/sessaoMotorista";
 
 const ULTIMO_LOGIN = "govfrota_motorista_ultimo_login";
 
@@ -57,7 +59,15 @@ export default function LoginMotoristaPage() {
     }
     setCarregando(true);
     try {
-      await driverApi.login(login.trim(), pin);
+      try {
+        const motorista = await driverApi.login(login.trim(), pin);
+        await lembrarLogin(login.trim(), pin, motorista, localStorage.getItem("govfrota_motorista_token") ?? "");
+      } catch (e) {
+        // Sem internet: confere o PIN com o que ficou guardado no celular.
+        if (!ehFalhaDeRede(e)) throw e;
+        await entrarOffline(login.trim(), pin);
+        toast("Sem internet: o que você registrar será enviado quando o sinal voltar.", { icon: "📶", duration: 5000 });
+      }
       guardarUltimo(login.trim());
       if (navigator.vibrate) navigator.vibrate(30);
       router.replace("/motorista");

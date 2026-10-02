@@ -111,7 +111,12 @@ export const driverApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ login, pin }),
     });
-    const data = await res.json();
+    // Servidor fora do ar (502/HTML da borda) conta como falta de conexão:
+    // a tela de login cai para o login offline.
+    if (res.status >= 500) throw new TypeError(`Servidor indisponível (${res.status})`);
+    const data = await res.json().catch(() => {
+      throw new TypeError("Resposta inválida do servidor");
+    });
     if (!res.ok) {
       const e = new Error(data.detail || "Falha no login");
       (e as Error & { status?: number }).status = res.status;
