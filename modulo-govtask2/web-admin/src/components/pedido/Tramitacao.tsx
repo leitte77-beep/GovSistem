@@ -46,7 +46,7 @@ import {
   type UsuarioResumo,
 } from "@/lib/api";
 import { ROTULO_ENCAMINHAMENTO, data, entre, hora, relativo, rotuloDia } from "@/lib/formato";
-import { iniciais } from "@/lib/sessao";
+import { iniciais, podeAssumirSetor } from "@/lib/sessao";
 import { useNomeSetor } from "@/lib/setores";
 
 import { ModalEncaminhar } from "./Encaminhar";
@@ -124,8 +124,8 @@ export function AbaTramitacao({
               <span className="flex items-center gap-2 text-sm text-ink-soft">
                 <CircleDot size={16} className="text-brand" />
                 {pedido.encaminhamentos.length
-                  ? "O pedido voltou para o Assessor."
-                  : "O pedido está com o Assessor, aguardando o primeiro encaminhamento."}
+                  ? "O pedido voltou para o Técnico em convênio."
+                  : "O pedido está com o Técnico em convênio, aguardando o primeiro encaminhamento."}
               </span>
               {souAssessor && (
                 <div className="ml-auto flex flex-wrap items-center gap-2">
@@ -235,14 +235,14 @@ export function AbaTramitacao({
       )}
       {modal === "complemento" && enc && (
         <ModalTexto
-          titulo="Pedir informação ao Assessor"
+          titulo="Pedir informação ao Técnico em convênio"
           rotulo="O que está faltando"
           placeholder="Ex.: falta a planta do terreno."
           confirmar="Enviar pergunta"
           aoFechar={() => setModal(null)}
           aoConfirmar={async (texto) => {
             aoAtualizar(await api.solicitarComplemento(pedido.id, enc.id, texto));
-            toast.success("Pergunta enviada ao Assessor.");
+            toast.success("Pergunta enviada ao Técnico em convênio.");
           }}
         />
       )}
@@ -303,7 +303,7 @@ function CartaoTarefa({
   useEffect(() => setAberta(atual), [atual]);
 
   const souAssessor = Boolean(eu?.pode_encaminhar);
-  const souDoSetor = Boolean(eu?.pode_trabalhar && eu.setor === enc.setor);
+  const souDoSetor = podeAssumirSetor(eu, enc.setor);
   const souDono = enc.responsavel?.id === eu?.id || enc.participantes.some((p) => p.id === eu?.id);
   const podeAssumir = atual && enc.status === "AGUARDANDO" && souDoSetor;
   const executando = atual && enc.status === "EM_EXECUCAO" && souDono;
@@ -848,7 +848,7 @@ function RespostaDoSetor({
     setDevolvendo(true);
     try {
       aoAtualizar(await api.devolver(pedido.id, enc.id, texto.trim()));
-      toast.success("Tarefa devolvida ao Assessor.");
+      toast.success("Tarefa devolvida ao Técnico em convênio.");
     } catch (e) {
       toast.error((e as Error).message);
       setDevolvendo(false);
@@ -858,7 +858,7 @@ function RespostaDoSetor({
   return (
     <div id="resposta-do-setor" className="scroll-mt-24 rounded-btn border border-brand/25 bg-brand-50/40 p-3.5">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <p className="sobretitulo text-brand-700">Sua resposta ao Assessor (despacho)</p>
+        <p className="sobretitulo text-brand-700">Sua resposta ao Técnico em convênio (despacho)</p>
         <span className="text-[11px] text-ink-faint">
           {salvando ? "Salvando…" : salvoEm ? `Rascunho salvo ${relativo(salvoEm) === "agora" ? "agora" : `há ${relativo(salvoEm)}`}` : "Salva sozinho enquanto você escreve"}
         </span>
@@ -875,7 +875,7 @@ function RespostaDoSetor({
           <CornerUpLeft size={15} /> {devolvendo ? "Devolvendo…" : "Concluir e devolver"}
         </button>
         <button className="botao-secundario" onClick={aoPerguntar}>
-          <MessageCircleQuestion size={15} /> Pedir informação ao Assessor
+          <MessageCircleQuestion size={15} /> Pedir informação ao Técnico em convênio
         </button>
         {!pronto && <span className="text-xs text-ink-faint">Escreva a resposta para poder devolver.</span>}
         {pronto && faltam.length > 0 && (

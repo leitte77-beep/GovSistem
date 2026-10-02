@@ -265,7 +265,7 @@ export default function RelatorioDoPedido() {
             ))}
           </div>
           <dl className="mt-3 grid gap-2 text-sm sm:grid-cols-3">
-            <Legenda cor="bg-brand" rotulo="Com o Assessor" valor={duracao(ind.horas_com_assessor)} />
+            <Legenda cor="bg-brand" rotulo="Com o Técnico em convênio" valor={duracao(ind.horas_com_assessor)} />
             <Legenda cor="bg-estado-andamento" rotulo="Nos setores" valor={duracao(ind.horas_nos_setores)} />
             <Legenda cor="bg-estado-externo" rotulo="Órgão externo" valor={duracao(ind.horas_aguardando_governo)} />
           </dl>
@@ -352,7 +352,7 @@ export default function RelatorioDoPedido() {
         )}
         {encaminhamentos.length > 0 && (
           <ol className="flex flex-wrap items-center gap-1.5 text-xs">
-            <li className="rounded-pill bg-brand-50 px-2 py-1 font-medium text-brand-700">Assessor</li>
+            <li className="rounded-pill bg-brand-50 px-2 py-1 font-medium text-brand-700">Técnico em convênio</li>
             {encaminhamentos.map((enc) => (
               <li key={enc.id} className="flex items-center gap-1.5">
                 <ArrowRight size={12} className="text-ink-faint" aria-hidden />
@@ -363,7 +363,7 @@ export default function RelatorioDoPedido() {
                   <>
                     <ArrowRight size={12} className="text-ink-faint" aria-hidden />
                     <span className="rounded-pill bg-brand-50 px-2 py-1 font-medium text-brand-700">
-                      Assessor
+                      Técnico em convênio
                     </span>
                   </>
                 )}
@@ -416,7 +416,7 @@ export default function RelatorioDoPedido() {
               )}
               {enc.complemento_resposta && (
                 <p className="mt-1 text-sm text-ink-soft">
-                  Resposta do Assessor: {enc.complemento_resposta}
+                  Resposta do Técnico em convênio: {enc.complemento_resposta}
                 </p>
               )}
               {enc.resultado && (

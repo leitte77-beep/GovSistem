@@ -250,7 +250,7 @@ export function ModalPrazo({
         setOcupado(true);
         try {
           aoAtualizar(await api.negociarPrazo(pedido.id, enc.id, prazo, motivo || undefined));
-          toast.success("Prazo alterado. O Assessor foi avisado.");
+          toast.success("Prazo alterado. O Técnico em convênio foi avisado.");
           aoFechar();
         } catch (e) {
           toast.error(e instanceof Error ? e.message : "Erro ao alterar prazo.");

@@ -41,7 +41,7 @@ export const PERFIS: {
   cor: string;
 }[] = [
   { chave: "PREFEITO", rotulo: "Prefeito", descricao: "Acompanha tudo: onde está, há quanto tempo e por quê. Abre pedidos.", icone: Landmark, cor: "bg-brass-50 text-brass-700" },
-  { chave: "ASSESSOR", rotulo: "Assessor", descricao: "Conduz o fluxo: encaminha aos setores, recebe de volta, conclui.", icone: Send, cor: "bg-brand-50 text-brand-700" },
+  { chave: "ASSESSOR", rotulo: "Técnico em convênio", descricao: "Conduz o fluxo: encaminha aos setores, recebe de volta, conclui.", icone: Send, cor: "bg-brand-50 text-brand-700" },
   { chave: "DEPARTAMENTO", rotulo: "Departamento", descricao: "Recebe tarefas do seu setor, executa, anexa e devolve.", icone: Building2, cor: "bg-estado-info/10 text-estado-info" },
   { chave: "CONSULTA", rotulo: "Consulta", descricao: "Só visualiza. Não abre, não encaminha, não executa.", icone: Eye, cor: "bg-ink/[.06] text-ink-muted" },
 ];

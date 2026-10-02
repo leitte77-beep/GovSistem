@@ -235,7 +235,7 @@ export default function NovoPedido() {
         <aside className="cartao h-fit overflow-hidden lg:sticky lg:top-6">
           <div className="border-b border-line bg-canvas/60 px-5 py-4">
             <h2 className="font-medium text-ink">Como o pedido anda</h2>
-            <p className="mt-0.5 legenda">Vai e vem entre o Assessor e os setores.</p>
+            <p className="mt-0.5 legenda">Vai e vem entre o Técnico em convênio e os setores.</p>
           </div>
           <ol className="space-y-4 p-5 text-sm">
             <li className="flex gap-3">
@@ -243,7 +243,7 @@ export default function NovoPedido() {
                 <Send size={14} aria-hidden />
               </span>
               <span className="text-ink-soft">
-                O pedido nasce na mesa do <strong className="font-medium text-ink">Assessor</strong>.
+                O pedido nasce na mesa do <strong className="font-medium text-ink">Técnico em convênio</strong>.
               </span>
             </li>
             <li className="flex gap-3">
@@ -251,7 +251,7 @@ export default function NovoPedido() {
                 2
               </span>
               <span className="text-ink-soft">
-                O Assessor <strong className="font-medium text-ink">encaminha</strong> ao setor
+                O Técnico em convênio <strong className="font-medium text-ink">encaminha</strong> ao setor
                 certo, com prazo.
               </span>
             </li>
@@ -269,7 +269,7 @@ export default function NovoPedido() {
                 4
               </span>
               <span className="text-ink-soft">
-                O Assessor recebe de volta e decide o próximo encaminhamento — até concluir.
+                O Técnico em convênio recebe de volta e decide o próximo encaminhamento — até concluir.
               </span>
             </li>
           </ol>

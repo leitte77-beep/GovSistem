@@ -104,7 +104,7 @@ export function QuadroDePedidos({ pedidos }: { pedidos: PedidoLinha[] }) {
     chave,
     titulo:
       chave === "ASSESSOR"
-        ? "Com o Assessor"
+        ? "Com o Técnico em convênio"
         : chave === "SEM_SETOR"
           ? "Sem setor"
           : nomeSetor(chave),

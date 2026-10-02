@@ -16,7 +16,7 @@ def create_app() -> FastAPI:
         title=settings.APP_NAME,
         description=(
             "GovTask — do pedido do Prefeito ao pagamento. "
-            "O Assessor encaminha, o setor devolve, o Prefeito acompanha."
+            "O Técnico em convênio encaminha, o setor devolve, o Prefeito acompanha."
         ),
         version=settings.VERSION,
         docs_url="/docs" if settings.DEBUG else None,

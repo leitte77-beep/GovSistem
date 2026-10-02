@@ -42,7 +42,7 @@ export const ROTULO_TIPO: Record<string, string> = {
 };
 
 export const ROTULO_SITUACAO: Record<string, string> = {
-  COM_ASSESSOR: "Com o Assessor",
+  COM_ASSESSOR: "Com o Técnico em convênio",
   EM_SETOR: "No setor",
   AGUARDANDO_TERCEIRO: "Órgão externo",
   CONCLUIDO: "Concluído",
@@ -145,7 +145,7 @@ export function ondeEsta(
   nomeSetor: (c: string | null) => string
 ): string {
   if (situacao === "EM_SETOR") return nomeSetor(setor);
-  if (situacao === "COM_ASSESSOR") return "Com o Assessor";
+  if (situacao === "COM_ASSESSOR") return "Com o Técnico em convênio";
   if (situacao === "AGUARDANDO_TERCEIRO") return "Aguardando órgão externo";
   if (situacao === "CONCLUIDO") return "Concluído";
   return "Cancelado";

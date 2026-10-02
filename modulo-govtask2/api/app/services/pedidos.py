@@ -18,6 +18,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core import fluxo
+from app.core.auth import get_user_permissions
+from app.core.permissions import Perm
 from app.models.auth_models import User
 from app.models.pedido import (
     Andamento,
@@ -227,11 +229,17 @@ def localizar(pedido: Pedido, encaminhamento_id: uuid.UUID) -> Encaminhamento:
 
 
 def _exige_do_setor(user: User, enc: Encaminhamento) -> None:
-    if (user.setor or "").upper() != (enc.setor or "").upper():
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Esta tarefa não é do seu setor.",
-        )
+    setor = (enc.setor or "").upper()
+    if (user.setor or "").upper() == setor:
+        return
+    # O Assessor conduz o fluxo e responde pela Assessoria: pode assumir as
+    # tarefas desse setor mesmo sem estar lotado nele.
+    if setor == fluxo.SetorPadrao.ASSESSORIA.value and Perm.PEDIDO_ENCAMINHAR in get_user_permissions(user):
+        return
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Esta tarefa não é do seu setor.",
+    )
 
 
 def _exige_dono_ou_participante(user: User, enc: Encaminhamento) -> None:
@@ -270,7 +278,7 @@ async def encaminhar(
     if pedido.situacao != SituacaoPedido.COM_ASSESSOR.value:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="O pedido não está com o Assessor: receba-o de volta antes de reencaminhar.",
+            detail="O pedido não está com o Técnico em convênio: receba-o de volta antes de reencaminhar.",
         )
     if localizar_aberto := encaminhamento_aberto(pedido):
         raise HTTPException(
@@ -734,7 +742,7 @@ async def devolver(
         pedido,
         TipoAndamento.DEVOLUCAO,
         autor,
-        f"Devolvido ao Assessor: {resultado.strip()}",
+        f"Devolvido ao Técnico em convênio: {resultado.strip()}",
         enc,
     )
     await notif.para_assessor(
@@ -756,7 +764,7 @@ async def aguardar_terceiro(
     if pedido.situacao != SituacaoPedido.COM_ASSESSOR.value:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="O pedido precisa estar com o Assessor.",
+            detail="O pedido precisa estar com o Técnico em convênio.",
         )
     pedido.situacao = SituacaoPedido.AGUARDANDO_TERCEIRO.value
     # Depois da troca de situação, que zera o motivo anterior.
@@ -797,7 +805,7 @@ async def concluir(
     if pedido.situacao != SituacaoPedido.COM_ASSESSOR.value:
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="Só o Assessor conclui, e o pedido precisa estar com ele.",
+            detail="Só o Técnico em convênio conclui, e o pedido precisa estar com ele.",
         )
     agora = datetime.now(timezone.utc)
     pedido.situacao = SituacaoPedido.CONCLUIDO.value

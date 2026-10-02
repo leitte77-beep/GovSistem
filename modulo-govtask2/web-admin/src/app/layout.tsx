@@ -13,9 +13,12 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "GovTask — Gabinete digital",
   description:
-    "O Assessor encaminha, os departamentos devolvem e o Prefeito acompanha cada obra e aquisição em tempo real.",
+    "O Técnico em convênio encaminha, os departamentos devolvem e o Prefeito acompanha cada obra e aquisição em tempo real.",
   manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: "GovTask", statusBarStyle: "default" },
+  // O metadata `appleWebApp` emite a tag legada `apple-mobile-web-app-capable`.
+  // O equivalente moderno abaixo evita o aviso de depreciação no navegador.
+  other: { "mobile-web-app-capable": "yes" },
   icons: { icon: "/favicon.ico", apple: "/icone-192.png" },
 };
 

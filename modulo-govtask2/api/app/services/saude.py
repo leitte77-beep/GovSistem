@@ -74,7 +74,7 @@ def avaliar_saude(
     atencao: list[str] = []
 
     if pedido.complemento_pendente:
-        atencao.append("Aguardando o Assessor responder um complemento.")
+        atencao.append("Aguardando o Técnico em convênio responder um complemento.")
 
     if pedido.situacao == SituacaoPedido.AGUARDANDO_TERCEIRO.value:
         atraso = _dias_de_atraso(pedido, hoje)
@@ -143,7 +143,7 @@ def descrever_proxima_acao(
     if pedido.situacao == SituacaoPedido.COM_ASSESSOR.value or enc is None:
         return ProximaAcaoOut(
             titulo="Encaminhar a um setor ou concluir",
-            descricao="O pedido está na mesa do Assessor.",
+            descricao="O pedido está na mesa do Técnico em convênio.",
         )
 
     if enc.responsavel_id is None:

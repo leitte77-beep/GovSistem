@@ -372,7 +372,7 @@ function Trilha({ pedido }: { pedido: Pedido }) {
   if (pedido.encaminhamentos.length === 0) return null;
   const encerrado = pedido.situacao === "CONCLUIDO" || pedido.situacao === "CANCELADO";
   const passos: { rotulo: string; detalhe: string; estado: "feito" | "atual" | "base" }[] = [
-    { rotulo: "Assessor", detalhe: "abertura", estado: "base" },
+    { rotulo: "Técnico em convênio", detalhe: "abertura", estado: "base" },
   ];
   for (const e of [...pedido.encaminhamentos].sort((a, b) => a.ordem - b.ordem)) {
     const atual = ["AGUARDANDO", "EM_EXECUCAO", "AGUARDANDO_COMPLEMENTO"].includes(e.status);
@@ -382,7 +382,7 @@ function Trilha({ pedido }: { pedido: Pedido }) {
       estado: atual ? "atual" : "feito",
     });
     if (!atual && e.status === "CONCLUIDO") {
-      passos.push({ rotulo: "Assessor", detalhe: "devolvido", estado: "base" });
+      passos.push({ rotulo: "Técnico em convênio", detalhe: "devolvido", estado: "base" });
     }
   }
   if (pedido.situacao === "AGUARDANDO_TERCEIRO") {

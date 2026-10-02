@@ -31,7 +31,7 @@ import {
   data,
   moeda,
 } from "@/lib/formato";
-import { useSessao } from "@/lib/sessao";
+import { podeAssumirSetor, useSessao } from "@/lib/sessao";
 import { useNomeSetor } from "@/lib/setores";
 
 type Coluna = "numero" | "titulo" | "prazo_atual" | "prioridade" | "valor_previsto";
@@ -244,7 +244,11 @@ export function TabelaDePedidos({ pedidos }: { pedidos: PedidoLinha[] }) {
                 .join(" · ");
               const fechado = FECHADOS.includes(pedido.situacao);
               const podeAssumir =
-                !pedido.somente_leitura && !pedido.responsavel_atual && !fechado && pedido.situacao === "EM_SETOR" && eu?.pode_trabalhar;
+                !pedido.somente_leitura &&
+                !pedido.responsavel_atual &&
+                !fechado &&
+                pedido.situacao === "EM_SETOR" &&
+                podeAssumirSetor(eu, pedido.setor_atual);
               return (
                 <tr
                   key={pedido.id}

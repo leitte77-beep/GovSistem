@@ -49,7 +49,7 @@ def _texto(abertos, limite: int, nomes: dict[str, str]) -> str:
     texto = ", ".join(partes[:2]) + " e " + partes[2]
     if parados:
         p = parados[0]
-        onde = nomes.get(p.setor_atual or "", p.setor_atual or "com o Assessor")
+        onde = nomes.get(p.setor_atual or "", p.setor_atual or "com o Técnico em convênio")
         motivo = ROTULO_MOTIVO_PARADA.get(p.motivo_parada or "", "")
         texto += (
             f" O mais parado: {p.numero} “{p.titulo}” — "

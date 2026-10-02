@@ -125,7 +125,7 @@ async def test_perfil_definido_no_modulo_vence_a_plataforma(como, assessor, pref
         assert r.json()["perfil_definido"] == "ASSESSOR"
         auditoria = (await c.get("/auditoria")).json()
     assert auditoria[0]["campo"] == "perfil"
-    assert auditoria[0]["depois"] == "Assessor"
+    assert auditoria[0]["depois"] == "Técnico em convênio"
     async with como(prefeito) as c:
         eu = (await c.get("/eu")).json()
         assert eu["perfil"] == "ASSESSOR" and eu["pode_encaminhar"] is True

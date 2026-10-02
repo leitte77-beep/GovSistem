@@ -20,17 +20,24 @@ import { useTempoReal } from "@/lib/tempoReal";
 
 function AoVivo() {
   const { conectado } = useTempoReal();
-  const [agora, setAgora] = useState(() => Date.now());
+  // A hora depende do fuso/relógio do dispositivo, então o servidor não
+  // consegue produzir o mesmo texto que o navegador. Renderizá-la só depois
+  // de montar evita o erro de hidratação (React #418/#425).
+  const [agora, setAgora] = useState<number | null>(null);
 
   useEffect(() => {
+    setAgora(Date.now());
     const timer = setInterval(() => setAgora(Date.now()), 30000);
     return () => clearInterval(timer);
   }, []);
 
-  const relogio = new Date(agora).toLocaleTimeString("pt-BR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const relogio =
+    agora === null
+      ? null
+      : new Date(agora).toLocaleTimeString("pt-BR", {
+          hour: "2-digit",
+          minute: "2-digit",
+        });
 
   return (
     <span
@@ -54,7 +61,9 @@ function AoVivo() {
         />
       </span>
       {conectado ? "Ao vivo" : "Offline"}
-      <span className="font-mono text-[10px] font-normal opacity-70">{relogio}</span>
+      {relogio && (
+        <span className="font-mono text-[10px] font-normal opacity-70">{relogio}</span>
+      )}
     </span>
   );
 }

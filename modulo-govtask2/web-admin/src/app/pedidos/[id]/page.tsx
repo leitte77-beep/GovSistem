@@ -29,7 +29,7 @@ import { AbaMedicoes } from "@/components/pedido/Medicoes";
 import { AbaTramitacao } from "@/components/pedido/Tramitacao";
 import { VisualizadorProvider } from "@/components/pedido/Visualizador";
 import { api, type Pedido, type UsuarioResumo } from "@/lib/api";
-import { useSessao } from "@/lib/sessao";
+import { podeAssumirSetor, useSessao } from "@/lib/sessao";
 import { useAoMudar } from "@/lib/tempoReal";
 
 export default function DetalheDoPedido() {
@@ -114,9 +114,9 @@ export default function DetalheDoPedido() {
       ? { rotulo: "Encaminhar a um setor", icone: Send, evento: "encaminhar" }
       : enc?.status === "EM_EXECUCAO" && souDono
         ? { rotulo: "Escrever resposta e devolver", icone: CornerUpLeft, evento: "responder" }
-        : enc?.status === "AGUARDANDO" && eu?.pode_trabalhar && eu.setor === enc.setor
-          ? { rotulo: "Assumir tarefa", icone: Hand, evento: "assumir" }
-          : null;
+      : enc?.status === "AGUARDANDO" && podeAssumirSetor(eu, enc?.setor)
+        ? { rotulo: "Assumir tarefa", icone: Hand, evento: "assumir" }
+        : null;
 
   function executarAcao(evento: string) {
     setAba("tramitacao");

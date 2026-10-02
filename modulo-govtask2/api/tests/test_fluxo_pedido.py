@@ -182,6 +182,32 @@ async def test_assumir_tira_a_tarefa_dos_demais(como, assessor, engenheiro, enge
 
 
 @pytest.mark.asyncio
+async def test_assessor_assume_tarefa_da_assessoria(como, assessor, engenheiro):
+    """O Assessor responde pela Assessoria: assume a tarefa do setor mesmo sem
+    estar lotado nele. Um departamento continua barrado."""
+    async with como(assessor) as cliente:
+        pedido = await _abrir(cliente)
+        corpo = await _encaminhar(cliente, pedido["id"], setor="ASSESSORIA")
+        enc_id = _enc_atual(corpo)["id"]
+
+    # Departamento não assume tarefa da Assessoria.
+    async with como(engenheiro) as cliente:
+        barrado = await cliente.post(
+            f"/pedidos/{pedido['id']}/encaminhamentos/{enc_id}/assumir"
+        )
+    assert barrado.status_code == 403
+
+    async with como(assessor) as cliente:
+        resposta = await cliente.post(
+            f"/pedidos/{pedido['id']}/encaminhamentos/{enc_id}/assumir"
+        )
+    assert resposta.status_code == 200, resposta.text
+    assumido = resposta.json()
+    assert assumido["responsavel_atual"]["email"] == "ana@teste.gov.br"
+    assert _enc_atual(assumido)["status"] == "EM_EXECUCAO"
+
+
+@pytest.mark.asyncio
 async def test_mencionar_engenheiro_ele_passa_a_ver(como, assessor, engenheiro, engenheiro2):
     async with como(assessor) as cliente:
         pedido = await _abrir(cliente)

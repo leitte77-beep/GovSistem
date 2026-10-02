@@ -26,9 +26,23 @@ export function perfilDe(eu: Eu | null): Perfil {
   return "consulta";
 }
 
+/**
+ * Quem pode assumir uma tarefa de um setor: o dono do setor (departamento) ou,
+ * no caso da Assessoria, o Assessor — que conduz o fluxo e responde por esse
+ * setor mesmo sem estar lotado nele.
+ */
+export function podeAssumirSetor(
+  eu: Eu | null,
+  setor: string | null | undefined
+): boolean {
+  if (!eu || !setor) return false;
+  if (eu.setor === setor) return eu.pode_trabalhar;
+  return setor === "ASSESSORIA" && eu.pode_encaminhar;
+}
+
 export const ROTULO_PERFIL: Record<Perfil, string> = {
   prefeito: "Prefeito",
-  assessor: "Assessoria",
+  assessor: "Técnico em convênio",
   departamento: "Departamento",
   consulta: "Consulta",
 };

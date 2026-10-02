@@ -378,7 +378,7 @@ function Tempo({ pedido }: { pedido: Pedido }) {
   const ind = pedido.indicadores;
   if (!ind) return null;
   const partes = [
-    { rotulo: "Com o Assessor", horas: ind.horas_com_assessor, cor: "bg-brand" },
+    { rotulo: "Com o Técnico em convênio", horas: ind.horas_com_assessor, cor: "bg-brand" },
     { rotulo: "Nos setores", horas: ind.horas_nos_setores, cor: "bg-brass" },
     { rotulo: "No governo", horas: ind.horas_aguardando_governo, cor: "bg-estado-externo" },
   ];

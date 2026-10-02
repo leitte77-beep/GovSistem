@@ -18,7 +18,7 @@ import {
 } from "@/components/Etiquetas";
 import { api, type PedidoLinha } from "@/lib/api";
 import { moeda } from "@/lib/formato";
-import { useSessao } from "@/lib/sessao";
+import { podeAssumirSetor, useSessao } from "@/lib/sessao";
 
 const PONTO: Record<string, string> = {
   COM_ASSESSOR: "bg-brand",
@@ -43,7 +43,11 @@ function CartaoPedido({
   const valor = Number(pedido.valor_previsto) > 0 ? moeda(pedido.valor_previsto) : null;
   const fechado = FECHADOS.includes(pedido.situacao);
   const podeAssumir =
-    !pedido.somente_leitura && !pedido.responsavel_atual && !fechado && pedido.situacao === "EM_SETOR" && eu?.pode_trabalhar;
+    !pedido.somente_leitura &&
+    !pedido.responsavel_atual &&
+    !fechado &&
+    pedido.situacao === "EM_SETOR" &&
+    podeAssumirSetor(eu, pedido.setor_atual);
   const tom = PONTO[pedido.situacao] ?? PONTO.CANCELADO;
 
   return (

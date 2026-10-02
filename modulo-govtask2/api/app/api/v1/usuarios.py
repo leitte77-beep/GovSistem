@@ -47,7 +47,7 @@ router = APIRouter(tags=["usuarios"])
 
 ROTULO_PERFIL = {
     "PREFEITO": "Prefeito",
-    "ASSESSOR": "Assessor",
+    "ASSESSOR": "Técnico em convênio",
     "DEPARTAMENTO": "Departamento",
     "CONSULTA": "Consulta",
 }
