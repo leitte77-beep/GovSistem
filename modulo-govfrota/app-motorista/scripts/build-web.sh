@@ -21,12 +21,20 @@ rm -rf "$OUT/src/app/(admin)" "$OUT/src/app/login" "$OUT/src/app/posto"
 # Os arquivos já estão dentro do APK: o service worker do PWA só atrapalharia.
 rm -f "$OUT/public/sw.js"
 
-# Abrir o app = ir para a tela inicial do motorista.
+# Despachante. O servidor interno do Capacitor só entrega o arquivo pedido
+# quando o endereço tem extensão; "/motorista/" (ou um recarregar da página)
+# recebe sempre ESTE index.html da raiz. Daqui carregamos o index.html do
+# caminho pedido — com extensão, o Capacitor entrega o arquivo certo.
+# (Antes era location.replace("/motorista/"): voltava para cá → tela branca.)
 cat > "$OUT/src/app/page.tsx" <<'TSX'
 "use client";
 import { useEffect } from "react";
 export default function Inicio() {
-  useEffect(() => { window.location.replace("/motorista/"); }, []);
+  useEffect(() => {
+    const caminho = window.location.pathname.replace(/\/+$/, "");
+    const destino = caminho && caminho !== "/index.html" ? caminho : "/motorista";
+    window.location.replace(`${destino}/index.html${window.location.search}`);
+  }, []);
   return null;
 }
 TSX
