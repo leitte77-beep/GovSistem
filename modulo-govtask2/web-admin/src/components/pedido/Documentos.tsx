@@ -60,6 +60,22 @@ function comVersoes(anexos: Anexo[]) {
   });
 }
 
+/** Subdivide os documentos (já agrupados em versões) por quem enviou a versão atual. */
+function porRemetente<T extends { atual: Anexo }>(itens: T[]) {
+  const m = new Map<string, { chave: string; nome: string; itens: T[] }>();
+  for (const it of itens) {
+    const u = it.atual.enviado_por;
+    const chave = u?.id ?? "—";
+    if (!m.has(chave)) m.set(chave, { chave, nome: u?.name ?? "Remetente desconhecido", itens: [] });
+    m.get(chave)!.itens.push(it);
+  }
+  return [...m.values()];
+}
+
+function iniciais(nome: string) {
+  return nome.split(" ").filter(Boolean).slice(0, 2).map((p) => p[0]).join("").toUpperCase() || "?";
+}
+
 export function AbaDocumentos({
   pedido,
   eu,
@@ -208,39 +224,54 @@ export function AbaDocumentos({
                 {g.anexos.length} {g.anexos.length === 1 ? "arquivo" : "arquivos"}
               </span>
             </header>
-            {modo === "grade" ? (
-              <ul className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-4">
-                {comVersoes(g.anexos).map(({ atual, anteriores }) => (
-                  <CartaoDoc
-                    key={atual.id}
-                    pedido={pedido}
-                    anexo={atual}
-                    anteriores={anteriores}
-                    abrir={(a) => abrir(a, todos.concat(anteriores))}
-                    podeRemover={podeRemover}
-                    podeClassificar={podeEnviar}
-                    aoRemover={setRemovendo}
-                    aoAtualizar={aoAtualizar}
-                  />
-                ))}
-              </ul>
-            ) : (
-              <ul className="divide-y divide-line">
-                {comVersoes(g.anexos).map(({ atual, anteriores }) => (
-                  <LinhaDoc
-                    key={atual.id}
-                    pedido={pedido}
-                    anexo={atual}
-                    anteriores={anteriores}
-                    abrir={(a) => abrir(a, todos.concat(anteriores))}
-                    podeRemover={podeRemover}
-                    podeClassificar={podeEnviar}
-                    aoRemover={setRemovendo}
-                    aoAtualizar={aoAtualizar}
-                  />
-                ))}
-              </ul>
-            )}
+            {porRemetente(comVersoes(g.anexos)).map((r, i) => (
+              <div key={r.chave} className={i > 0 ? "border-t border-line" : ""}>
+                <div className="flex items-center gap-2 px-4 pt-3 text-xs text-ink-muted">
+                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-brand/10 text-[10px] font-bold text-brand">
+                    {iniciais(r.nome)}
+                  </span>
+                  <span className="truncate">
+                    Enviados por <strong className="font-semibold text-ink">{r.nome}</strong>
+                  </span>
+                  <span className="text-ink-faint">
+                    · {r.itens.length} {r.itens.length === 1 ? "arquivo" : "arquivos"}
+                  </span>
+                </div>
+                {modo === "grade" ? (
+                  <ul className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-4">
+                    {r.itens.map(({ atual, anteriores }) => (
+                      <CartaoDoc
+                        key={atual.id}
+                        pedido={pedido}
+                        anexo={atual}
+                        anteriores={anteriores}
+                        abrir={(a) => abrir(a, todos.concat(anteriores))}
+                        podeRemover={podeRemover}
+                        podeClassificar={podeEnviar}
+                        aoRemover={setRemovendo}
+                        aoAtualizar={aoAtualizar}
+                      />
+                    ))}
+                  </ul>
+                ) : (
+                  <ul className="divide-y divide-line">
+                    {r.itens.map(({ atual, anteriores }) => (
+                      <LinhaDoc
+                        key={atual.id}
+                        pedido={pedido}
+                        anexo={atual}
+                        anteriores={anteriores}
+                        abrir={(a) => abrir(a, todos.concat(anteriores))}
+                        podeRemover={podeRemover}
+                        podeClassificar={podeEnviar}
+                        aoRemover={setRemovendo}
+                        aoAtualizar={aoAtualizar}
+                      />
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ))}
           </div>
         ))
       )}
