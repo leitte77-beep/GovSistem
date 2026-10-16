@@ -46,10 +46,19 @@ def derive_semantic_from_matter(matter) -> Optional[SemanticDocument]:
     try:
         from .parser import parse_document
 
+        from app.services.publication_title import display_title
+
+        title = getattr(matter, "title", "") or ""
+        published_title = display_title({
+            "title": title,
+            "act_number": getattr(matter, "act_number", None),
+            "act_year": getattr(matter, "act_year", None),
+        })
         document = parse_document(
             html=html,
-            title=getattr(matter, "title", "") or "",
+            title=title,
             summary=getattr(matter, "summary", "") or "",
+            extra_titles=(published_title,) if published_title != title else (),
         )
     except Exception:  # noqa: BLE001 - never fail the snapshot over parsing
         return None

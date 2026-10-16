@@ -15,6 +15,8 @@ Nada aqui reescreve texto: os blocos vêm do renderizador determinístico
 
 from __future__ import annotations
 
+import re
+
 import html
 from typing import Any, Optional
 
@@ -92,18 +94,30 @@ def article_html(block, index: int) -> str:
 
 
 def _style_attr(style: dict) -> str:
+    """Só o que o modelo realmente pede.
+
+    Antes cada bloco saía com ``font-weight:normal;text-transform:none``
+    explícitos, o que anulava o negrito e a caixa alta que o padrão do Diário
+    (e o próprio texto) dariam a súmula, preâmbulo e assinatura.
+    """
     if not style:
         return ""
-    css = (
-        f"text-align:{align(style.get('alignment'))};"
-        f"font-weight:{'bold' if style.get('font_weight') == 'bold' else 'normal'};"
-        f"font-style:{'italic' if style.get('italic') else 'normal'};"
-        f"text-transform:{'uppercase' if style.get('uppercase') else 'none'};"
-        f"text-indent:{float(style.get('indent_em', 0) or 0):g}em;"
-        f"margin-top:{float(style.get('space_before_mm', 0) or 0):g}mm;"
-        f"margin-bottom:{float(style.get('space_after_mm', 0) or 0):g}mm;"
-    )
-    return f' style="{css}"'
+    parts = [f"text-align:{align(style.get('alignment'))}"]
+    if style.get("font_weight") == "bold":
+        parts.append("font-weight:bold")
+    if style.get("italic"):
+        parts.append("font-style:italic")
+    if style.get("uppercase"):
+        parts.append("text-transform:uppercase")
+    for key, prop, unit in (
+        ("indent_em", "text-indent", "em"),
+        ("space_before_mm", "margin-top", "mm"),
+        ("space_after_mm", "margin-bottom", "mm"),
+    ):
+        value = float(style.get(key, 0) or 0)
+        if value:
+            parts.append(f"{prop}:{value:g}{unit}")
+    return f' style="{";".join(parts)};"'
 
 
 def signature_html(block) -> str:
@@ -128,17 +142,34 @@ def signature_html(block) -> str:
     return f'<div class="doc-signature">{ "".join(entries) }</div>'
 
 
+_IDENTIFIER_UNDERSCORE_RE = re.compile(r"(?<=[^\W\d_])_(?=[^\W\d_])")
+
+
+def humanize_header(value: str) -> str:
+    """"Valor_Unitario" → "Valor Unitario": rótulo de coluna aprendido de uma
+    planilha/sistema com nome de campo. Marcadores ``{{campo}}`` ficam intactos."""
+    text = str(value or "")
+    if "{{" in text:
+        return text
+    return _IDENTIFIER_UNDERSCORE_RE.sub(" ", text)
+
+
 def table_html(block) -> str:
     """Render a validated semantic table without executing cell content."""
-    widths = list(getattr(block, "column_widths", []) or [])
+    widths = [float(w) for w in (getattr(block, "column_widths", []) or []) if float(w) > 0]
     colgroup = ""
     if widths:
+        # Larguras aprendidas pela IA podem somar mais de 100% (a edição
+        # 52/2026 saiu com 110% e a última coluna cortada fora da página).
+        total = sum(widths)
         colgroup = "<colgroup>" + "".join(
-            f'<col style="width:{float(width):g}%">' for width in widths
+            f'<col style="width:{width / total * 100:.2f}%">' for width in widths
         ) + "</colgroup>"
     head = ""
     if block.headers:
-        head = "<thead><tr>" + "".join(f"<th>{esc(value)}</th>" for value in block.headers) + "</tr></thead>"
+        head = "<thead><tr>" + "".join(
+            f"<th>{esc(humanize_header(value))}</th>" for value in block.headers
+        ) + "</tr></thead>"
     rows = []
     for row in block.rows:
         rows.append("<tr>" + "".join(f"<td>{esc(cell.content)}</td>" for cell in row) + "</tr>")

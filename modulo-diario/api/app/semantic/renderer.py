@@ -78,13 +78,19 @@ def _media_css(
   font-weight: var(--doe-typography-title-weight); margin: 0.8em 0 0.4em; }
 .doe-block--heading h1, .doe-block--heading h2 { margin: 0; }
 .doe-block--command { text-align: var(--doe-blocks-command-alignment, center);
-  font-weight: bold; margin: 0.8em 0; }
-.doe-block--preamble { text-align: var(--doe-blocks-preamble-alignment, justify); }
+  font-weight: bold; text-transform: uppercase; margin: 0.8em 0; }
+/* Padrão do Diário (o mesmo do diário diagramado no Word): preâmbulo em
+   negrito e caixa alta, súmula recuada à direita em negrito e caixa alta.
+   O operador só cola o texto; a forma vem do papel de cada bloco. */
+.doe-block--preamble { text-align: var(--doe-blocks-preamble-alignment, justify);
+  font-weight: bold; text-transform: uppercase; margin: 0.8em 0; }
 .doe-block--considerando { text-align: var(--doe-blocks-considerando-alignment, justify);
   margin-left: var(--doe-blocks-considerando-indent, 0);
   text-indent: var(--doe-blocks-considerando-text-indent, 0); }
-.doe-summary { text-align: var(--doe-blocks-summary-alignment, center);
-  font-style: italic; margin: 0.4em 0 1em; break-inside: avoid; }
+.doe-document .doe-summary { text-align: var(--doe-blocks-summary-alignment, justify);
+  font-weight: bold;
+  text-transform: uppercase; margin: 0.4em 0 1.2em 35%; text-indent: 0;
+  break-inside: avoid; }
 .doe-block--paragraph { text-align: var(--doe-blocks-paragraph-alignment, justify);
   text-indent: var(--doe-blocks-paragraph-indent, 1.25cm); }
 /* Compact 'Label: value' fields (contracts/extracts): no indent, left aligned. */
@@ -137,7 +143,8 @@ def _media_css(
    rule. Alignment does not inherit through a child that owns that property,
    so make every signature paragraph explicitly follow its semantic block. */
 .doe-document .doe-signature p { text-align: inherit; }
-.doe-signature .doe-sign-name { font-weight: var(--doe-signature-name-weight, bold); }
+.doe-signature .doe-sign-name { font-weight: var(--doe-signature-name-weight, bold);
+  text-transform: uppercase; }
 .doe-signature .doe-sign-role { font-weight: var(--doe-signature-role-weight, normal); }
 /* Closing (place + date) sits between the body and the signature. */
 .doe-signature .doe-fecho { margin: 0 0 1.6em; }
@@ -259,11 +266,13 @@ def _render_block(block) -> str:
 
     if btype in ("preamble", "paragraph", "quote", "considerando"):
         extra = ""
+        content = _render_rich(block.content)
         if (getattr(block, "metadata", {}) or {}).get("kind") == "field":
             extra = " doe-field"
+            content = _bold_field_label(content)
         return (
             f'<div class="{cls}{extra}" id="{_safe_id(block.id)}">'
-            f'{_render_rich(block.content)}</div>'
+            f'{content}</div>'
         )
 
     if btype == "command":
@@ -333,6 +342,19 @@ def _render_block(block) -> str:
 
     # fallback: generic rich text
     return f'<div class="{cls}">{_render_rich(getattr(block, "content", ""))}</div>'
+
+
+# "CONTRATANTE: Município de Farol" — rótulo em texto puro no início do campo.
+_FIELD_LABEL_RE = re.compile(r"^(\s*)([^<>:]{2,45}?:)(?=\s)")
+
+
+def _bold_field_label(content: str) -> str:
+    """Rótulo de campo de extrato em negrito, como nos extratos do Diário.
+
+    Só quando o rótulo ainda está em texto puro: se o autor já formatou o
+    início do campo (negrito, itálico), a forma dele prevalece.
+    """
+    return _FIELD_LABEL_RE.sub(r"\1<strong>\2</strong>", content or "", count=1)
 
 
 def _render_article(block, cls: str) -> str:

@@ -308,7 +308,38 @@ def _strip_summary_label(text: str) -> str:
     return _SUMMARY_ANY_LABEL_RE.sub("", (text or "").strip())
 
 
-def _dedupe_structured(blocks: list, *, title: str = "", summary: str = ""):
+# Cabeçalho de página de um diário ("DIÁRIO OFICIAL ELETRÔNICO · ANO: · EDIÇÃO
+# Nº · Pág.(s) · MUNICÍPIO DE ...") copiado junto com o ato — de um PDF antigo
+# ou aprendido por um modelo a partir de um. A moldura da edição já imprime o
+# seu próprio cabeçalho; este não é conteúdo do ato.
+_MASTHEAD_START_RE = re.compile(r"^(diario oficial|doe)\b")
+_MASTHEAD_HINT_RE = re.compile(r"\b(edicao|pag|pags|ano)\b")
+
+
+def _ascii_key(value: str) -> str:
+    import unicodedata
+
+    text = unicodedata.normalize("NFKD", _strip_html_text(value or "").lower())
+    text = "".join(ch for ch in text if not unicodedata.combining(ch))
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", text)).strip()
+
+
+def _is_masthead(raw: str) -> bool:
+    key = _ascii_key(raw)
+    return (
+        len(key) <= 140
+        and bool(_MASTHEAD_START_RE.match(key))
+        and bool(_MASTHEAD_HINT_RE.search(key))
+    )
+
+
+def _dedupe_structured(
+    blocks: list,
+    *,
+    title: str = "",
+    summary: str = "",
+    extra_titles: tuple[str, ...] = (),
+):
     """Drop body blocks that repeat the structured title/summary fields.
 
     The form fields are the single source of truth for the heading/summary, so
@@ -319,6 +350,10 @@ def _dedupe_structured(blocks: list, *, title: str = "", summary: str = ""):
     """
     adjustments: list[dict] = []
     title_key = _norm_key(title)
+    # O título publicado leva a numeração ("DECRETO Nº 2748/2026") enquanto o
+    # campo guarda só o nome do ato ("DECRETO"); o cabeçalho colado no corpo
+    # repete o primeiro e precisa ser reconhecido como duplicata dele também.
+    title_keys = [k for k in [title_key, *(_norm_key(t) for t in extra_titles)] if k]
     summary_key = _norm_key(summary)
     kept: list = []
     for block in blocks:
@@ -331,7 +366,14 @@ def _dedupe_structured(blocks: list, *, title: str = "", summary: str = ""):
         if not key:
             kept.append(block)
             continue
-        if title_key and _similar(key, title_key):
+        if btype in ("heading", "paragraph", "preamble") and _is_masthead(raw):
+            adjustments.append({
+                "action": "removed_masthead",
+                "block_type": btype,
+                "text": _strip_html_text(raw)[:160],
+            })
+            continue
+        if any(_similar(key, k) for k in title_keys):
             adjustments.append({
                 "action": "removed_duplicate_title",
                 "block_type": btype,
@@ -450,8 +492,13 @@ def parse_document(
     title: str = "",
     summary: str = "",
     document_type: str = "ato_oficial",
+    extra_titles: tuple[str, ...] = (),
 ) -> SemanticDocument:
-    """Parse normalized input into a SemanticDocument."""
+    """Parse normalized input into a SemanticDocument.
+
+    ``extra_titles`` são outras grafias do título (com a numeração oficial)
+    que, repetidas no corpo, também são removidas como duplicata.
+    """
     norm = normalize_input(html=html, plain=plain)
     source_type = norm["source_type"]
     text = norm["text"]
@@ -486,7 +533,7 @@ def parse_document(
     # that always precedes the signature. Every change is reported, never
     # silent.
     blocks, dedupe_adjustments = _dedupe_structured(
-        blocks, title=title, summary=summary
+        blocks, title=title, summary=summary, extra_titles=tuple(extra_titles)
     )
     blocks, closing_adjustments = _normalize_closing(blocks)
     auto_adjustments = dedupe_adjustments + closing_adjustments
@@ -599,6 +646,7 @@ def _split_html_blocks(html: str) -> list[dict]:
 
 
 _BR_SPLIT_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
+_NESTED_BLOCK_RE = re.compile(r"</?(?:div|p|section|h[1-6])\b[^>]*>", re.IGNORECASE)
 _SENTENCE_END_RE = re.compile(r'[.:;]["”\']?\s*$')
 
 
@@ -738,7 +786,15 @@ def _parse_html(html: str, fallback_text: str = "") -> list:
             # paragraph is split into one segment per line first (see
             # _split_by_br) so each line is classified on its own.
             raw_html = tok.get("raw") or tok.get("inner", "")
+            if kind in ("div", "section"):
+                # Blocos aninhados (assinatura do modelo documental:
+                # <div class="sign-name">…</div><div class="sign-role">…</div>)
+                # são linhas próprias. Sem isto o nome e o cargo saíam emendados
+                # ("MENESESPrefeito Municipal").
+                raw_html = _NESTED_BLOCK_RE.sub("<br/>", raw_html)
             for segment in _regroup_br_segments(_split_by_br(raw_html)):
+                if not _inner_text(segment):
+                    continue
                 inner = _inner_text(segment)
                 rich = _inline_html(segment)
                 classified = _classify_text_line(inner, blocks, rich=rich)
@@ -746,8 +802,10 @@ def _parse_html(html: str, fallback_text: str = "") -> list:
                     blocks.append(classified)
         elif kind in ("h1", "h2", "h3", "h4", "h5", "h6"):
             level = int(kind[1])
+            # Do HTML (e não do texto já concatenado): um <br> no título separa
+            # palavras ("ELETRÔNICO<br>ANO" não pode virar "ELETRÔNICOANO").
             blocks.append(_block(HeadingBlock, level=level,
-                                 text=_inner_text(tok.get("inner", ""))))
+                                 text=_inner_text(tok.get("raw") or tok.get("inner", ""))))
         elif kind in ("ul", "ol"):
             blocks.append(_build_list_from_html(raw))
         elif kind == "blockquote":
@@ -790,7 +848,7 @@ def _inline_html(html: str) -> str:
         return ""
     safe = sanitize_html(html)
     # Unwrap block-level wrappers, keeping their children/text.
-    safe = _INLINE_UNWRAP_RE.sub("", safe)
+    safe = _INLINE_UNWRAP_RE.sub(" ", safe)
 
     def _strip_attrs(match: "re.Match[str]") -> str:
         tag = match.group(1).lower()

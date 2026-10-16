@@ -110,6 +110,34 @@ async def validate_edition(db, edition) -> dict:
     else:
         add("signers_present", "Signatários presentes", STATUS_OK)
 
+    # 5b. Pontos de atenção do conteúdo (título × texto, súmula, texto cortado,
+    # campo não preenchido). Aviso, não erro: o operador confere e decide.
+    from app.services.matter_checks import LEVEL_WARNING, check_matter_content
+
+    flagged: list[str] = []
+    for m in matters:
+        found = [
+            w for w in check_matter_content(
+                title=getattr(m, "title", "") or "",
+                summary=getattr(m, "summary", "") or "",
+                # Só se a relação já veio carregada: acesso preguiçoso numa
+                # sessão assíncrona estoura MissingGreenlet.
+                act_type_name=getattr(m.__dict__.get("act_type"), "name", "") or "",
+                act_number=getattr(m, "act_number", None),
+                content_html=getattr(m, "content_html", "") or "",
+            )
+            if w["level"] == LEVEL_WARNING
+        ]
+        if found:
+            flagged.append(f"{m.title}: " + " ".join(w["message"] for w in found[:2]))
+    if flagged:
+        add(
+            "content_attention", "Conteúdo conferido (título, súmula, texto completo)",
+            STATUS_WARNING, " | ".join(flagged[:10]),
+        )
+    else:
+        add("content_attention", "Conteúdo conferido (título, súmula, texto completo)", STATUS_OK)
+
     # 6. Edition numbering
     if not edition.number or edition.number < 1:
         add("numbering", "Numeração da edição", STATUS_ERROR, "Número inválido.")

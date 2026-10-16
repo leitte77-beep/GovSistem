@@ -6,8 +6,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-COPY pyproject.toml requirements.txt ./
-RUN pip install --user --no-cache-dir -r requirements.txt
+COPY pyproject.toml requirements.txt constraints.txt ./
+RUN pip install --user --no-cache-dir -r requirements.txt -c constraints.txt
 
 
 FROM python:3.12-slim

@@ -4,6 +4,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -307,6 +308,41 @@ async def get_next_matter_title(
         advisory=True,
         reserved=False,
     )
+
+
+class MatterContentCheckRequest(BaseModel):
+    title: str = ""
+    summary: str = ""
+    act_type_id: Optional[uuid.UUID] = None
+    act_number: Optional[str] = None
+    content_html: str = Field(default="", max_length=5_000_000)
+
+
+@router.post("/matters/content-check", response_model=dict)
+async def check_matter_content_endpoint(
+    payload: MatterContentCheckRequest,
+    db: AsyncSession = Depends(get_db),
+    user: User = Depends(get_current_user),
+):
+    """Pontos de atenção do texto colado (não bloqueia; o operador decide).
+
+    Recebe o estado atual do formulário — inclusive de matéria ainda não salva.
+    """
+    from app.services.matter_checks import check_matter_content
+
+    act_type_name = ""
+    if payload.act_type_id:
+        act_type_name = await db.scalar(
+            select(ActType.name).where(ActType.id == payload.act_type_id)
+        ) or ""
+    warnings = check_matter_content(
+        title=payload.title,
+        summary=payload.summary,
+        act_type_name=act_type_name,
+        act_number=payload.act_number,
+        content_html=payload.content_html,
+    )
+    return {"warnings": warnings}
 
 
 @router.post("/matters", response_model=MatterResponse, status_code=201)

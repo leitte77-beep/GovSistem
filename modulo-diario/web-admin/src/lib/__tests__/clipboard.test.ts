@@ -27,7 +27,8 @@ describe("cleanPastedHtml (rich paste)", () => {
     const { html: out } = cleanPastedHtml(html);
     expect(out).toMatch(/text-align\s*:\s*right/i);
     expect(out).toMatch(/border/);
-    expect(out).toMatch(/width\s*:\s*120px/i);
+    // Largura absoluta do original vira proporção da área útil.
+    expect(out).toMatch(/width\s*:\s*100%/i);
   });
 
   it("remove scripts, iframes e atributos de evento", () => {

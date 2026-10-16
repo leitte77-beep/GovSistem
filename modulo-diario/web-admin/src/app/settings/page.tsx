@@ -10,12 +10,14 @@ const LAYOUT_DESCRIPTIONS: Record<string, string> = {
   classico: "Layout tradicional com brasão centralizado, faixas cinza e tipografia serifada — ideal para órgãos que seguem o padrão governamental clássico.",
   moderno: "Design limpo com linhas azuis, cantos arredondados e tipografia sans-serif — ideal para quem quer uma apresentação mais contemporânea.",
   minimalista: "Preto e branco com linhas finas, sem decorações — máxima economia de tinta e espaço, ideal para impressoras simples.",
+  tradicional: "O Diário como era diagramado no Word: brasão e faixa com data, ano e edição em todas as páginas, sumário por seção com pontilhado, faixas cinza de seção e de título e texto em Times 12.",
 };
 
 const LAYOUT_PREVIEWS: Record<string, { bg: string; accent: string; text: string; label: string }> = {
   classico: { bg: "#f5f3ee", accent: "#002b5c", text: "#001b3f", label: "Clássico" },
   moderno: { bg: "#f0f4ff", accent: "#003d80", text: "#1a1a2e", label: "Moderno" },
   minimalista: { bg: "#ffffff", accent: "#000000", text: "#000000", label: "Minimalista" },
+  tradicional: { bg: "#ffffff", accent: "#bfbfbf", text: "#000000", label: "Tradicional (Word)" },
 };
 
 const SHORTCUTS: { href: string; icon: string; title: string; description: string }[] = [

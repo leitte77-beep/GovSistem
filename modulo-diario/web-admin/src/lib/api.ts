@@ -582,6 +582,20 @@ export const api = {
     );
   },
 
+  /** Pontos de atenção do texto colado (título × texto, súmula, texto cortado). */
+  checkMatterContent(payload: {
+    title: string;
+    summary: string;
+    act_type_id?: string | null;
+    act_number?: string | null;
+    content_html: string;
+  }) {
+    return request<{ warnings: import("../types/matter").ContentWarning[] }>(
+      "/matters/content-check",
+      { method: "POST", body: JSON.stringify(payload) }
+    );
+  },
+
   getEditionValidation(id: string) {
     return request<import("../types/edition").EditionValidation>(
       `/editions/${id}/validation`

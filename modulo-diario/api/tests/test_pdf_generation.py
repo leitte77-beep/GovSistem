@@ -10,7 +10,7 @@ from pypdf import PdfReader
 
 TEMPLATE_DIR = Path(__file__).parent.parent / "app" / "templates" / "pdf"
 LAYOUTS_DIR = TEMPLATE_DIR / "layouts"
-LAYOUTS = ("classico", "moderno", "minimalista")
+LAYOUTS = ("classico", "moderno", "minimalista", "tradicional")
 
 
 @pytest.fixture

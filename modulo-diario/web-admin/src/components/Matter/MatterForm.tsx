@@ -27,7 +27,9 @@ import {
   suggestTitle,
   actTypeConfig,
 } from "@/lib/actTitle";
-import type { ActType, Attachment, Matter, MatterListItem, MatterStatus, OrgUnit } from "@/types/matter";
+import type { ActType, Attachment, ContentWarning, Matter, MatterListItem, MatterStatus, OrgUnit } from "@/types/matter";
+import ConfirmDialog from "@/components/ConfirmDialog";
+import ContentAttention from "./ContentAttention";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:9201/api/v1";
 const API_HOST = API_URL.replace(/\/api\/v1\/?$/, "");
@@ -112,6 +114,40 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
 
   const isEditable = status === "draft" || status === "review" || status === "rejected";
   const selectedActType = actTypes.find((a) => a.id === actTypeId);
+
+  // Pontos de atenção do texto (título × texto, súmula, número, texto cortado).
+  // Conferidos no servidor, de forma determinística, 1,2 s depois da última
+  // alteração; avisam mas não impedem o envio.
+  const [attention, setAttention] = useState<ContentWarning[]>([]);
+  const [checkingAttention, setCheckingAttention] = useState(false);
+  const [confirmSendOpen, setConfirmSendOpen] = useState(false);
+  useEffect(() => {
+    if (!contentHtml || !contentHtml.replace(/<[^>]*>/g, "").trim()) {
+      setAttention([]);
+      return;
+    }
+    let cancelled = false;
+    setCheckingAttention(true);
+    const timer = setTimeout(() => {
+      api.checkMatterContent({
+        title,
+        summary,
+        act_type_id: actTypeId || null,
+        act_number: actNumber || null,
+        content_html: contentHtml,
+      })
+        .then((res) => { if (!cancelled) setAttention(res.warnings ?? []); })
+        .catch(() => { /* conferência é auxiliar: falha não atrapalha a edição */ })
+        .finally(() => { if (!cancelled) setCheckingAttention(false); });
+    }, 1200);
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [title, summary, actTypeId, actNumber, contentHtml]);
+  const attentionWarnings = attention.filter((w) => w.level === "warning");
+
+  const requestSendForReview = () => {
+    if (attentionWarnings.length > 0) setConfirmSendOpen(true);
+    else void save("review");
+  };
   const matterId = matter?.id || createdId;
   const typeCfg = actTypeConfig(selectedActType?.config);
   const suggestedTitle = selectedActType
@@ -1141,8 +1177,9 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
               semantic={{ mode: semanticMode, hasDoc: hasSemantic, status: semanticStatus }}
               saveState={saveState}
               lastSavedAt={lastSavedAt}
-              alertCount={cleanWarnings.length}
+              alertCount={cleanWarnings.length + attentionWarnings.length}
             >
+              <ContentAttention warnings={attention} checking={checkingAttention} compact />
               {matterId && (
                 <div className="bg-surface-bright rounded-2xl p-6 border border-outline-variant shadow-sm">
                   <AttachmentUpload matterId={matterId} attachments={attachments}
@@ -1162,6 +1199,7 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
         {/* Step 3: REVISÃO E PUBLICAÇÃO */}
         {step === 3 && (
           <div className="max-w-4xl mx-auto space-y-gutter">
+            <ContentAttention warnings={attention} checking={checkingAttention} />
             <div className="bg-surface-bright rounded-2xl p-8 border border-outline-variant shadow-sm">
               <div className="flex items-center gap-2 mb-6">
                 <span className="material-symbols-outlined text-secondary">assignment_turned_in</span>
@@ -1361,7 +1399,7 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
                       {saving ? <span className="material-symbols-outlined animate-spin">progress_activity</span> : <span className="material-symbols-outlined">save</span>}
                       Salvar Rascunho
                     </button>
-                    <button type="button" onClick={() => save("review")} disabled={saving || !isValid || (semanticMode && !hasSemantic)}
+                    <button type="button" onClick={requestSendForReview} disabled={saving || !isValid || (semanticMode && !hasSemantic)}
                       title={semanticMode && !hasSemantic ? "Conclua a análise semântica e salve o documento estruturado antes de enviar" : "Envia a matéria para aprovação do revisor"}
                       className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-sm font-semibold transition-all shadow-lg bg-primary text-on-primary hover:bg-primary-container disabled:opacity-50">
                       {saving ? <span className="material-symbols-outlined animate-spin">progress_activity</span> : <span className="material-symbols-outlined">send</span>}
@@ -1375,6 +1413,19 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
         )}
         <div className="h-10" />
       </div>
+      <ConfirmDialog
+        open={confirmSendOpen}
+        title="Enviar com pontos de atenção?"
+        message={
+          `O texto tem ${attentionWarnings.length} ponto(s) de atenção: `
+          + attentionWarnings.map((w) => w.message).join(" ")
+          + " Confira antes de enviar. Se estiver tudo certo, pode enviar mesmo assim."
+        }
+        confirmLabel="Enviar mesmo assim"
+        cancelLabel="Voltar e conferir"
+        onConfirm={() => { setConfirmSendOpen(false); void save("review"); }}
+        onCancel={() => setConfirmSendOpen(false)}
+      />
     </div>
   );
 }

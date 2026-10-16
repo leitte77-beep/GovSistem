@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { extensions } from "./extensions";
 import Toolbar from "./Toolbar";
 import { stripWordMso } from "@/lib/sanitize";
+import { applyPastedDocumentStyles } from "@/lib/wordStyles";
 import { autoformatHtml, plainTextToStructuredHtml } from "@/lib/contentAutoformat";
 import { formatOfficialAct } from "@/lib/officialActFormat";
 import { cleanPastedHtml, detectPdfExtractedText, htmlLacksFormatting } from "@/lib/clipboard";
@@ -104,7 +105,10 @@ export default function Editor({
         if (!paste) return false;
         event.preventDefault();
 
-        const { html, plain: text, isOffice: isOfficeHtml } = paste;
+        const { html: rawHtml, plain: text, isOffice: isOfficeHtml } = paste;
+        // Negrito, caixa alta e recuo que o Word/LibreOffice guardam em estilos
+        // nomeados viram formatação no próprio texto ANTES de qualquer limpeza.
+        const html = rawHtml ? applyPastedDocumentStyles(rawHtml) : rawHtml;
 
         // PDF viewers (Adobe Acrobat, browser PDF preview) put text/html on
         // the clipboard alongside text/plain, but that HTML has no real

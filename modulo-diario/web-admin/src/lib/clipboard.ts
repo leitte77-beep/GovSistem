@@ -193,35 +193,165 @@ function cleanAttributes(el: Element): void {
   walk(el, el.ownerDocument!);
 }
 
+const UNIT_TO_PT: Record<string, number> = { pt: 1, px: 0.75, cm: 28.3465, mm: 2.83465, in: 72, pc: 12 };
+
+/** Comprimento absoluto em pt (`2.0cm`, `453.1pt`, `120px`, ou o atributo `width=76`). */
+export function lengthToPt(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const match = /^\s*([\d.]+)\s*(pt|px|cm|mm|in|pc)?\s*$/i.exec(value);
+  if (!match) return null;
+  const amount = parseFloat(match[1]);
+  if (!Number.isFinite(amount) || amount <= 0) return null;
+  return amount * UNIT_TO_PT[(match[2] || "px").toLowerCase()];
+}
+
+function declarations(style: string): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const part of style.split(";")) {
+    const index = part.indexOf(":");
+    if (index < 0) continue;
+    const name = part.slice(0, index).trim().toLowerCase();
+    const value = part.slice(index + 1).replace(/\s+/g, " ").trim();
+    if (name && value) out.set(name, value);
+  }
+  return out;
+}
+
+const CELL_KEPT = new Set([
+  "text-align", "vertical-align", "background-color",
+  "border", "border-top", "border-right", "border-bottom", "border-left",
+]);
+
+/**
+ * Estilo da célula colada: só o que é forma do quadro (fundo, bordas por lado,
+ * alinhamento). Larguras são recalculadas por coluna em `columnPercentages`.
+ * O Word escreve o fundo como `background:` e a cor da borda como `windowtext`,
+ * que o motor de PDF não conhece.
+ */
+function cellStyle(cell: Element): string {
+  const source = declarations(cleanStyle(cell.getAttribute("style") || ""));
+  const out = new Map<string, string>();
+  const background = source.get("background");
+  if (background && !/url\(/i.test(background)) {
+    const color = background.split(" ").find((part) => /^(#[0-9a-f]{3,8}|rgba?\(.*\)|[a-z]+)$/i.test(part));
+    if (color && !/^(none|transparent|auto)$/i.test(color)) out.set("background-color", color);
+  }
+  for (const [name, value] of source) {
+    if (!CELL_KEPT.has(name)) continue;
+    out.set(name, value.replace(/windowtext|currentcolor/gi, "#000"));
+  }
+  const valign = cell.getAttribute("valign");
+  if (valign && !out.has("vertical-align")) out.set("vertical-align", valign.toLowerCase());
+  const hasBorder = Array.from(out.keys()).some((name) => name.startsWith("border"));
+  if (!hasBorder) out.set("border", "1px solid #000");
+  out.set("padding", "3pt 5pt");
+  return Array.from(out, ([name, value]) => `${name}:${value}`).join(";");
+}
+
+function rowCells(row: Element): Element[] {
+  return Array.from(row.children).filter((child) => /^(td|th)$/i.test(child.tagName));
+}
+
+function span(cell: Element, attr: "colspan" | "rowspan"): number {
+  const value = parseInt(cell.getAttribute(attr) || "1", 10);
+  return Number.isFinite(value) && value > 0 ? value : 1;
+}
+
+/**
+ * Larguras das colunas em % (somando 100). Usa a largura declarada pelas
+ * células de uma coluna só (o Word declara todas, em pt/cm ou no atributo
+ * `width`); coluna sem largura conhecida divide o que sobra. Sem nenhuma
+ * largura, devolve null e o PDF calcula pelo conteúdo.
+ */
+export function columnPercentages(rows: Element[]): { widths: number[]; positions: Map<Element, number> } | null {
+  const positions = new Map<Element, number>();
+  const occupied: boolean[][] = [];
+  const known: (number | null)[] = [];
+  let columns = 0;
+  rows.forEach((row, r) => {
+    occupied[r] = occupied[r] || [];
+    let c = 0;
+    for (const cell of rowCells(row)) {
+      while (occupied[r][c]) c += 1;
+      positions.set(cell, c);
+      const cs = span(cell, "colspan");
+      const rs = span(cell, "rowspan");
+      for (let dr = 0; dr < rs; dr += 1) {
+        occupied[r + dr] = occupied[r + dr] || [];
+        for (let dc = 0; dc < cs; dc += 1) occupied[r + dr][c + dc] = true;
+      }
+      if (cs === 1 && known[c] == null) {
+        const styleWidth = declarations(cell.getAttribute("style") || "").get("width");
+        const width = lengthToPt(styleWidth) ?? lengthToPt(cell.getAttribute("width"));
+        if (width) known[c] = width;
+      }
+      c += cs;
+      columns = Math.max(columns, c);
+    }
+  });
+  if (!columns) return null;
+  const declared = known.slice(0, columns).filter((w): w is number => w != null);
+  if (!declared.length) return null;
+  const declaredTotal = declared.reduce((a, b) => a + b, 0);
+  const missing = columns - declared.length;
+  const filler = missing ? declaredTotal / declared.length : 0;
+  const raw = Array.from({ length: columns }, (_, i) => known[i] ?? filler);
+  const total = raw.reduce((a, b) => a + b, 0);
+  const widths = raw.map((w) => Math.round((w / total) * 10000) / 100);
+  return { widths, positions };
+}
+
+function isEntirelyBold(cell: Element): boolean {
+  const text = (cell.textContent || "").replace(/\s+/g, "");
+  if (!text) return true;
+  const bold = Array.from(cell.querySelectorAll("strong, b"))
+    .filter((el) => !el.parentElement?.closest("strong, b"))
+    .map((el) => el.textContent || "")
+    .join("")
+    .replace(/\s+/g, "");
+  return bold === text;
+}
+
 function normalizeTables(body: Element, doc: Document): boolean {
   let found = false;
   for (const table of Array.from(body.querySelectorAll("table"))) {
+    // Tabelas aninhadas são tratadas pela de fora.
+    if (table.parentElement?.closest("table")) continue;
     const normalized = doc.createElement("table");
-    normalized.setAttribute("style", "width:100%;border-collapse:collapse;border:1px solid #000;");
+    normalized.setAttribute("style", "width:100%;border-collapse:collapse;");
     const tbody = doc.createElement("tbody");
 
-    for (const row of Array.from(table.querySelectorAll("tr"))) {
-      const normalizedRow = doc.createElement("tr");
-      const cells = Array.from(row.children).filter((child) => {
-        const t = child.tagName.toLowerCase();
-        return t === "td" || t === "th";
-      });
+    const rows = Array.from(table.querySelectorAll("tr")).filter(
+      (row) => row.closest("table") === table,
+    );
+    const layout = columnPercentages(rows);
+    // Primeira linha toda em negrito num quadro com dados = cabeçalho; vira
+    // <th> para o PDF repeti-la no alto de cada página.
+    const promoteHeader = rows.length >= 3
+      && rowCells(rows[0]).length > 1
+      && rowCells(rows[0]).every((cell) => cell.tagName.toLowerCase() === "th" || isEntirelyBold(cell))
+      && rowCells(rows[0]).some((cell) => (cell.textContent || "").trim());
 
-      for (const cell of cells) {
+    rows.forEach((row, rowIndex) => {
+      const normalizedRow = doc.createElement("tr");
+      for (const cell of rowCells(row)) {
         const tag = cell.tagName.toLowerCase();
-        const normalizedCell = doc.createElement(tag === "th" ? "th" : "td");
+        const asHeader = tag === "th" || (promoteHeader && rowIndex === 0);
+        const normalizedCell = doc.createElement(asHeader ? "th" : "td");
         const colspan = cell.getAttribute("colspan");
         const rowspan = cell.getAttribute("rowspan");
-        const cellStyle = cell.getAttribute("style");
         if (colspan) normalizedCell.setAttribute("colspan", colspan);
         if (rowspan) normalizedCell.setAttribute("rowspan", rowspan);
 
-        const styleParts: string[] = [];
-        if (cellStyle && /(?:text-align|vertical-align|background-color|width)/i.test(cellStyle)) {
-          styleParts.push(cleanStyle(cellStyle));
+        let style = cellStyle(cell);
+        if (layout) {
+          const start = layout.positions.get(cell) ?? 0;
+          const width = layout.widths
+            .slice(start, start + span(cell, "colspan"))
+            .reduce((a, b) => a + b, 0);
+          if (width > 0) style += `;width:${Math.round(width * 100) / 100}%`;
         }
-        styleParts.push("border:1px solid #000;padding:4px 6px;");
-        normalizedCell.setAttribute("style", styleParts.filter(Boolean).join(";"));
+        normalizedCell.setAttribute("style", style);
 
         // Keep cell content as a paragraph so TipTap parses it into a node.
         let content = cell.innerHTML.trim();
@@ -236,7 +366,7 @@ function normalizeTables(body: Element, doc: Document): boolean {
       if (normalizedRow.children.length > 0) {
         tbody.appendChild(normalizedRow);
       }
-    }
+    });
 
     if (tbody.children.length > 0) {
       normalized.appendChild(tbody);

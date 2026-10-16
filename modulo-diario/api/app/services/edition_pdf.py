@@ -20,12 +20,13 @@ from app.document_model.body_html import DOCUMENT_BODY_CSS
 from app.models.enums import EditionStatus
 from app.semantic.snapshot import verify_snapshot
 from app.services.pdf_utils import compute_hash, format_date
+from app.services.print_tables import prepare_tables_for_print
 from app.services.publication_title import display_title
 
 TEMPLATE_DIR = Path(__file__).parent.parent / "templates" / "pdf"
 LAYOUTS_DIR = TEMPLATE_DIR / "layouts"
 OUTPUT_DIR = Path(settings.UPLOAD_DIR)
-AVAILABLE_LAYOUTS = ["classico", "moderno", "minimalista"]
+AVAILABLE_LAYOUTS = ["classico", "moderno", "minimalista", "tradicional"]
 WEEKDAYS_PT = [
     "SEGUNDA-FEIRA", "TERCA-FEIRA", "QUARTA-FEIRA", "QUINTA-FEIRA",
     "SEXTA-FEIRA", "SABADO", "DOMINGO",
@@ -205,6 +206,40 @@ def _summary_metadata(title: str, act_type: str, org_unit: str, section_title: s
     return " • ".join(metadata_parts)
 
 
+# Seções do Diário, como no diário diagramado no Word: os atos são agrupados
+# por natureza sob uma faixa ("LEIS", "DECRETOS", "PROCESSOS DE COMPRAS").
+# Vale quando o operador não escolheu a seção; a escolhida sempre prevalece.
+_SECTION_RULES: tuple[tuple[str, str], ...] = (
+    (r"^lei|\blei complementar\b|\blei\s+n", "LEIS"),
+    (r"^decreto", "DECRETOS"),
+    (r"^portaria", "PORTARIAS"),
+    (r"^resolu", "RESOLUÇÕES"),
+    (r"licita|preg[aã]o|dispensa|inexigib|contrat|aditivo|\bata\b|registro de pre|"
+     r"homolog|adjudic|extrato|aviso|chamamento|credenc|processos? de compra|"
+     r"compras?\b|laudo", "PROCESSOS DE COMPRAS"),
+    (r"^edital", "EDITAIS"),
+    (r"relat[oó]rio cont|balan[cç]|cont[aá]bil|or[cç]ament", "RELATÓRIOS CONTÁBEIS"),
+)
+
+
+def _default_section(item: dict) -> str:
+    import unicodedata
+
+    def norm(value: str) -> str:
+        text = unicodedata.normalize("NFC", (value or "").strip().lower())
+        return re.sub(r"\s+", " ", text)
+
+    act_type = norm((item.get("metadata") or {}).get("act_type_name", ""))
+    title = norm(item.get("title") or "")
+    for candidate in (act_type, title):
+        if not candidate or candidate in ("outros", "tipo_teste_automacao"):
+            continue
+        for pattern, section in _SECTION_RULES:
+            if re.search(pattern, candidate):
+                return section
+    return "OUTROS ATOS"
+
+
 def _render_semantic_content(item: dict) -> str | None:
     """Render a frozen semantic document with the SAME renderer used publicly.
 
@@ -308,7 +343,14 @@ def _keep_rules_css() -> str:
     """
 
 
-def _institutional_css(organization) -> str:
+# Layouts que desenham a própria página (cabeçalho em todas as folhas, faixas
+# pretas sobre cinza): a margem e a cor de destaque do cadastro institucional
+# não se aplicam a eles — uma margem superior menor que o cabeçalho faria o
+# texto correr por baixo dele.
+LAYOUTS_OWNING_PAGE = frozenset({"tradicional"})
+
+
+def _institutional_css(organization, *, layout_owns_page: bool = False) -> str:
     """Apply the tenant's master layout (fonts, margins, colors) to the PDF.
 
     The Diário keeps a single graphic standard: the operator never changes the
@@ -329,17 +371,22 @@ def _institutional_css(organization) -> str:
     m = doc.margins
     orientation = "" if doc.orientation == "portrait" else f" {doc.orientation}"
     body = doc.body_font
+    fonts = f"""
+    body, .doc-body, .doe-document, .doe-document p, .matter-content {{
+        font-family: "{body.family}", "Times New Roman", serif;
+        font-size: {body.size}pt;
+        {"" if layout_owns_page else f"line-height: {body.line_height};"}
+        color: {body.color};
+    }}
+    """
+    if layout_owns_page:
+        return fonts
     return f"""
     @page {{
         size: {doc.page_size}{orientation};
         margin: {m.top}mm {m.right}mm {m.bottom}mm {m.left}mm;
     }}
-    body, .doc-body, .doe-document, .doe-document p, .matter-content {{
-        font-family: "{body.family}", "Times New Roman", serif;
-        font-size: {body.size}pt;
-        line-height: {body.line_height};
-        color: {body.color};
-    }}
+    {fonts}
     .document {{ background: {doc.background_color}; }}
     .document h1, .document h2, .document h3, .doe-block--heading {{ color: {doc.accent_color}; }}
     """
@@ -375,13 +422,18 @@ def _render_publication_pdf(
     """
     sections_map: dict[str, list] = {}
     for item in sorted(items, key=lambda i: i["position"]):
-        section_key = item.get("section_title") or "Geral"
+        section_key = (item.get("section_title") or "").strip() or _default_section(item)
         sections_map.setdefault(section_key, [])
         semantic_html = _render_semantic_content(item)
         if semantic_html is not None:
             content_html = semantic_html
         else:
             content_html = item.get("content_html") or ""
+        # Toda tabela passa pela mesma diagramação de página, venha ela do
+        # motor semântico (larguras calculadas sem conhecer a fonte) ou de um
+        # quadro preservado tal como colado/importado (larguras ausentes ou
+        # somando mais de 100%).
+        content_html = prepare_tables_for_print(content_html)
         content_html = _localize_matter_images(content_html)
         sections_map[section_key].append({
             "id": item["id"],
@@ -446,7 +498,9 @@ def _render_publication_pdf(
             summary_items=summary_items,
             sections=sections,
             css_path=css_path,
-            extra_css=DOCUMENT_BODY_CSS + _keep_rules_css() + _institutional_css(organization),
+            extra_css=DOCUMENT_BODY_CSS + _keep_rules_css() + _institutional_css(
+                organization, layout_owns_page=template_dir.name in LAYOUTS_OWNING_PAGE
+            ),
             total_pages=total_pages,
             total_matters=len(summary_items),
             qr_code_uri=_qr_data_uri(verification_target),

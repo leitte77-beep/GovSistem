@@ -164,3 +164,19 @@ export interface AuditEvent {
 export interface ApiError {
   detail: string;
 }
+
+/** Ponto de atenção do conteúdo (POST /matters/content-check). Não bloqueia. */
+export interface ContentWarning {
+  code:
+    | "type_mismatch"
+    | "summary_mismatch"
+    | "number_mismatch"
+    | "truncated_text"
+    | "unfilled_field"
+    | "pasted_masthead"
+    | string;
+  level: "warning" | "info";
+  message: string;
+  detail: string;
+  excerpt: string;
+}

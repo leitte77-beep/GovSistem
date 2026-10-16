@@ -128,9 +128,10 @@ def test_closing_is_atomic_and_precedes_signature():
 
 def test_alignment_is_fixed_per_block_type():
     html = _render(_doc())
-    # Heading, summary, command, closing (fecho) and signature are centered.
+    # Heading, command, closing (fecho) and signature are centered.
     assert ".doe-block--heading" in html and "var(--doe-title-alignment, center)" in html
-    assert ".doe-summary" in html and "var(--doe-blocks-summary-alignment, center)" in html
+    # Súmula: justificada e recuada à direita, como no diário em Word.
+    assert ".doe-summary" in html and "var(--doe-blocks-summary-alignment, justify)" in html
     assert "var(--doe-blocks-command-alignment, center)" in html
     assert ".doe-signature" in html
     # Body text is justified.

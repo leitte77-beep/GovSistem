@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="author" content="{{ organ_name }}">
+<meta name="description" content="Diário Oficial Eletrônico - Edição nº {{ edition.number }}">
+<meta name="keywords" content="Diário Oficial, {{ organ_name }}, Edição {{ edition.number }}">
+<title>Diário Oficial Eletrônico - {{ organ_name }} - Edição nº {{ edition.number }}</title>
+<link rel="stylesheet" href="{{ css_path }}">
+<style>{{ extra_css | safe }}</style>
+</head>
+<body>
+{#
+  Layout "tradicional": reproduz o diário que a prefeitura diagramava no Word —
+  cabeçalho com brasão em todas as páginas, faixa com data/ano/edição, sumário
+  por seção com pontilhado, faixas cinza de seção e de título, corpo em
+  tipografia serifada. O selo de autenticidade (código, hash, página N/T) segue
+  em todas as páginas, discreto, no rodapé.
+#}
+{% set effective_verification_code = verification_code|default(preliminary_code|default(""), true) %}
+{% set institution = institution|default({}, true) %}
+{% set entity_name = (institution.name or organ_name or "")|upper %}
+
+<header class="dw-header" aria-hidden="true">
+  <table class="dw-mast">
+    <tr>
+      <td class="dw-arms">{% if logo_path %}<img src="{{ logo_path }}" alt="">{% endif %}</td>
+      <td class="dw-name">
+        <div class="dw-title">DIÁRIO OFICIAL ELETRÔNICO</div>
+        <div class="dw-entity">{{ entity_name }}</div>
+      </td>
+    </tr>
+  </table>
+  <table class="dw-strip">
+    <tr>
+      <td class="dw-strip-date">{{ header_date }}</td>
+      <td class="dw-strip-year">{{ edition_year_label }}</td>
+      <td class="dw-strip-edition">EDIÇÃO Nº: {{ edition.number }}{% if edition_type_label and edition_type_label != "Normal" %} ({{ edition_type_label|upper }}){% endif %}{% if total_pages %} · {{ total_pages }} Pág.(s){% endif %}</td>
+    </tr>
+  </table>
+</header>
+
+<aside class="page-authenticity-seal" aria-label="Selo de autenticidade">
+  <img src="{{ qr_code_uri }}" alt="">
+  <div class="page-authenticity-copy">
+    <strong>Documento assinado digitalmente (ICP-Brasil) · {{ organ_name }} · Edição {{ edition.number }} · {{ publication_date }}</strong>
+    <span>Código de verificação: {{ effective_verification_code }} · Valide em {{ verification_url }}/{{ effective_verification_code }}</span>
+    <span>SHA-256 do conteúdo canônico: {{ content_manifest_hash }}</span>
+  </div>
+  <div class="page-authenticity-number"></div>
+</aside>
+
+<article class="document">
+  <div class="template-metadata">{{ organ_name }} {{ edition.title }} {{ edition_type_label }} {{ publication_date }}</div>
+
+  {% if edition.subtitle %}
+  <p class="subtitle">{{ edition.subtitle }}</p>
+  {% endif %}
+
+  <!-- SUMÁRIO -->
+  {% if sections %}
+  <section class="summary">
+    <h2 class="band band--section">Sumário</h2>
+    {% for section in sections %}
+      {% if section.title %}
+      <a class="toc-row toc-section" href="#section-{{ loop.index }}">{{ section.title }}</a>
+      {% endif %}
+      {% for matter in section.matters %}
+      <a class="toc-row toc-matter{% if not section.title %} toc-matter--top{% endif %}" href="#matter-{{ matter.id }}">{{ matter.title }}</a>
+      {% endfor %}
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  <!-- PUBLICAÇÕES -->
+  {% for section in sections %}
+  <div class="section{% if section.title == 'PROCESSOS DE COMPRAS' %} section--flow{% endif %}" id="section-{{ loop.index }}">
+    {% if section.title %}
+    <h2 class="band band--section">{{ section.title }}</h2>
+    {% endif %}
+
+    {% for matter in section.matters %}
+    <section class="matter{% if matter.is_pdf_image_content %} matter-image-content{% endif %}{% if matter.has_large_table %} matter--long-table{% endif %}" id="matter-{{ matter.id }}">
+      <h3 class="band band--matter matter-title">{{ matter.title }}</h3>
+
+      {% if matter.summary and not matter.has_semantic_content %}
+      <div class="matter-summary">{{ matter.summary }}</div>
+      {% endif %}
+
+      <div class="matter-content doc-body">
+        {{ matter.content_html | safe }}
+      </div>
+    </section>
+    {% endfor %}
+  </div>
+  {% endfor %}
+
+  <!-- VALIDAÇÃO DO DOCUMENTO -->
+  <footer class="validation-box">
+    <h2 class="band band--matter">Validação do Documento</h2>
+    <div class="validation-action">
+      <img class="verification-qr" src="{{ qr_code_uri }}" alt="QR Code para validação do documento">
+      <p>
+        <strong>Código de verificação: {{ effective_verification_code }}</strong><br>
+        Este documento foi assinado digitalmente com certificado ICP-Brasil por {{ institution.name or organ_name }}.
+        Para validar o documento e suas assinaturas acesse {{ verification_url }}/{{ effective_verification_code }}
+      </p>
+    </div>
+  </footer>
+</article>
+
+</body>
+</html>

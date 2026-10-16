@@ -334,6 +334,14 @@ def _repair_config(data: dict, document_type: str) -> dict:
             ),
             "level": int(s.get("level") or 1),
         }
+        # Cabeçalho de página do diário de onde o exemplo foi copiado
+        # ("DIÁRIO OFICIAL ELETRÔNICO · ANO · EDIÇÃO Nº · Pág."): é moldura da
+        # edição, não parte do ato — aprendido, ele era publicado dentro da
+        # matéria.
+        from app.semantic.parser import _is_masthead
+
+        if kind in {"heading", "paragraph", "preamble"} and _is_masthead(out["text"]):
+            return None
         if s.get("number") is not None:
             out["number"] = str(s["number"])
         for flag in ("fixed_text", "locked", "ai_generated"):
@@ -371,7 +379,9 @@ def _repair_config(data: dict, document_type: str) -> dict:
             column_count = len(headers) or max((len(row) for row in clean_rows), default=0)
             if column_count < 1 or any(len(row) != column_count for row in clean_rows):
                 return None
-            out["table_headers"] = [str(header) for header in headers]
+            from app.document_model.body_html import humanize_header
+
+            out["table_headers"] = [humanize_header(str(header)) for header in headers]
             out["table_rows"] = _rows_without_sample_data(clean_rows)
             widths = s.get("table_column_widths") if isinstance(s.get("table_column_widths"), list) else []
             if len(widths) == column_count:

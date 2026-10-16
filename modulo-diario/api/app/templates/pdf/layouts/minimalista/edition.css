@@ -478,3 +478,26 @@ body {
   page-break-inside: auto;
 }
 .matter--long-table { break-before: page; page-break-before: always; }
+
+/* Tabelas diagramadas por app/services/print_tables.py: larguras de coluna em
+   <colgroup> somando 100%, layout fixo (nada passa da margem), cabeçalho em
+   <thead> repetido por página e fonte reduzida quando a tabela é larga. */
+.matter-content table.doe-print-table { table-layout: fixed; }
+.matter-content table.doe-print-table th,
+.matter-content table.doe-print-table td {
+  /* Largura mínima de cada coluna já comporta a maior palavra: quebra só
+     entre palavras, como no Word (sem hifenizar "ESTI-MADO"). */
+  overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: manual;
+}
+.matter-content table.doe-print-table td p,
+.matter-content table.doe-print-table th p {
+  margin: 0;
+  min-height: 0;
+  text-indent: 0;
+}
+.matter-content table.doe-print-table--compact th,
+.matter-content table.doe-print-table--compact td { padding: 2pt 3pt; line-height: 1.15; }
+.matter-content table.doe-print-table--compact td *,
+.matter-content table.doe-print-table--compact th * { font-size: inherit !important; }
