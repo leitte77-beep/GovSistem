@@ -316,8 +316,8 @@ export default function RelatoriosPage() {
             ) : (
               <>
                 {/* Cabeçalho do relatório */}
-                <div className="overflow-hidden rounded-2xl bg-white shadow-card ring-1 ring-surface-border">
-                  <div className="h-1" style={{ background: `linear-gradient(90deg, ${infoAtual.cor}, ${infoAtual.cor}55)` }} />
+                <div className="relative z-20 rounded-2xl bg-white shadow-card ring-1 ring-surface-border">
+                  <div className="h-1 rounded-t-2xl" style={{ background: `linear-gradient(90deg, ${infoAtual.cor}, ${infoAtual.cor}55)` }} />
                   <div className="flex flex-wrap items-start justify-between gap-4 p-5">
                     <div className="flex min-w-0 items-start gap-4">
                       <span className={`grid h-12 w-12 shrink-0 place-items-center rounded-2xl ${infoAtual.fundo} ${infoAtual.texto}`}>
