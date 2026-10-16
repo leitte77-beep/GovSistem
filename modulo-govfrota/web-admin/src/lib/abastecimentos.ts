@@ -24,7 +24,7 @@ export function statusInfo(status: string | null | undefined) {
 export function formatarLitros(valor: number | string | null | undefined): string {
   const num = Number(valor || 0);
   if (isNaN(num)) return "—";
-  return `${num.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} L`;
+  return `${num.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 3 })} L`;
 }
 
 export function formatarKm(valor: number | string | null | undefined, horimetro: boolean | null | undefined = false): string {

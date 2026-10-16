@@ -23,7 +23,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.v1.app_motorista import _data_informada
+from app.api.v1.app_motorista import _data_informada, _exigir_veiculo_permitido
 from app.core.auth import filtro_escopo, get_current_motorista, require_permission
 from app.core.database import get_db
 from app.core.permissions import Perm
@@ -190,6 +190,7 @@ async def _serializar(db: AsyncSession, usos: list[UsoVeiculo]) -> list[dict]:
             "veiculo_id": str(u.veiculo_id),
             "veiculo_placa": v.placa if v else None,
             "veiculo_modelo": f"{v.marca or ''} {v.modelo or ''}".strip() if v else None,
+            "veiculo_foto_url": v.foto_url if v else None,
             "motorista_id": str(u.motorista_id),
             "motorista_nome": mots.get(u.motorista_id),
             "unidade_id": str(u.unidade_id) if u.unidade_id else None,
@@ -256,6 +257,7 @@ async def registrar_saida(
             if existente.motorista_id != motorista.id:
                 raise HTTPException(status_code=409, detail="Identificador já utilizado.")
             return {**(await _serializar(db, [existente]))[0], "avisos": []}
+    await _exigir_veiculo_permitido(db, motorista, veiculo.id)
     saida_em = _data_informada(body.registrado_em, "Saída")
     if await _uso_aberto(db, motorista_id=motorista.id):
         raise HTTPException(status_code=409, detail="Você já tem um uso em aberto. Registre a chegada antes de sair de novo.")

@@ -56,6 +56,10 @@ async function request<T>(
     headers: { ...getHeaders(tokenKey, isFormData), ...((options.headers as Record<string, string>) || {}) },
   });
   if (res.status === 401) {
+    const motivo = await res.json().then((j) => j?.detail).catch(() => null);
+    try {
+      if (typeof motivo === "string") sessionStorage.setItem("govfrota_motivo_logout", motivo);
+    } catch {}
     localStorage.removeItem(tokenKey);
     window.dispatchEvent(new Event("auth:logout"));
     throw new AuthError();
@@ -274,6 +278,7 @@ export const api = {
     cnh_categoria?: string;
     situacao_cnh?: string;
     acesso_status?: string;
+    unidade?: string;
     sort_by?: string;
     order?: "asc" | "desc";
     skip?: number;
@@ -619,6 +624,9 @@ export const api = {
   relatorioCatalogo(chave: string, params?: Record<string, unknown>) {
     return request<RelatorioCatalogoDados>(`/relatorios/catalogo/${chave}${qs(params)}`);
   },
+  previaPrestacao(params?: Record<string, unknown>) {
+    return request<PreviaPrestacao>(`/secretaria/prestacao-contas${qs({ ...params, formato: "json" })}`);
+  },
   relatorioSecretarias(params?: Record<string, unknown>) {
     return request<RelatorioSecretarias>(`/relatorios/secretarias${qs(params)}`);
   },
@@ -629,6 +637,21 @@ export const api = {
   // Configurações
   getConfiguracoes() {
     return request<Configuracoes>("/configuracoes");
+  },
+  enviarLogoPdf(arquivo: File) {
+    const fd = new FormData();
+    fd.append("arquivo", arquivo);
+    return request<Configuracoes>("/configuracoes/pdf-logo", { method: "PUT", body: fd });
+  },
+  removerLogoPdf() {
+    return request<Configuracoes>("/configuracoes/pdf-logo", { method: "DELETE" });
+  },
+  /** Baixa um arquivo autenticado e devolve uma URL local (blob:) — logo e PDF de exemplo. */
+  async urlAutenticada(caminho: string): Promise<string> {
+    const token = getAccessToken();
+    const res = await fetch(`/api/govfrota${caminho}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+    if (!res.ok) throw new Error(res.status === 404 ? "Não encontrado." : "Falha ao carregar.");
+    return URL.createObjectURL(await res.blob());
   },
   updateConfiguracoes(data: Partial<Configuracoes>) {
     return request<Configuracoes>("/configuracoes", { method: "PATCH", body: JSON.stringify(data) });
@@ -837,10 +860,15 @@ export function getAccessToken(): string | null {
 // ── Tipos do app do motorista ─────────────────────────────────────────────────
 
 export interface UsoVeiculo {
+  saida_latitude?: number | null;
+  saida_longitude?: number | null;
+  chegada_latitude?: number | null;
+  chegada_longitude?: number | null;
   id: string;
   veiculo_id: string;
   veiculo_placa: string | null;
   veiculo_modelo: string | null;
+  veiculo_foto_url?: string | null;
   motorista_id: string;
   motorista_nome: string | null;
   unidade_id: string | null;
@@ -1002,6 +1030,8 @@ export interface MotoristaListItem {
   acesso_bloqueado: boolean;
   ultimo_acesso: string | null;
   situacao_cnh: string | null;
+  /** Secretaria do motorista; null = livre (qualquer veículo). */
+  unidade_id: string | null;
 }
 export interface Motorista extends MotoristaListItem {
   observacoes: string | null;
@@ -1243,6 +1273,7 @@ export interface FiltroNotasFiscais {
   fim?: string;
   fornecedor_id?: string;
   unidade_id?: string;
+  combustivel_id?: string;
   situacao?: string;
   busca?: string;
 }
@@ -1464,6 +1495,8 @@ export interface AlertaAtual {
   link: string | null;
 }
 export interface Abastecimento {
+  latitude?: number | string | null;
+  longitude?: number | string | null;
   id: string;
   /** AB-2026/000123 */
   numero?: string | null;
@@ -1567,6 +1600,8 @@ export interface PlanoPreventivo {
   ativo: boolean;
 }
 export interface Ocorrencia {
+  latitude?: number | string | null;
+  longitude?: number | string | null;
   id: string;
   veiculo_id: string;
   motorista_id: string | null;
@@ -1838,6 +1873,13 @@ export interface Configuracoes {
   antecedencia_alerta_manutencao_dias: number;
   simam_id_pessoa: number | null;
   simam_cpf_responsavel: string | null;
+  pdf_titulo: string | null;
+  pdf_subtitulo: string | null;
+  pdf_linha_extra: string | null;
+  pdf_rodape: string | null;
+  pdf_cor_primaria: string | null;
+  pdf_cor_secundaria: string | null;
+  pdf_tem_logo: boolean;
 }
 export interface AuditoriaRegistro {
   id: string;
@@ -1861,4 +1903,13 @@ export interface NotificacaoItem {
   link?: string | null;
   lida: boolean;
   created_at: string;
+}
+
+export interface PreviaPrestacao {
+  periodo: { inicio: string; fim: string };
+  secretaria: string | null;
+  indicadores: Record<string, number | null>;
+  comparativo: { indicador: string; atual: number | null; anterior: number | null; var_anterior: number | null; ano_anterior: number | null; var_ano_anterior: number | null }[];
+  pendencias: { sem_nota: number; sem_nota_valor: number; divergentes: number; com_alerta: number };
+  sintese: string;
 }

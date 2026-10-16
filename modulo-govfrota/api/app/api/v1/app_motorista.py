@@ -47,6 +47,29 @@ from app.services.auditoria import registrar_auditoria
 router = APIRouter(prefix="/app", tags=["app do motorista"])
 
 
+def veiculo_permitido(motorista: Motorista):
+    """Veículos que o motorista pode abastecer/usar.
+
+    Motorista sem secretaria é livre (qualquer veículo). Com secretaria, só os
+    veículos dela — e os que ainda não têm secretaria, para não travar a frota
+    enquanto o cadastro é completado.
+    """
+    from sqlalchemy import or_, true
+
+    if motorista.unidade_id is None:
+        return true()
+    return or_(Veiculo.unidade_id == motorista.unidade_id, Veiculo.unidade_id.is_(None))
+
+
+async def _exigir_veiculo_permitido(db: AsyncSession, motorista: Motorista, veiculo_id) -> None:
+    ok = await db.scalar(select(Veiculo.id).where(Veiculo.id == veiculo_id, veiculo_permitido(motorista)))
+    if ok is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Este veículo é de outra secretaria. Procure o gestor da frota.",
+        )
+
+
 @router.post("/motorista/login", response_model=TokenMotoristaResponse)
 async def login_motorista(
     body: LoginMotoristaRequest,
@@ -124,6 +147,19 @@ async def login_motorista(
     acesso.falhas_login = 0
     acesso.locked_until = None
     acesso.ultimo_acesso = agora
+    sessao_anterior = acesso.sessao_id
+    acesso.sessao_id = uuid.uuid4()
+    if sessao_anterior is not None:
+        await registrar_auditoria(
+            db,
+            organization_id=acesso.organization_id,
+            acao="motorista.sessao_substituida",
+            entidade="acesso_motorista",
+            entidade_id=motorista.id,
+            motorista_id=motorista.id,
+            dados_novos={},
+            ip_address=info.get("ip_address"),
+        )
     await registrar_auditoria(
         db,
         organization_id=acesso.organization_id,
@@ -137,7 +173,7 @@ async def login_motorista(
     await db.commit()
 
     token = create_driver_token(
-        motorista.id, acesso.id, acesso.organization_id, acesso.credential_version
+        motorista.id, acesso.id, acesso.organization_id, acesso.credential_version, acesso.sessao_id
     )
     return TokenMotoristaResponse(
         access_token=token,
@@ -186,6 +222,7 @@ async def veiculos_disponiveis(
         Veiculo.organization_id == motorista.organization_id,
         Veiculo.deleted_at.is_(None),
         Veiculo.situacao != "BAIXADO",
+        veiculo_permitido(motorista),
     )
     if search:
         like = f"%{search.replace('-', '').replace(' ', '')}%"
@@ -427,6 +464,7 @@ async def novo_abastecimento(
     ).scalar_one_or_none()
     if veiculo is None:
         raise HTTPException(status_code=404, detail="Veículo não encontrado.")
+    await _exigir_veiculo_permitido(db, motorista, veiculo.id)
 
     combustivel_id = body.combustivel_id
     if combustivel_id is None:
@@ -625,6 +663,7 @@ async def informar_problema(
     ).scalar_one_or_none()
     if veiculo_ok is None:
         raise HTTPException(status_code=404, detail="Veículo não encontrado.")
+    await _exigir_veiculo_permitido(db, motorista, veiculo_ok)
 
     # Id gerado no celular (fila offline): reenviar não duplica.
     if body.id is not None:

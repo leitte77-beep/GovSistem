@@ -1,16 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import {
-  AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, Clock, FileSpreadsheet, FileText, Flag, Gauge, MapPin, Plus, Route, Search,
+  AlertTriangle, ChevronDown, ChevronLeft, ChevronRight, Clock, FileSpreadsheet, FileText, Gauge, MapPin, Plus, Route, Search,
   SearchX, SlidersHorizontal, X,
 } from "lucide-react";
 import { api, FiltroUsos, Unidade, UsoVeiculo } from "@/lib/api";
 import { RequirePermission } from "@/components/RequirePermission";
 import { useAuth } from "@/lib/auth";
-import { FotoAnexo } from "@/components/abastecimento/FotoAnexo";
-import { BadgeStatusUso, dataHora, duracaoUso, medicaoUso } from "@/components/uso/uso";
+import { BadgeStatusUso, duracaoUso, medicaoUso } from "@/components/uso/uso";
 
 const LIMITE = 30;
 
@@ -54,7 +54,7 @@ export default function UsosPage() {
   const [veiculos, setVeiculos] = useState<{ id: string; placa: string }[]>([]);
   const [motoristas, setMotoristas] = useState<{ id: string; nome: string }[]>([]);
   const [unidades, setUnidades] = useState<Unidade[]>([]);
-  const [detalhe, setDetalhe] = useState<UsoVeiculo | null>(null);
+  const router = useRouter();
   const [lancando, setLancando] = useState(false);
 
   const carregar = useCallback(() => {
@@ -74,10 +74,10 @@ export default function UsosPage() {
     api.listVeiculos({ limit: 500 }).then((r) => setVeiculos(r.itens)).catch(() => {});
     api.listMotoristas({ limit: 500 }).then((r) => setMotoristas(r.itens)).catch(() => {});
     if (!restrito) api.listUnidades(true).then(setUnidades).catch(() => {});
-    // Link do alerta: /usos?uso=<id> abre o detalhe.
+    // Links antigos (/usos?uso=<id>) vão para a página do uso.
     const id = new URLSearchParams(window.location.search).get("uso");
-    if (id) api.getUso(id).then(setDetalhe).catch(() => {});
-  }, [restrito]);
+    if (id) router.replace(`/usos/${id}`);
+  }, [restrito, router]);
 
   function filtrar(chave: keyof FiltroUsos, valor: string | undefined) {
     setFiltros((f) => ({ ...f, [chave]: valor || undefined }));
@@ -183,7 +183,7 @@ export default function UsosPage() {
             </div>
             <div className="flex gap-3 overflow-x-auto pb-1">
               {emUso.map((u) => (
-                <button key={u.id} onClick={() => setDetalhe(u)}
+                <button key={u.id} onClick={() => router.push(`/usos/${u.id}`)}
                   className={`w-64 shrink-0 rounded-xl border p-3 text-left transition-all hover:-translate-y-0.5 hover:shadow-md ${u.atrasado ? "border-red-200 bg-red-50/70" : "border-outline-variant/40 bg-surface-container-lowest"}`}>
                   <div className="flex items-center justify-between gap-2">
                     <span className="rounded-md border-2 border-[#0F172A] bg-white px-1.5 font-mono text-sm font-bold leading-5">{u.veiculo_placa}</span>
@@ -304,7 +304,7 @@ export default function UsosPage() {
               ))}
               {dados?.itens.map((u) => (
                 <li key={u.id}>
-                  <button onClick={() => setDetalhe(u)} className="group flex w-full flex-col gap-3 p-4 text-left transition-colors hover:bg-surface-container-lowest md:flex-row md:items-center">
+                  <button onClick={() => router.push(`/usos/${u.id}`)} className="group flex w-full flex-col gap-3 p-4 text-left transition-colors hover:bg-surface-container-lowest md:flex-row md:items-center">
                     <div className="flex min-w-0 flex-1 items-center gap-3">
                       <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#E5EEFF] to-[#C7D7FE] text-sm font-bold text-[#1D4ED8]">
                         {iniciais(u.motorista_nome)}
@@ -372,10 +372,6 @@ export default function UsosPage() {
         )}
       </div>
 
-      {detalhe && (
-        <DetalheUso uso={detalhe} podeGerir={podeGerir} onClose={() => setDetalhe(null)}
-          onMudou={(u) => { setDetalhe(u); carregar(); }} />
-      )}
       {lancando && (
         <LancarUso veiculos={veiculos} motoristas={motoristas} onClose={() => setLancando(false)}
           onSalvo={() => { setLancando(false); carregar(); }} />
@@ -426,108 +422,6 @@ function Painel({ titulo, onClose, children }: { titulo: string; onClose: () => 
         </div>
         <div className="space-y-4 p-6">{children}</div>
       </div>
-    </div>
-  );
-}
-
-function DetalheUso({ uso: u, podeGerir, onClose, onMudou }: {
-  uso: UsoVeiculo; podeGerir: boolean; onClose: () => void; onMudou: (u: UsoVeiculo) => void;
-}) {
-  const [encerrando, setEncerrando] = useState(false);
-  const [medicao, setMedicao] = useState("");
-  const [motivo, setMotivo] = useState("");
-  const [chegada, setChegada] = useState("");
-  const [salvando, setSalvando] = useState(false);
-  const un = u.usa_horimetro ? "Horímetro" : "Km";
-
-  async function encerrar() {
-    setSalvando(true);
-    try {
-      onMudou(await api.encerrarUso(u.id, {
-        medicao: Number(medicao.replace(",", ".")),
-        motivo,
-        chegada_em: chegada ? new Date(chegada).toISOString() : null,
-      }));
-      setEncerrando(false);
-      toast.success("Uso encerrado.");
-    } catch (e) {
-      toast.error((e as Error).message);
-    } finally {
-      setSalvando(false);
-    }
-  }
-
-  return (
-    <Painel titulo={`Uso — ${u.veiculo_placa}`} onClose={onClose}>
-      <div className="flex flex-wrap items-center gap-2">
-        <BadgeStatusUso u={u} />
-        {u.origem === "PAINEL" && <span className="rounded-pill bg-surface-container px-2 py-0.5 text-meta">Lançado pelo painel</span>}
-      </div>
-      {u.alertas.map((a) => (
-        <p key={a.tipo} className="flex items-start gap-2 rounded-xl bg-amber-50 px-3 py-2 text-sm text-[#93370D]"><AlertTriangle size={16} className="mt-0.5 shrink-0" /> {a.mensagem}</p>
-      ))}
-      <dl className="grid gap-3 rounded-2xl bg-surface-card p-4 text-sm shadow-card sm:grid-cols-2">
-        <Info t="Veículo" v={`${u.veiculo_placa} ${u.veiculo_modelo ? `— ${u.veiculo_modelo}` : ""}`} />
-        <Info t="Motorista" v={u.motorista_nome} />
-        <Info t="Secretaria" v={u.unidade_nome} />
-        <Info t="Destino" v={u.destino} />
-        <div className="sm:col-span-2"><Info t="Finalidade" v={u.finalidade} /></div>
-        <Info t="Percorrido" v={medicaoUso(u.percorrido, u.usa_horimetro)} />
-        <Info t="Duração" v={duracaoUso(u.duracao_min)} />
-        {u.motivo_encerramento && <div className="sm:col-span-2"><Info t="Motivo do encerramento" v={u.motivo_encerramento} /></div>}
-      </dl>
-      <div className="grid gap-3 sm:grid-cols-2">
-        {([
-          ["Saída", u.saida_em, u.medicao_saida, u.foto_saida_url],
-          ["Chegada", u.chegada_em, u.medicao_chegada, u.foto_chegada_url],
-        ] as const).map(([rotulo, quando, valor, foto]) => (
-          <div key={rotulo} className="overflow-hidden rounded-2xl bg-surface-card shadow-card">
-            <div className="aspect-[4/3] bg-surface-container">
-              {foto ? <FotoAnexo url={foto} alt={`Painel na ${rotulo.toLowerCase()}`} className="h-full w-full !rounded-none !border-0" />
-                : <div className="flex h-full items-center justify-center text-meta text-on-surface-variant">Sem foto</div>}
-            </div>
-            <div className="p-3">
-              <p className="text-meta font-semibold uppercase text-on-surface-variant">{rotulo}</p>
-              <p className="text-body-sm font-semibold">{medicaoUso(valor, u.usa_horimetro)}</p>
-              <p className="text-meta text-on-surface-variant">{dataHora(quando)}</p>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {u.status === "EM_USO" && podeGerir && (
-        encerrando ? (
-          <div className="space-y-3 rounded-2xl bg-surface-card p-4 shadow-card">
-            <h3 className="font-semibold">Encerrar uso</h3>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Campo texto={`${un} de chegada`}>
-                <input className="input" inputMode="decimal" value={medicao} onChange={(e) => setMedicao(e.target.value)} />
-              </Campo>
-              <Campo texto="Chegada (vazio = agora)">
-                <input type="datetime-local" className="input" value={chegada} onChange={(e) => setChegada(e.target.value)} />
-              </Campo>
-            </div>
-            <Campo texto="Motivo">
-              <textarea className="input" rows={2} value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="Ex.: motorista esqueceu de registrar a chegada" />
-            </Campo>
-            <div className="flex justify-end gap-2">
-              <button className="btn btn-secondary btn-sm" onClick={() => setEncerrando(false)}>Cancelar</button>
-              <button className="btn btn-primary btn-sm" disabled={salvando || !medicao || motivo.trim().length < 3} onClick={encerrar}>Encerrar</button>
-            </div>
-          </div>
-        ) : (
-          <button className="btn btn-primary btn-sm" onClick={() => setEncerrando(true)}><Flag size={15} /> Encerrar uso</button>
-        )
-      )}
-    </Painel>
-  );
-}
-
-function Info({ t, v }: { t: string; v: string | null | undefined }) {
-  return (
-    <div>
-      <dt className="text-meta text-on-surface-variant">{t}</dt>
-      <dd className="text-on-surface">{v || "—"}</dd>
     </div>
   );
 }

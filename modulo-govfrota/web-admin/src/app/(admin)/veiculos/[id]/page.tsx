@@ -499,7 +499,7 @@ export default function DetalheVeiculoPage() {
               {usos.itens.length === 0 && <Vazio colSpan={7} texto="Sem registros de uso." />}
               {usos.itens.map((u) => (
                 <tr key={u.id} className="hover:bg-surface-container-lowest">
-                  <td className="px-4 py-3"><Link href={`/usos?uso=${u.id}`} className="text-primary hover:underline">{dataHora(u.saida_em)}</Link></td>
+                  <td className="px-4 py-3"><Link href={`/usos/${u.id}`} className="text-primary hover:underline">{dataHora(u.saida_em)}</Link></td>
                   <td className="px-4 py-3">{dataHora(u.chegada_em)}</td>
                   <td className="px-4 py-3">{u.motorista_nome}</td>
                   <td className="max-w-xs px-4 py-3">

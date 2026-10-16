@@ -67,7 +67,7 @@ export function ModalCorrigir({
         </p>
         <label className="text-meta">
           Litros (atual: {formatarLitros(abastecimento.quantidade_litros)})
-          <input required type="number" step="0.01" min="0.01" value={litros} onChange={(e) => setLitros(Number(e.target.value))} className="input mt-1" />
+          <input required type="number" step="0.001" min="0.001" value={litros} onChange={(e) => setLitros(Number(e.target.value))} className="input mt-1" />
         </label>
         <label className="mt-3 block text-meta">
           {horas ? "Horímetro (h)" : "Quilometragem"}

@@ -160,7 +160,7 @@ async def alertas_atuais(db: AsyncSession, organization_id: uuid.UUID) -> list[d
     for u, placa, nome in usos:
         horas = int((datetime.now(timezone.utc) - ensure_aware(u.saida_em)).total_seconds() // 3600)
         itens.append(_alerta("USO_ABERTO", "ALERTA", f"Uso em aberto há {horas} h — {placa}",
-                             f"{nome} saiu para {u.destino} e não registrou a chegada.", f"/usos?uso={u.id}"))
+                             f"{nome} saiu para {u.destino} e não registrou a chegada.", f"/usos/{u.id}"))
 
     # CNH vencida ou vencendo
     motoristas = (

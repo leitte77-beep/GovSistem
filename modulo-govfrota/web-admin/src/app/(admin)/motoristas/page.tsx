@@ -24,7 +24,7 @@ import {
   X,
   XCircle,
 } from "lucide-react";
-import { api, Motorista, MotoristaListItem, Paginado } from "@/lib/api";
+import { api, Motorista, MotoristaListItem, Paginado, Unidade } from "@/lib/api";
 import { RequirePermission } from "@/components/RequirePermission";
 import { useAuth } from "@/lib/auth";
 import { MenuAcoes, type MenuAcao } from "@/components/veiculo/MenuAcoes";
@@ -46,9 +46,10 @@ interface Filtros {
   situacao_cnh: string;
   acesso_status: string;
   cnh_categoria: string;
+  unidade: string;
 }
 
-const FILTROS_VAZIO: Filtros = { ativo: "", situacao_cnh: "", acesso_status: "", cnh_categoria: "" };
+const FILTROS_VAZIO: Filtros = { ativo: "", situacao_cnh: "", acesso_status: "", cnh_categoria: "", unidade: "" };
 
 type Sortable = "nome" | "cnh_validade" | "ativo" | "ultimo_acesso";
 const SORT_BACKEND: Record<string, string> = {
@@ -96,6 +97,12 @@ export default function MotoristasPage() {
   const [limit, setLimit] = useState(20);
   const [drawerAberto, setDrawerAberto] = useState(false);
   const [editando, setEditando] = useState<Motorista | null>(null);
+  const [unidades, setUnidades] = useState<Unidade[]>([]);
+
+  useEffect(() => {
+    api.listUnidades().then(setUnidades).catch(() => setUnidades([]));
+  }, []);
+  const nomeUnidade = (id: string | null) => (id ? unidades.find((u) => u.id === id)?.nome ?? "Secretaria" : null);
 
   const buscaTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -140,6 +147,7 @@ export default function MotoristasPage() {
           situacao_cnh: filtros.situacao_cnh || undefined,
           acesso_status: filtros.acesso_status || undefined,
           cnh_categoria: filtros.cnh_categoria || undefined,
+          unidade: filtros.unidade || undefined,
           sort_by: SORT_BACKEND[sortBy],
           order,
           skip,
@@ -187,17 +195,19 @@ export default function MotoristasPage() {
     !!filtros.ativo ||
     !!filtros.situacao_cnh ||
     !!filtros.acesso_status ||
-    !!filtros.cnh_categoria;
+    !!filtros.cnh_categoria ||
+    !!filtros.unidade;
 
   const chips: { chave: string; label: string }[] = [
     filtros.ativo && { chave: "ativo", label: `Status: ${filtros.ativo === "true" ? "Ativo" : "Inativo"}` },
     filtros.situacao_cnh && { chave: "situacao_cnh", label: `CNH: ${SITUACAO_CNH_OPCOES.find((o) => o.valor === filtros.situacao_cnh)?.rotulo}` },
     filtros.acesso_status && { chave: "acesso_status", label: `Acesso: ${ACESSO_OPCOES.find((o) => o.valor === filtros.acesso_status)?.rotulo}` },
     filtros.cnh_categoria && { chave: "cnh_categoria", label: `Categoria CNH: ${filtros.cnh_categoria}` },
+    filtros.unidade && { chave: "unidade", label: `Secretaria: ${filtros.unidade === "LIVRE" ? "Livres" : nomeUnidade(filtros.unidade)}` },
   ].filter(Boolean) as { chave: string; label: string }[];
 
   function removerChip(chave: string) {
-    if (chave === "ativo" || chave === "situacao_cnh" || chave === "acesso_status" || chave === "cnh_categoria") {
+    if (chave === "ativo" || chave === "situacao_cnh" || chave === "acesso_status" || chave === "cnh_categoria" || chave === "unidade") {
       setFiltros((f) => ({ ...f, [chave]: "" }));
     }
     setPagina(1);
@@ -428,6 +438,15 @@ export default function MotoristasPage() {
                   ))}
                 </select>
               </Label>
+              <Label texto="Secretaria">
+                <select className="input" value={filtros.unidade} onChange={(e) => aplicarFiltro("unidade", e.target.value)}>
+                  <option value="">Todas</option>
+                  <option value="LIVRE">Livres (qualquer veículo)</option>
+                  {unidades.map((u) => (
+                    <option key={u.id} value={u.id}>{u.nome}</option>
+                  ))}
+                </select>
+              </Label>
               <Label texto="Categoria CNH">
                 <select className="input" value={filtros.cnh_categoria} onChange={(e) => aplicarFiltro("cnh_categoria", e.target.value)}>
                   <option value="">Todas</option>
@@ -489,7 +508,7 @@ export default function MotoristasPage() {
                 </thead>
                 <tbody className="divide-y divide-outline-variant/20">
                   {dados.itens.map((m) => (
-                    <LinhaMotorista key={m.id} m={m} acoes={acoes(m)} />
+                    <LinhaMotorista key={m.id} m={m} acoes={acoes(m)} secretaria={nomeUnidade(m.unidade_id)} />
                   ))}
                 </tbody>
               </table>
@@ -530,7 +549,7 @@ export default function MotoristasPage() {
         {dados && total > 0 && (
           <div className="space-y-3 md:hidden">
             {dados.itens.map((m) => (
-              <CardMotorista key={m.id} m={m} acoes={acoes(m)} />
+              <CardMotorista key={m.id} m={m} acoes={acoes(m)} secretaria={nomeUnidade(m.unidade_id)} />
             ))}
           </div>
         )}
@@ -646,7 +665,15 @@ function BadgeStatus({ ativo }: { ativo: boolean }) {
   );
 }
 
-function LinhaMotorista({ m, acoes }: { m: MotoristaListItem; acoes: MenuAcao[] }) {
+function BadgeSecretaria({ nome }: { nome: string | null }) {
+  return nome ? (
+    <span className="rounded-md border border-outline-variant/50 bg-surface-container-low px-2 py-0.5 text-[11px] font-semibold text-text-body">{nome}</span>
+  ) : (
+    <span className="rounded-md border border-[#BBF7D0] bg-[#F0FDF4] px-2 py-0.5 text-[11px] font-semibold text-[#15803D]" title="Abastece e usa qualquer veículo">Livre</span>
+  );
+}
+
+function LinhaMotorista({ m, acoes, secretaria }: { m: MotoristaListItem; acoes: MenuAcao[]; secretaria: string | null }) {
   return (
     <tr className="group cursor-pointer border-b border-outline-variant/20 transition-colors last:border-0 hover:bg-[#EFF6FF]/50">
       <td className="px-5 py-4">
@@ -657,6 +684,7 @@ function LinhaMotorista({ m, acoes }: { m: MotoristaListItem; acoes: MenuAcao[] 
             <span className="mt-0.5 text-meta font-medium text-text-subtle">
               {mascararCpf(m.cpf)}{m.matricula ? ` • Matrícula ${m.matricula}` : ""}
             </span>
+            <span className="mt-1"><BadgeSecretaria nome={secretaria} /></span>
           </div>
         </Link>
       </td>
@@ -698,7 +726,7 @@ function LinhaMotorista({ m, acoes }: { m: MotoristaListItem; acoes: MenuAcao[] 
   );
 }
 
-function CardMotorista({ m, acoes }: { m: MotoristaListItem; acoes: MenuAcao[] }) {
+function CardMotorista({ m, acoes, secretaria }: { m: MotoristaListItem; acoes: MenuAcao[]; secretaria: string | null }) {
   return (
     <div className="rounded-2xl border border-outline-variant/50 bg-surface-card p-4 shadow-sm">
       <div className="flex items-start gap-3">
@@ -714,6 +742,7 @@ function CardMotorista({ m, acoes }: { m: MotoristaListItem; acoes: MenuAcao[] }
             <BadgeCnh validade={m.cnh_validade} />
           </div>
           <div className="mt-2 flex flex-wrap items-center gap-2">
+            <BadgeSecretaria nome={secretaria} />
             <BadgeAcesso m={m} />
             <BadgeStatus ativo={m.ativo} />
           </div>

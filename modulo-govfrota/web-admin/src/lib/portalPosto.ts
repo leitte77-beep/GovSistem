@@ -223,7 +223,7 @@ export const portal = {
 
 export const brl = (v: number | null | undefined) =>
   v == null ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-export const litros = (v: number) => `${v.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} L`;
+export const litros = (v: number) => `${v.toLocaleString("pt-BR", { maximumFractionDigits: 3 })} L`;
 export const dataBr = (d: string) => new Date(d.length === 10 ? d + "T12:00" : d).toLocaleDateString("pt-BR");
 export const dataHora = (d: string) => new Date(d).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 

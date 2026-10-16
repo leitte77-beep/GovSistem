@@ -279,7 +279,7 @@ export default function InicioMotoristaPage() {
                   <div className="flex items-center justify-between gap-2">
                     <span className="font-mono text-[15px] font-bold text-[#1D5BD6]">{p.resumo.placa}</span>
                     <span className="text-[#475569]">
-                      {Number(p.resumo.litros).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} L ·{" "}
+                      {Number(p.resumo.litros).toLocaleString("pt-BR", { maximumFractionDigits: 3 })} L ·{" "}
                       {new Date(p.registrado_em).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" })}
                     </span>
                   </div>

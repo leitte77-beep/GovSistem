@@ -153,6 +153,43 @@ def _periodo_br(inicio: str | None, fim: str | None) -> str:
         return f"{inicio or 'início'} a {fim or 'hoje'}"
 
 
+def _abastecimentos_xml(dados: list[dict], org_nome, org_cnpj, data_inicio, data_fim,
+                        total_litros: float, total_custo: float) -> bytes:
+    """XML para integração com outros sistemas: valores com ponto decimal e datas ISO 8601."""
+    from xml.etree import ElementTree as ET
+
+    def num(v) -> str | None:
+        return None if v is None else (str(v) if isinstance(v, int) else f"{v:.4f}".rstrip("0").rstrip("."))
+
+    raiz = ET.Element("relatorioAbastecimentos", versao="1.0")
+    cab = ET.SubElement(raiz, "cabecalho")
+    for tag, v in (
+        ("organizacao", org_nome), ("cnpj", org_cnpj), ("periodoInicio", data_inicio), ("periodoFim", data_fim),
+        ("geradoEm", utcnow().isoformat()), ("totalRegistros", len(dados)),
+        ("totalLitros", round(total_litros, 3)), ("totalCusto", round(total_custo, 2)),
+    ):
+        if v not in (None, ""):
+            ET.SubElement(cab, tag).text = num(v) if isinstance(v, (int, float)) else str(v)
+    lista = ET.SubElement(raiz, "abastecimentos")
+    campos = (
+        ("numero", "numero"), ("data", "dataHora"), ("placa", "placa"), ("veiculo", "veiculo"),
+        ("unidade", "secretaria"), ("motorista", "motorista"), ("combustivel", "combustivel"),
+        ("modalidade", "modalidade"), ("posto", "posto"), ("tanque", "tanque"), ("litros", "litros"),
+        ("km", "quilometragem"), ("horimetro", "horimetro"), ("consumo_km_l", "consumoKmL"),
+        ("consumo_l_h", "consumoLH"), ("preco_litro", "precoLitro"), ("custo_total", "custoTotal"),
+        ("numero_nf", "notaFiscal"), ("situacao_nota", "situacaoNota"), ("origem", "origem"),
+    )
+    for d in dados:
+        el = ET.SubElement(lista, "abastecimento", id=d["id"])
+        for chave, tag in campos:
+            v = d.get(chave)
+            if v is None or v == "":
+                continue
+            ET.SubElement(el, tag).text = num(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else str(v)
+    ET.indent(raiz)
+    return ET.tostring(raiz, encoding="utf-8", xml_declaration=True)
+
+
 @router.get("/abastecimentos")
 async def relatorio_abastecimentos(
     formato: str = "json",
@@ -287,6 +324,13 @@ async def relatorio_abastecimentos(
     total_custo = sum(d["custo_total"] or 0 for d in dados)
     grupos = _agrupar(dados, agrupar_por) if agrupar_por else None
 
+    if formato == "xml":
+        org_nome, org_cnpj, _ = await get_organizacao_meta(db, user.organization_id)
+        return Response(
+            content=_abastecimentos_xml(dados, org_nome, org_cnpj, data_inicio, data_fim, total_litros, total_custo),
+            media_type="application/xml; charset=utf-8",
+            headers={"Content-Disposition": 'attachment; filename="abastecimentos.xml"'},
+        )
     if formato == "csv":
         return _csv_response(
             "abastecimentos.csv",

@@ -8,6 +8,7 @@
 """
 
 import io
+from contextvars import ContextVar
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -32,6 +33,38 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.timezone import now_local
 
 FONT = "Helvetica"
+
+# Personalização do PDF da organização (Configurações → Relatórios em PDF).
+# Carregada por get_organizacao_nome/get_organizacao_meta, que todo relatório
+# chama antes de build_pdf, e lida aqui sem mudar a assinatura de cada um.
+_PERSONALIZACAO: ContextVar[dict | None] = ContextVar("govfrota_pdf_personalizacao", default=None)
+COR_PRIMARIA = "#1D4ED8"
+COR_SECUNDARIA = "#F59E0B"
+
+
+def _pers() -> dict:
+    return _PERSONALIZACAO.get() or {}
+
+
+async def carregar_personalizacao(db: AsyncSession, organization_id) -> dict:
+    from sqlalchemy import select
+    from sqlalchemy.orm import undefer
+
+    from app.models.configuracoes import ConfiguracaoGovFrota
+
+    c = (
+        await db.execute(
+            select(ConfiguracaoGovFrota).options(undefer(ConfiguracaoGovFrota.pdf_logo))
+            .where(ConfiguracaoGovFrota.organization_id == organization_id)
+        )
+    ).scalar_one_or_none()
+    pers = {
+        "titulo": c.pdf_titulo, "subtitulo": c.pdf_subtitulo, "linha_extra": c.pdf_linha_extra,
+        "rodape": c.pdf_rodape, "cor_primaria": c.pdf_cor_primaria, "cor_secundaria": c.pdf_cor_secundaria,
+        "logo": c.pdf_logo,
+    } if c else {}
+    _PERSONALIZACAO.set(pers)
+    return pers
 
 
 class RelatorioMeta:
@@ -259,7 +292,11 @@ class _CanvasNumerado(Canvas):
             self.__dict__.update(estado)
             self.setFont(FONT, 8)
             self.setFillColor(colors.HexColor("#6B7280"))
-            self.drawCentredString(self._pagesize[0] / 2, 8 * mm, f"Página {self._pageNumber} de {total}")
+            texto = f"Página {self._pageNumber} de {total}"
+            if _pers().get("rodape"):
+                self.drawRightString(self._pagesize[0] - 15 * mm, 8 * mm, texto)
+            else:
+                self.drawCentredString(self._pagesize[0] / 2, 8 * mm, texto)
             super().showPage()
         super().save()
 
@@ -293,24 +330,40 @@ def _estilos():
     )
     section = ParagraphStyle(
         "Section", parent=ss["Normal"], fontName="Helvetica-Bold", fontSize=11,
-        textColor=colors.HexColor("#111827"), spaceBefore=8, spaceAfter=4,
+        textColor=colors.HexColor("#111827"), spaceBefore=8, spaceAfter=4, keepWithNext=1,
     )
     return title, subtitle, meta, table_cell, table_cell_center, table_cell_right, header_cell, section
 
 
 def _paginas(canvas, doc, meta, usuario):
     canvas.saveState()
-    # Rodapé: órgão, emissão e usuário gerador (a paginação "x de y" vem do _CanvasNumerado)
-    largura = doc.pagesize[0]
+    pers = _pers()
+    largura, altura = doc.pagesize
+    # Faixa no topo: azul-escuro → cor primária → cor secundária.
+    caminho = canvas.beginPath()
+    caminho.roundRect(15 * mm, altura - 9 * mm, largura - 30 * mm, 1.6 * mm, 0.8 * mm)
+    canvas.clipPath(caminho, stroke=0, fill=0)
+    canvas.linearGradient(
+        15 * mm, 0, largura - 15 * mm, 0,
+        (colors.HexColor("#0F172A"), colors.HexColor(pers.get("cor_primaria") or COR_PRIMARIA),
+         colors.HexColor(pers.get("cor_secundaria") or COR_SECUNDARIA)),
+        (0, 0.5, 1), extend=False,
+    )
+    canvas.restoreState()
+    canvas.saveState()
+    # Rodapé: texto do órgão, emissão e usuário gerador (a paginação "x de y" vem do _CanvasNumerado)
     canvas.setStrokeColor(colors.HexColor("#D1D5DB"))
     canvas.line(15 * mm, 15.5 * mm, largura - 15 * mm, 15.5 * mm)
     canvas.setFont(FONT, 8)
     canvas.setFillColor(colors.HexColor("#6B7280"))
-    canvas.drawString(15 * mm, 12 * mm, f"GovFrota · {meta.organizacao}")
-    canvas.drawRightString(
-        largura - 15 * mm, 12 * mm,
-        f"Emitido em {meta.gerado_em.strftime('%d/%m/%Y %H:%M')} por {usuario}",
-    )
+    emissao = f"Emitido em {meta.gerado_em.strftime('%d/%m/%Y %H:%M')} por {usuario}"
+    rodape = pers.get("rodape")
+    if rodape:
+        canvas.drawCentredString(largura / 2, 12 * mm, rodape[:160])
+        canvas.drawString(15 * mm, 8 * mm, emissao)
+    else:
+        canvas.drawString(15 * mm, 12 * mm, f"GovFrota · {meta.organizacao}")
+        canvas.drawRightString(largura - 15 * mm, 12 * mm, emissao)
     canvas.restoreState()
 
 
@@ -335,7 +388,8 @@ def build_pdf(
     Opcionais do relatório oficial: `paisagem`, `resumo` (cartões de totais),
     `resumo_grupos` (tabela de subtotais), `grupos` (título, linhas, subtotal
     — uma tabela por grupo), `assinaturas` (linhas de assinatura no fim) e
-    `larguras` (proporção de cada coluna).
+    `larguras` (proporção de cada coluna). Em `sections`, um item com
+    cabeçalho None é um bloco livre de flowables.
     """
     title, subtitle, meta_style, tcell, tcell_c, tcell_r, hcell, section_style = _estilos()
     pagina = landscape(A4) if paisagem else A4
@@ -353,24 +407,35 @@ def build_pdf(
         author="GovFrota",
     )
 
+    pers = _pers()
+    cor1 = colors.HexColor(pers.get("cor_primaria") or COR_PRIMARIA)
+    title.textColor = cor1
     story = []
-    cab = [Paragraph(meta.organizacao, ParagraphStyle("Org", parent=title, fontSize=13, textColor=colors.HexColor("#111827")))]
-    if meta.cnpj:
-        cab.append(Paragraph(f"CNPJ {meta.cnpj}", subtitle))
-    cab.append(Paragraph("GovFrota · Gestão de Frotas", subtitle))
-    logo = None
-    if meta.logo:
+    from xml.sax.saxutils import escape as _esc
+
+    centro = ParagraphStyle("CabC", parent=subtitle, alignment=TA_CENTER)
+    org_titulo = ParagraphStyle("CabT", parent=title, fontName="Helvetica-Bold", fontSize=15, leading=18,
+                                textColor=colors.HexColor("#0F172A"), alignment=TA_CENTER, spaceAfter=1)
+    org_sub = ParagraphStyle("CabS", parent=centro, fontName="Helvetica-Bold", fontSize=8.5, leading=11,
+                             textColor=colors.HexColor("#475569"))
+    logo_bytes = pers.get("logo") or meta.logo
+    if logo_bytes:
         try:
-            logo = Image(io.BytesIO(meta.logo), width=18 * mm, height=18 * mm, kind="proportional")
+            img = Image(io.BytesIO(logo_bytes), width=24 * mm, height=22 * mm, kind="proportional")
+            img.hAlign = "CENTER"
+            story += [img, Spacer(1, 3)]
         except Exception:  # logo inválido não impede o relatório
-            logo = None
-    if logo is not None:
-        t = Table([[logo, cab]], colWidths=[22 * mm, util - 22 * mm])
-        t.setStyle(TableStyle([("VALIGN", (0, 0), (-1, -1), "MIDDLE"), ("LEFTPADDING", (0, 0), (-1, -1), 0)]))
-        story.append(t)
-    else:
-        story.extend(cab)
-    story.append(Spacer(1, 4))
+            pass
+    story.append(Paragraph(_esc(pers.get("titulo") or meta.organizacao.upper()), org_titulo))
+    sub = pers.get("subtitulo") if pers.get("titulo") else (pers.get("subtitulo") or "GovFrota · Gestão de Frotas")
+    if sub:
+        story.append(Paragraph(_esc(sub).upper(), org_sub))
+    extra = pers.get("linha_extra") or (f"CNPJ {meta.cnpj}" if meta.cnpj else None)
+    if extra:
+        story.append(Paragraph(_esc(extra), centro))
+    linha = Table([[""]], colWidths=[util], rowHeights=[1])
+    linha.setStyle(TableStyle([("LINEBELOW", (0, 0), (-1, -1), 0.5, colors.HexColor("#E2E8F0"))]))
+    story += [Spacer(1, 4), linha, Spacer(1, 6)]
     story.append(Paragraph(meta.titulo, title))
     story.append(Paragraph(f"Período: {meta.periodo}", meta_style))
     if meta.filtros:
@@ -412,7 +477,7 @@ def build_pdf(
                 col_widths = [w * scale for w in col_widths]
         table = Table(data, colWidths=col_widths, repeatRows=1)
         style = [
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1D4ED8")),
+            ("BACKGROUND", (0, 0), (-1, 0), cor1),
             ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#D1D5DB")),
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#F3F4F6")]),
             ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -445,6 +510,11 @@ def build_pdf(
 
     if sections:
         for nome, hdrs, rws in sections:
+            if hdrs is None:  # bloco livre: `rws` já são flowables (texto, gráfico, quebra de página)
+                if nome:
+                    story.append(Paragraph(nome, section_style))
+                story.extend(rws)
+                continue
             story.append(Paragraph(nome, section_style))
             story.append(_render_table(hdrs, rws))
             story.append(Spacer(1, 6))
@@ -479,6 +549,7 @@ async def get_organizacao_nome(db: AsyncSession, organization_id) -> str:
 
     from app.models.auth_models import Organization
 
+    await carregar_personalizacao(db, organization_id)
     org = await db.get(Organization, organization_id)
     return org.name if org else "Organização"
 
@@ -491,9 +562,12 @@ async def get_organizacao_meta(db: AsyncSession, organization_id) -> tuple[str, 
     """
     from app.models.auth_models import Organization
 
+    pers = await carregar_personalizacao(db, organization_id)
     org = await db.get(Organization, organization_id)
     if org is None:
         return "Organização", None, None
+    if pers.get("logo"):  # logo próprio do relatório dispensa buscar o brasão
+        return org.name, org.cnpj, pers["logo"]
     logo = None
     if org.logo_url and org.logo_url.startswith("https://"):
         try:

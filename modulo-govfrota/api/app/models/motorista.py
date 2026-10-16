@@ -51,6 +51,11 @@ class Motorista(Base, TimestampMixin, SoftDeleteMixin):
     observacoes: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
     foto_url: Mapped[Optional[str]] = mapped_column(String(500), nullable=True)
     ativo: Mapped[bool] = mapped_column(Boolean(), default=True, nullable=False)
+    # Secretaria do motorista. Vazio = motorista livre: abastece e usa
+    # qualquer veículo da organização.
+    unidade_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("unidades.id"), nullable=True, index=True
+    )
 
     acesso: Mapped[Optional["AcessoMotorista"]] = relationship(
         back_populates="motorista", uselist=False, cascade="all, delete-orphan"
@@ -98,6 +103,9 @@ class AcessoMotorista(Base, TimestampMixin):
     # PIN, bloqueio administrativo). O token de acesso do motorista embute esta
     # versão; na autenticação, versão divergente ⇒ sessão revogada (401).
     credential_version: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    # Sessão única: cada login gera um id novo e o token embute esse id.
+    # Login em outro aparelho troca o id ⇒ o aparelho anterior cai (401).
+    sessao_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True), nullable=True)
 
     motorista: Mapped["Motorista"] = relationship(back_populates="acesso")
 

@@ -6,6 +6,7 @@ from sqlalchemy import func as sa_func
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.api.v1.veiculos import _validar_unidade
 from app.core.auth import require_permission
 from app.core.database import get_db
 from app.core.permissions import Perm
@@ -82,6 +83,7 @@ async def listar(
     cnh_categoria: str | None = None,
     situacao_cnh: str | None = None,
     acesso_status: str | None = None,
+    unidade: str | None = None,
     sort_by: str = "nome",
     order: str = "asc",
     skip: int = 0,
@@ -123,6 +125,14 @@ async def listar(
         cond.append(AcessoMotorista.motorista_id.isnot(None))
     elif acesso_status == "BLOQUEADO":
         cond.append(AcessoMotorista.bloqueado.is_(True))
+
+    if unidade == "LIVRE":
+        cond.append(Motorista.unidade_id.is_(None))
+    elif unidade:
+        try:
+            cond.append(Motorista.unidade_id == uuid.UUID(unidade))
+        except ValueError:
+            raise HTTPException(status_code=422, detail="Secretaria inválida.")
 
     # Join com a credencial — permite acesso/último acesso na listagem (sem N+1).
     base = (
@@ -179,6 +189,7 @@ async def criar(
     if existente.scalar_one_or_none():
         raise HTTPException(status_code=422, detail="Já existe um motorista com este CPF.")
 
+    await _validar_unidade(db, user, body.unidade_id)
     motorista = Motorista(**{**body.model_dump(), "cpf": cpf}, organization_id=user.organization_id)
     db.add(motorista)
     await db.flush()
@@ -214,6 +225,8 @@ async def atualizar(
     db: AsyncSession = Depends(get_db),
 ):
     motorista = await _get_motorista_tenant(db, user, motorista_id)
+    if body.unidade_id is not None:
+        await _validar_unidade(db, user, body.unidade_id)
     for campo, valor in body.model_dump(exclude_unset=True).items():
         setattr(motorista, campo, valor)
     await registrar_auditoria(

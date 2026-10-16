@@ -418,7 +418,7 @@ export function AbastecimentoFormDrawer({ aberto, onClose, onSalvo, veiculoPrese
         {/* Quantidade e KM */}
         <section className="grid gap-4 sm:grid-cols-2">
           <Label texto="Litros abastecidos *">
-            <input type="number" step="0.01" min="0.01" value={litros} onChange={(e) => setLitros(e.target.value)} className="input" placeholder="0,00" />
+            <input type="number" step="0.001" min="0.001" value={litros} onChange={(e) => setLitros(e.target.value)} className="input" placeholder="0,00" />
           </Label>
           <Label texto={veiculo?.usa_horimetro ? "Horímetro atual *" : "KM atual *"}>
             <input type="number" step={veiculo?.usa_horimetro ? "0.1" : "1"} min="0" value={km} onChange={(e) => setKm(e.target.value)} className="input" placeholder={veiculo?.usa_horimetro ? "0,0" : "0"} disabled={!veiculo} />

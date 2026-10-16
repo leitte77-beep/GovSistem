@@ -9,6 +9,7 @@ import { Ocorrencia, api } from "@/lib/api";
 import { RequirePermission } from "@/components/RequirePermission";
 import { useAuth } from "@/lib/auth";
 import { FotoAnexo } from "@/components/abastecimento/FotoAnexo";
+import MapaLocal from "@/components/MapaLocal";
 import { BadgeCategoria, BadgeGravidade, BadgeOrigem, BadgeStatus } from "@/components/ocorrencia/Badges";
 import { ModalResolver } from "@/components/ocorrencia/ModalResolver";
 import { formatarDataHora, formatarKm } from "@/lib/ocorrencias";
@@ -148,6 +149,8 @@ export default function DetalheOcorrenciaPage() {
           <h2 className="text-label font-semibold text-on-surface">Problema informado</h2>
           <p className="mt-2 text-body text-on-surface">{o.descricao}</p>
         </div>
+
+        <MapaLocal titulo="Onde aconteceu" pontos={[{ lat: o.latitude, lng: o.longitude, rotulo: "Ocorrência", cor: "#D97706" }]} />
 
         {/* Fotos */}
         <div className="rounded-2xl border border-outline-variant/30 bg-surface-card p-5 shadow-sm">

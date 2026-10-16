@@ -26,13 +26,16 @@ from app.schemas.schemas import (
     CorrecaoAbastecimentoResponse,
     ResumoAbastecimento,
 )
+from app.core.timezone import ensure_aware, to_display
 from app.services.abastecimento import (
+    alertas_do_registro,
     find_abastecimento_by_idempotency,
     get_configuracoes,
     recalcular_apos_correcao,
     registrar_abastecimento,
 )
 from app.services.auditoria import registrar_auditoria
+from app.services.contrato_posto import contrato_vigente
 from app.services.simam import competencia as simam
 from app.services.estoque import EstoqueError, aplicar_movimentacao
 
@@ -80,6 +83,7 @@ def _snapshot(abast: Abastecimento) -> dict:
         "combustivel": str(abast.combustivel_id),
         "preco_litro": str(abast.preco_litro) if abast.preco_litro is not None else None,
         "custo_total": str(abast.custo_total) if abast.custo_total is not None else None,
+        "contrato": str(abast.contrato_posto_id) if abast.contrato_posto_id else None,
         "numero_nf": abast.numero_nf,
         "chave_nfe": abast.chave_nfe,
         "status": abast.status,
@@ -668,6 +672,20 @@ async def corrigir(
 
     # Posto credenciado: preço e NF vindos da nota fiscal.
     if abast.modalidade == "POSTO_CREDENCIADO":
+        # Lançado sem contrato (ex.: vigência cadastrada depois): a correção
+        # vincula o contrato vigente na data do abastecimento e usa o preço dele.
+        if abast.contrato_posto_id is None and abast.fornecedor_id is not None:
+            contrato = await contrato_vigente(
+                db, user.organization_id, abast.fornecedor_id, abast.combustivel_id,
+                to_display(ensure_aware(abast.data_abastecimento)).date(),
+            )
+            if contrato is not None:
+                abast.contrato_posto_id = contrato.id
+                if body.preco_litro is None:
+                    abast.preco_litro = Decimal(contrato.preco_litro)
+                    abast.custo_medio_litro = Decimal(contrato.preco_litro)
+                restantes = [a for a in alertas_do_registro(abast) if a != "SEM_CONTRATO"]
+                abast.alertas = json.dumps(restantes) if restantes else None
         if body.preco_litro is not None:
             abast.preco_litro = body.preco_litro
             abast.custo_medio_litro = body.preco_litro

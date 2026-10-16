@@ -8,6 +8,9 @@ import {
   AlertTriangle,
   Archive,
   Building2,
+  Landmark,
+  Store,
+  SlidersHorizontal,
   CheckCircle2,
   ChevronDown,
   Eye,
@@ -22,7 +25,7 @@ import {
   Wallet,
   X,
 } from "lucide-react";
-import { api, FiltroNotasFiscais, Fornecedor, ListaNotasFiscais, NotaFiscalItem, Unidade } from "@/lib/api";
+import { api, Combustivel, FiltroNotasFiscais, Fornecedor, ListaNotasFiscais, NotaFiscalItem, Unidade } from "@/lib/api";
 import { RequirePermission } from "@/components/RequirePermission";
 import { NotaFiscalPreview } from "@/components/abastecimento/NotaFiscalPreview";
 
@@ -41,6 +44,7 @@ const LOTE = 100;
 const dataHora = (d: string) => new Date(d).toLocaleString("pt-BR", { dateStyle: "short", timeStyle: "short" });
 const nomePosto = (f: Fornecedor) => f.nome_fantasia || f.razao_social;
 const num = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const lt = (v: number) => v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 3 });
 const fmtDoc = (v?: string | null) => {
   if (!v) return null;
   const d = v.replace(/\D/g, "");
@@ -60,10 +64,31 @@ function Select({ className = "", children, ...props }: SelectHTMLAttributes<HTM
   );
 }
 
+function FiltroCampo({ rotulo, icone, ativo, children }: { rotulo: string; icone: React.ReactNode; ativo: boolean; children: React.ReactNode }) {
+  return (
+    <div>
+      <span className={`mb-1.5 flex items-center gap-1.5 text-meta font-semibold uppercase tracking-wider ${ativo ? "text-primary" : "text-text-subtle"}`}>
+        {icone} {rotulo}
+      </span>
+      {children}
+    </div>
+  );
+}
+
+function Chip({ children, onRemover }: { children: React.ReactNode; onRemover: () => void }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-pill bg-[#EFF4FF] py-1 pl-3 pr-1.5 text-meta font-medium text-primary">
+      {children}
+      <button type="button" aria-label="Remover filtro" onClick={onRemover} className="rounded-full p-0.5 hover:bg-primary/10"><X size={13} /></button>
+    </span>
+  );
+}
+
 export default function NotasFiscaisPage() {
   const [[inicio, fim], setPeriodo] = useState<[string, string]>(periodo("mes"));
   const [fornecedor, setFornecedor] = useState("");
   const [unidade, setUnidade] = useState("");
+  const [combustivel, setCombustivel] = useState("");
   const [situacao, setSituacao] = useState("COM_NOTA");
   const [busca, setBusca] = useState("");
   const [buscaAtiva, setBuscaAtiva] = useState("");
@@ -74,10 +99,12 @@ export default function NotasFiscaisPage() {
   const [baixandoZip, setBaixandoZip] = useState(false);
   const [postos, setPostos] = useState<Fornecedor[]>([]);
   const [secretarias, setSecretarias] = useState<Unidade[]>([]);
+  const [combustiveis, setCombustiveis] = useState<Combustivel[]>([]);
 
   useEffect(() => {
     api.listFornecedores({ posto_credenciado: true, limit: 200 }).then((r) => setPostos(r.itens)).catch(() => setPostos([]));
     api.listUnidades(true).then(setSecretarias).catch(() => setSecretarias([]));
+    api.listCombustiveis(true).then(setCombustiveis).catch(() => setCombustiveis([]));
   }, []);
 
   useEffect(() => {
@@ -85,7 +112,7 @@ export default function NotasFiscaisPage() {
     return () => clearTimeout(t);
   }, [busca]);
 
-  const filtro: FiltroNotasFiscais = { inicio, fim, fornecedor_id: fornecedor, unidade_id: unidade, busca: buscaAtiva };
+  const filtro: FiltroNotasFiscais = { inicio, fim, fornecedor_id: fornecedor, unidade_id: unidade, combustivel_id: combustivel, busca: buscaAtiva };
 
   const carregar = useCallback(async (mais = false) => {
     setCarregando(true);
@@ -98,7 +125,7 @@ export default function NotasFiscaisPage() {
       setCarregando(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [inicio, fim, fornecedor, unidade, situacao, buscaAtiva]);
+  }, [inicio, fim, fornecedor, unidade, combustivel, situacao, buscaAtiva]);
 
   useEffect(() => { carregar(); }, [carregar]);
 
@@ -271,36 +298,58 @@ export default function NotasFiscaisPage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-12">
-            <div className="md:col-span-3">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-text-subtle" />
+            <input
+              className="input !h-12 !rounded-xl !pl-11 !pr-10"
+              placeholder="Buscar por nº do abastecimento, placa, nº da nota, chave ou motorista…"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+            />
+            {busca && (
+              <button aria-label="Limpar busca" onClick={() => setBusca("")} className="absolute right-3.5 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-text-subtle hover:bg-surface-bg hover:text-text-title">
+                <X size={16} />
+              </button>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <FiltroCampo rotulo="Posto" icone={<Store size={14} />} ativo={!!fornecedor}>
               <Select aria-label="Posto" value={fornecedor} onChange={(e) => setFornecedor(e.target.value)}>
                 <option value="">Todos os postos</option>
                 {postos.map((p) => <option key={p.id} value={p.id}>{nomePosto(p)}</option>)}
               </Select>
-            </div>
-            <div className="md:col-span-3">
+            </FiltroCampo>
+            <FiltroCampo rotulo="Secretaria" icone={<Landmark size={14} />} ativo={!!unidade}>
               <Select aria-label="Secretaria" value={unidade} onChange={(e) => setUnidade(e.target.value)}>
                 <option value="">Todas as secretarias</option>
-                {secretarias.map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
+                {secretarias.map((x) => <option key={x.id} value={x.id}>{x.nome}</option>)}
               </Select>
-            </div>
-            <div className="md:col-span-6">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-subtle" />
-                <input
-                  className="input !pl-10 !pr-9"
-                  placeholder="Buscar por nº do abastecimento, placa, nº da nota, chave ou motorista…"
-                  value={busca}
-                  onChange={(e) => setBusca(e.target.value)}
-                />
-                {busca && (
-                  <button aria-label="Limpar" onClick={() => setBusca("")} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-subtle hover:text-text-title">
-                    <X size={16} />
-                  </button>
-                )}
-              </div>
-            </div>
+            </FiltroCampo>
+            <FiltroCampo rotulo="Combustível" icone={<Fuel size={14} />} ativo={!!combustivel}>
+              <Select aria-label="Combustível" value={combustivel} onChange={(e) => setCombustivel(e.target.value)}>
+                <option value="">Todos os combustíveis</option>
+                {combustiveis.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+              </Select>
+            </FiltroCampo>
           </div>
+
+          {(fornecedor || unidade || combustivel || buscaAtiva) && (
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 text-meta font-medium text-text-subtle"><SlidersHorizontal size={14} /> Filtros ativos:</span>
+              {fornecedor && <Chip onRemover={() => setFornecedor("")}>{(() => { const p = postos.find((x) => x.id === fornecedor); return p ? nomePosto(p) : "Posto"; })()}</Chip>}
+              {unidade && <Chip onRemover={() => setUnidade("")}>{secretarias.find((x) => x.id === unidade)?.nome ?? "Secretaria"}</Chip>}
+              {combustivel && <Chip onRemover={() => setCombustivel("")}>{combustiveis.find((x) => x.id === combustivel)?.nome ?? "Combustível"}</Chip>}
+              {buscaAtiva && <Chip onRemover={() => setBusca("")}>“{buscaAtiva}”</Chip>}
+              <button
+                type="button"
+                onClick={() => { setFornecedor(""); setUnidade(""); setCombustivel(""); setBusca(""); }}
+                className="text-meta font-semibold text-primary hover:underline"
+              >
+                Limpar tudo
+              </button>
+            </div>
+          )}
 
           <div className="flex flex-col gap-3 pt-1 sm:flex-row sm:items-center sm:justify-between">
             <div role="tablist" className="inline-flex rounded-xl bg-[#F3F4F6] p-1">
@@ -412,7 +461,7 @@ export default function NotasFiscaisPage() {
                         </p>
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-right">
-                        <span className="font-mono text-body-sm font-semibold tabular-nums text-text-title">{num(a.litros)}</span>
+                        <span className="font-mono text-body-sm font-semibold tabular-nums text-text-title">{lt(a.litros)}</span>
                         <span className="ml-0.5 text-meta text-text-subtle">L</span>
                       </td>
                       <td className="whitespace-nowrap px-3 py-4 text-right">
@@ -514,7 +563,7 @@ export default function NotasFiscaisPage() {
                 <div className="flex items-center gap-6 self-end sm:self-auto">
                   <div className="text-right">
                     <span className="text-meta font-medium uppercase tracking-wider text-text-subtle">Volume exibido:</span>
-                    <span className="ml-1.5 font-mono text-body-sm font-bold tabular-nums text-text-title">{num(volumeExibido)} L</span>
+                    <span className="ml-1.5 font-mono text-body-sm font-bold tabular-nums text-text-title">{lt(volumeExibido)} L</span>
                   </div>
                   <div className="border-l border-surface-border pl-6 text-right">
                     <span className="text-meta font-medium uppercase tracking-wider text-text-subtle">Subtotal geral:</span>

@@ -15,6 +15,20 @@ class TestLoginMotorista:
         assert data["token_type"] == "bearer"
         assert data["motorista"]["nome"] == "João da Silva"
 
+    async def test_login_em_outro_aparelho_derruba_o_anterior(self, client, make_tenant, setup_frota):
+        """Sessão única: o segundo login invalida o token do primeiro aparelho."""
+        tenant = await make_tenant("ADMIN")
+        frota = await setup_frota(tenant["org"])
+        corpo = {"login": frota["acesso"].login, "senha": "1234"}
+        t1 = (await client.post("/api/govfrota/app/motorista/login", json=corpo)).json()["access_token"]
+        t2 = (await client.post("/api/govfrota/app/motorista/login", json=corpo)).json()["access_token"]
+
+        r1 = await client.get("/api/govfrota/app/motorista/me", headers={"Authorization": f"Bearer {t1}"})
+        assert r1.status_code == 401
+        assert "outro aparelho" in r1.json()["detail"]
+        r2 = await client.get("/api/govfrota/app/motorista/me", headers={"Authorization": f"Bearer {t2}"})
+        assert r2.status_code == 200
+
     async def test_senha_incorreta(self, client, make_tenant, setup_frota):
         tenant = await make_tenant("ADMIN")
         frota = await setup_frota(tenant["org"])

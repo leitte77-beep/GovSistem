@@ -98,10 +98,12 @@ export const CORES_VEICULO = [
 ];
 
 export const MARCAS_COMUNS = [
-  "Agrale", "BYD", "Caterpillar", "Chevrolet", "Citroën", "Fiat", "Ford", "Honda",
-  "Hyundai", "Iveco", "JCB", "John Deere", "Case", "Kia", "Marcopolo", "Massey Ferguson",
-  "Mercedes-Benz", "Mitsubishi", "New Holland", "Nissan", "Peugeot", "Renault",
-  "Scania", "Toyota", "Valtra", "Volkswagen", "Volvo", "Yamaha",
+  "Agrale", "Audi", "BMW", "BYD", "Caoa Chery", "Case", "Caterpillar", "Chevrolet",
+  "Citroën", "DAF", "Fiat", "Ford", "GWM", "Honda", "Hyundai", "Iveco", "JAC", "JCB",
+  "Jeep", "John Deere", "Kia", "Komatsu", "Marcopolo", "Massey Ferguson",
+  "Mercedes-Benz", "Mitsubishi", "New Holland", "Nissan", "Peugeot", "Ram",
+  "Randon", "Renault", "Scania", "Shineray", "Suzuki", "Toyota", "Valtra",
+  "Volare", "Volkswagen", "Volvo", "Yamaha",
 ];
 
 export function soDigitos(v: string): string {

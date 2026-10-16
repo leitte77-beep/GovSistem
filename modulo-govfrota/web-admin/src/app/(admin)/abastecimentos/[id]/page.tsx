@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import MapaLocal from "@/components/MapaLocal";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import toast from "react-hot-toast";
@@ -305,7 +306,7 @@ export default function DetalheAbastecimentoPage() {
                 </Spec>
 
                 <Metric label="Volume abastecido" accent>
-                  <span className="text-3xl font-bold tracking-tight">{num2(a.quantidade_litros)}</span>
+                  <span className="text-3xl font-bold tracking-tight">{Number(a.quantidade_litros).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 3 })}</span>
                   <span className="text-body font-semibold text-text-subtle">L</span>
                 </Metric>
                 <Metric label="Custo total">
@@ -394,6 +395,8 @@ export default function DetalheAbastecimentoPage() {
                 )}
               </div>
             </div>
+
+            <MapaLocal titulo="Local do abastecimento" pontos={[{ lat: a.latitude, lng: a.longitude, rotulo: "Abastecimento" }]} />
 
             {/* Fotos e comprovantes */}
             {(a.foto_bomba_url || a.foto_painel_url) && (

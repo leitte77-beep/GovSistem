@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Camera, Trash2, Upload, X } from "lucide-react";
-import { api, Motorista } from "@/lib/api";
+import { api, Motorista, Unidade } from "@/lib/api";
 import { CATEGORIAS_CNH, formatarCpf, formatarTelefone } from "@/lib/motoristas";
 
 interface Props {
@@ -31,9 +31,15 @@ export function MotoristaFormDrawer({ aberto, onClose, motorista, onSalvo }: Pro
     cnh_validade: m?.cnh_validade ?? "",
     observacoes: m?.observacoes ?? "",
     ativo: m?.ativo ?? true,
+    unidade_id: m?.unidade_id ?? "",
   });
 
   const [form, setForm] = useState(() => novoForm(motorista));
+  const [unidades, setUnidades] = useState<Unidade[]>([]);
+
+  useEffect(() => {
+    if (aberto) api.listUnidades().then(setUnidades).catch(() => setUnidades([]));
+  }, [aberto]);
 
   useEffect(() => {
     if (aberto) {
@@ -88,6 +94,7 @@ export function MotoristaFormDrawer({ aberto, onClose, motorista, onSalvo }: Pro
         observacoes: form.observacoes || undefined,
         foto_url,
         ativo: form.ativo,
+        unidade_id: form.unidade_id || null,
       };
       if (motorista) {
         await api.updateMotorista(motorista.id, payload);
@@ -149,6 +156,24 @@ export function MotoristaFormDrawer({ aberto, onClose, motorista, onSalvo }: Pro
                     <option value="true">Ativo</option>
                     <option value="false">Inativo</option>
                   </select>
+                </Label>
+              </div>
+            </Secao>
+
+            <Secao titulo="Secretaria">
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Label texto="Vínculo" classe="sm:col-span-2">
+                  <select {...campo("unidade_id")}>
+                    <option value="">Livre — qualquer veículo da frota</option>
+                    {unidades
+                      .filter((u) => u.ativo || u.id === form.unidade_id)
+                      .map((u) => <option key={u.id} value={u.id}>{u.nome}</option>)}
+                  </select>
+                  <span className="text-meta text-[#737781]">
+                    {form.unidade_id
+                      ? "Só abastece e usa veículos desta secretaria (e os que ainda não têm secretaria)."
+                      : "Motorista livre: pode abastecer e usar qualquer veículo."}
+                  </span>
                 </Label>
               </div>
             </Secao>

@@ -70,6 +70,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [menuAberto, setMenuAberto] = useState(false);
 
+  // Fecha o menu do celular ao trocar de página.
+  useEffect(() => { setMenuAberto(false); }, [pathname]);
+
   useEffect(() => {
     if (!loading && !user && pathname !== "/login") {
       window.location.href = "/login";
@@ -92,7 +95,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   const SidebarContent = () => (
     <>
-      <div className="flex h-16 items-center border-b border-white/10 px-6 py-8">
+      <div className="flex h-16 items-center border-b border-white/10 px-5 py-8 lg:px-6">
         <div className="flex items-center gap-3">
           <div className="flex h-8 w-8 items-center justify-center rounded bg-[#1D5BD6] text-white">
             <Truck size={20} />
@@ -165,19 +168,19 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#F8F9FF]">
+    <div className="flex h-screen overflow-hidden bg-[#F8F9FF] print:block print:h-auto print:overflow-visible print:bg-white">
       {/* Sidebar desktop */}
-      <aside className="flex h-full w-64 flex-shrink-0 flex-col bg-[#151E2F] text-white transition-all duration-300">
+      <aside className="hidden h-full w-64 print:!hidden flex-shrink-0 flex-col bg-[#151E2F] text-white transition-all duration-300 lg:flex">
         <SidebarContent />
       </aside>
 
       {/* Sidebar mobile */}
       {menuAberto && (
-        <div className="fixed inset-0 z-40 md:hidden">
-          <div className="absolute inset-0 bg-black/30" onClick={() => setMenuAberto(false)} />
-          <aside className="absolute left-0 top-0 flex h-full w-64 flex-col bg-[#151E2F] text-white shadow-elevated">
-            <button className="self-end p-3 text-gray-400" onClick={() => setMenuAberto(false)} aria-label="Fechar menu">
-              <X size={20} />
+        <div className="fixed inset-0 z-40 lg:hidden">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setMenuAberto(false)} />
+          <aside className="absolute left-0 top-0 flex h-full w-60 max-w-[72vw] flex-col bg-[#151E2F] text-white shadow-elevated">
+            <button className="absolute right-2 top-4 z-10 rounded-lg p-1.5 text-gray-400 hover:bg-white/10 hover:text-white" onClick={() => setMenuAberto(false)} aria-label="Fechar menu">
+              <X size={18} />
             </button>
             <SidebarContent />
           </aside>
@@ -186,18 +189,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Topbar */}
-        <header className="flex h-16 flex-shrink-0 items-center justify-between border-b border-[#C3C6D1]/30 bg-white px-8">
+        <header className="flex h-16 flex-shrink-0 print:hidden items-center justify-between gap-3 border-b border-[#C3C6D1]/30 bg-white px-4 sm:px-6 lg:px-8">
           <div className="flex items-center gap-3">
-            <button className="text-[#424750] md:hidden" onClick={() => setMenuAberto(true)} aria-label="Abrir menu">
+            <button className="-ml-1 rounded-lg p-1.5 text-[#424750] hover:bg-[#EFF4FF] lg:hidden" onClick={() => setMenuAberto(true)} aria-label="Abrir menu">
               <Menu size={22} />
             </button>
             <span className="text-lg font-bold text-[#1D5BD6]">GovFrota</span>
           </div>
-          <div className="flex items-center gap-4 text-[#424750]">
+          <div className="flex min-w-0 items-center gap-2 text-[#424750] sm:gap-4">
             <SinoAlertas pathname={pathname} />
-            <div className="ml-2 flex items-center gap-3 border-l border-[#C3C6D1]/30 pl-4">
-              <div className="text-right leading-tight">
-                <span className="block text-sm font-medium text-[#181C22]">{user.name || user.email}</span>
+            <div className="flex min-w-0 items-center gap-3 border-l border-[#C3C6D1]/30 pl-3 sm:ml-2 sm:pl-4">
+              <div className="hidden min-w-0 text-right leading-tight sm:block">
+                <span className="block max-w-[14rem] truncate text-sm font-medium text-[#181C22]">{user.name || user.email}</span>
                 {restrito && (
                   <span className="block text-xs text-[#737781]">
                     {user.secretarias!.length
@@ -213,7 +216,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto p-8">{children}</main>
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-4 sm:p-6 lg:p-8 print:overflow-visible print:p-0">{children}</main>
       </div>
     </div>
   );

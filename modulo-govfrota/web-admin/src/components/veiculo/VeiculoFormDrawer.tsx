@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import MarcaCombobox from "./MarcaCombobox";
 import Link from "next/link";
 import toast from "react-hot-toast";
 import {
@@ -531,10 +532,12 @@ export function VeiculoFormDrawer({
             <Secao>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Label texto="Marca">
-                  <input {...campo("marca")} list="marcas-veiculo" placeholder="Ex.: Toyota" />
-                  <datalist id="marcas-veiculo">
-                    {MARCAS_COMUNS.map((m) => <option key={m} value={m} />)}
-                  </datalist>
+                  <MarcaCombobox
+                    value={form.marca ?? ""}
+                    onChange={(v) => setForm((f) => ({ ...f, marca: v }))}
+                    opcoes={MARCAS_COMUNS}
+                    placeholder="Ex.: Toyota"
+                  />
                 </Label>
                 <Label texto="Modelo">
                   <input {...campo("modelo")} placeholder="Ex.: Hilux" />

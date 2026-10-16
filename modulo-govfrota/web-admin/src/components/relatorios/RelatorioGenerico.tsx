@@ -3,8 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import toast from "react-hot-toast";
-import { ArrowDown, ArrowUp, Info } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, BarChart3, Car, Gauge, Hash, Info, Landmark, ListOrdered, Store, User, Wallet } from "lucide-react";
 import { api, RelatorioCatalogo, RelatorioCatalogoDados } from "@/lib/api";
+import { Cartao, Esqueleto, FiltroSelect, Kpi, PainelFiltros, Tabela, TF, TFN, Vazio, type Tom } from "./ui";
+
+const ICONES_KPI = [Wallet, BarChart3, Gauge, Hash, ListOrdered];
+const TONS_KPI: Tom[] = ["azul", "verde", "roxo", "ambar", "cinza"];
 
 type Opcao = { id: string; nome: string };
 
@@ -40,24 +44,11 @@ function celula(tipo: string, v: unknown): string {
 
 const NUMERICOS = new Set(["moeda", "numero", "inteiro", "pct"]);
 
-function Filtro({ rotulo, valor, onChange, opcoes, todos = "Todos" }: {
-  rotulo: string; valor: string; onChange: (v: string) => void; opcoes: Opcao[]; todos?: string;
-}) {
-  return (
-    <label className="flex min-w-0 flex-col gap-1 text-meta text-text-subtle">
-      {rotulo}
-      <select className="input !py-1.5 text-body-sm" value={valor} onChange={(e) => onChange(e.target.value)}>
-        <option value="">{todos}</option>
-        {opcoes.map((o) => <option key={o.id} value={o.id}>{o.nome}</option>)}
-      </select>
-    </label>
-  );
-}
-
 export type FiltrosGenericos = { unidade_id: string; veiculo_id: string; motorista_id: string; fornecedor_id: string };
 export const FILTROS_GENERICOS_VAZIOS: FiltrosGenericos = { unidade_id: "", veiculo_id: "", motorista_id: "", fornecedor_id: "" };
 
-export function RelatorioGenerico({ def, dataInicio, dataFim, filtros, setFiltros, publico }: {
+export function RelatorioGenerico({ def, dataInicio, dataFim, filtros, setFiltros, publico, onTotal }: {
+  onTotal?: (n: number | null) => void;
   def: RelatorioCatalogo;
   dataInicio: string;
   dataFim: string;
@@ -115,6 +106,8 @@ export function RelatorioGenerico({ def, dataInicio, dataFim, filtros, setFiltro
     });
   }, [dados, ordem]);
 
+  useEffect(() => { onTotal?.(dados ? dados.linhas.length : null); }, [dados, onTotal]);
+
   const muda = (campo: keyof FiltrosGenericos) => (v: string) => setFiltros({ ...filtros, [campo]: v });
   const temFiltros = usa("unidade") || usa("veiculo") || usa("motorista") || usa("posto");
   const cols = dados?.colunas ?? [];
@@ -123,109 +116,112 @@ export function RelatorioGenerico({ def, dataInicio, dataFim, filtros, setFiltro
   const href = (l: Record<string, unknown>) =>
     !l.id ? null : dados?.link === "abastecimento" ? `/abastecimentos/${l.id}` : dados?.link === "veiculo" ? `/veiculos/${l.id}` : null;
 
-  return (
-    <div className="space-y-4">
-      <p className="text-body-sm text-text-subtle">{def.descricao}</p>
+  const nomeDe = (lista: Opcao[], id: string) => lista.find((o) => o.id === id)?.nome ?? "…";
+  const ativos = ([
+    ["unidade_id", opcoes.unidades], ["veiculo_id", opcoes.veiculos], ["motorista_id", opcoes.motoristas], ["fornecedor_id", opcoes.postos],
+  ] as [keyof FiltrosGenericos, Opcao[]][])
+    .filter(([k]) => filtros[k])
+    .map(([k, lista]) => ({ chave: k, rotulo: nomeDe(lista, filtros[k]), onRemover: () => muda(k)("") }));
 
+  return (
+    <div className="space-y-5">
       {temFiltros && (
-        <div className="grid grid-cols-2 gap-3 rounded-card border border-surface-border bg-white p-4 shadow-card md:grid-cols-4">
+        <PainelFiltros ativos={ativos} onLimpar={() => setFiltros(FILTROS_GENERICOS_VAZIOS)}>
           {usa("unidade") && (
-            <Filtro rotulo={publico ? "Secretaria" : "Centro de custo"} valor={filtros.unidade_id} onChange={muda("unidade_id")} opcoes={opcoes.unidades} todos="Todas" />
+            <FiltroSelect rotulo={publico ? "Secretaria" : "Centro de custo"} Icone={Landmark} valor={filtros.unidade_id} onChange={muda("unidade_id")} opcoes={opcoes.unidades} todos="Todas" />
           )}
           {usa("veiculo") && (
-            <Filtro rotulo={def.exige.includes("veiculo") ? "Veículo (obrigatório)" : "Veículo"} valor={filtros.veiculo_id}
+            <FiltroSelect rotulo={def.exige.includes("veiculo") ? "Veículo (obrigatório)" : "Veículo"} Icone={Car} valor={filtros.veiculo_id}
               onChange={muda("veiculo_id")} opcoes={opcoes.veiculos} todos={def.exige.includes("veiculo") ? "Escolha…" : "Todos"} />
           )}
-          {usa("motorista") && <Filtro rotulo="Motorista" valor={filtros.motorista_id} onChange={muda("motorista_id")} opcoes={opcoes.motoristas} />}
-          {usa("posto") && <Filtro rotulo="Posto / fornecedor" valor={filtros.fornecedor_id} onChange={muda("fornecedor_id")} opcoes={opcoes.postos} />}
-        </div>
+          {usa("motorista") && <FiltroSelect rotulo="Motorista" Icone={User} valor={filtros.motorista_id} onChange={muda("motorista_id")} opcoes={opcoes.motoristas} />}
+          {usa("posto") && <FiltroSelect rotulo="Posto / fornecedor" Icone={Store} valor={filtros.fornecedor_id} onChange={muda("fornecedor_id")} opcoes={opcoes.postos} />}
+        </PainelFiltros>
       )}
 
       {faltaVeiculo && (
-        <p className="rounded-card border border-surface-border bg-white px-4 py-8 text-center text-body-sm text-text-subtle">
-          Escolha o veículo para ver o extrato.
-        </p>
+        <Cartao><Vazio titulo="Escolha um veículo" texto="Este relatório é o extrato de um veículo. Selecione-o no filtro acima." /></Cartao>
       )}
+
+      {!faltaVeiculo && carregando && !dados && <Esqueleto />}
 
       {dados && dados.resumo.length > 0 && (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
-          {dados.resumo.map((r) => (
-            <div key={r.rotulo} className="rounded-card border border-surface-border bg-white px-4 py-3 shadow-card">
-              <p className="text-meta text-text-subtle">{r.rotulo}</p>
-              <p className="truncate text-lg font-semibold tabular-nums text-text-title" title={r.valor}>{r.valor}</p>
-            </div>
+          {dados.resumo.map((r, i) => (
+            <Kpi key={r.rotulo} rotulo={r.rotulo} valor={<span title={r.valor}>{r.valor}</span>} Icone={ICONES_KPI[i % ICONES_KPI.length]}
+              tom={TONS_KPI[i % TONS_KPI.length]} destaque={i === 0} />
           ))}
         </div>
       )}
 
       {dados?.aviso && (
-        <p className="flex items-start gap-2 text-meta text-text-subtle"><Info size={14} className="mt-0.5 shrink-0" />{dados.aviso}</p>
+        <p className="flex items-start gap-2 rounded-xl bg-[#F5F8FF] px-4 py-3 text-meta text-text-body ring-1 ring-[#D9E2FF]"><Info size={14} className="mt-0.5 shrink-0 text-primary" />{dados.aviso}</p>
       )}
 
-      {!faltaVeiculo && (
-        <div className="overflow-x-auto rounded-card border border-surface-border bg-white shadow-card">
-          <table className="w-full min-w-[900px] text-body-sm">
-            <thead>
-              <tr className="border-b border-surface-border bg-surface-bg text-left text-meta text-text-subtle">
-                {cols.map((c) => (
-                  <th key={c.chave} className={`px-4 py-3 ${NUMERICOS.has(c.tipo) ? "text-right" : ""}`}>
-                    <button
-                      className="inline-flex items-center gap-1 hover:text-text-title"
-                      onClick={() => setOrdem(ordem?.chave === c.chave ? { chave: c.chave, desc: !ordem.desc } : { chave: c.chave, desc: NUMERICOS.has(c.tipo) })}
-                    >
-                      {c.rotulo}
-                      {ordem?.chave === c.chave && (ordem.desc ? <ArrowDown size={12} /> : <ArrowUp size={12} />)}
-                    </button>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {carregando && !dados && (
-                <tr><td colSpan={Math.max(cols.length, 1)} className="px-4 py-8 text-center text-text-subtle">Carregando…</td></tr>
-              )}
-              {dados && linhas.length === 0 && (
-                <tr><td colSpan={cols.length} className="px-4 py-8 text-center text-text-subtle">Nada a mostrar no período e filtros escolhidos.</td></tr>
-              )}
-              {linhas.slice(0, 1000).map((l, i) => {
-                const link = href(l);
-                return (
-                  <tr key={i} className="border-b border-surface-border last:border-0 hover:bg-[#EFF4FF]/50">
-                    {cols.map((c, j) => {
-                      const texto = celula(c.tipo, l[c.chave]);
-                      const cor = c.tipo === "situacao" ? COR_SITUACAO[texto.toLowerCase().split(":")[0]] : null;
-                      return (
-                        <td key={c.chave} className={`px-4 py-2 align-top ${NUMERICOS.has(c.tipo) ? "whitespace-nowrap text-right tabular-nums" : ""}`}>
-                          {j === 0 && link ? (
-                            <Link href={link} className="font-medium text-[#1D4ED8] hover:underline">{texto}</Link>
-                          ) : cor ? (
-                            <span className={`inline-block rounded px-2 py-0.5 text-meta font-medium ${cor}`}>{texto}</span>
-                          ) : (
-                            texto
-                          )}
-                        </td>
-                      );
-                    })}
-                  </tr>
-                );
-              })}
-            </tbody>
-            {dados && linhas.length > 0 && primeiroTotal >= 0 && (
-              <tfoot>
-                <tr className="border-t border-surface-border bg-surface-bg font-semibold">
-                  {cols.map((c, j) => (
-                    <td key={c.chave} className={`px-4 py-3 ${NUMERICOS.has(c.tipo) ? "whitespace-nowrap text-right tabular-nums" : ""}`}>
-                      {j === 0 ? "Total" : c.total ? celula(c.tipo, dados.totais[c.chave]) : ""}
-                    </td>
+      {!faltaVeiculo && dados && (
+        <Cartao
+          titulo="Resultado"
+          Icone={ListOrdered}
+          semPadding
+          acao={<span className="text-meta text-text-subtle">{linhas.length > 1000 ? `Mostrando 1.000 de ${num(linhas.length, 0)} — exporte para ver tudo` : `${num(linhas.length, 0)} linha(s)`}</span>}
+        >
+          {linhas.length === 0 ? (
+            <Vazio />
+          ) : (
+            <Tabela minW={900}>
+              <thead>
+                <tr>
+                  {cols.map((c) => (
+                    <th key={c.chave} className={`px-4 py-3 text-meta font-semibold uppercase tracking-wider text-text-subtle ${NUMERICOS.has(c.tipo) ? "text-right" : "text-left"}`}>
+                      <button
+                        className={`inline-flex items-center gap-1 uppercase hover:text-text-title ${ordem?.chave === c.chave ? "text-primary" : ""}`}
+                        onClick={() => setOrdem(ordem?.chave === c.chave ? { chave: c.chave, desc: !ordem.desc } : { chave: c.chave, desc: NUMERICOS.has(c.tipo) })}
+                      >
+                        {c.rotulo}
+                        {ordem?.chave === c.chave ? (ordem.desc ? <ArrowDown size={12} /> : <ArrowUp size={12} />) : <ArrowUpDown size={11} className="opacity-40" />}
+                      </button>
+                    </th>
                   ))}
                 </tr>
-              </tfoot>
-            )}
-          </table>
-        </div>
-      )}
-      {linhas.length > 1000 && (
-        <p className="text-meta text-text-subtle">Mostrando 1.000 de {num(linhas.length, 0)} linhas. Exporte para ver tudo.</p>
+              </thead>
+              <tbody>
+                {linhas.slice(0, 1000).map((l, i) => {
+                  const link = href(l);
+                  return (
+                    <tr key={i}>
+                      {cols.map((c, j) => {
+                        const texto = celula(c.tipo, l[c.chave]);
+                        const cor = c.tipo === "situacao" ? COR_SITUACAO[texto.toLowerCase().split(":")[0]] : null;
+                        return (
+                          <td key={c.chave} className={`px-4 py-2.5 align-top ${NUMERICOS.has(c.tipo) ? "whitespace-nowrap text-right tabular-nums" : ""} ${j === 0 ? "font-medium text-text-title" : ""}`}>
+                            {j === 0 && link ? (
+                              <Link href={link} className="font-semibold text-primary hover:underline">{texto}</Link>
+                            ) : cor ? (
+                              <span className={`inline-block whitespace-nowrap rounded-pill px-2 py-0.5 text-meta font-medium ${cor}`}>{texto}</span>
+                            ) : (
+                              texto
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+              {primeiroTotal >= 0 && (
+                <tfoot>
+                  <tr>
+                    {cols.map((c, j) => (
+                      <td key={c.chave} className={NUMERICOS.has(c.tipo) ? TFN : TF}>
+                        {j === 0 ? "Total" : c.total ? celula(c.tipo, dados.totais[c.chave]) : ""}
+                      </td>
+                    ))}
+                  </tr>
+                </tfoot>
+              )}
+            </Tabela>
+          )}
+        </Cartao>
       )}
     </div>
   );

@@ -1,7 +1,7 @@
 import uuid
 from typing import Optional
 
-from sqlalchemy import Boolean, ForeignKey, Integer, String
+from sqlalchemy import Boolean, ForeignKey, Integer, LargeBinary, String
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -53,3 +53,18 @@ class ConfiguracaoGovFrota(Base, TimestampMixin):
     # responsável pelo controle do combustível (padrão das entradas/saídas).
     simam_id_pessoa: Mapped[Optional[int]] = mapped_column(Integer(), nullable=True)
     simam_cpf_responsavel: Mapped[Optional[str]] = mapped_column(String(11), nullable=True)
+
+    # PDF dos relatórios (migration 028): cabeçalho centralizado com logo e
+    # textos, faixa colorida no topo e rodapé. Vazio = padrão (nome do órgão).
+    pdf_titulo: Mapped[Optional[str]] = mapped_column(String(120), nullable=True)
+    pdf_subtitulo: Mapped[Optional[str]] = mapped_column(String(150), nullable=True)
+    pdf_linha_extra: Mapped[Optional[str]] = mapped_column(String(250), nullable=True)
+    pdf_rodape: Mapped[Optional[str]] = mapped_column(String(300), nullable=True)
+    pdf_cor_primaria: Mapped[Optional[str]] = mapped_column(String(7), nullable=True)
+    pdf_cor_secundaria: Mapped[Optional[str]] = mapped_column(String(7), nullable=True)
+    pdf_logo: Mapped[Optional[bytes]] = mapped_column(LargeBinary(), nullable=True, deferred=True)
+    pdf_logo_tipo: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
+
+    @property
+    def pdf_tem_logo(self) -> bool:
+        return bool(self.pdf_logo_tipo)

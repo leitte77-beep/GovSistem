@@ -236,6 +236,11 @@ async def get_current_motorista(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Sessão expirada. Faça login novamente.",
         )
+    if acesso.sessao_id is not None and payload.get("sid") != str(acesso.sessao_id):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Seu login foi usado em outro aparelho. Entre novamente.",
+        )
 
     return motorista
 

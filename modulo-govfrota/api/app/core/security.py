@@ -41,9 +41,11 @@ def create_driver_token(
     credential_id: uuid.UUID,
     organization_id: uuid.UUID,
     credential_version: int = 0,
+    sessao_id: uuid.UUID | None = None,
 ) -> str:
     now = datetime.now(timezone.utc)
     payload = {
+        "sid": str(sessao_id) if sessao_id else None,
         "sub": str(motorista_id),
         "cred": str(credential_id),
         "org": str(organization_id),

@@ -246,6 +246,7 @@ class MotoristaCreate(BaseModel):
     observacoes: Optional[str] = None
     foto_url: Optional[str] = None
     ativo: bool = True
+    unidade_id: Optional[uuid.UUID] = None
 
 
 class MotoristaUpdate(BaseModel):
@@ -259,6 +260,7 @@ class MotoristaUpdate(BaseModel):
     observacoes: Optional[str] = None
     foto_url: Optional[str] = None
     ativo: Optional[bool] = None
+    unidade_id: Optional[uuid.UUID] = None
 
 
 def _validar_pin(pin: str) -> str:
@@ -378,6 +380,7 @@ class MotoristaResponse(ORMModel):
     observacoes: Optional[str]
     foto_url: Optional[str] = None
     ativo: bool
+    unidade_id: Optional[uuid.UUID] = None
 
 
 class MotoristaListaResponse(MotoristaResponse):
@@ -1166,10 +1169,17 @@ class ConfiguracaoUpdate(BaseModel):
     antecedencia_alerta_manutencao_dias: Optional[int] = Field(default=None, ge=1, le=365)
     simam_id_pessoa: Optional[int] = Field(default=None, ge=1, le=9999999)
     simam_cpf_responsavel: Optional[str] = Field(default=None, pattern=r"^(\d{11})?$")
+    # PDF dos relatórios
+    pdf_titulo: Optional[str] = Field(default=None, max_length=120)
+    pdf_subtitulo: Optional[str] = Field(default=None, max_length=150)
+    pdf_linha_extra: Optional[str] = Field(default=None, max_length=250)
+    pdf_rodape: Optional[str] = Field(default=None, max_length=300)
+    pdf_cor_primaria: Optional[str] = Field(default=None, pattern=r"^(#[0-9A-Fa-f]{6})?$")
+    pdf_cor_secundaria: Optional[str] = Field(default=None, pattern=r"^(#[0-9A-Fa-f]{6})?$")
 
 
 class ConfiguracaoResponse(ConfiguracaoUpdate):
-    pass
+    pdf_tem_logo: bool = False
 
 
 # ── App do motorista ────────────────────────────────────────────────────────

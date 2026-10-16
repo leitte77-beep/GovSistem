@@ -317,7 +317,7 @@ export default function AbastecerPage() {
               <div className="text-sm text-[#424750]">{[v.marca, v.modelo].filter(Boolean).join(" ")}</div>
             </div>
             <div className="mt-3 text-3xl font-bold text-[#181C22]">
-              {litrosNum.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} L
+              {litrosNum.toLocaleString("pt-BR", { maximumFractionDigits: 3 })} L
             </div>
             <div className="text-sm text-[#737781]">
               {v.usa_horimetro
@@ -661,7 +661,7 @@ export default function AbastecerPage() {
               <div className="grid grid-cols-2 divide-x divide-[#E2E8F0] border-y border-[#E2E8F0]">
                 <div className="p-4 text-center">
                   <p className="text-[13px] text-[#64748B]">Litros</p>
-                  <p className="text-[28px] font-bold leading-tight">{litrosNum.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}</p>
+                  <p className="text-[28px] font-bold leading-tight">{litrosNum.toLocaleString("pt-BR", { maximumFractionDigits: 3 })}</p>
                 </div>
                 <div className="p-4 text-center">
                   <p className="text-[13px] text-[#64748B]">{veiculo.usa_horimetro ? "Horímetro" : "KM"}</p>

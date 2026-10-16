@@ -123,10 +123,49 @@ async def test_prestacao_de_contas_pdf_e_xlsx(client, _db, make_tenant, setup_fr
     from openpyxl import load_workbook
 
     wb = load_workbook(io.BytesIO(r.content))
-    assert wb.sheetnames[:3] == ["Indicadores", "Por combustível", "Veículos"]
-    ind = wb["Indicadores"]
-    assert ind["A6"].value == "Gasto no período (R$)" and ind["B6"].value == 560.0
+    assert "Contratos relacionados" not in wb.sheetnames
+    assert {"Síntese", "Comparativo", "Manutenções", "Pend. alertas"} <= set(wb.sheetnames)
+    cmp = {row[0].value: row[1].value for row in wb["Comparativo"].iter_rows(min_row=6)}
+    assert cmp["Combustível (R$)"] == 560.0 and cmp["Manutenção (R$)"] == 0
     # Secretário não gera o da Educação.
     r = await client.get(f"{API}/secretaria/prestacao-contas", params={"unidade_id": str(educ.id)}, headers=sec["headers"])
     assert r.status_code == 404
     assert (await client.get(f"{API}/secretaria/prestacao-contas", params={"formato": "doc"}, headers=sec["headers"])).status_code == 422
+
+
+@pytest.mark.asyncio
+async def test_prestacao_consolidada_com_manutencao_e_verificacao(client, _db, make_tenant, setup_frota):
+    from datetime import date
+
+    from app.models.manutencao import Manutencao
+
+    admin, sec, saude, educ, carro = await _cenario(client, _db, make_tenant, setup_frota)
+    hoje = date.today()
+    _db.add_all([
+        Manutencao(organization_id=admin["org"].id, veiculo_id=carro.id, unidade_id=saude.id, tipo="CORRETIVA",
+                   data_solicitacao=hoje, valor_total=Decimal("440"), status="CONCLUIDA"),
+        Manutencao(organization_id=admin["org"].id, veiculo_id=carro.id, unidade_id=saude.id, tipo="PREVENTIVA",
+                   data_solicitacao=hoje, valor_total=Decimal("999"), status="CANCELADA"),
+    ])
+    await _db.commit()
+    h = admin["headers"]
+    prev = (await client.get(f"{API}/secretaria/prestacao-contas", params={"formato": "json"}, headers=h)).json()
+    assert prev["indicadores"]["Manutenção (R$)"] == 440.0
+    assert prev["indicadores"]["Gasto total (R$)"] == 2200.0
+    assert prev["pendencias"]["com_alerta"] == 1
+    assert "R$ 2.200,00" in prev["sintese"] and "alerta" in prev["sintese"]
+
+    r = await client.get(f"{API}/secretaria/prestacao-contas", params={"formato": "pdf"}, headers=h)
+    assert r.status_code == 200 and r.content.startswith(b"%PDF")
+
+    # QR code: confere com o código certo, recusa total adulterado.
+    from app.api.v1.secretaria import _codigo_verificacao
+
+    org = admin["org"].id
+    ini = hoje.replace(day=1)
+    c = _codigo_verificacao(org, None, ini, hoje, 2200.0, "20261002120000")
+    base = {"o": str(org), "i": ini.isoformat(), "f": hoje.isoformat(), "e": "20261002120000", "c": c}
+    ok = await client.get(f"{API}/secretaria/prestacao-contas/verificar", params={**base, "t": "2200.00"})
+    assert ok.status_code == 200 and "autêntico" in ok.text
+    falso = await client.get(f"{API}/secretaria/prestacao-contas/verificar", params={**base, "t": "1200.00"})
+    assert "não reconhecido" in falso.text

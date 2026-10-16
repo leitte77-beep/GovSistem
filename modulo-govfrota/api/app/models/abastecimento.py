@@ -73,7 +73,7 @@ class Abastecimento(Base, TimestampMixin, SoftDeleteMixin):
         UUID(as_uuid=True), ForeignKey("combustiveis.id"), nullable=False
     )
 
-    quantidade_litros: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    quantidade_litros: Mapped[Decimal] = mapped_column(Numeric(12, 3), nullable=False)
     quilometragem: Mapped[int] = mapped_column(BigInteger(), nullable=False)
     # Máquinas/tratores medem uso por horímetro (horas), não por km.
     horimetro: Mapped[Optional[Decimal]] = mapped_column(Numeric(12, 1), nullable=True)

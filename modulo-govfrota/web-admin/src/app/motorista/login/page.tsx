@@ -37,11 +37,16 @@ export default function LoginMotoristaPage() {
   // Lido só depois de montar: no servidor não há window, e decidir no
   // primeiro render faria o HTML divergir da hidratação (React #418).
   const [sessaoExpirada, setSessaoExpirada] = useState(false);
+  const [motivoLogout, setMotivoLogout] = useState<string | null>(null);
   const pinRef = useRef<HTMLInputElement>(null);
   const loginRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setSessaoExpirada(new URLSearchParams(window.location.search).get("expirado") === "1");
+    try {
+      setMotivoLogout(sessionStorage.getItem("govfrota_motivo_logout"));
+      sessionStorage.removeItem("govfrota_motivo_logout");
+    } catch {}
     const u = lerUltimo();
     if (u) {
       setLogin(u);
@@ -150,7 +155,9 @@ export default function LoginMotoristaPage() {
 
         {sessaoExpirada && (
           <div className="mb-4 rounded-2xl bg-[#FFF4D6] px-4 py-3 text-[15px] text-[#7A4B00]">
-            Sua sessão expirou. Entre novamente para continuar.
+            {motivoLogout?.includes("outro aparelho")
+              ? "Seu login foi usado em outro celular, por isso você saiu daqui. Entre de novo para continuar. Registros feitos sem internet não se perdem: eles sobem depois que você entrar."
+              : "Sua sessão expirou. Entre novamente para continuar."}
           </div>
         )}
 

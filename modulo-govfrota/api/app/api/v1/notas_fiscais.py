@@ -41,7 +41,7 @@ def _limites(inicio: date, fim: date) -> tuple[datetime, datetime]:
     return datetime.combine(inicio, datetime.min.time(), tzinfo=tz), datetime.combine(fim, datetime.max.time(), tzinfo=tz)
 
 
-def _condicoes(user: User, inicio: date | None, fim: date | None, fornecedor_id, unidade_id, situacao: str | None, busca: str | None):
+def _condicoes(user: User, inicio: date | None, fim: date | None, fornecedor_id, unidade_id, situacao: str | None, busca: str | None, combustivel_id=None):
     hoje = now_local().date()
     di, df = inicio or hoje.replace(day=1), fim or hoje
     if df < di:
@@ -61,6 +61,8 @@ def _condicoes(user: User, inicio: date | None, fim: date | None, fornecedor_id,
         cond.append(Abastecimento.fornecedor_id == fornecedor_id)
     if unidade_id:
         cond.append(Abastecimento.unidade_id == unidade_id)
+    if combustivel_id:
+        cond.append(Abastecimento.combustivel_id == combustivel_id)
     if situacao == "COM_NOTA":
         cond.append(Abastecimento.id.in_(com_nota))
     elif situacao == "SEM_NOTA":
@@ -95,19 +97,20 @@ def _consulta(cond):
 async def listar(
     inicio: date | None = None, fim: date | None = None,
     fornecedor_id: uuid.UUID | None = None, unidade_id: uuid.UUID | None = None,
+    combustivel_id: uuid.UUID | None = None,
     situacao: str | None = None, busca: str | None = None,
     skip: int = 0, limit: int = 100,
     response: Response = None,  # type: ignore[assignment]
     user: User = Depends(require_permission(Perm.REFUELING_VIEW, escopo=True)),
     db: AsyncSession = Depends(get_db),
 ):
-    cond = _condicoes(user, inicio, fim, fornecedor_id, unidade_id, situacao, busca)
+    cond = _condicoes(user, inicio, fim, fornecedor_id, unidade_id, situacao, busca, combustivel_id)
     base = _consulta(cond).subquery()
     tot = (
         await db.execute(select(sa_func.count(), sa_func.coalesce(sa_func.sum(base.c.custo_total), 0)).select_from(base))
     ).one()
     # Contagem sem o filtro de situação, para os cartões "com nota / sem nota".
-    todos = _condicoes(user, inicio, fim, fornecedor_id, unidade_id, None, busca)
+    todos = _condicoes(user, inicio, fim, fornecedor_id, unidade_id, None, busca, combustivel_id)
     com = (
         await db.execute(
             select(sa_func.count()).select_from(
@@ -148,7 +151,8 @@ def _nome_seguro(t: str | None) -> str:
 @router.get("/zip")
 async def baixar_zip(
     inicio: date | None = None, fim: date | None = None,
-    fornecedor_id: uuid.UUID | None = None, unidade_id: uuid.UUID | None = None, busca: str | None = None,
+    fornecedor_id: uuid.UUID | None = None, unidade_id: uuid.UUID | None = None,
+    combustivel_id: uuid.UUID | None = None, busca: str | None = None,
     tipos: str = "NFE_XML,DANFE",
     user: User = Depends(require_permission(Perm.REFUELING_VIEW, escopo=True)),
     db: AsyncSession = Depends(get_db),
@@ -157,7 +161,7 @@ async def baixar_zip(
     quer = {t.strip().upper() for t in tipos.split(",")} & {"NFE_XML", "DANFE"}
     if not quer:
         raise HTTPException(status_code=422, detail="Escolha XML e/ou PDF.")
-    cond = _condicoes(user, inicio, fim, fornecedor_id, unidade_id, "COM_NOTA", busca)
+    cond = _condicoes(user, inicio, fim, fornecedor_id, unidade_id, "COM_NOTA", busca, combustivel_id)
     sub = _consulta(cond).with_only_columns(Abastecimento.id).subquery()
     linhas = (
         await db.execute(
