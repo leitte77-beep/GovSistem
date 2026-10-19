@@ -3008,9 +3008,10 @@ app.use('/api', rateLimiter);
           convParams
         ),
         db.manyOrNone(
-          `SELECT EXTRACT(HOUR FROM (criado_em AT TIME ZONE 'America/Sao_Paulo'))::int AS hora, COUNT(*)::int AS total
+          `SELECT EXTRACT(ISODOW FROM (criado_em AT TIME ZONE 'America/Sao_Paulo'))::int AS dia_semana,
+                  EXTRACT(HOUR FROM (criado_em AT TIME ZONE 'America/Sao_Paulo'))::int AS hora, COUNT(*)::int AS total
            FROM mensagens m WHERE tenant_id=$1 AND direcao='entrada' AND criado_em::date BETWEEN $2 AND $3${msgFilter4}
-           GROUP BY hora ORDER BY hora`,
+           GROUP BY dia_semana, hora ORDER BY dia_semana, hora`,
           allParams
         ),
         db.manyOrNone(
@@ -3126,7 +3127,14 @@ app.use('/api', rateLimiter);
         por_status: porStatus,
         por_dia: porDia,
         por_setor: porSetor,
-        por_hora: porHora,
+        // por_hora segue somado (compatibilidade); por_dia_hora alimenta o mapa
+        // de calor real (ISODOW 1=seg … 7=dom).
+        por_hora: Object.values(porHora.reduce((acc, x) => {
+          acc[x.hora] = acc[x.hora] || { hora: x.hora, total: 0 };
+          acc[x.hora].total += x.total;
+          return acc;
+        }, {})),
+        por_dia_hora: porHora,
         ranking_atendentes: ranking,
         top_assuntos: topAssuntos,
         tma_por_setor: tmaPorSetor,

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { createPortal, flushSync } from 'react-dom';
 import {
   Loader2, RefreshCw, Printer, FileText, FileSpreadsheet,
   MessageCircle, TrendingUp, Clock, CheckCircle2, Users,
@@ -179,15 +180,21 @@ function baixarArquivo(conteudo, nome, mime) {
 
 // ─────────── ESTILO IMPRESSÃO ───────────
 
+// A impressão não reaproveita a tela: ela tem rolagem horizontal, abas e
+// gráficos que medem a largura da janela, e saía cortada e sem cabeçalho.
+// No beforeprint montamos um relatório próprio (portal no <body>) e o resto da
+// página some — vale tanto para o botão quanto para Ctrl+P.
 const ESTILO_IMPRESSAO = `
+@media screen { #relatorio-impressao { display: none; } }
 @media print {
-  .nao-imprimir { display: none !important; }
-  .so-imprimir { display: block !important; }
-  body * { visibility: hidden; }
-  #relatorios-root, #relatorios-root * { visibility: visible; }
-  #relatorios-root { position: absolute; left: 0; top: 0; width: 100%; padding: 12px; overflow: visible !important; height: auto !important; max-height: none !important; }
-  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-  @page { margin: 12mm; }
+  @page { size: A4; margin: 12mm 11mm 14mm; }
+  html, body { height: auto !important; overflow: visible !important; background: #fff !important; }
+  body.imprimindo-relatorio > *:not(#relatorio-impressao) { display: none !important; }
+  #relatorio-impressao { display: block; color: #111827; font-size: 11px; }
+  #relatorio-impressao * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  #relatorio-impressao .bloco { break-inside: avoid; page-break-inside: avoid; }
+  #relatorio-impressao .nova-pagina { break-before: page; page-break-before: always; }
+  #relatorio-impressao h2 { break-after: avoid; }
 }
 `;
 
@@ -203,14 +210,14 @@ const STATUS_INFO = {
 };
 
 const CANAIS_INFO = [
-  { value: '', label: 'Todos' },
+  { value: '', label: 'Todos os canais' },
   { value: 'whatsapp', label: 'WhatsApp' },
   { value: 'chat_interno', label: 'Chat Interno' },
   { value: 'chatbot', label: 'Chatbot' },
 ];
 
 const STATUS_SELECT = [
-  { value: '', label: 'Todos' },
+  { value: '', label: 'Todos os status' },
   { value: 'fila', label: 'Fila' },
   { value: 'aberta', label: 'Em atendimento' },
   { value: 'resolvida', label: 'Resolvida' },
@@ -248,21 +255,19 @@ function mediaMovel(dados, janela) {
 
 // ─────────── COMPONENTES INTERNOS ───────────
 
-function CartaoKPI({ titulo, valor, sub, cor, icone, delta, deltaPositivo, snap }) {
+function CartaoKPI({ titulo, valor, sub, cor, icone, delta, deltaPositivo, compacto }) {
   const Icone = icone;
   return React.createElement('div', {
     style: {
       background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radius,
-      padding: '14px 16px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 144,
-      flex: snap ? '0 0 144px' : undefined,
-      scrollSnapAlign: snap ? 'start' : undefined,
+      padding: compacto ? '8px 10px' : '14px 16px', display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0,
     },
   },
     React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 } },
       Icone && React.createElement(Icone, { size: 16, style: { color: cor || T.textMuted, flexShrink: 0 } }),
-      React.createElement('span', { style: { fontSize: 12, color: T.textMuted, fontWeight: 600 } }, titulo),
+      React.createElement('span', { style: { fontSize: compacto ? 10 : 12, color: T.textMuted, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' } }, titulo),
     ),
-    React.createElement('span', { style: { fontSize: 26, fontWeight: 700, color: cor || T.text, lineHeight: 1.2 } }, valor),
+    React.createElement('span', { style: { fontSize: compacto ? 18 : 26, fontWeight: 700, color: cor || T.text, lineHeight: 1.2 } }, valor),
     sub && !delta && React.createElement('span', { style: { fontSize: 11, color: T.textMuted } }, sub),
     delta != null && React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 } },
       React.createElement('span', {
@@ -281,12 +286,16 @@ function Cartao({ titulo, valor, sub, cor }) {
   return React.createElement(CartaoKPI, { titulo, valor, sub, cor });
 }
 
-function Secao({ titulo, children, acao }) {
+function Secao({ titulo, sub, children, acao }) {
   return React.createElement('div', {
-    style: { background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radius, padding: 16 },
+    className: 'bloco',
+    style: { background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radius, padding: 16, minWidth: 0 },
   },
-    React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 } },
-      React.createElement('h3', { style: { fontSize: 14, fontWeight: 700, color: T.text, margin: 0 } }, titulo),
+    React.createElement('div', { style: { display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8, marginBottom: 14 } },
+      React.createElement('div', null,
+        React.createElement('h3', { style: { fontSize: 14, fontWeight: 700, color: T.text, margin: 0 } }, titulo),
+        sub && React.createElement('p', { style: { fontSize: 11.5, color: T.textMuted, margin: '3px 0 0' } }, sub),
+      ),
       acao || null,
     ),
     children,
@@ -486,8 +495,9 @@ function BarrasNps({ dados, onHover }) {
 
 // ─────────── BARRAS VERTICAIS COM LINHA DE TENDÊNCIA ───────────
 
-function BarrasVerticais({ dados, mostrarLabelCada, linhaTendencia, onHover }) {
-  const cada = mostrarLabelCada || 1;
+function BarrasVerticais({ dados, mostrarLabelCada, linhaTendencia, onHover, larguraFixa, altura }) {
+  const cada = mostrarLabelCada || Math.max(1, Math.ceil(dados.length / 12));
+  const alt = altura || 140;
   const max = Math.max(1, ...dados.map((d) => d.value));
   const wrapRef = useRef(null);
   const [largura, setLargura] = useState(0);
@@ -497,7 +507,7 @@ function BarrasVerticais({ dados, mostrarLabelCada, linhaTendencia, onHover }) {
   // quando as barras cresciam além do mínimo ou havia scroll horizontal).
   useEffect(() => {
     const el = wrapRef.current;
-    if (!el) return undefined;
+    if (!el || larguraFixa) return undefined;
     const medir = () => setLargura(el.clientWidth);
     medir();
     if (typeof ResizeObserver !== 'undefined') {
@@ -507,41 +517,42 @@ function BarrasVerticais({ dados, mostrarLabelCada, linhaTendencia, onHover }) {
     }
     window.addEventListener('resize', medir);
     return () => window.removeEventListener('resize', medir);
-  }, []);
+  }, [larguraFixa]);
 
   const gap = 2;
   const n = Math.max(1, dados.length);
   const barraMin = Math.max(14, Math.min(30, 600 / n));
-  const barraW = largura > 0 ? Math.max(barraMin, (largura - (n - 1) * gap) / n) : barraMin;
+  const disponivel = larguraFixa || largura;
+  const barraW = larguraFixa ? Math.max(4, (larguraFixa - (n - 1) * gap) / n) : disponivel > 0 ? Math.max(barraMin, (disponivel - (n - 1) * gap) / n) : barraMin;
   const total = n * barraW + (n - 1) * gap;
 
-  return React.createElement('div', { ref: wrapRef, style: { overflowX: 'auto' } },
+  return React.createElement('div', { ref: wrapRef, style: { overflowX: larguraFixa ? 'visible' : 'auto' } },
     React.createElement('div', { style: { position: 'relative', width: total, minWidth: '100%' } },
-      React.createElement('div', { style: { display: 'flex', alignItems: 'flex-end', gap, height: 140 } },
+      React.createElement('div', { style: { display: 'flex', alignItems: 'flex-end', gap, height: alt } },
         dados.map((d, i) => React.createElement('div', {
           key: d.label + i,
           style: { flex: `0 0 ${barraW}px`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'flex-end', height: '100%', gap: 4 },
         },
           React.createElement('div', {
             style: {
-              width: '70%', height: `${(d.value / max) * 100}%`, minHeight: d.value > 0 ? 3 : 0,
+              width: '70%', height: `${(d.value / max) * (alt - 16)}px`, minHeight: d.value > 0 ? 3 : 0,
               background: d.destaque ? T.primary : (T.chartBar || T.primarySoft), borderRadius: '3px 3px 0 0', transition: 'height 0.3s', cursor: 'pointer',
             },
             onMouseEnter: (e) => onHover && onHover({ texto: `${d.label}: ${d.value}`, x: e.clientX, y: e.clientY }),
             onMouseLeave: () => onHover && onHover(null),
           }),
           React.createElement('span', {
-            style: { fontSize: 9, color: T.textSecondary, whiteSpace: 'nowrap' },
+            style: { fontSize: 9, color: T.textSecondary, whiteSpace: 'nowrap', height: 12, lineHeight: '12px' },
           }, (i % cada === 0) ? d.label : ''),
         )),
       ),
       linhaTendencia && linhaTendencia.length > 0 && React.createElement('svg', {
-        style: { position: 'absolute', top: 0, left: 0, width: total, height: 140, pointerEvents: 'none' },
+        style: { position: 'absolute', top: 0, left: 0, width: total, height: alt - 16, pointerEvents: 'none', overflow: 'visible' },
       },
         React.createElement('polyline', {
           points: linhaTendencia.map((v, i) => {
             const x = i * (barraW + gap) + barraW / 2;
-            const y = 140 - (v / max) * 140;
+            const y = (alt - 16) - (v / max) * (alt - 16);
             return `${x},${y}`;
           }).join(' '),
           fill: 'none',
@@ -557,53 +568,65 @@ function BarrasVerticais({ dados, mostrarLabelCada, linhaTendencia, onHover }) {
 
 // ─────────── HEATMAP ───────────
 
-function HeatmapGrid({ dadosHora }) {
-  if (!dadosHora || dadosHora.length === 0) {
-    return React.createElement('div', { style: { fontSize: 13, color: T.textMuted, padding: '8px 0' } }, 'Sem dados de horário.');
-  }
-  const maxHora = Math.max(1, Math.max(...dadosHora.map((h) => h.value)));
-  const cellSize = 18;
-  const gap = 2;
-  const labelW = 30;
+const ESCALA_CALOR = ['#dbeafe', '#93c5fd', '#3b82f6', '#1e40af'];
 
-  function corIntensidade(valor) {
-    const pct = valor / maxHora;
-    if (pct === 0) return T.surfaceMuted;
-    if (pct < 0.25) return '#dbeafe';
-    if (pct < 0.5) return '#93c5fd';
-    if (pct < 0.75) return '#3b82f6';
-    return '#1e40af';
+function HeatmapGrid({ porDiaHora, porHora }) {
+  // Matriz 7×24 real (dia da semana × hora). Antes a mesma linha de horas era
+  // repetida nos 7 dias, dando a impressão de um padrão semanal que não existia.
+  const linhas = useMemo(() => {
+    if (porDiaHora && porDiaHora.length > 0) {
+      return DIAS_SEMANA.map((rotulo, i) => {
+        const valores = Array(24).fill(0);
+        porDiaHora.filter((x) => x.dia_semana === i + 1).forEach((x) => { valores[x.hora] = x.total; });
+        return { rotulo, valores };
+      });
+    }
+    const valores = Array(24).fill(0);
+    (porHora || []).forEach((x) => { valores[x.hora] = x.total; });
+    return [{ rotulo: 'Total', valores }];
+  }, [porDiaHora, porHora]);
+
+  const max = Math.max(0, ...linhas.flatMap((l) => l.valores));
+  if (max === 0) {
+    return React.createElement('div', { style: { fontSize: 13, color: T.textMuted, padding: '8px 0' } }, 'Sem mensagens no período.');
   }
 
-  return React.createElement('div', { style: { overflowX: 'auto', paddingBottom: 4 } },
-    // Cabeçalho com horas
-    React.createElement('div', { style: { display: 'flex', alignItems: 'center', marginBottom: 1 } },
-      React.createElement('div', { style: { width: labelW, flexShrink: 0 } }),
-      dadosHora.map((h) => React.createElement('div', {
-        key: h.label,
-        style: { width: cellSize, height: 16, textAlign: 'center', fontSize: 8, color: T.textMuted, flexShrink: 0, marginRight: gap },
-      }, String(h.label).padStart(2, '0'))),
+  let pico = { rotulo: '', hora: 0, valor: 0 };
+  linhas.forEach((l) => l.valores.forEach((v, h) => { if (v > pico.valor) pico = { rotulo: l.rotulo, hora: h, valor: v }; }));
+
+  const cor = (v) => {
+    if (v === 0) return T.surfaceMuted;
+    const pct = v / max;
+    return ESCALA_CALOR[pct < 0.25 ? 0 : pct < 0.5 ? 1 : pct < 0.75 ? 2 : 3];
+  };
+  const grade = { display: 'grid', gridTemplateColumns: '30px repeat(24, minmax(0, 1fr))', gap: 2, alignItems: 'center' };
+
+  return React.createElement('div', null,
+    React.createElement('div', { style: { ...grade, marginBottom: 2 } },
+      React.createElement('span', null),
+      Array.from({ length: 24 }, (_, h) => React.createElement('span', {
+        key: h, style: { fontSize: 9, color: T.textMuted, textAlign: 'center' },
+      }, h % 3 === 0 ? String(h).padStart(2, '0') : '')),
     ),
-    // Linhas (dias da semana)
-    DIAS_SEMANA.map((dia) => React.createElement('div', { key: dia, style: { display: 'flex', alignItems: 'center' } },
-      React.createElement('div', { style: { width: labelW, fontSize: 10, color: T.textSecondary, flexShrink: 0, lineHeight: `${cellSize}px` } }, dia),
-      dadosHora.map((h) => React.createElement('div', {
-        key: h.label,
-        title: `${dia} ${String(h.label).padStart(2, '0')}h - ${h.value} msgs`,
-        style: {
-          width: cellSize, height: cellSize, borderRadius: 3,
-          background: corIntensidade(h.value),
-          flexShrink: 0, marginRight: gap,
-          transition: 'background 0.2s',
-        },
+    linhas.map((l) => React.createElement('div', { key: l.rotulo, style: { ...grade, marginBottom: 2 } },
+      React.createElement('span', { style: { fontSize: 10, color: T.textSecondary } }, l.rotulo),
+      l.valores.map((v, h) => React.createElement('div', {
+        key: h,
+        title: `${l.rotulo} ${String(h).padStart(2, '0')}h — ${v} mensage${v === 1 ? 'm' : 'ns'}`,
+        style: { height: 16, borderRadius: 3, background: cor(v) },
       })),
     )),
-    React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 10, color: T.textMuted } },
-      React.createElement('span', null, 'Baixo'),
-      [T.surfaceMuted, '#dbeafe', '#93c5fd', '#3b82f6', '#1e40af'].map((c, i) =>
-        React.createElement('div', { key: i, style: { width: 14, height: 14, borderRadius: 2, background: c, flexShrink: 0 } }),
+    React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginTop: 10, fontSize: 10.5, color: T.textMuted } },
+      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 4 } },
+        React.createElement('span', null, 'Menos'),
+        [T.surfaceMuted, ...ESCALA_CALOR].map((c, i) =>
+          React.createElement('div', { key: i, style: { width: 12, height: 12, borderRadius: 2, background: c } })),
+        React.createElement('span', null, 'Mais'),
       ),
-      React.createElement('span', null, 'Alto'),
+      React.createElement('span', null, 'Pico: ',
+        React.createElement('strong', { style: { color: T.text } },
+          `${pico.rotulo === 'Total' ? '' : pico.rotulo + ' '}${String(pico.hora).padStart(2, '0')}h`),
+        ` (${pico.valor} mensagens recebidas)`),
     ),
   );
 }
@@ -859,13 +882,6 @@ export function PaginaRelatorios() {
   const nps = dados?.nps;
   const temComparacao = dados?.comparacao;
 
-  const horas = useMemo(() =>
-    Array.from({ length: 24 }, (_, h) => {
-      const achou = (dados?.por_hora || []).find((x) => x.hora === h);
-      return { label: h, value: achou ? achou.total : 0 };
-    }),
-  [dados]);
-
   const porDiaBarras = useMemo(() =>
     (dados?.por_dia || []).map((d) => ({
       label: d.dia.slice(8, 10) + '/' + d.dia.slice(5, 7),
@@ -954,12 +970,269 @@ export function PaginaRelatorios() {
     );
   }, [dados, npsDetalhado, sla, assuntos, exportSelecao, baseNome, registrarExportacao]);
 
-  const imprimir = () => {
+  // ── impressão ──
+  // O beforeprint monta o relatório de impressão de forma síncrona (flushSync),
+  // senão o navegador tira a "foto" da página antes do React renderizar.
+  const [imprimindo, setImprimindo] = useState(false);
+  const [geradoEm, setGeradoEm] = useState('');
+
+  useEffect(() => {
+    const antes = () => {
+      setGeradoEm(new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }));
+      flushSync(() => setImprimindo(true));
+      document.body.classList.add('imprimindo-relatorio');
+    };
+    const depois = () => {
+      document.body.classList.remove('imprimindo-relatorio');
+      setImprimindo(false);
+    };
+    window.addEventListener('beforeprint', antes);
+    window.addEventListener('afterprint', depois);
+    return () => {
+      window.removeEventListener('beforeprint', antes);
+      window.removeEventListener('afterprint', depois);
+      document.body.classList.remove('imprimindo-relatorio');
+    };
+  }, []);
+
+  const [preparandoImpressao, setPreparandoImpressao] = useState(false);
+  const imprimir = async () => {
     registrarExportacao('impressao');
-    window.print();
+    // O relatório impresso traz as três abas: garante NPS e SLA carregados.
+    setPreparandoImpressao(true);
+    try {
+      await Promise.all([npsDetalhado ? null : carregarNPS(), sla ? null : carregarSLA()]);
+    } finally {
+      setPreparandoImpressao(false);
+    }
+    setTimeout(() => window.print(), 50);
   };
 
+  // ── rótulos dos filtros aplicados (cabeçalho da impressão) ──
+  const fmtData = (iso) => (iso ? iso.split('-').reverse().join('/') : '');
+  const filtrosAplicados = [
+    departamentoId && `Setor: ${(filtros.departamentos.find((d) => String(d.id) === String(departamentoId)) || {}).nome || departamentoId}`,
+    operadorId && `Atendente: ${(filtros.operadores.find((o) => String(o.id) === String(operadorId)) || {}).nome || operadorId}`,
+    statusFilter && `Status: ${(STATUS_SELECT.find((x) => x.value === statusFilter) || {}).label}`,
+    canal && `Canal: ${(CANAIS_INFO.find((x) => x.value === canal) || {}).label}`,
+  ].filter(Boolean);
+  const temFiltro = filtrosAplicados.length > 0 || comparar;
+
+  const grade2 = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))', gap: 16, marginBottom: 16 };
+  const gradeKpi = (imp) => ({
+    display: 'grid', gap: imp ? 8 : 12, marginBottom: 16,
+    gridTemplateColumns: imp ? 'repeat(4, 1fr)' : 'repeat(auto-fill, minmax(150px, 1fr))',
+  });
+  const alerta = (msg) => msg && React.createElement('div', {
+    role: 'alert',
+    style: { padding: '10px 14px', background: T.dangerSoft, color: T.danger, borderRadius: T.radiusSm, fontSize: 13, marginBottom: 16 },
+  }, msg);
+
+  // ── conteúdo das abas (reaproveitado pela tela e pela impressão) ──
+  function conteudoGeral(imp) {
+    if (!dados) return null;
+    const hover = imp ? null : setTooltip;
+    return React.createElement(React.Fragment, null,
+      React.createElement('div', { className: 'bloco', style: gradeKpi(imp) },
+        React.createElement(CartaoKPI, {
+          titulo: 'Conversas', valor: r.criadas ?? 0, icone: MessageCircle, cor: T.primary, compacto: imp,
+          delta: temComparacao?.delta_criadas, deltaPositivo: (temComparacao?.delta_criadas || 0) >= 0,
+        }),
+        React.createElement(CartaoKPI, {
+          titulo: 'Mensagens recebidas', valor: r.recebidas ?? 0, icone: TrendingUp, compacto: imp,
+          delta: temComparacao?.delta_recebidas, deltaPositivo: (temComparacao?.delta_recebidas || 0) >= 0,
+        }),
+        React.createElement(CartaoKPI, {
+          titulo: 'Mensagens enviadas', valor: r.enviadas ?? 0, icone: BarChart3, compacto: imp,
+          delta: temComparacao?.delta_enviadas, deltaPositivo: (temComparacao?.delta_enviadas || 0) >= 0,
+        }),
+        React.createElement(CartaoKPI, {
+          // Tempo maior é pior: a seta verde aparece quando o tempo cai.
+          titulo: 'Tempo médio 1ª resposta', valor: formatarSeg(r.tempo_primeira_resposta_seg), icone: Timer, cor: T.primary, compacto: imp,
+          delta: temComparacao?.delta_tempo_resposta, deltaPositivo: (temComparacao?.delta_tempo_resposta || 0) <= 0,
+        }),
+        React.createElement(CartaoKPI, {
+          titulo: 'Taxa de resolução', valor: `${r.taxa_resolucao ?? 0}%`, icone: CheckCircle2, cor: T.success, compacto: imp,
+          sub: `${r.resolvidas_periodo ?? 0} de ${r.criadas ?? 0} resolvidas`,
+        }),
+        React.createElement(CartaoKPI, {
+          titulo: 'Em atendimento agora', valor: r.em_aberto ?? 0, icone: Users, compacto: imp, sub: 'situação atual',
+        }),
+        React.createElement(CartaoKPI, {
+          titulo: 'Na fila agora', valor: r.na_fila ?? 0, icone: AlertTriangle, compacto: imp, sub: 'situação atual',
+          cor: (r.na_fila || 0) > 0 ? T.warning : T.text,
+        }),
+        React.createElement(CartaoKPI, {
+          titulo: 'NPS', valor: nps && nps.total_respondidos > 0 ? nps.nps : '—', icone: ThumbsUp, cor: T.primary, compacto: imp,
+          sub: nps && nps.total_respondidos > 0 ? `${nps.total_respondidos} respostas` : 'sem respostas no período',
+        }),
+      ),
+
+      React.createElement('div', { style: { marginBottom: 16 } },
+        React.createElement(Secao, { titulo: 'Conversas por dia', sub: 'Barras: conversas iniciadas no dia · linha: média móvel de 3 dias' },
+          React.createElement(BarrasVerticais, {
+            dados: porDiaBarras, linhaTendencia: tendenciaLinha, onHover: hover,
+            larguraFixa: imp ? 640 : undefined, altura: imp ? 120 : 170,
+          }),
+        ),
+      ),
+
+      React.createElement('div', { style: grade2 },
+        React.createElement(Secao, { titulo: 'Conversas por setor', sub: 'Conversas iniciadas no período (10 maiores)' },
+          React.createElement(BarrasHorizontais, {
+            dados: (dados.por_setor || []).map((s, i) => ({ label: s.nome, value: s.total, cor: CORES_DEPT[i % CORES_DEPT.length] })),
+            onHover: hover,
+          }),
+        ),
+        React.createElement(Secao, {
+          titulo: 'Situação das conversas',
+          // por_status não é recortado pelo período: é o retrato atual da base.
+          sub: 'Todas as conversas na base hoje, independente do período',
+        },
+          React.createElement(DonutChart, { dados: statusDonut, tamanho: imp ? 120 : 160 }),
+        ),
+      ),
+
+      React.createElement('div', { style: grade2 },
+        React.createElement(Secao, { titulo: 'Horário de pico', sub: 'Mensagens recebidas por dia da semana e hora' },
+          React.createElement(HeatmapGrid, { porDiaHora: dados.por_dia_hora, porHora: dados.por_hora }),
+        ),
+        React.createElement(Secao, { titulo: 'Ranking de atendentes', sub: 'Mensagens enviadas · conversas atendidas' },
+          React.createElement(BarrasHorizontais, {
+            corPadrao: T.primary,
+            dados: (dados.ranking_atendentes || []).map((a) => ({ label: a.nome, value: a.enviadas, sub: `${a.enviadas} · ${a.conversas} conv.` })),
+            onHover: hover,
+          }),
+        ),
+      ),
+
+      (assuntos || []).length > 0 && React.createElement('div', { style: { marginBottom: 16 } },
+        React.createElement(Secao, { titulo: 'Assuntos mais frequentes', sub: 'Protocolos abertos no período' },
+          React.createElement(BarrasHorizontais, {
+            dados: assuntos.map((a) => ({ label: a.assunto, value: a.total })),
+            onHover: hover,
+          }),
+        ),
+      ),
+    );
+  }
+
+  function conteudoNps(imp) {
+    if (!npsDetalhado) return null;
+    const g = npsDetalhado.geral || {};
+    const total = g.total_respondidos || 0;
+    const pct = (v) => Math.round(((v || 0) / Math.max(1, total)) * 100);
+    const hover = imp ? null : setTooltip;
+    return React.createElement(React.Fragment, null,
+      React.createElement('div', { className: 'bloco', style: gradeKpi(imp) },
+        React.createElement(CartaoKPI, {
+          titulo: 'NPS', valor: total > 0 ? Math.round(g.nps) : '—', icone: ThumbsUp, compacto: imp,
+          sub: total > 0 ? `${faixaNps(g.nps).rotulo} · ${total} respostas` : 'sem respostas no período',
+          cor: total > 0 ? faixaNps(g.nps).cor : T.textMuted,
+        }),
+        React.createElement(CartaoKPI, { titulo: 'Promotores (9–10)', valor: g.promotores ?? 0, icone: TrendingUp, cor: T.success, sub: `${pct(g.promotores)}%`, compacto: imp }),
+        React.createElement(CartaoKPI, { titulo: 'Neutros (7–8)', valor: g.neutros ?? 0, icone: Clock, cor: T.warning, sub: `${pct(g.neutros)}%`, compacto: imp }),
+        React.createElement(CartaoKPI, { titulo: 'Detratores (0–6)', valor: g.detratores ?? 0, icone: AlertTriangle, cor: T.danger, sub: `${pct(g.detratores)}%`, compacto: imp }),
+      ),
+      total > 0 && React.createElement('div', { style: { marginBottom: 16 } },
+        React.createElement(Secao, { titulo: 'Distribuição das respostas', sub: 'NPS = % promotores − % detratores' },
+          React.createElement('div', { style: { display: 'flex', height: 22, borderRadius: 6, overflow: 'hidden', background: T.surfaceMuted } },
+            [['promotores', T.success], ['neutros', T.warning], ['detratores', T.danger]].map(([k, c]) =>
+              (g[k] || 0) > 0 && React.createElement('div', { key: k, title: `${k}: ${g[k]}`, style: { flex: g[k], background: c } })),
+          ),
+          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 11, color: T.textMuted } },
+            React.createElement('span', null, `Promotores ${pct(g.promotores)}%`),
+            React.createElement('span', null, `Neutros ${pct(g.neutros)}%`),
+            React.createElement('span', null, `Detratores ${pct(g.detratores)}%`),
+          ),
+        ),
+      ),
+      React.createElement('div', { style: grade2 },
+        React.createElement(Secao, { titulo: 'NPS por setor' },
+          React.createElement(BarrasNps, {
+            dados: (npsDetalhado.por_setor || []).map((s) => ({ label: s.departamento_nome, value: s.nps || 0, sub: `${s.nps ?? '—'} · ${s.total || 0} resp.` })),
+            onHover: hover,
+          }),
+        ),
+        React.createElement(Secao, { titulo: 'NPS por atendente' },
+          React.createElement(BarrasNps, {
+            dados: (npsDetalhado.por_atendente || []).map((a) => ({ label: a.operador_nome, value: a.nps || 0, sub: `${a.nps ?? '—'} · ${a.total || 0} resp.` })),
+            onHover: hover,
+          }),
+        ),
+      ),
+    );
+  }
+
+  function conteudoSla(imp) {
+    if (!sla) return null;
+    const hover = imp ? null : setTooltip;
+    return React.createElement(React.Fragment, null,
+      React.createElement('div', { className: 'bloco', style: { ...gradeKpi(imp), gridTemplateColumns: imp ? 'repeat(3, 1fr)' : gradeKpi(false).gridTemplateColumns } },
+        React.createElement(CartaoKPI, {
+          titulo: 'TMA (tempo médio de atendimento)', valor: formatarMinutos((sla.tma_geral_seg || 0) / 60), icone: Clock, cor: T.primary, compacto: imp,
+        }),
+        React.createElement(CartaoKPI, {
+          // P95 é em segundos: formatarMinutos arredondava 20s para "0min".
+          titulo: 'P95 da 1ª resposta', valor: formatarSeg(sla.p95_resposta_seg || 0), compacto: imp,
+          icone: Timer, cor: sla.p95_resposta_seg > 600 ? T.warning : T.text, sub: '95% respondidas até este tempo',
+        }),
+        React.createElement(CartaoKPI, {
+          titulo: 'Taxa de abandono', valor: `${sla.taxa_abandono ?? 0}%`, icone: AlertTriangle, compacto: imp,
+          cor: (sla.taxa_abandono || 0) > 10 ? T.danger : (sla.taxa_abandono || 0) > 5 ? T.warning : T.success,
+        }),
+      ),
+      React.createElement('div', { style: grade2 },
+        React.createElement(Secao, { titulo: 'TMA por setor' },
+          React.createElement(BarrasHorizontais, {
+            corPadrao: T.primary,
+            dados: (sla.por_setor || []).map((s) => ({ label: s.nome, value: s.tma_seg || 0, sub: formatarMinutos((s.tma_seg || 0) / 60) })),
+            onHover: hover,
+          }),
+        ),
+        sla.distribuicao_tempo && React.createElement(Secao, { titulo: 'Distribuição do tempo de resposta' },
+          React.createElement(BarrasVerticais, {
+            dados: sla.distribuicao_tempo.map((d) => ({ label: d.faixa, value: d.total })),
+            mostrarLabelCada: 1, onHover: hover, larguraFixa: imp ? 300 : undefined,
+          }),
+        ),
+      ),
+    );
+  }
+
+  // ── relatório de impressão ──
+  const tituloParte = (texto, quebra) => React.createElement('h2', {
+    className: quebra ? 'nova-pagina' : undefined,
+    style: { fontSize: 14, fontWeight: 700, color: '#111827', margin: '4px 0 10px', paddingBottom: 4, borderBottom: `2px solid ${T.primary}` },
+  }, texto);
+
+  const relatorioImpressao = imprimindo && createPortal(
+    React.createElement('div', { id: 'relatorio-impressao' },
+      React.createElement('div', { className: 'bloco', style: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: 16, borderBottom: '1px solid #d1d5db', paddingBottom: 10, marginBottom: 14 } },
+        React.createElement('div', null,
+          React.createElement('div', { style: { fontSize: 10, fontWeight: 700, letterSpacing: 1, color: T.primary, textTransform: 'uppercase' } }, 'ChatGov · Central de Atendimento'),
+          React.createElement('div', { style: { fontSize: 20, fontWeight: 700, color: '#111827', marginTop: 2 } }, 'Relatório de atendimento'),
+          React.createElement('div', { style: { fontSize: 12, color: '#374151', marginTop: 4 } },
+            `Período: ${fmtData(inicio)} a ${fmtData(fim)}`,
+            temComparacao?.periodo && ` · comparado com ${fmtData(temComparacao.periodo.inicio)} a ${fmtData(temComparacao.periodo.fim)}`),
+          React.createElement('div', { style: { fontSize: 11, color: '#6b7280', marginTop: 2 } },
+            filtrosAplicados.length > 0 ? `Filtros: ${filtrosAplicados.join(' · ')}` : 'Sem filtros: todos os setores, atendentes, status e canais'),
+        ),
+        React.createElement('div', { style: { fontSize: 10, color: '#6b7280', textAlign: 'right', whiteSpace: 'nowrap' } }, `Gerado em ${geradoEm}`),
+      ),
+      tituloParte('1. Visão geral'),
+      conteudoGeral(true),
+      npsDetalhado && tituloParte('2. Satisfação (NPS)', true),
+      conteudoNps(true),
+      sla && tituloParte('3. Tempo de atendimento (SLA)'),
+      conteudoSla(true),
+    ),
+    document.body,
+  );
+
   // ── render ──
+  const rotulo = (texto) => React.createElement('span', { style: { fontSize: 11, fontWeight: 700, color: T.textMuted, textTransform: 'uppercase', letterSpacing: 0.5, minWidth: 58 } }, texto);
+
   return React.createElement('div', {
     id: 'relatorios-root',
     ref: containerRef,
@@ -971,11 +1244,10 @@ export function PaginaRelatorios() {
       .spin { animation: opencode-spin 1s linear infinite; }
       @keyframes opencode-skeleton { 0%, 100% { opacity: 0.5; } 50% { opacity: 0.8; } }
     `),
+    relatorioImpressao,
 
-    // ═══════════════ TOOLTIP OVERLAY ═══════════════
     React.createElement(TooltipOverlay, { tooltip }),
 
-    // ═══════════════ MODAL EXPORTAÇÃO ═══════════════
     React.createElement(ModalExport, {
       isOpen: showExportModal,
       onClose: () => setShowExportModal(false),
@@ -986,417 +1258,108 @@ export function PaginaRelatorios() {
       dados,
     }),
 
-    // ═══════════════ HEADER STICKY ═══════════════
+    // ═══════════════ CABEÇALHO ═══════════════
     React.createElement('div', {
-      className: 'nao-imprimir',
-      style: { position: 'sticky', top: 0, zIndex: 100, background: T.bg, paddingBottom: 12, marginBottom: 4 },
+      style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 14 },
     },
-      React.createElement('div', {
-        style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12, marginBottom: 14 },
-      },
-        React.createElement('div', null,
-          React.createElement('h2', { style: { fontSize: 20, fontWeight: 700, color: T.text, margin: 0 } }, 'Relatórios'),
-          React.createElement('p', { className: 'so-imprimir', style: { display: 'none', fontSize: 12, color: T.textMuted, margin: '4px 0 0' } },
-            `Período: ${inicio.split('-').reverse().join('/')} a ${fim.split('-').reverse().join('/')}`),
-        ),
-        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
-          React.createElement('button', {
-            onClick: carregarTudo, disabled: carregandoMetricas, 'aria-label': 'Atualizar',
-            style: { display: 'flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: T.radiusSm, border: 'none', background: T.primary, color: '#fff', fontSize: 13, fontWeight: 600, cursor: carregandoMetricas ? 'default' : 'pointer' },
-          },
-            React.createElement(RefreshCw, { size: 14, className: carregandoMetricas ? 'spin' : undefined }),
-            'Atualizar',
-          ),
-          React.createElement('div', { style: { width: 1, height: 26, background: T.borderStrong, margin: '0 2px' } }),
-          React.createElement('button', { onClick: imprimir, disabled: !dados, title: 'Imprimir ou salvar como PDF', style: btnEstilo },
-            React.createElement(Printer, { size: 15 }), 'Imprimir'),
-          React.createElement('button', { onClick: () => setShowExportModal(true), disabled: !dados, title: 'Exportar dados', style: btnEstilo },
-            React.createElement(Download, { size: 15 }), 'Exportar'),
-        ),
+      React.createElement('div', null,
+        React.createElement('h2', { style: { fontSize: 20, fontWeight: 700, color: T.text, margin: 0 } }, 'Relatórios'),
+        React.createElement('p', { style: { fontSize: 12.5, color: T.textMuted, margin: '3px 0 0' } },
+          `${fmtData(inicio)} a ${fmtData(fim)}`,
+          filtrosAplicados.length > 0 ? ` · ${filtrosAplicados.join(' · ')}` : ''),
       ),
-
-      // Painel de filtros
-      React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, overflowX: 'auto', paddingBottom: 4, WebkitOverflowScrolling: 'touch', maskImage: 'linear-gradient(to right, #000 90%, transparent)', WebkitMaskImage: 'linear-gradient(to right, #000 90%, transparent)', paddingRight: 20 } },
-        // Períodos rápidos
-        ...PERIODOS_RAPIDOS.map((p) =>
-          React.createElement('button', {
-            key: p.label,
-            onClick: () => aplicarPeriodoRapido(p.label),
-            style: chipEstilo(periodoAtivo === p.label),
-          }, p.label),
-        ),
-
-        React.createElement('div', { style: { width: 1, height: 22, background: T.borderStrong, margin: '0 4px' } }),
-
-        React.createElement('label', { style: { fontSize: 11.5, color: T.textMuted } }, 'De'),
-        React.createElement('input', { type: 'date', value: inicio, max: fim, onChange: (e) => { setInicio(e.target.value); setPeriodoAtivo(''); }, style: { ...inputEstilo, width: 130 } }),
-        React.createElement('label', { style: { fontSize: 11.5, color: T.textMuted } }, 'até'),
-        React.createElement('input', { type: 'date', value: fim, min: inicio, max: isoHoje(), onChange: (e) => { setFim(e.target.value); setPeriodoAtivo(''); }, style: { ...inputEstilo, width: 130 } }),
-
-        React.createElement('select', {
-          value: departamentoId,
-          onChange: (e) => setDepartamentoId(e.target.value),
-          style: { ...selectEstilo, maxWidth: 160 },
-        },
-          React.createElement('option', { value: '' }, 'Todos os setores'),
-          ...(filtros.departamentos || []).map((d) =>
-            React.createElement('option', { key: d.id, value: d.id }, d.nome),
-          ),
-        ),
-
-        React.createElement('select', {
-          value: operadorId,
-          onChange: (e) => setOperadorId(e.target.value),
-          style: { ...selectEstilo, maxWidth: 160 },
-        },
-          React.createElement('option', { value: '' }, 'Todos os atendentes'),
-          ...(filtros.operadores || []).map((o) =>
-            React.createElement('option', { key: o.id, value: o.id }, o.nome),
-          ),
-        ),
-
-        React.createElement('select', {
-          value: statusFilter,
-          onChange: (e) => setStatusFilter(e.target.value),
-          style: { ...selectEstilo, maxWidth: 140 },
-        },
-          ...STATUS_SELECT.map((s) =>
-            React.createElement('option', { key: s.value, value: s.value }, s.label),
-          ),
-        ),
-
-        React.createElement('select', {
-          value: canal,
-          onChange: (e) => setCanal(e.target.value),
-          style: { ...selectEstilo, maxWidth: 140 },
-        },
-          ...CANAIS_INFO.map((c) =>
-            React.createElement('option', { key: c.value, value: c.value }, c.label),
-          ),
-        ),
-
+      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' } },
         React.createElement('button', {
-          onClick: limparFiltros,
-          title: 'Limpar filtros',
-          style: { ...btnEstilo, background: 'transparent', border: 'none', padding: '7px 8px' },
-        }, React.createElement(X, { size: 15 }), 'Limpar'),
-      ),
-
-      // Toggle comparação (abaixo dos filtros)
-      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 10 } },
-        React.createElement(Toggle, { ativo: comparar, onChange: setComparar, label: 'Comparar com período anterior' }),
-        React.createElement('span', { style: { fontSize: 12.5, color: T.textSecondary } }, 'Comparar com período anterior'),
-        React.createElement(Filter, { size: 13, style: { color: T.textMuted } }),
+          onClick: carregarTudo, disabled: carregandoMetricas, title: 'Recarregar os dados agora',
+          style: { ...btnEstilo, cursor: carregandoMetricas ? 'default' : 'pointer' },
+        },
+          React.createElement(RefreshCw, { size: 14, className: carregandoMetricas ? 'spin' : undefined }), 'Atualizar'),
+        React.createElement('button', { onClick: imprimir, disabled: !dados || preparandoImpressao, title: 'Imprimir ou salvar como PDF (relatório completo)', style: btnEstilo },
+          preparandoImpressao ? React.createElement(Loader2, { size: 15, className: 'spin' }) : React.createElement(Printer, { size: 15 }), 'Imprimir / PDF'),
+        React.createElement('button', {
+          onClick: () => setShowExportModal(true), disabled: !dados, title: 'Exportar dados em CSV ou Excel',
+          style: { ...btnEstilo, border: 'none', background: T.primary, color: '#fff' },
+        }, React.createElement(Download, { size: 15 }), 'Exportar'),
       ),
     ),
 
-    // ═══════════════ TABS ═══════════════
-    React.createElement('div', { style: { display: 'flex', gap: 4, marginBottom: 18, overflowX: 'auto', scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', maskImage: 'linear-gradient(to right, #000 92%, transparent)', WebkitMaskImage: 'linear-gradient(to right, #000 92%, transparent)', paddingRight: 20 } },
-      React.createElement('button', { onClick: () => setAbaAtiva('geral'), style: { ...tabEstilo(abaAtiva === 'geral'), scrollSnapAlign: 'start', flexShrink: 0 } },
-        React.createElement(LayoutDashboard, { size: 14 }), 'Visão Geral'),
-      React.createElement('button', { onClick: () => setAbaAtiva('nps'), style: { ...tabEstilo(abaAtiva === 'nps'), scrollSnapAlign: 'start', flexShrink: 0 } },
-        React.createElement(ThumbsUp, { size: 14 }), 'NPS'),
-      React.createElement('button', { onClick: () => setAbaAtiva('sla'), style: { ...tabEstilo(abaAtiva === 'sla'), scrollSnapAlign: 'start', flexShrink: 0 } },
-        React.createElement(Clock, { size: 14 }), 'SLA'),
+    // ═══════════════ FILTROS ═══════════════
+    React.createElement('div', {
+      style: { background: T.surface, border: `1px solid ${T.border}`, borderRadius: T.radius, padding: '12px 14px', marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 10 },
+    },
+      React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 } },
+        rotulo('Período'),
+        ...PERIODOS_RAPIDOS.map((p) =>
+          React.createElement('button', { key: p.label, onClick: () => aplicarPeriodoRapido(p.label), style: chipEstilo(periodoAtivo === p.label) }, p.label)),
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
+          React.createElement('input', { type: 'date', 'aria-label': 'Data inicial', value: inicio, max: fim, onChange: (e) => { setInicio(e.target.value); setPeriodoAtivo(''); }, style: { ...inputEstilo, width: 132 } }),
+          React.createElement('span', { style: { fontSize: 12, color: T.textMuted } }, 'até'),
+          React.createElement('input', { type: 'date', 'aria-label': 'Data final', value: fim, min: inicio, max: isoHoje(), onChange: (e) => { setFim(e.target.value); setPeriodoAtivo(''); }, style: { ...inputEstilo, width: 132 } }),
+        ),
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginLeft: 'auto' } },
+          React.createElement(Toggle, { ativo: comparar, onChange: setComparar, label: 'Comparar com período anterior' }),
+          React.createElement('span', { onClick: () => setComparar(!comparar), style: { fontSize: 12.5, color: T.textSecondary, cursor: 'pointer' } }, 'Comparar com período anterior'),
+        ),
+      ),
+      React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8 } },
+        rotulo('Filtros'),
+        React.createElement('select', { 'aria-label': 'Setor', value: departamentoId, onChange: (e) => setDepartamentoId(e.target.value), style: { ...selectEstilo, flex: '1 1 150px', maxWidth: 220 } },
+          React.createElement('option', { value: '' }, 'Todos os setores'),
+          ...(filtros.departamentos || []).map((d) => React.createElement('option', { key: d.id, value: d.id }, d.nome))),
+        React.createElement('select', { 'aria-label': 'Atendente', value: operadorId, onChange: (e) => setOperadorId(e.target.value), style: { ...selectEstilo, flex: '1 1 150px', maxWidth: 220 } },
+          React.createElement('option', { value: '' }, 'Todos os atendentes'),
+          ...(filtros.operadores || []).map((o) => React.createElement('option', { key: o.id, value: o.id }, o.nome))),
+        React.createElement('select', { 'aria-label': 'Status', value: statusFilter, onChange: (e) => setStatusFilter(e.target.value), style: { ...selectEstilo, flex: '1 1 130px', maxWidth: 180 } },
+          ...STATUS_SELECT.map((x) => React.createElement('option', { key: x.value, value: x.value }, x.label))),
+        React.createElement('select', { 'aria-label': 'Canal', value: canal, onChange: (e) => setCanal(e.target.value), style: { ...selectEstilo, flex: '1 1 130px', maxWidth: 180 } },
+          ...CANAIS_INFO.map((x) => React.createElement('option', { key: x.value, value: x.value }, x.label))),
+        temFiltro && React.createElement('button', {
+          onClick: limparFiltros, title: 'Voltar aos filtros padrão',
+          style: { ...btnEstilo, background: 'transparent', border: 'none', padding: '7px 8px', color: T.danger },
+        }, React.createElement(X, { size: 15 }), 'Limpar filtros'),
+      ),
     ),
 
-    // ═══════════════ ABA: VISÃO GERAL ═══════════════
+    // ═══════════════ ABAS ═══════════════
+    React.createElement('div', { role: 'tablist', style: { display: 'flex', gap: 4, marginBottom: 16, borderBottom: `1px solid ${T.border}` } },
+      [['geral', 'Visão geral', LayoutDashboard], ['nps', 'Satisfação (NPS)', ThumbsUp], ['sla', 'Tempo de atendimento (SLA)', Clock]].map(([k, label, Icone]) =>
+        React.createElement('button', {
+          key: k, role: 'tab', 'aria-selected': abaAtiva === k, onClick: () => setAbaAtiva(k),
+          style: {
+            display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+            border: 'none', background: 'transparent', whiteSpace: 'nowrap', marginBottom: -1,
+            color: abaAtiva === k ? T.primary : T.textSecondary,
+            borderBottom: `2px solid ${abaAtiva === k ? T.primary : 'transparent'}`,
+          },
+        }, React.createElement(Icone, { size: 14 }), label)),
+    ),
+
     abaAtiva === 'geral' && React.createElement(React.Fragment, null,
-
-      erroMetricas && React.createElement('div', {
-        role: 'alert',
-        style: { padding: '10px 14px', background: T.dangerSoft, color: T.danger, borderRadius: T.radiusSm, fontSize: 13, marginBottom: 16 },
-      }, erroMetricas),
-
-      // ── KPIs ──
+      alerta(erroMetricas),
       carregandoMetricas && !dados
-        ? React.createElement('div', {
-            className: 'kpi-grid',
-            style: { display: 'flex', gap: 12, marginBottom: 18, overflowX: 'auto', paddingBottom: 8, scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', maskImage: 'linear-gradient(to right, #000 92%, transparent)', WebkitMaskImage: 'linear-gradient(to right, #000 92%, transparent)', minHeight: 98, paddingRight: 16 },
-          },
-            ...Array.from({ length: 8 }).map((_, i) =>
-              React.createElement('div', { key: i, style: { flex: '0 0 144px', scrollSnapAlign: 'start' } },
-                React.createElement(Skeleton, { key: i, altura: 80 }))),
-          )
-        : dados && React.createElement('div', {
-            style: { display: 'flex', gap: 12, marginBottom: 18, overflowX: 'auto', paddingBottom: 8, scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', maskImage: 'linear-gradient(to right, #000 92%, transparent)', WebkitMaskImage: 'linear-gradient(to right, #000 92%, transparent)', minHeight: 98, paddingRight: 16 },
-          },
-            React.createElement(CartaoKPI, {
-              titulo: 'Conversas', valor: r.criadas ?? 0,
-              icone: MessageCircle, cor: T.primary,
-              delta: temComparacao?.delta_criadas,
-              deltaPositivo: (temComparacao?.delta_criadas || 0) >= 0,
-              snap: true,
-            }),
-            React.createElement(CartaoKPI, {
-              titulo: 'Mensagens recebidas', valor: r.recebidas ?? 0,
-              icone: TrendingUp,
-              delta: temComparacao?.delta_recebidas,
-              deltaPositivo: (temComparacao?.delta_recebidas || 0) >= 0,
-              snap: true,
-            }),
-            React.createElement(CartaoKPI, {
-              titulo: 'Mensagens enviadas', valor: r.enviadas ?? 0,
-              icone: BarChart3,
-              delta: temComparacao?.delta_enviadas,
-              deltaPositivo: (temComparacao?.delta_enviadas || 0) >= 0,
-              snap: true,
-            }),
-            React.createElement(CartaoKPI, {
-              titulo: 'Tempo 1ª resposta', valor: formatarSeg(r.tempo_primeira_resposta_seg),
-              icone: Timer, cor: T.primary,
-              snap: true,
-            }),
-            React.createElement(CartaoKPI, {
-              titulo: 'Taxa de resolução', valor: `${r.taxa_resolucao ?? 0}%`,
-              sub: `${r.resolvidas_periodo ?? 0} resolvidas`, icone: CheckCircle2, cor: T.success,
-              snap: true,
-            }),
-            React.createElement(CartaoKPI, {
-              titulo: 'Ativas agora', valor: r.em_aberto ?? 0,
-              icone: Users,
-              snap: true,
-            }),
-            React.createElement(CartaoKPI, {
-              titulo: 'Na fila', valor: r.na_fila ?? 0,
-              icone: AlertTriangle, cor: (r.na_fila || 0) > 0 ? T.warning : T.text,
-              snap: true,
-            }),
-            nps && React.createElement(CartaoKPI, {
-              titulo: 'NPS', valor: nps.total_respondidos > 0 ? nps.nps : '—',
-              sub: `${nps.total_respondidos || 0} respostas`,
-              icone: ThumbsUp, cor: T.primary,
-              snap: true,
-            }),
-          ),
-
-      dados && React.createElement(React.Fragment, null,
-        // ── Conversas por dia com linha de tendência ──
-        React.createElement('div', { style: { marginBottom: 18 } },
-          React.createElement(Secao, { titulo: 'Conversas por dia' },
-            React.createElement(BarrasVerticais, {
-              dados: porDiaBarras,
-              mostrarLabelCada: porDiaBarras.length > 15 ? 3 : 1,
-              linhaTendencia: tendenciaLinha,
-              onHover: setTooltip,
-            }),
-            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8, marginTop: 8 } },
-              React.createElement('div', { style: { width: 12, height: 2, background: T.primary, borderRadius: 1 } }),
-              React.createElement('span', { style: { fontSize: 10, color: T.textMuted } }, 'Linha de tendência (média móvel 3 dias)'),
-            ),
-          ),
-        ),
-
-        // ── Grid: setor + status donut ──
-        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))', gap: 18, marginBottom: 18 } },
-          React.createElement(Secao, { titulo: 'Conversas por setor' },
-            React.createElement(BarrasHorizontais, {
-              dados: (dados.por_setor || []).map((s, i) => ({ label: s.nome, value: s.total, cor: CORES_DEPT[i % CORES_DEPT.length] })),
-              onHover: setTooltip,
-            }),
-          ),
-          React.createElement(Secao, { titulo: 'Distribuição por status' },
-            React.createElement(DonutChart, { dados: statusDonut }),
-          ),
-        ),
-
-        // ── Grid: heatmap + ranking ──
-        React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))', gap: 18, marginBottom: 18 } },
-          React.createElement(Secao, { titulo: 'Mapa de calor — Horário de pico' },
-            React.createElement(HeatmapGrid, { dadosHora: horas }),
-          ),
-          React.createElement(Secao, { titulo: 'Ranking de atendentes' },
-            React.createElement(BarrasHorizontais, {
-              corPadrao: T.primary,
-              dados: (dados.ranking_atendentes || []).map((a) => ({ label: a.nome, value: a.enviadas, sub: `${a.enviadas} · ${a.conversas} conv.` })),
-              onHover: setTooltip,
-            }),
-          ),
-        ),
-
-        // ── Assuntos mais frequentes (protocolos) ──
-        React.createElement('div', { style: { marginBottom: 18 } },
-          React.createElement(Secao, { titulo: 'Assuntos mais frequentes' },
-            React.createElement(BarrasHorizontais, {
-              dados: (assuntos || []).map((a) => ({ label: a.assunto, value: a.total })),
-              onHover: setTooltip,
-            }),
-          ),
-        ),
-      ),
+        ? React.createElement('div', { style: gradeKpi(false) },
+            ...Array.from({ length: 8 }).map((_, i) => React.createElement(Skeleton, { key: i, altura: 84 })))
+        : conteudoGeral(false),
     ),
 
-    // ═══════════════ ABA: NPS ═══════════════
     abaAtiva === 'nps' && React.createElement(React.Fragment, null,
-
-      erroNPS && React.createElement('div', {
-        role: 'alert',
-        style: { padding: '10px 14px', background: T.dangerSoft, color: T.danger, borderRadius: T.radiusSm, fontSize: 13, marginBottom: 16 },
-      }, erroNPS),
-
+      alerta(erroNPS),
       carregandoNPS && !npsDetalhado
         ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
-            React.createElement(Skeleton, { altura: 180 }),
-            React.createElement(Skeleton, { altura: 120 }),
-            React.createElement(Skeleton, { altura: 120 }),
-          )
-        : npsDetalhado && React.createElement(React.Fragment, null,
-            // Cards NPS
-            React.createElement('div', {
-              style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 18 },
-            },
-              React.createElement(CartaoKPI, {
-                titulo: 'NPS Score',
-                valor: (npsDetalhado.geral?.total_respondidos || 0) > 0 ? Math.round(npsDetalhado.geral.nps) : '—',
-                sub: (npsDetalhado.geral?.total_respondidos || 0) > 0
-                  ? `${faixaNps(npsDetalhado.geral.nps).rotulo} · ${npsDetalhado.geral.total_respondidos} respostas`
-                  : 'sem respostas no período',
-                icone: ThumbsUp,
-                cor: (npsDetalhado.geral?.total_respondidos || 0) > 0 ? faixaNps(npsDetalhado.geral.nps).cor : T.textMuted,
-              }),
-              React.createElement(CartaoKPI, {
-                titulo: 'Promotores', valor: npsDetalhado.geral?.promotores ?? 0,
-                icone: TrendingUp, cor: T.success,
-                sub: `${npsDetalhado.geral?.total_respondidos ? Math.round((npsDetalhado.geral.promotores || 0) / npsDetalhado.geral.total_respondidos * 100) : 0}%`,
-              }),
-              React.createElement(CartaoKPI, {
-                titulo: 'Neutros', valor: npsDetalhado.geral?.neutros ?? 0,
-                icone: Clock, cor: T.warning,
-                sub: `${npsDetalhado.geral?.total_respondidos ? Math.round((npsDetalhado.geral.neutros || 0) / npsDetalhado.geral.total_respondidos * 100) : 0}%`,
-              }),
-              React.createElement(CartaoKPI, {
-                titulo: 'Detratores', valor: npsDetalhado.geral?.detratores ?? 0,
-                icone: AlertTriangle, cor: T.danger,
-                sub: `${npsDetalhado.geral?.total_respondidos ? Math.round((npsDetalhado.geral.detratores || 0) / npsDetalhado.geral.total_respondidos * 100) : 0}%`,
-              }),
-            ),
-
-            // Distribuição NPS
-            React.createElement('div', { style: { marginBottom: 18 } },
-              React.createElement(Secao, { titulo: 'Distribuição NPS' },
-                npsDadosDonut.length > 0 && React.createElement(DonutChart, { dados: npsDadosDonut, tamanho: 140 }),
-                // Barra de distribuição horizontal
-                 React.createElement('div', { style: { display: 'flex', height: 24, borderRadius: 6, overflow: 'hidden', marginTop: 16 } },
-                  React.createElement('div', {
-                    title: `Promotores: ${npsDetalhado.geral?.promotores || 0}`,
-                    style: {
-                      flex: (npsDetalhado.geral?.promotores || 0) / Math.max(1, npsDetalhado.geral?.total_respondidos || 1),
-                      background: T.success, transition: 'flex 0.4s ease', minWidth: npsDetalhado.geral?.promotores > 0 ? 2 : 0,
-                    },
-                  }),
-                  React.createElement('div', {
-                    title: `Neutros: ${npsDetalhado.geral?.neutros || 0}`,
-                    style: {
-                      flex: (npsDetalhado.geral?.neutros || 0) / Math.max(1, npsDetalhado.geral?.total_respondidos || 1),
-                      background: T.warning, minWidth: npsDetalhado.geral?.neutros > 0 ? 2 : 0,
-                    },
-                  }),
-                  React.createElement('div', {
-                    title: `Detratores: ${npsDetalhado.geral?.detratores || 0}`,
-                    style: {
-                      flex: (npsDetalhado.geral?.detratores || 0) / Math.max(1, npsDetalhado.geral?.total_respondidos || 1),
-                      background: T.danger, transition: 'flex 0.4s ease', minWidth: npsDetalhado.geral?.detratores > 0 ? 2 : 0,
-                      borderRadius: '0 6px 6px 0',
-                    },
-                  }),
-                ),
-                React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginTop: 6, fontSize: 11, color: T.textMuted } },
-                  React.createElement('span', null, `Promotores ${Math.round(((npsDetalhado.geral?.promotores || 0) / Math.max(1, npsDetalhado.geral?.total_respondidos || 1)) * 100)}%`),
-                  React.createElement('span', null, `Neutros ${Math.round(((npsDetalhado.geral?.neutros || 0) / Math.max(1, npsDetalhado.geral?.total_respondidos || 1)) * 100)}%`),
-                  React.createElement('span', null, `Detratores ${Math.round(((npsDetalhado.geral?.detratores || 0) / Math.max(1, npsDetalhado.geral?.total_respondidos || 1)) * 100)}%`),
-                ),
-              ),
-            ),
-
-            // NPS por setor e por atendente
-            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(340px, 100%), 1fr))', gap: 18 } },
-                React.createElement(Secao, { titulo: 'NPS por Setor' },
-                  React.createElement(BarrasNps, {
-                    dados: (npsDetalhado.por_setor || []).map((s) => ({
-                      label: s.departamento_nome, value: s.nps || 0,
-                      sub: `${s.nps ?? '—'} · ${s.total || 0} respostas`,
-                    })),
-                    onHover: setTooltip,
-                  }),
-                ),
-                React.createElement(Secao, { titulo: 'NPS por Atendente' },
-                  React.createElement(BarrasNps, {
-                    dados: (npsDetalhado.por_atendente || []).map((a) => ({
-                      label: a.operador_nome, value: a.nps || 0,
-                      sub: `${a.nps ?? '—'} · ${a.total || 0} respostas`,
-                    })),
-                    onHover: setTooltip,
-                  }),
-                ),
-            ),
-          ),
+            React.createElement(Skeleton, { altura: 90 }), React.createElement(Skeleton, { altura: 160 }))
+        : conteudoNps(false),
     ),
 
-    // ═══════════════ ABA: SLA ═══════════════
     abaAtiva === 'sla' && React.createElement(React.Fragment, null,
-
-      erroSLA && React.createElement('div', {
-        role: 'alert',
-        style: { padding: '10px 14px', background: T.dangerSoft, color: T.danger, borderRadius: T.radiusSm, fontSize: 13, marginBottom: 16 },
-      }, erroSLA),
-
+      alerta(erroSLA),
       carregandoSLA && !sla
         ? React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 16 } },
-            React.createElement(Skeleton, { altura: 100 }),
-            React.createElement(Skeleton, { altura: 140 }),
-            React.createElement(Skeleton, { altura: 140 }),
-          )
-        : sla && React.createElement(React.Fragment, null,
-            // Cards SLA
-            React.createElement('div', {
-              style: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 18 },
-            },
-              React.createElement(CartaoKPI, {
-                titulo: 'TMA (Tempo Médio)', valor: formatarMinutos((sla.tma_geral_seg || 0) / 60),
-                icone: Clock, cor: T.primary,
-              }),
-              React.createElement(CartaoKPI, {
-                // P95 é em segundos: formatarMinutos arredondava 20s para "0min".
-                titulo: 'P95', valor: formatarSeg(sla.p95_resposta_seg || 0),
-                icone: Timer, cor: sla.p95_resposta_seg > 600 ? T.warning : T.text,
-                sub: '95% das conversas',
-              }),
-              React.createElement(CartaoKPI, {
-                titulo: 'Taxa de Abandono', valor: `${sla.taxa_abandono ?? 0}%`,
-                icone: AlertTriangle, cor: (sla.taxa_abandono || 0) > 10 ? T.danger : (sla.taxa_abandono || 0) > 5 ? T.warning : T.success,
-              }),
-            ),
-
-            // TMA por setor
-            React.createElement('div', { style: { marginBottom: 18 } },
-              React.createElement(Secao, { titulo: 'TMA por Setor' },
-                React.createElement(BarrasHorizontais, {
-                  corPadrao: T.primary,
-                  dados: (sla.por_setor || []).map((s) => ({
-                    label: s.nome,
-                    value: s.tma_seg || 0,
-                    sub: formatarMinutos((s.tma_seg || 0) / 60),
-                  })),
-                  onHover: setTooltip,
-                }),
-              ),
-            ),
-
-            // Distribuição de tempo de resposta
-            sla.distribuicao_tempo && React.createElement(Secao, { titulo: 'Distribuição do tempo de resposta' },
-              React.createElement(BarrasVerticais, {
-                dados: sla.distribuicao_tempo.map((d) => ({ label: d.faixa, value: d.total })),
-                mostrarLabelCada: 1,
-                onHover: setTooltip,
-              }),
-            ),
-
-            // Assuntos (opcional, carrega junto com SLA)
-            React.createElement('div', {
-              style: { marginTop: 18, textAlign: 'center', fontSize: 12, color: T.textMuted },
-            }, 'Os dados acompanham automaticamente o período e os filtros; use "Atualizar" para recarregar na hora.'),
-          ),
+            React.createElement(Skeleton, { altura: 90 }), React.createElement(Skeleton, { altura: 160 }))
+        : conteudoSla(false),
     ),
+
+    React.createElement('p', { style: { marginTop: 8, textAlign: 'center', fontSize: 11.5, color: T.textMuted } },
+      'Os dados acompanham o período e os filtros automaticamente. "Imprimir / PDF" gera o relatório completo das três abas.'),
   );
 }
 
