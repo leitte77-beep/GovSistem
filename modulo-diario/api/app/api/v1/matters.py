@@ -96,11 +96,15 @@ async def _check_duplicate_act_number(
     act_type_id: uuid.UUID,
     act_number: Optional[str],
     act_year: Optional[int],
+    org_unit_id: Optional[uuid.UUID] = None,
     exclude_id: Optional[uuid.UUID] = None,
     publication_type: str = "normal",
     references_matter_id: Optional[uuid.UUID] = None,
 ) -> None:
-    """Block a second act with the same type+number+year in the same org.
+    """Block a second act with the same type+number+year in the same entity.
+
+    The entity is the publishing unit (Prefeitura or Câmara): each one keeps its
+    own numbering, so the same number may exist once per unit.
 
     Legacy data may legitimately contain duplicates, so historical ``ARCHIVED``
     matters are ignored. A conflict is a hard error (409) with the existing
@@ -121,6 +125,7 @@ async def _check_duplicate_act_number(
         Matter.act_type_id == act_type_id,
         Matter.act_number == number,
         Matter.act_year == act_year,
+        Matter.org_unit_id.is_not_distinct_from(org_unit_id),
         Matter.status != MatterStatus.ARCHIVED,
     )
     if exclude_id is not None:
@@ -133,13 +138,31 @@ async def _check_duplicate_act_number(
             detail={
                 "message": (
                     f"Já existe um ato com o número {number}/{act_year} "
-                    "para este tipo na organização."
+                    "para este tipo nesta entidade."
                 ),
                 "field": "act_number",
                 "existing_matter_id": str(existing_id),
                 "existing_matter_title": existing_title,
             },
         )
+
+
+async def _default_org_unit_id(db: AsyncSession, organization_id: uuid.UUID) -> Optional[uuid.UUID]:
+    """Entidade padrão de um ato sem entidade: a Prefeitura (Executivo)."""
+    from app.services.edition_classification import entity_rank
+
+    units = (
+        await db.execute(
+            select(OrgUnit).where(
+                OrgUnit.organization_id == organization_id,
+                OrgUnit.deleted_at.is_(None),
+                OrgUnit.is_active.is_(True),
+            )
+        )
+    ).scalars().all()
+    if not units:
+        return None
+    return sorted(units, key=lambda u: (entity_rank(u), u.name))[0].id
 
 
 async def _load_act_type(
@@ -248,16 +271,29 @@ async def _entity_exists_or_404(
 @router.get("/matters/next-title", response_model=MatterNextTitleResponse)
 async def get_next_matter_title(
     act_type_id: uuid.UUID,
+    org_unit_id: Optional[uuid.UUID] = None,
+    year: Optional[int] = None,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("AUTOR", "ADMIN")),
 ):
+    """Sugere o próximo número da série (tipo + entidade + ano).
+
+    Conta todas as matérias não arquivadas — inclusive rascunhos — para que
+    dois atos em elaboração não recebam o mesmo número sugerido.
+    """
+    import datetime
+
     act_type = await _load_act_type(db, act_type_id, active_only=True)
+    year = year or datetime.date.today().year
 
     matter_result = await db.execute(
         select(Matter.act_number, Matter.act_year, Matter.title).where(
             Matter.organization_id == user.organization_id,
             Matter.act_type_id == act_type_id,
-            Matter.status.in_([MatterStatus.APPROVED, MatterStatus.PUBLISHED]),
+            Matter.org_unit_id.is_not_distinct_from(org_unit_id),
+            Matter.status != MatterStatus.ARCHIVED,
+            # Legados sem ano estruturado ainda contam pelo número do título.
+            (Matter.act_year == year) | Matter.act_year.is_(None),
         )
     )
 
@@ -273,7 +309,7 @@ async def get_next_matter_title(
             digits = act_number.strip()
         else:
             match = TITLE_NUMBER_RE.search(title or "")
-            if match:
+            if match and (act_year == year or str(year) in (title or "")):
                 value = int(match.group(1))
                 digits = match.group(1)
         if value is not None and value > last_number:
@@ -281,8 +317,6 @@ async def get_next_matter_title(
             number_width = max(2, len(digits))
 
     next_number = last_number + 1
-    import datetime
-    year = datetime.date.today().year
 
     # Title: honour a configured title_pattern when present, else the default.
     from app.core.act_type_config import format_act_title
@@ -401,12 +435,18 @@ async def create_matter(
     if req_errors:
         raise HTTPException(status_code=422, detail=_structured_detail(req_errors))
 
+    if body.org_unit_id is None:
+        # Sem entidade o ato fica fora da numeração da Prefeitura/Câmara (a
+        # Portaria 247/2026 foi assim e a série sugeriu 236). Padrão: a
+        # entidade do Executivo, que publica primeiro na edição.
+        body.org_unit_id = await _default_org_unit_id(db, user.organization_id)
     await _check_duplicate_act_number(
         db,
         user,
         act_type_id=body.act_type_id,
         act_number=body.act_number,
         act_year=body.act_year,
+        org_unit_id=body.org_unit_id,
         publication_type=body.publication_type or "normal",
         references_matter_id=body.references_matter_id,
     )
@@ -433,6 +473,7 @@ async def create_matter(
         metadata_json=metadata,
         publication_type=body.publication_type or "normal",
         references_matter_id=body.references_matter_id,
+        gazette_publication=body.gazette_publication,
     )
     from app.services.matter_slug import generate_unique_slug
 
@@ -706,6 +747,8 @@ async def update_matter(
         if value_errors:
             raise HTTPException(status_code=422, detail=_structured_detail(value_errors))
         matter.metadata_json = body.metadata
+    if body.gazette_publication is not None:
+        matter.gazette_publication = body.gazette_publication
     if body.publication_type is not None:
         if body.publication_type not in ("normal", "rectification", "republication"):
             raise HTTPException(422, "Invalid publication_type")
@@ -727,6 +770,7 @@ async def update_matter(
         act_type_id=matter.act_type_id,
         act_number=matter.act_number,
         act_year=matter.act_year,
+        org_unit_id=matter.org_unit_id,
         exclude_id=matter.id,
         publication_type=getattr(matter, "publication_type", "normal") or "normal",
         references_matter_id=getattr(matter, "references_matter_id", None),
@@ -817,6 +861,9 @@ async def submit_for_review(
 
     matter.change_status(MatterStatus.REVIEW)
     matter.review_reason = None  # cleared on (re)submission
+    # Enviar para aprovação = mandar ao Diário: um ato que estava só
+    # registrado no acervo passa a seguir para a edição.
+    matter.gazette_publication = True
     # Alinha o fluxo de criação: enviada para revisão aguarda o revisor.
     matter.workflow_status = MatterWorkflowStatus.AGUARDANDO_REVISAO.value
     from app.services.matter_version import MatterVersionService
@@ -1436,6 +1483,7 @@ async def _matter_to_response(matter: Matter) -> MatterResponse:
         metadata=matter.metadata_json,
         review_reason=matter.review_reason,
         publication_type=matter.publication_type or "normal",
+        gazette_publication=getattr(matter, "gazette_publication", True) is not False,
         references_matter_id=matter.references_matter_id,
         slug=getattr(matter, "slug", None),
         created_at=matter.created_at,

@@ -83,20 +83,23 @@ class Organization(Base, TimestampMixin, SoftDeleteMixin):
     authorities: Mapped[List["Authority"]] = relationship(
         "Authority", back_populates="organization", lazy="selectin"
     )
+    # Listas que crescem sem limite ficam sob demanda (lazy="select"): com
+    # "selectin", resolver o município pelo domínio carregava todas as
+    # matérias, versões, edições… em toda requisição pública (~0,4 s).
     users: Mapped[List["User"]] = relationship(
-        "User", back_populates="organization", lazy="selectin"
+        "User", back_populates="organization", lazy="select"
     )
     matters: Mapped[List["Matter"]] = relationship(
-        "Matter", back_populates="organization", lazy="selectin"
+        "Matter", back_populates="organization", lazy="select"
     )
     matter_versions: Mapped[List["MatterVersion"]] = relationship(
-        "MatterVersion", back_populates="organization", lazy="selectin"
+        "MatterVersion", back_populates="organization", lazy="select"
     )
     editions: Mapped[List["Edition"]] = relationship(
-        "Edition", back_populates="organization", lazy="selectin"
+        "Edition", back_populates="organization", lazy="select"
     )
     files: Mapped[List["File"]] = relationship(
-        "File", back_populates="organization", lazy="selectin"
+        "File", back_populates="organization", lazy="select"
     )
     signing_credentials: Mapped[List["SigningCredential"]] = relationship(
         "SigningCredential", back_populates="organization", lazy="selectin"
@@ -114,7 +117,7 @@ class Organization(Base, TimestampMixin, SoftDeleteMixin):
         "LegacyUrlMap", back_populates="organization", lazy="selectin"
     )
     timestamp_records: Mapped[List["TimestampRecord"]] = relationship(
-        "TimestampRecord", back_populates="organization", lazy="selectin"
+        "TimestampRecord", back_populates="organization", lazy="select"
     )
     tenant_domains: Mapped[List["TenantDomain"]] = relationship(
         "TenantDomain",

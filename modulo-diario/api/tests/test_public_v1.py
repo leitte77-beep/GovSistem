@@ -120,6 +120,8 @@ def _mock_result(items):
     org = MagicMock()
     r.scalar_one_or_none.return_value = org
     r.close.return_value = None
+    # Totais contados no banco (select count) chegam por scalar_one().
+    r.scalar_one.return_value = len(items)
     return r
 
 

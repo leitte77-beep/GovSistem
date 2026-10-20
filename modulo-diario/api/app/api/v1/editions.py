@@ -435,7 +435,7 @@ async def get_publication_queue(
             act_type_name=m.act_type.name if m.act_type else None,
             org_unit_id=m.org_unit_id,
             org_unit_name=m.org_unit.name if m.org_unit else None,
-            suggested_section=section_for_matter(m, m.act_type),
+            suggested_section=section_for_matter(m, m.act_type, m.org_unit),
             target_date=m.act_date,
         )
         for m in matters
@@ -970,6 +970,15 @@ async def delete_edition(
     edition = await _get_edition_or_404(edition_id, db)
     if edition.status == EditionStatus.PUBLISHED:
         raise HTTPException(409, "Cannot delete a published edition")
+    # Edição assinada é registro com assinatura digital: não se apaga pelo
+    # painel. Antes o ORM tentava desvincular a assinatura e o banco recusava
+    # (edition_id NOT NULL) → erro 500 sem explicação.
+    if edition.signatures:
+        raise HTTPException(
+            409,
+            "Esta edição já foi assinada e não pode ser excluída pelo painel. "
+            "Reabra-a como nova edição ou peça ao suporte a remoção.",
+        )
     await db.delete(edition)
     await db.commit()
 

@@ -60,8 +60,34 @@ def _act_number_key(act_number) -> tuple[int, str]:
     return (10**9, raw.casefold())
 
 
-def section_for_matter(matter, act_type=None) -> str:
-    """Resolve the editorial section for a matter (deterministic, no AI)."""
+# Separador entre a entidade e a seção ("Câmara Municipal — Portarias").
+ENTITY_SEPARATOR = " — "
+
+_LEGISLATIVE_TOKENS = ("camara", "legislativ")
+
+
+def entity_rank(org_unit=None) -> int:
+    """0 = Poder Executivo (Prefeitura), 1 = Poder Legislativo (Câmara).
+
+    A edição traz primeiro tudo da Prefeitura e depois tudo da Câmara.
+    """
+    name = _normalize(getattr(org_unit, "name", None))
+    return 1 if any(token in name for token in _LEGISLATIVE_TOKENS) else 0
+
+
+def section_for_matter(matter, act_type=None, org_unit=None) -> str:
+    """Resolve the editorial section for a matter (deterministic, no AI).
+
+    Matérias da Câmara ganham o nome da unidade como prefixo, para que suas
+    seções não se fundam com as da Prefeitura no PDF (que agrupa por título).
+    """
+    section = _base_section(matter, act_type)
+    if org_unit is not None and entity_rank(org_unit) == 1:
+        return f"{org_unit.name}{ENTITY_SEPARATOR}{section}"
+    return section
+
+
+def _base_section(matter, act_type=None) -> str:
     config = getattr(act_type, "config", None) if act_type is not None else None
     if isinstance(config, dict):
         explicit = str(config.get("section") or "").strip()
@@ -82,12 +108,15 @@ def section_for_matter(matter, act_type=None) -> str:
 
 
 def section_rank(section: str) -> int:
+    entity, sep, base = (section or "").partition(ENTITY_SEPARATOR)
+    if sep and any(token in _normalize(entity) for token in _LEGISLATIVE_TOKENS):
+        return len(SECTION_ORDER) + 1 + _SECTION_INDEX.get(base, len(SECTION_ORDER))
     return _SECTION_INDEX.get(section, len(SECTION_ORDER))
 
 
 def matter_sort_key(matter, act_type=None, org_unit=None) -> tuple:
-    """Stable ordering: section -> órgão -> tipo -> número -> título."""
-    section = section_for_matter(matter, act_type)
+    """Stable ordering: entidade -> section -> órgão -> tipo -> número -> título."""
+    section = section_for_matter(matter, act_type, org_unit)
     org_name = _normalize(getattr(org_unit, "name", None)) or _normalize(
         getattr(matter, "org_unit_id", None)
     )

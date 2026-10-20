@@ -91,7 +91,7 @@ async def auto_fill_edition(
             EditionItem(
                 edition_id=edition.id,
                 matter_id=matter.id,
-                section_title=section_for_matter(matter, matter.act_type),
+                section_title=section_for_matter(matter, matter.act_type, matter.org_unit),
                 position=position,
             )
         )
@@ -110,7 +110,9 @@ async def auto_order_edition(db, edition: Edition) -> None:
 
     def key(item: EditionItem) -> tuple:
         matter = item.matter
-        section = item.section_title or section_for_matter(matter, matter.act_type)
+        section = item.section_title or section_for_matter(
+            matter, matter.act_type, matter.org_unit
+        )
         return (section_rank(section),) + matter_sort_key(
             matter, matter.act_type, matter.org_unit
         )
@@ -119,7 +121,9 @@ async def auto_order_edition(db, edition: Edition) -> None:
     # Fill missing sections so the grouping is explicit and stable.
     for item in ordered:
         if not item.section_title and item.matter is not None:
-            item.section_title = section_for_matter(item.matter, item.matter.act_type)
+            item.section_title = section_for_matter(
+                item.matter, item.matter.act_type, item.matter.org_unit
+            )
     for position, item in enumerate(ordered):
         item.position = position
     await db.flush()

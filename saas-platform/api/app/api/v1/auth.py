@@ -570,16 +570,27 @@ async def get_module_access(
     if org_id:
         roles.append("ORG_MEMBER")
 
-    grant_result = await db.execute(
-        select(UserModuleGrant.role_name).where(
-            UserModuleGrant.user_id == user.id,
-            UserModuleGrant.module_slug == module.slug,
-        )
-    )
+    # Perfis no módulo: os da tela "Acessos" (membership_module_grants) e,
+    # só para quem nunca foi editado lá, a tabela legada. Antes este login
+    # lia SÓ a legada e reenviava o resultado ao módulo, sobrescrevendo o que
+    # a tela acabara de sincronizar (ex.: usuário com SUPPORT sem grant legado
+    # virava ADMIN no Diário a cada entrada; perfil revogado voltava).
     from app.core.roles import normalize_grant_role
-    module_grant_roles = [
-        normalize_grant_role(module.slug, r) for (r,) in grant_result.all()
-    ]
+    if org_id:
+        from app.services.membership import resolve_module_roles
+
+        resolved_roles, _ = await resolve_module_roles(db, user, org_id, module.slug)
+        module_grant_roles = [normalize_grant_role(module.slug, r) for r in resolved_roles]
+    else:
+        grant_result = await db.execute(
+            select(UserModuleGrant.role_name).where(
+                UserModuleGrant.user_id == user.id,
+                UserModuleGrant.module_slug == module.slug,
+            )
+        )
+        module_grant_roles = [
+            normalize_grant_role(module.slug, r) for (r,) in grant_result.all()
+        ]
     roles = list(dict.fromkeys(roles + module_grant_roles))
 
     # Novo modelo multi-tenant (aditivo): quando ativo, adiciona a claim

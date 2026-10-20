@@ -460,7 +460,7 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
     const year = new Date().getFullYear();
     setGeneratingTitle(true);
     try {
-      const next = await api.getNextMatterTitle(actType.id);
+      const next = await api.getNextMatterTitle(actType.id, orgUnitId || undefined);
       if (!titleManual) {
         setActNumber(String(next.next_number).padStart(2, "0"));
         setActYear(next.year);
@@ -481,6 +481,18 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
   };
 
   const titleAutoFilledOnce = useRef(false);
+
+  // Trocar a entidade (Prefeitura ↔ Câmara) troca a série de numeração:
+  // refaz a sugestão enquanto o número ainda não foi digitado à mão.
+  const lastSuggestedUnit = useRef(orgUnitId);
+  useEffect(() => {
+    if (lastSuggestedUnit.current === orgUnitId) return;
+    lastSuggestedUnit.current = orgUnitId;
+    if (isNew && isEditable && selectedActType && !titleManual) {
+      void handleActTypeSelect(selectedActType);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orgUnitId]);
 
   // Keep structured fields in sync when user edits number/year manually
   useEffect(() => {
@@ -527,10 +539,16 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
 
   const handleReject = async () => {
     if (!matterId) return;
+    // O backend exige o motivo: é o que o autor lê para corrigir a matéria.
+    const reason = window.prompt("Motivo da devolução para correção:")?.trim();
+    if (!reason) {
+      if (reason === "") toast.error("Informe o motivo para devolver a matéria.");
+      return;
+    }
     if (autosaveTimerRef.current) clearTimeout(autosaveTimerRef.current);
     setSaving(true);
     try {
-      const result = await api.reject(matterId);
+      const result = await api.reject(matterId, reason);
       setStatus(result.status);
       toast.success("Matéria rejeitada");
     } catch (err: unknown) {
@@ -1069,7 +1087,7 @@ export default function MatterForm({ matter, isNew, initialStep }: MatterFormPro
                 </div>
               )}
               {contentMode === "rich_text" && (
-              <div className="bg-surface-bright rounded-2xl border border-outline-variant overflow-hidden shadow-sm">
+              <div className="bg-surface-bright rounded-2xl border border-outline-variant overflow-clip shadow-sm">
                 <div className="p-4 bg-surface-container-high border-b border-outline-variant flex items-center gap-2 flex-wrap">
                   <button
                     type="button"

@@ -23,7 +23,9 @@
 
 body {
   font-family: "Liberation Serif", "Times New Roman", Times, serif;
-  font-size: 12pt;
+  /* 11pt, como os diários oficiais do mercado: com 12pt atos curtos
+     transbordavam só o fecho (local/data/assinatura) para a folha seguinte. */
+  font-size: 11pt;
   line-height: 1.3;
   color: #000;
   orphans: 2;
@@ -188,8 +190,8 @@ body {
   object-fit: contain;
 }
 
-/* Documento semântico dentro da moldura: corpo em Times 12, como o Word. */
-.matter-content .doe-document { font-size: 12pt; line-height: 1.3; color: #000; }
+/* Documento semântico dentro da moldura: corpo em Times 11 (ver body). */
+.matter-content .doe-document { font-size: 11pt; line-height: 1.3; color: #000; }
 .matter-content .doe-document .doe-table { font-size: 10pt; }
 
 /* ── Validação ────────────────────────────────────────────────────────── */
@@ -218,13 +220,12 @@ body {
 }
 
 /* Corpo de ato oficial no modo legado (HTML colado): garante o recuo de
-   primeira linha e o alinhamento justificado do modelo jurídico. Parágrafos
+   alinhamento justificado (o recuo de primeira linha é o do editor) do modelo jurídico. Parágrafos
    centralizados (assinaturas, "RESOLVE:", fecho) e conteúdo tabular/lista
    permanecem intactos. O estilo inline continua tendo precedência sobre
    text-align, então nada que já foi centralizado é deslocado. */
 .matter-content > p:not([style*="center"]):not(:empty) {
   text-align: justify;
-  text-indent: 1.25cm;
 }
 
 /* Preserve the alignment authored in the matter, including table cells and

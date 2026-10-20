@@ -60,6 +60,64 @@ const fontFamilies = [
 ];
 
 const fontSizes = ["10pt", "12pt", "14pt", "16pt", "18pt", "24pt", "32pt"];
+type CaseMode = "upper" | "lower" | "title" | "sentence";
+
+// Preposições/artigos que ficam minúsculos em "Iniciais Maiúsculas".
+const LOWER_WORDS = new Set(["a", "as", "o", "os", "e", "de", "da", "das", "do", "dos", "em", "na", "nas", "no", "nos", "por", "para", "com"]);
+
+function transformCase(text: string, mode: CaseMode, startsSentence: boolean): string {
+  const lower = text.toLocaleLowerCase("pt-BR");
+  if (mode === "upper") return text.toLocaleUpperCase("pt-BR");
+  if (mode === "lower") return lower;
+  if (mode === "title") {
+    let first = startsSentence;
+    return lower.replace(/\p{L}+/gu, (word) => {
+      const keep = !first && LOWER_WORDS.has(word);
+      first = false;
+      return keep ? word : word.charAt(0).toLocaleUpperCase("pt-BR") + word.slice(1);
+    });
+  }
+  let capitalize = startsSentence;
+  return lower.replace(/[.!?]\s+|\p{L}/gu, (match) => {
+    if (match.length > 1 || /[.!?]/.test(match)) {
+      capitalize = true;
+      return match;
+    }
+    if (!capitalize) return match;
+    capitalize = false;
+    return match.toLocaleUpperCase("pt-BR");
+  });
+}
+
+/** Troca a caixa do texto selecionado mantendo negrito, itálico etc. */
+function changeCase(editor: Editor, mode: CaseMode) {
+  editor.chain().focus().command(({ tr, state }) => {
+    const { from, to } = state.selection;
+    if (from === to) return false;
+    let firstChunk = true;
+    state.doc.nodesBetween(from, to, (node, pos) => {
+      if (!node.isText || !node.text) return;
+      const start = Math.max(from, pos);
+      const end = Math.min(to, pos + node.nodeSize);
+      const original = node.text.slice(start - pos, end - pos);
+      const atBlockStart = state.doc.resolve(start).parentOffset === 0;
+      const changed = transformCase(original, mode, firstChunk || atBlockStart);
+      firstChunk = false;
+      if (changed !== original) {
+        tr.replaceWith(tr.mapping.map(start), tr.mapping.map(end), state.schema.text(changed, node.marks));
+      }
+    });
+    return true;
+  }).run();
+}
+
+const lineHeights = ["1", "1.15", "1.5", "2"];
+const paragraphSpacings = [
+  { value: "0", label: "Sem espaço" },
+  { value: "6pt", label: "6 pt" },
+  { value: "12pt", label: "12 pt" },
+  { value: "18pt", label: "18 pt" },
+];
 
 export default function Toolbar({ editor, onPreview, onAutoFormat, onOfficialFormat, onAiFormat, onToggleA4, viewMode, aiBusy }: ToolbarProps) {
   const [clearConfirm, setClearConfirm] = useState(false);
@@ -148,9 +206,13 @@ export default function Toolbar({ editor, onPreview, onAutoFormat, onOfficialFor
 
   const currentFont = editor.getAttributes("textStyle").fontFamily || "";
   const currentSize = editor.getAttributes("textStyle").fontSize || "";
+  const blockAttributes = editor.isActive("heading") ? editor.getAttributes("heading") : editor.getAttributes("paragraph");
+  const currentLineHeight = blockAttributes.lineHeight || "";
+  const currentParagraphSpacing = blockAttributes.marginBottom || "";
 
   return (
-    <div className="rounded-t-xl border border-b-0 border-slate-300 bg-slate-100/95 px-2 py-2 shadow-sm">
+    // Fixa no topo ao rolar o texto: não precisa voltar ao início para formatar.
+    <div className="sticky top-0 z-20 rounded-t-xl border border-b-0 border-slate-300 bg-slate-100/95 px-2 py-2 shadow-sm backdrop-blur">
       <div className="flex flex-wrap items-center gap-1">
         {clearConfirm ? (
           <>
@@ -236,6 +298,49 @@ export default function Toolbar({ editor, onPreview, onAutoFormat, onOfficialFor
               {size}
             </option>
           ))}
+        </Select>
+
+        <Select
+          title="Espaçamento entre linhas"
+          value={currentLineHeight}
+          onChange={(value) => editor.chain().focus().setBlockStyle({ lineHeight: value || null }).run()}
+          className="w-28"
+        >
+          <option value="">Entrelinhas</option>
+          {lineHeights.map((height) => (
+            <option key={height} value={height}>
+              {height.replace(".", ",")}
+            </option>
+          ))}
+        </Select>
+
+        <Select
+          title="Espaçamento entre parágrafos"
+          value={currentParagraphSpacing}
+          onChange={(value) => editor.chain().focus().setBlockStyle(
+            value ? { marginTop: "0", marginBottom: value } : { marginTop: null, marginBottom: null },
+          ).run()}
+          className="w-28"
+        >
+          <option value="">Parágrafo</option>
+          {paragraphSpacings.map((spacing) => (
+            <option key={spacing.value} value={spacing.value}>
+              {spacing.label}
+            </option>
+          ))}
+        </Select>
+
+        <Select
+          title="Maiúsculas e minúsculas (texto selecionado)"
+          value=""
+          onChange={(value) => value && changeCase(editor, value as CaseMode)}
+          className="w-24"
+        >
+          <option value="">Aa</option>
+          <option value="upper">MAIÚSCULAS</option>
+          <option value="lower">minúsculas</option>
+          <option value="title">Iniciais Maiúsculas</option>
+          <option value="sentence">Como em uma frase</option>
         </Select>
 
         <label className="inline-flex h-8 items-center gap-1 rounded-md border border-slate-300 bg-white px-2 text-sm text-slate-700" title="Cor do texto">

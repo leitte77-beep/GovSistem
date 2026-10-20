@@ -19,6 +19,7 @@ declare module "@tiptap/core" {
       setTextColor: (color: string) => ReturnType;
       setHighlightColor: (color: string) => ReturnType;
       unsetTextFormat: () => ReturnType;
+      setBlockStyle: (attributes: Record<string, string | null>) => ReturnType;
     };
   }
 }
@@ -34,7 +35,13 @@ const TextFormat = Extension.create({
           ...Object.fromEntries(
             ["textIndent", "marginTop", "marginBottom", "marginLeft", "marginRight", "lineHeight", "textTransform", "fontWeight", "fontStyle"].map((property) => [property, {
               default: null,
-              parseHTML: (element: HTMLElement) => element.style.getPropertyValue(property.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)) || null,
+              parseHTML: (element: HTMLElement) => {
+                const value = element.style.getPropertyValue(property.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)) || null;
+                // Recuo negativo do Word (texto avançando sobre a margem da
+                // página dele) empurra o texto para fora do editor e do Diário.
+                if (value && property.startsWith("margin") && value.trim().startsWith("-")) return null;
+                return value;
+              },
               renderHTML: (attributes: Record<string, string>) => attributes[property]
                 ? { style: `${property.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`)}: ${attributes[property]}` }
                 : {},
@@ -118,6 +125,13 @@ const TextFormat = Extension.create({
         (color) =>
         ({ chain }) =>
           chain().setMark("textStyle", { backgroundColor: color }).run(),
+      setBlockStyle:
+        (attributes) =>
+        ({ commands }) => {
+          const paragraph = commands.updateAttributes("paragraph", attributes);
+          const heading = commands.updateAttributes("heading", attributes);
+          return paragraph || heading;
+        },
       unsetTextFormat:
         () =>
         ({ chain }) =>

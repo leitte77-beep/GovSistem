@@ -33,6 +33,22 @@ async def _get_authority_or_404(
     return authority
 
 
+async def _reload_with_unit(db: AsyncSession, authority_id: uuid.UUID) -> Authority:
+    """Recarrega a autoridade com a unidade já carregada.
+
+    Ler ``authority.org_unit`` depois do commit dispara carga preguiçosa, que
+    a sessão assíncrona não permite (MissingGreenlet → 500). O registro era
+    gravado mas a tela recebia erro — e quem tentava de novo duplicava.
+    """
+    result = await db.execute(
+        select(Authority)
+        .where(Authority.id == authority_id)
+        .options(selectinload(Authority.org_unit))
+        .execution_options(populate_existing=True)
+    )
+    return result.scalar_one()
+
+
 def _to_out(a: Authority) -> AuthorityOut:
     return AuthorityOut(
         id=a.id,
@@ -102,8 +118,7 @@ async def create_authority(
     )
     db.add(authority)
     await db.commit()
-    await db.refresh(authority)
-    return _to_out(authority)
+    return _to_out(await _reload_with_unit(db, authority.id))
 
 
 @router.patch("/authorities/{authority_id}", response_model=AuthorityOut)
@@ -141,16 +156,7 @@ async def update_authority(
         authority.notes = body.notes
 
     await db.commit()
-    await db.refresh(authority)
-    if authority.org_unit is None:
-        # reload relationship for output
-        result = await db.execute(
-            select(Authority)
-            .where(Authority.id == authority_id)
-            .options(selectinload(Authority.org_unit))
-        )
-        authority = result.scalar_one()
-    return _to_out(authority)
+    return _to_out(await _reload_with_unit(db, authority_id))
 
 
 @router.delete("/authorities/{authority_id}", status_code=204)

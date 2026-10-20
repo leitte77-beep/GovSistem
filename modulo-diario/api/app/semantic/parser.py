@@ -89,11 +89,6 @@ _ROLE_RE = re.compile(
 _FIELD_RE = re.compile(
     r"^\s*[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9ºª°./()\s\-]{1,40}:\s+\S"
 )
-_LOCATION_HINT_RE = re.compile(
-    r"(PA[ÇC]O|PAL[ÁA]CIO|PREFEITURA|C[ÂA]MARA|MUNIC[ÍI]PIO|GABINETE|"
-    r"\bDE\s+\d{4}\b|\b\d{4}\b)",
-    re.IGNORECASE,
-)
 _ALL_CAPS_HEADING_RE = re.compile(
     r"^(?=.{3,120}$)(?=.*[A-ZÀ-Ú])(?!.*[a-zà-ú])[A-Z0-9À-Ú/.,:;ºª()\[\]º\- ]+$"
 )
@@ -103,6 +98,27 @@ _SECTION_HEADING_RE = re.compile(
     r"[\s.]*(?:N[º°]\s*\d+)?",
     re.IGNORECASE,
 )
+_PLACE_WORD_RE = re.compile(
+    r"\b(PA[ÇC]O|PAL[ÁA]CIO|PREFEITURA|C[ÂA]MARA|MUNIC[ÍI]PIO|GABINETE)\b", re.IGNORECASE
+)
+_NUMERIC_DATE_RE = re.compile(r"\b\d{1,2}/\d{1,2}/\d{4}\b")
+_PLACE_MAX_LEN = 90
+
+
+def _looks_like_place(text: str) -> bool:
+    """Linha de local/data do fecho ("Paço Municipal…", "Município de Farol,
+    05/10/2026."). Curta e com palavra de lugar ou data completa.
+
+    Antes bastava qualquer número de 4 dígitos: "TERMO DE CONVÊNIO Nº
+    0525/2026", "Pregão nº 51/2026" e até um CNPJ (…/0001-07) viravam
+    "local" e eram engolidos pelo bloco de assinatura.
+    """
+    text = (text or "").strip()
+    if not text or len(text) > _PLACE_MAX_LEN or text.endswith(":"):
+        return False
+    return bool(_PLACE_WORD_RE.search(text) or _NUMERIC_DATE_RE.search(text))
+
+
 _LOCATION_DATE_RE = re.compile(
     r"^(?P<city>[A-ZÀ-Ú][\wÀ-ú .\"]{2,}),\s+(?P<day>\d{1,2})\s+DE\s+"
     r"(?P<month>JANEIRO|FEVEREIRO|MAR[ÇC]O|ABRIL|MAIO|JUNHO|JULHO|AGOSTO|"
@@ -114,7 +130,6 @@ _SIGNATURE_RE = re.compile(
     r"Secret[áa]ri[oa]|Diretor|Diretoria|Assinatura|Respons[áa]vel)[\wÀ-ú ]*$",
     re.IGNORECASE,
 )
-
 _CONFIRM_LOW = 0.35
 _CONFIRM_MED = 0.6
 _CONFIRM_HIGH = 0.9
@@ -248,7 +263,7 @@ def _merge_trailing_signature(blocks: list) -> list:
         if (
             prev_meta.get("kind") == "location_date"
             or _LOCATION_DATE_RE.match(prev)
-            or _LOCATION_HINT_RE.search(prev)
+            or _looks_like_place(prev)
         ):
             location = prev
             start -= 1
@@ -401,7 +416,7 @@ def _is_location_like(block, text: str) -> bool:
         return False
     if _LOCATION_DATE_RE.match(text):
         return True
-    return bool(_LOCATION_HINT_RE.search(text))
+    return _looks_like_place(text)
 
 
 def _normalize_closing(blocks: list):
@@ -792,6 +807,12 @@ def _parse_html(html: str, fallback_text: str = "") -> list:
                 # são linhas próprias. Sem isto o nome e o cargo saíam emendados
                 # ("MENESESPrefeito Municipal").
                 raw_html = _NESTED_BLOCK_RE.sub("<br/>", raw_html)
+            # Alinhamento que o autor escolheu no editor (centralizado/à
+            # direita). Sem guardá-lo, "Paço Municipal…" e o local/data saíam
+            # justificados na publicação embora centralizados no preparo.
+            align = _explicit_alignment(raw_html)
+            # Entrelinhas e espaço entre parágrafos escolhidos no editor.
+            spacing = _explicit_spacing(raw_html)
             for segment in _regroup_br_segments(_split_by_br(raw_html)):
                 if not _inner_text(segment):
                     continue
@@ -799,6 +820,10 @@ def _parse_html(html: str, fallback_text: str = "") -> list:
                 rich = _inline_html(segment)
                 classified = _classify_text_line(inner, blocks, rich=rich)
                 if classified is not None:
+                    if align and classified.type in _ALIGNABLE_TYPES:
+                        classified.metadata["align"] = align
+                    if spacing and classified.type in _ALIGNABLE_TYPES:
+                        classified.metadata["spacing"] = spacing
                     blocks.append(classified)
         elif kind in ("h1", "h2", "h3", "h4", "h5", "h6"):
             level = int(kind[1])
@@ -1505,6 +1530,66 @@ def _int_attr_str(value: Optional[str], default: int) -> int:
 def _str_attr(attrs: str, name: str) -> str | None:
     m = re.search(rf'{name}\s*=\s*["\']([^"\']+)["\']', attrs, re.IGNORECASE)
     return m.group(1) if m else None
+
+
+# Blocos de texto corrido cujo alinhamento do autor é respeitado. Artigos,
+# incisos e afins seguem a diagramação padrão do ato.
+_ALIGNABLE_TYPES = {"paragraph", "preamble", "considerando", "quote", "command"}
+_OPENING_TAG_RE = re.compile(r"^\s*<[a-zA-Z][^>]*>")
+
+
+def _explicit_alignment(raw_html: str) -> str | None:
+    """Alinhamento explícito (center/right) da tag que abre o parágrafo."""
+    match = _OPENING_TAG_RE.match(raw_html or "")
+    if not match:
+        return None
+    tag = match.group(0)
+    value = _css_attr(tag, "text-align")
+    if not value:
+        attr = re.search(r'\balign\s*=\s*["\']?(\w+)', tag, re.IGNORECASE)
+        value = attr.group(1) if attr else None
+    value = (value or "").strip().lower()
+    return value if value in ("center", "right") else None
+
+
+_LINE_HEIGHT_RE = re.compile(r"^(\d+(?:\.\d+)?)$")
+_LENGTH_RE = re.compile(r"^(\d+(?:\.\d+)?)(pt|px|em)?$")
+_LENGTH_LIMITS = {"pt": 48.0, "px": 64.0, "em": 4.0}
+_INDENT_RE = re.compile(r"^(\d+(?:\.\d+)?)(pt|px|em|cm|mm)?$")
+_INDENT_LIMITS = {"pt": 200.0, "px": 270.0, "em": 16.0, "cm": 7.0, "mm": 70.0}
+
+
+def _explicit_spacing(raw_html: str) -> dict[str, str] | None:
+    """Entrelinhas/espaço após o parágrafo da tag que o abre.
+
+    Só valores simples e limitados passam: o valor volta ao HTML publicado
+    como estilo inline, então nada de texto livre vindo do documento.
+    """
+    match = _OPENING_TAG_RE.match(raw_html or "")
+    if not match:
+        return None
+    tag = match.group(0)
+    spacing: dict[str, str] = {}
+    line_height = (_css_attr(tag, r"(?<![\w-])line-height") or "").strip().lower()
+    lh = _LINE_HEIGHT_RE.match(line_height)
+    if lh and 0.8 <= float(lh.group(1)) <= 3:
+        spacing["line_height"] = lh.group(1)
+    # Recuo da primeira linha: vale o que está no editor. Sem recuo no
+    # editor = sem recuo na publicação (o layout forçava 1,25 cm em todo
+    # parágrafo, inclusive em laudos e quadros que não têm recuo).
+    indent = (_css_attr(tag, r"(?<![\w-])text-indent") or "").strip().lower()
+    ind = _INDENT_RE.match(indent)
+    if ind and float(ind.group(1)) <= _INDENT_LIMITS[ind.group(2) or "px"]:
+        spacing["text_indent"] = f"{ind.group(1)}{ind.group(2) or 'px'}"
+    else:
+        spacing["text_indent"] = "0"
+    margin = (_css_attr(tag, r"(?<![\w-])margin-bottom") or "").strip().lower()
+    mb = _LENGTH_RE.match(margin)
+    if mb:
+        unit = mb.group(2) or ("px" if float(mb.group(1)) else "pt")
+        if float(mb.group(1)) <= _LENGTH_LIMITS[unit]:
+            spacing["margin_bottom"] = f"{mb.group(1)}{unit}"
+    return spacing or None
 
 
 def _css_attr(attrs: str, prop: str) -> str | None:

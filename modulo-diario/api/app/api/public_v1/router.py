@@ -8,9 +8,9 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from sqlalchemy import String, cast, or_, select
+from sqlalchemy import String, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import load_only, noload, selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
@@ -225,7 +225,14 @@ async def v1_list_editions(
         select(Edition)
         .where(Edition.status == EditionStatus.PUBLISHED)
         .options(
-            selectinload(Edition.items).selectinload(EditionItem.matter),
+            # A listagem só usa título/súmula das matérias: carregar o texto
+            # completo de cada uma deixava a página inicial lenta (~0,8 s).
+            # Nem as relações automáticas da matéria (versões, revisões,
+            # anexos): as versões guardam cópias do conteúdo e eram a maior
+            # parte do tempo.
+            selectinload(Edition.items)
+            .selectinload(EditionItem.matter)
+            .options(load_only(Matter.id, Matter.title, Matter.summary), noload("*")),
             selectinload(Edition.signatures),
         )
     )
@@ -248,7 +255,8 @@ async def v1_list_editions(
         Edition.number.desc(),
     )
 
-    total_query = select(Edition).where(
+    # Contagem no banco (antes carregava todas as edições só para contar).
+    total_query = select(func.count(Edition.id)).where(
         Edition.status == EditionStatus.PUBLISHED,
         Edition.organization_id == tenant.id,
     )
@@ -256,12 +264,9 @@ async def v1_list_editions(
         total_query = total_query.where(Edition.year == year)
     if type:
         total_query = total_query.where(Edition.type == type)
-    total_result = await db.execute(total_query)
-
-    total_count = 0
-    for _ in total_result.scalars():
-        total_count += 1
-    total_result.close()
+    if search:
+        total_query = total_query.where(or_(Edition.title.ilike(like), Edition.subtitle.ilike(like)))
+    total_count = (await db.execute(total_query)).scalar_one()
 
     offset = page * page_size
     query = query.offset(offset).limit(page_size)

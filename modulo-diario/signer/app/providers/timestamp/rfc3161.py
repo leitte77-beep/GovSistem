@@ -40,6 +40,17 @@ def _utcnow_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def _tst_info(encap):
+    """TSTInfo do token. O asn1crypto já entrega o conteúdo decodificado em
+    ``.parsed``; ``TSTInfo.load(.native)`` recebia um dict e sempre falhava —
+    o carimbo ficava sem hora/serial e a validação o dava por inválido."""
+    content = encap["content"]
+    parsed = getattr(content, "parsed", None)
+    if isinstance(parsed, tsp.TSTInfo):
+        return parsed
+    return tsp.TSTInfo.load(content.contents if hasattr(content, "contents") else bytes(content))
+
+
 class Rfc3161TimestampProvider(TimestampProvider):
     """RFC 3161 time-stamping against a TSA (ACT) HTTP(S) endpoint."""
 
@@ -74,10 +85,11 @@ class Rfc3161TimestampProvider(TimestampProvider):
         resp.raise_for_status()
 
         ts_resp = tsp.TimeStampResp.load(resp.content)
-        raw_status = ts_resp["status"]["status"]
-        status = raw_status.dotted if hasattr(raw_status, "dotted") else str(raw_status)
+        # PKIStatus é um inteiro ASN.1 com nomes: ``.native`` dá "granted".
+        # (``str()`` dava a repr do objeto e todo carimbo virava "recusado".)
+        status = ts_resp["status"]["status"].native
 
-        success = status in ("0", "granted", "granted_with_mods")
+        success = status in ("granted", "granted_with_mods")
         if not success:
             raise ValueError(f"TSA refused request: {ts_resp['status']['status_string'].native}")
 
@@ -92,7 +104,7 @@ class Rfc3161TimestampProvider(TimestampProvider):
             signed_data = cms.ContentInfo.load(token)["content"]
             encap = signed_data["encap_content_info"]
             if encap["content_type"].native == "tst_info":
-                tst = tsp.TSTInfo.load(encap["content"].native)
+                tst = _tst_info(encap)
                 policy_oid = tst["policy"].dotted
                 gen_time_native = tst["gen_time"].native
                 gen_time = (
@@ -100,9 +112,9 @@ class Rfc3161TimestampProvider(TimestampProvider):
                     if hasattr(gen_time_native, "isoformat")
                     else str(gen_time_native)
                 )
-                serial = str(tst["serial_number"])
-                ml = tst["message_imprint"]["hashed_message"]
-                imprint_hex = ml.hex() if hasattr(ml, "hex") else base64.b16encode(ml).decode()
+                serial = str(tst["serial_number"].native)
+                ml = tst["message_imprint"]["hashed_message"].native
+                imprint_hex = ml.hex()
         except Exception as exc:  # noqa: BLE001
             logger.warning("Could not parse timestamp token metadata: %s", exc)
 
@@ -130,11 +142,17 @@ class Rfc3161TimestampProvider(TimestampProvider):
         try:
             signed_data = cms.ContentInfo.load(token)["content"]
             encap = signed_data["encap_content_info"]
-            tst = tsp.TSTInfo.load(encap["content"].native)
+            tst = _tst_info(encap)
 
-            digest_alg = signed_data["digest_algorithms"][0]["algorithm"].native
             errors: list[str] = []
-            if digest_alg != "sha256":
+            # O resumo do NOSSO documento precisa ser SHA-256 (é o que pedimos).
+            imprint_alg = tst["message_imprint"]["hash_algorithm"]["algorithm"].native
+            if imprint_alg != "sha256":
+                errors.append(f"Unsupported message imprint algorithm: {imprint_alg}")
+            # A TSA pode assinar o próprio carimbo com SHA-2 mais forte
+            # (Sectigo usa SHA-384); recusar só algoritmos fracos.
+            digest_alg = signed_data["digest_algorithms"][0]["algorithm"].native
+            if digest_alg not in ("sha256", "sha384", "sha512"):
                 errors.append(f"Unsupported digest algorithm: {digest_alg}")
 
             message_imprint = tst["message_imprint"]["hashed_message"]

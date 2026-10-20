@@ -91,6 +91,9 @@ def _media_css(
   font-weight: bold;
   text-transform: uppercase; margin: 0.4em 0 1.2em 35%; text-indent: 0;
   break-inside: avoid; }
+/* Alinhamento escolhido pelo autor no editor (metadata.align). */
+.doe-document .doe-align-center { text-align: center !important; text-indent: 0 !important; margin-left: 0 !important; }
+.doe-document .doe-align-right { text-align: right !important; text-indent: 0 !important; margin-left: 0 !important; }
 .doe-block--paragraph { text-align: var(--doe-blocks-paragraph-alignment, justify);
   text-indent: var(--doe-blocks-paragraph-indent, 1.25cm); }
 /* Compact 'Label: value' fields (contracts/extracts): no indent, left aligned. */
@@ -137,17 +140,21 @@ def _media_css(
 .doe-table-split .doe-table:first-of-type { margin-top: 0; }
 .doe-table-split-note { font-size: 8pt; font-style: italic; color: #444;
   margin: 0 0 0.2em; }
-.doe-signature { margin: 2em 0 0; text-align: var(--doe-signature-alignment, center);
+.doe-signature { margin: 1.2em 0 0; text-align: var(--doe-signature-alignment, center);
   break-inside: avoid; page-break-inside: avoid; }
 /* The edition shell has a legacy ``.matter-content p { text-align: start }``
    rule. Alignment does not inherit through a child that owns that property,
    so make every signature paragraph explicitly follow its semantic block. */
 .doe-document .doe-signature p { text-align: inherit; }
+/* Nome, cargo e órgão formam um bloco só: sem o espaço entre parágrafos do
+   layout (7pt) nem a entrelinha 1,7 do site, que separavam o prefeito do cargo. */
+.doe-document .doe-signature p.doe-sign-name, .doe-document .doe-signature p.doe-sign-role,
+.doe-document .doe-signature p.doe-sign-organ { margin: 0; min-height: 0; line-height: 1.25; }
 .doe-signature .doe-sign-name { font-weight: var(--doe-signature-name-weight, bold);
   text-transform: uppercase; }
 .doe-signature .doe-sign-role { font-weight: var(--doe-signature-role-weight, normal); }
 /* Closing (place + date) sits between the body and the signature. */
-.doe-signature .doe-fecho { margin: 0 0 1.6em; }
+.doe-signature .doe-fecho { margin: 0 0 1em; }
 .doe-page-break { page-break-before: always; }
 .doe-list ul, .doe-list ol { margin: 0.3em 0 0.3em 1.5em; }
 .doe-quote { font-style: italic; margin: 0.6em 1.5em; }
@@ -239,8 +246,17 @@ def _render_summary(doc: SemanticDocument) -> str:
     if not doc.summary:
         return ""
     label = (doc.summary_label or "SÚMULA").strip()
+    # A súmula acompanha a entrelinha do texto do ato (a do primeiro bloco
+    # com entrelinha escolhida no editor); sem isso, com o corpo em 1,0 a
+    # súmula ficava espaçada e a página parecia desordenada.
+    line_height = ""
+    for block in doc.blocks:
+        value = str(((getattr(block, "metadata", {}) or {}).get("spacing") or {}).get("line_height") or "")
+        if _SAFE_LINE_HEIGHT.match(value):
+            line_height = f' style="line-height: {value}"'
+            break
     return (
-        f'<p class="doe-summary"><strong>{_esc(label)}:</strong> '
+        f'<p class="doe-summary"{line_height}><strong>{_esc(label)}:</strong> '
         f"{_render_rich(doc.summary)}</p>\n"
     )
 
@@ -250,6 +266,27 @@ def _render_footer(doc: SemanticDocument) -> str:
     # public/printed body: hashes are surfaced on the verification page, not on
     # the legal document itself.
     return ""
+
+
+_SAFE_LINE_HEIGHT = re.compile(r"^\d+(?:\.\d+)?$")
+_SAFE_INDENT = re.compile(r"^\d+(?:\.\d+)?(?:pt|px|em|cm|mm)$")
+_SAFE_LENGTH = re.compile(r"^\d+(?:\.\d+)?(?:pt|px|em)$")
+
+
+def _spacing_style(block) -> str:
+    """Entrelinhas/espaço entre parágrafos escolhidos no editor (metadata.spacing)."""
+    spacing = (getattr(block, "metadata", {}) or {}).get("spacing") or {}
+    rules = []
+    line_height = str(spacing.get("line_height") or "")
+    if _SAFE_LINE_HEIGHT.match(line_height):
+        rules.append(f"line-height: {line_height}")
+    indent = str(spacing.get("text_indent") or "")
+    if indent == "0" or _SAFE_INDENT.match(indent):
+        rules.append(f"text-indent: {indent}")
+    margin = str(spacing.get("margin_bottom") or "")
+    if _SAFE_LENGTH.match(margin):
+        rules.append(f"margin-bottom: {margin}")
+    return f' style="{"; ".join(rules)}"' if rules else ""
 
 
 def _render_block(block) -> str:
@@ -264,19 +301,23 @@ def _render_block(block) -> str:
         inner = _esc(block.text)
         return f'<div class="{cls}"><{tag}>{inner}</{tag}></div>'
 
+    align = (getattr(block, "metadata", {}) or {}).get("align")
+    align_cls = f" doe-align-{align}" if align in ("center", "right") else ""
+    spacing_style = _spacing_style(block)
+
     if btype in ("preamble", "paragraph", "quote", "considerando"):
-        extra = ""
+        extra = align_cls
         content = _render_rich(block.content)
         if (getattr(block, "metadata", {}) or {}).get("kind") == "field":
             extra = " doe-field"
             content = _bold_field_label(content)
         return (
-            f'<div class="{cls}{extra}" id="{_safe_id(block.id)}">'
+            f'<div class="{cls}{extra}" id="{_safe_id(block.id)}"{spacing_style}>'
             f'{content}</div>'
         )
 
     if btype == "command":
-        return f'<div class="{cls}">{_esc(block.text)}</div>'
+        return f'<div class="{cls}{align_cls}"{spacing_style}>{_esc(block.text)}</div>'
 
     if btype == "paragraph_item":
         num = f"§ {block.number}" if block.number else "Parágrafo único"
@@ -614,7 +655,7 @@ def _render_signature(block, cls: str) -> str:
             + fecho
             + f'<p class="doe-sign-name">{_esc(entry.name)}</p>'
             + f'<p class="doe-sign-role">{_esc(entry.role)}</p>'
-            + (f"<p>{_esc(entry.organ)}</p>" if entry.organ else "")
+            + (f'<p class="doe-sign-organ">{_esc(entry.organ)}</p>' if entry.organ else "")
             + "</div>"
         )
     parts.append("</div>")

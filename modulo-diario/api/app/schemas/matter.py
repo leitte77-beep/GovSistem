@@ -26,6 +26,7 @@ class MatterCreate(BaseModel):
     metadata: dict | None = None
     publication_type: str = "normal"
     references_matter_id: uuid.UUID | None = None
+    gazette_publication: bool = True
 
     @field_validator("title")
     @classmethod
@@ -58,6 +59,7 @@ class MatterUpdate(BaseModel):
     metadata: dict | None = None
     publication_type: str | None = None
     references_matter_id: uuid.UUID | None = None
+    gazette_publication: bool | None = None
 
     @field_validator("title")
     @classmethod
@@ -129,6 +131,7 @@ class MatterResponse(BaseModel):
     review_reason: str | None = None
     publication_type: str = "normal"
     references_matter_id: uuid.UUID | None = None
+    gazette_publication: bool = True
     slug: str | None = None
     created_at: datetime
     updated_at: datetime

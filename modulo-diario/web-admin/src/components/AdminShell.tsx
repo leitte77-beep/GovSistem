@@ -27,6 +27,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: "Publicação",
     items: [
       { label: "Visão geral", href: "/", icon: "space_dashboard" },
+      { label: "Acervo de atos", href: "/acervo", icon: "inventory_2" },
       { label: "Matérias", href: "/matters", icon: "description" },
       { label: "Edições", href: "/editions", icon: "auto_stories" },
       { label: "Documentos oficiais", href: "/documentos", icon: "badge" },

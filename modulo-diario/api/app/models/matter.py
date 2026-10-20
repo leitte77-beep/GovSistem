@@ -162,6 +162,11 @@ class Matter(Base, TimestampMixin):
         Text, nullable=True,
         comment="Reason the reviewer returned the matter (shown to the author)",
     )
+    gazette_publication: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=True, server_default="true",
+        comment="False = ato somente registrado no acervo (não vai ao Diário). "
+                "Enviar para aprovação liga de volta.",
+    )
     publication_type: Mapped[Optional[str]] = mapped_column(
         String(20), nullable=True, default="normal",
         comment="normal | rectification | republication",

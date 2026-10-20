@@ -53,6 +53,9 @@ DIARIO_ROLES = {
 }
 
 
+_PREFIXED_ROLES = {"DIARIO_ADMIN": "ADMIN"}
+
+
 def _module_roles(platform_roles: list[str]) -> set[str]:
     """Resolve the diário roles for a synced user.
 
@@ -62,7 +65,10 @@ def _module_roles(platform_roles: list[str]) -> set[str]:
     2. Platform admins always get ADMIN.
     3. Backward-compatible fallback for users without grants.
     """
-    roles = set(platform_roles)
+    # A plataforma grava o administrador do módulo com prefixo
+    # ("DIARIO_ADMIN"); sem traduzir, o perfil era descartado em silêncio e o
+    # usuário ficava sem ADMIN (sem dispensa dos quatro olhos, sem cadastros).
+    roles = {_PREFIXED_ROLES.get(role, role) for role in platform_roles}
     result = roles & DIARIO_ROLES
     if roles & {"SUPER_ADMIN", "PLATFORM_ADMIN"}:
         result.add("ADMIN")

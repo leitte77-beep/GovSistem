@@ -212,6 +212,79 @@ async function requestBlob(path: string, options: RequestInit = {}, retry = true
   return res.blob();
 }
 
+export interface AcervoQuery {
+  act_type_id?: string;
+  org_unit_id?: string;
+  sem_entidade?: boolean;
+  family?: "numerado" | "expediente";
+  year?: number;
+  status?: string;
+  q?: string;
+  date_from?: string;
+  date_to?: string;
+  sort?: "numero" | "data" | "titulo" | "atualizado";
+  order?: "asc" | "desc";
+  skip?: number;
+  limit?: number;
+}
+
+export interface AcervoItem {
+  id: string;
+  title: string;
+  summary: string | null;
+  act_type_id: string;
+  act_type_name: string;
+  family: "numerado" | "expediente";
+  org_unit_id: string | null;
+  org_unit_name: string | null;
+  act_number: string | null;
+  act_year: number | null;
+  act_date: string | null;
+  responsible_name: string | null;
+  status: string;
+  status_label: string;
+  published_at: string | null;
+  edition_id: string | null;
+  edition_number: number | null;
+  edition_year: number | null;
+  edition_date: string | null;
+  updated_at: string;
+}
+
+export interface AcervoPage {
+  items: AcervoItem[];
+  total: number;
+}
+
+export interface AcervoSuggestion {
+  family: "numerado" | "expediente";
+  act_number: string | null;
+  act_year: number;
+  act_date: string;
+  title: string;
+  responsible_id: string | null;
+  responsible_name: string | null;
+  responsible_role: string | null;
+  responsible_source: "autoridade" | "ultimo_ato" | null;
+}
+
+export interface AcervoFolders {
+  folders: { act_type_id: string; name: string; family: "numerado" | "expediente"; total: number }[];
+  entities: { id: string | null; name: string; total: number }[];
+  years: number[];
+  total: number;
+}
+
+function acervoQuery(params: object): string {
+  const q = new URLSearchParams();
+  for (const [key, value] of Object.entries(params) as [string, unknown][]) {
+    if (value === undefined || value === null || value === "" || value === false) continue;
+    q.set(key, String(value));
+  }
+  const qs = q.toString();
+  return qs ? `?${qs}` : "";
+}
+
 export interface BackupFile {
   filename: string;
   size_bytes: number;
@@ -340,8 +413,50 @@ export const api = {
     return request<void>(`/matters/${id}`, { method: "DELETE" });
   },
 
-  getNextMatterTitle(actTypeId: string) {
+  // ── Acervo de atos ─────────────────────────────────────────────────────
+  getAcervoFolders(params?: { org_unit_id?: string; year?: number }) {
+    return request<AcervoFolders>(`/acervo/pastas${acervoQuery(params ?? {})}`);
+  },
+
+  listAcervo(params: AcervoQuery) {
+    return request<AcervoPage>(`/acervo${acervoQuery(params)}`);
+  },
+
+  /** Converte um .docx para o editor (caixas de texto viram texto/tabela). Nada é gravado. */
+  importAcervoWord(file: File) {
+    const form = new FormData();
+    form.append("file", file);
+    return request<{
+      content_html: string;
+      text_boxes: number;
+      tables: number;
+      images_skipped: number;
+      warnings: string[];
+    }>("/acervo/importar-word", { method: "POST", body: form });
+  },
+
+  getAcervoSuggestions(params: { act_type_id: string; org_unit_id?: string; year?: number }) {
+    return request<AcervoSuggestion>(`/acervo/sugestoes${acervoQuery(params)}`);
+  },
+
+  /** PDF do ato sozinho (publicado: exatamente como saiu na edição). */
+  getAcervoActPdf(id: string) {
+    return requestBlob(`/acervo/${id}/pdf`);
+  },
+
+  /** PDF oficial da edição em que o ato foi publicado. */
+  getAcervoEditionPdf(id: string) {
+    return requestBlob(`/acervo/${id}/edicao`);
+  },
+
+  exportAcervo(formato: "xlsx" | "csv" | "pdf", params: AcervoQuery) {
+    return requestBlob(`/acervo/exportar${acervoQuery({ ...params, formato })}`);
+  },
+
+  getNextMatterTitle(actTypeId: string, orgUnitId?: string) {
+    // A numeração é por entidade (Prefeitura/Câmara): cada uma tem a sua série.
     const q = new URLSearchParams({ act_type_id: actTypeId });
+    if (orgUnitId) q.set("org_unit_id", orgUnitId);
     return request<{ title: string; next_number: number; last_number: number; year: number; advisory: boolean; reserved: boolean }>(
       `/matters/next-title?${q.toString()}`
     );
@@ -378,6 +493,8 @@ export const api = {
     metadata?: Record<string, unknown>;
     publication_type?: string;
     references_matter_id?: string;
+    /** false = somente registro no acervo (não vai ao Diário). */
+    gazette_publication?: boolean;
   }) {
     return request<Matter>("/matters", {
       method: "POST",

@@ -1,4 +1,7 @@
-"""Séries de numeração de atos por organização/tipo/ano.
+"""Séries de numeração de atos por organização/entidade/tipo/ano.
+
+A entidade é a unidade publicadora (Prefeitura ou Câmara): cada uma tem a sua
+própria sequência, então "Portaria 10/2026" pode existir nas duas.
 
 Mantém um contador monotônico por (organização, tipo de ato, ano). O número é
 atribuído de forma transacional (row lock) — nunca ``MAX+1`` sem proteção. O
@@ -17,7 +20,6 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
-    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column
@@ -27,15 +29,10 @@ from app.models.base import Base
 
 class ActNumberSeries(Base):
     __tablename__ = "act_number_series"
-    __table_args__ = (
-        UniqueConstraint(
-            "organization_id",
-            "act_type_id",
-            "year",
-            name="uq_act_number_series_org_type_year",
-        ),
-        Index("ix_act_number_series_org", "organization_id"),
-    )
+    # Unicidade por (org, tipo, ano, entidade) é um índice único com
+    # COALESCE(org_unit_id) no banco (sql/acervo_etapa1.sql), porque NULL não
+    # colide em UNIQUE comum.
+    __table_args__ = (Index("ix_act_number_series_org", "organization_id"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     organization_id: Mapped[uuid.UUID] = mapped_column(
@@ -47,6 +44,11 @@ class ActNumberSeries(Base):
         UUID(as_uuid=True),
         ForeignKey("act_types.id", ondelete="RESTRICT"),
         nullable=False,
+    )
+    org_unit_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("org_units.id", ondelete="RESTRICT"),
+        nullable=True,
     )
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     current: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import toast from "react-hot-toast";
 import { Plus, Search } from "lucide-react";
 import { api } from "@/lib/api";
@@ -33,6 +33,28 @@ export default function AuthoritiesPage() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState<Authority | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // O formulário tem estado próprio: antes ele só aparecia com o nome já
+  // preenchido, então "Nova autoridade" (nome vazio) não abria nada.
+  const [formOpen, setFormOpen] = useState(false);
+  const formRef = useRef<HTMLElement>(null);
+  const nameRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!formOpen) return;
+    formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    nameRef.current?.focus({ preventScroll: true });
+  }, [formOpen, editing.id]);
+
+  function openForm(a: Authority) {
+    setSaveError(null);
+    setEditing(a);
+    setFormOpen(true);
+  }
+
+  function closeForm() {
+    setEditing(EMPTY());
+    setFormOpen(false);
+  }
 
   const isNew = !editing.id;
 
@@ -85,7 +107,7 @@ export default function AuthoritiesPage() {
         await api.updateAuthority(editing.id, payload());
         toast.success("Autoridade atualizada.");
       }
-      setEditing(EMPTY());
+      closeForm();
       await load();
     } catch (e: unknown) {
       const err = e as { data?: { detail?: unknown }; message?: string };
@@ -118,7 +140,7 @@ export default function AuthoritiesPage() {
         actions={
           <button
             type="button"
-            onClick={() => { setSaveError(null); setEditing(EMPTY()); }}
+            onClick={() => openForm(EMPTY())}
             className="btn-primary"
           >
             <Plus size={18} aria-hidden="true" />
@@ -173,7 +195,7 @@ export default function AuthoritiesPage() {
                   </p>
                 </div>
                 <div className="flex flex-shrink-0 gap-2">
-                  <button onClick={() => setEditing({ ...a })} className="btn-outline btn-sm">Editar</button>
+                  <button onClick={() => openForm({ ...a })} className="btn-outline btn-sm">Editar</button>
                   {a.is_active && (
                     <button
                       onClick={() => setDeleting(a)}
@@ -189,8 +211,8 @@ export default function AuthoritiesPage() {
         )}
       </div>
 
-      {(editing.name !== "" || !isNew) && (
-        <section className="card space-y-5 p-6">
+      {formOpen && (
+        <section ref={formRef} className="card scroll-mt-4 space-y-5 p-6">
           <div>
             <p className="eyebrow mb-1">{isNew ? "Novo cadastro" : "Edição"}</p>
             <h2 className="text-headline-sm text-on-surface">{isNew ? "Nova autoridade" : editing.name}</h2>
@@ -205,7 +227,7 @@ export default function AuthoritiesPage() {
           <div className="grid gap-4 sm:grid-cols-2">
             <label className="block">
               <span className="field-label">Nome *</span>
-              <input className={inputCls} value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
+              <input ref={nameRef} className={inputCls} value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
             </label>
             <label className="block">
               <span className="field-label">Cargo ou função</span>
@@ -249,7 +271,7 @@ export default function AuthoritiesPage() {
           <hr className="rule" />
 
           <div className="flex flex-col-reverse justify-end gap-2 sm:flex-row">
-            <button onClick={() => setEditing(EMPTY())} className="btn-outline">Cancelar</button>
+            <button onClick={closeForm} className="btn-outline">Cancelar</button>
             <button onClick={save} disabled={saving} className="btn-primary">
               {saving ? "Salvando…" : isNew ? "Cadastrar" : "Salvar"}
             </button>
