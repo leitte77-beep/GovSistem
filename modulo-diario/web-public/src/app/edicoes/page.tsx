@@ -48,7 +48,24 @@ export default function EditionsPage() {
   const [page, setPage] = useState(0);
   const pageSize = 12;
 
-  const years = Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - i);
+  // Os anos vão do atual até o da edição mais antiga (acervo legado começa em 2015/2016).
+  const currentYear = new Date().getFullYear();
+  const [oldestYear, setOldestYear] = useState(currentYear - 9);
+  const years = Array.from({ length: currentYear - oldestYear + 1 }, (_, i) => currentYear - i);
+
+  useEffect(() => {
+    api
+      .listEditions({ page_size: 1 })
+      .then((first) => {
+        const total = first.pagination.total;
+        if (!total) return;
+        return api.listEditions({ page: total - 1, page_size: 1 }).then((last) => {
+          const y = last.data[0]?.year;
+          if (y && y < currentYear) setOldestYear(y);
+        });
+      })
+      .catch((err) => notifyError("EdicoesPublic", err));
+  }, [currentYear]);
 
   const fetchEditions = useCallback(() => {
     setLoading(true);
@@ -116,7 +133,7 @@ export default function EditionsPage() {
           className="flex flex-col items-center gap-2 md:flex-row"
         >
           <div className="group relative w-full flex-grow rounded-xl bg-slate-50 ring-1 ring-inset ring-slate-200 focus-within:bg-white focus-within:ring-2 focus-within:ring-brand-accent">
-            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-[21px] text-slate-400 group-focus-within:text-brand-accent">
+            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-[21px] text-slate-500 group-focus-within:text-brand-accent">
               search
             </span>
             <input
@@ -134,6 +151,7 @@ export default function EditionsPage() {
                 calendar_today
               </span>
               <select
+                aria-label="Filtrar por ano"
                 className="h-14 w-full cursor-pointer appearance-none rounded-xl border-0 bg-slate-50 pl-12 pr-10 text-sm font-semibold text-slate-700 outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-brand-accent"
                 value={year}
                 onChange={(e) => setYear(e.target.value)}
@@ -160,12 +178,12 @@ export default function EditionsPage() {
       <div className="mx-auto max-w-[1240px] px-4 pb-20 pt-10 sm:px-6 lg:px-8">
       {/* Results Counter + Sort */}
       <div className="mb-5 flex items-center justify-between px-1">
-        <span className="text-xs font-semibold text-slate-500">
+        <span className="text-xs font-semibold text-slate-600">
           Mostrando {editions.length} de{" "}
           {pagination?.total != null ? pagination.total.toLocaleString("pt-BR") : "..."}{" "}
           edições
         </span>
-        <div className="flex items-center gap-1.5 text-xs text-slate-500">
+        <div className="flex items-center gap-1.5 text-xs text-slate-600">
           <span className="material-symbols-outlined text-[16px]">sort</span>
           <span>Mais recentes primeiro</span>
         </div>
@@ -213,18 +231,18 @@ export default function EditionsPage() {
                       <p className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-brand-accent">Diário Oficial</p>
                       <div className="mt-1 flex flex-wrap items-baseline gap-2">
                         <h2 className="text-xl font-extrabold leading-tight tracking-[-0.025em] text-brand-900">Edição nº {edition.number}</h2>
-                        <span className="rounded-md bg-white px-1.5 py-0.5 text-[9px] font-bold text-slate-500 ring-1 ring-inset ring-slate-200">{edition.year}</span>
+                        <span className="rounded-md bg-white px-1.5 py-0.5 text-[11px] font-bold text-slate-600 ring-1 ring-inset ring-slate-200">{edition.year}</span>
                       </div>
                     </div>
                   </div>
-                  <time className="relative mt-4 flex items-center gap-1.5 text-[11px] leading-5 text-slate-500">
-                    <span className="material-symbols-outlined text-[15px] text-slate-400">calendar_month</span>
+                  <time className="relative mt-4 flex items-center gap-1.5 text-[11px] leading-5 text-slate-600">
+                    <span className="material-symbols-outlined text-[15px] text-slate-500">calendar_month</span>
                     {formatDate(edition.publication_date)}
                   </time>
                 </div>
 
                 <div className="min-w-0 p-6">
-                  <h3 className="mb-3 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                  <h3 className="mb-3 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500">
                     Resumo da edição
                   </h3>
                   <ul>
@@ -232,9 +250,9 @@ export default function EditionsPage() {
                       {formatSummary(edition.daily_summary)}
                     </li>
                   </ul>
-                  <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] font-semibold text-slate-500">
+                  <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2 text-[11px] font-semibold text-slate-600">
                     <span className="flex items-center gap-1.5"><span className="material-symbols-outlined text-[16px] text-brand-accent">description</span>{edition.item_count} {edition.item_count === 1 ? "publicação" : "publicações"}</span>
-                    <span className="flex items-center gap-1.5"><span className="material-symbols-outlined text-[16px] text-slate-400">calendar_month</span>{formatShortDate(edition.publication_date)}</span>
+                    <span className="flex items-center gap-1.5"><span className="material-symbols-outlined text-[16px] text-slate-500">calendar_month</span>{formatShortDate(edition.publication_date)}</span>
                     {edition.signature_count > 0 && <span className="flex items-center gap-1.5 text-emerald-700"><span className="material-symbols-outlined text-[16px]">verified</span>Assinada digitalmente</span>}
                   </div>
                 </div>
@@ -252,7 +270,7 @@ export default function EditionsPage() {
                         href={edition.pdf_url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-brand-100 hover:text-brand-900"
+                        className="flex h-10 w-10 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition hover:border-brand-100 hover:text-brand-900"
                         aria-label="Baixar PDF"
                       >
                         <span className="material-symbols-outlined text-[19px]">
