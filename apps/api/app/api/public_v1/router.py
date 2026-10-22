@@ -10,7 +10,7 @@ from urllib.parse import quote, urlparse
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from sqlalchemy import or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -264,6 +264,47 @@ async def v1_get_organization(
     }
 
 
+
+def _edition_search_clause(search: str, accent_insensitive: bool = False):
+    """Busca de edições: além do título/subtítulo da edição (que quase sempre
+    é só "Edição nº X"), procura no conteúdo das matérias publicadas nela —
+    é ali que estão nomes, números de portaria, objetos de licitação etc.
+
+    Cada palavra precisa aparecer (em qualquer campo), então "portaria 251"
+    acha "Portaria Nº 251/2026". No PostgreSQL ignora acentos via unaccent.
+    """
+    def norm(expr):
+        return func.unaccent(expr) if accent_insensitive else expr
+
+    def term_clause(term: str):
+        like = norm(f"%{term}%")
+        matter_hit = (
+            select(EditionItem.id)
+            .join(Matter, Matter.id == EditionItem.matter_id)
+            .where(
+                EditionItem.edition_id == Edition.id,
+                or_(
+                    norm(Matter.title).ilike(like),
+                    norm(Matter.summary).ilike(like),
+                    norm(Matter.plain_text).ilike(like),
+                    Matter.act_number.ilike(f"%{term}%"),
+                ),
+            )
+            .exists()
+        )
+        return or_(norm(Edition.title).ilike(like), norm(Edition.subtitle).ilike(like), matter_hit)
+
+    terms = search.split() or [search]
+    return and_(*[term_clause(t) for t in terms])
+
+
+
+def _dialect_is_postgres(db) -> bool:
+    try:
+        return db.bind is not None and db.bind.dialect.name == "postgresql"
+    except Exception:  # noqa: BLE001 - mocked/odd sessions fall back to ILIKE
+        return False
+
 @router.get(
     "/api/public/v1/editions",
     response_model=EditionListResponse,
@@ -303,7 +344,7 @@ async def v1_list_editions(
         query = query.where(Edition.type == type)
     if search:
         like = f"%{search}%"
-        query = query.where(or_(Edition.title.ilike(like), Edition.subtitle.ilike(like)))
+        query = query.where(_edition_search_clause(search, _dialect_is_postgres(db)))
     # Edition numbers are scoped per type (normal/extra/suplementar each have
     # their own sequence starting at 1), so ordering by number would bury a
     # brand-new "extra" edition under older "normal" editions with higher
@@ -318,6 +359,8 @@ async def v1_list_editions(
         total_query = total_query.where(Edition.year == year)
     if type:
         total_query = total_query.where(Edition.type == type)
+    if search:
+        total_query = total_query.where(_edition_search_clause(search, _dialect_is_postgres(db)))
     total_result = await db.execute(total_query)
 
     total_count = 0

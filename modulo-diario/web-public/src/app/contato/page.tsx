@@ -1,12 +1,44 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useEffect } from "react";
 import { useOrg } from "@/lib/org-context";
+import type { OrganizationContact } from "@/lib/api";
+import { formatTitleCase } from "@/lib/summary";
+
+function formatPhone(raw?: string | null): string {
+  const d = (raw || "").replace(/\D/g, "");
+  if (d.length === 10) return `(${d.slice(0, 2)}) ${d.slice(2, 6)}-${d.slice(6)}`;
+  if (d.length === 11) return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
+  return raw || "";
+}
+
+function formatCep(raw?: string | null): string {
+  const d = (raw || "").replace(/\D/g, "");
+  return d.length === 8 ? `${d.slice(0, 5)}-${d.slice(5)}` : raw || "";
+}
+
+/** "Rua Bahia, 880 - Centro" / "Farol - PR, CEP 87325-000" a partir do cadastro. */
+function addressLines(c?: OrganizationContact | null): [string, string] | null {
+  if (!c?.address_street) return null;
+  const tc = (v?: string | null) => (v ? formatTitleCase(v) : "");
+  const line1 = [
+    [tc(c.address_street), c.address_number].filter(Boolean).join(", "),
+    tc(c.address_complement),
+    tc(c.address_district),
+  ].filter(Boolean).join(" - ");
+  const city = [tc(c.address_city), c.state?.toUpperCase()].filter(Boolean).join(" - ");
+  const cep = formatCep(c.address_postal_code);
+  return [line1, [city, cep && `CEP ${cep}`].filter(Boolean).join(", ")];
+}
 
 export default function ContatoPage() {
   const { org } = useOrg();
+  const contact = org?.contact;
+  const email = contact?.email;
+  const phone = formatPhone(contact?.phone);
+  const address = addressLines(contact);
+  const mapQuery = address ? `${address[0]}, ${address[1]}, Brasil` : null;
   useEffect(() => {
     const icons = document.querySelectorAll<HTMLElement>(
       ".contact-icon-hover"
@@ -60,14 +92,14 @@ export default function ContatoPage() {
             Para solicitações relacionadas ao Diário Oficial, informe a edição,
             data de publicação e o assunto desejado para agilizar a análise.
           </p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mt-4">
+          <div className="mt-4 flex flex-col gap-6 sm:flex-row sm:flex-wrap sm:gap-x-10">
             <div className="flex flex-col gap-1">
               <span className="text-label-md font-label-md text-outline uppercase tracking-wider">
                 E-mail
               </span>
               <div className="contact-icon-hover flex items-center gap-2 text-primary font-semibold transition-transform duration-200">
                 <span className="material-symbols-outlined text-sm">mail</span>
-                <span>{org?.contact_email || "contato@exemplo.gov.br"}</span>
+                {email ? <a href={`mailto:${email}`} className="[overflow-wrap:anywhere] hover:underline">{email}</a> : <span className="text-on-surface-variant">Não informado</span>}
               </div>
             </div>
             <div className="flex flex-col gap-1">
@@ -76,7 +108,7 @@ export default function ContatoPage() {
               </span>
               <div className="contact-icon-hover flex items-center gap-2 text-primary font-semibold transition-transform duration-200">
                 <span className="material-symbols-outlined text-sm">call</span>
-                <span>(44) 3563-1101</span>
+                {phone ? <a href={`tel:+55${(contact?.phone || "").replace(/\D/g, "")}`} className="hover:underline">{phone}</a> : <span className="text-on-surface-variant">Não informado</span>}
               </div>
             </div>
             <div className="flex flex-col gap-1">
@@ -87,7 +119,7 @@ export default function ContatoPage() {
                 <span className="material-symbols-outlined text-sm">
                   schedule
                 </span>
-                <span>08h 1s 12h e 13h 1s 17h</span>
+                <span>08h às 12h e 13h às 17h</span>
               </div>
             </div>
           </div>
@@ -101,22 +133,40 @@ export default function ContatoPage() {
               </span>
               <div>
                 <p className="text-on-surface font-semibold">
-                  {org?.name || "Prefeitura Municipal"}
+                  {org?.name ? formatTitleCase(org.name) : "Prefeitura Municipal"}
                 </p>
-                <p className="text-on-surface-variant">
-                  {org?.address || "Endereço da Prefeitura"}
-                </p>
+                {address ? (
+                  <>
+                    <p className="text-on-surface-variant">{address[0]}</p>
+                    <p className="text-on-surface-variant">{address[1]}</p>
+                  </>
+                ) : (
+                  <p className="text-on-surface-variant">Endereço não informado</p>
+                )}
               </div>
             </div>
-            <div className="mt-4 h-48 rounded-lg overflow-hidden relative">
-              <Image
-                fill
-                sizes="(max-width: 768px) 100vw, 400px"
-                className="object-cover"
-                alt={org?.name ? `Mapa de ${org.name}` : "Mapa da Prefeitura"}
-                src="https://lh3.googleusercontent.com/aida-public/AB6AXuBQuvjRxmZjJIvvWSkFH23kr2jtb2a6bobRtrBq19XsQPFS28L0_tDcinx2sknfj2IT--xc6mQppTj2oX9uB-kwKIzR6FDyQprG9duBQbsDOZC5hul3pQbYkpy_2q_UIonWOL-HCB20NYTfKiPgXsizL1H-JCO3bEglt_4_VvZZUOwtEwS8ChkVKia2c4FkXlYGkzWxbu7PeaREWa3NNHcQiQjjAQHSHiwxzLbywUEN3lkYU5w3t0yGf-UF_nbURE_3EpQYcX-2ytoh"
-              />
-            </div>
+            {mapQuery && (
+              <>
+                <div className="mt-4 h-64 overflow-hidden rounded-lg border border-outline-variant">
+                  <iframe
+                    title={`Mapa: ${address![0]}`}
+                    src={`https://www.google.com/maps?q=${encodeURIComponent(mapQuery)}&output=embed`}
+                    className="h-full w-full border-0"
+                    loading="lazy"
+                    referrerPolicy="no-referrer-when-downgrade"
+                  />
+                </div>
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="mt-2 inline-flex items-center gap-1 text-sm font-semibold text-primary hover:underline"
+                >
+                  Abrir no Google Maps
+                  <span aria-hidden="true" className="material-symbols-outlined text-[16px]">open_in_new</span>
+                </a>
+              </>
+            )}
           </div>
         </div>
 

@@ -5,6 +5,7 @@ import { useState, useCallback } from "react";
 type ShareDialogProps = {
   url: string;
   title?: string;
+  className?: string;
 };
 
 type ShareOption = {
@@ -73,7 +74,7 @@ const OPTIONS: ShareOption[] = [
   },
 ];
 
-export default function ShareDialog({ url, title }: ShareDialogProps) {
+export default function ShareDialog({ url, title, className }: ShareDialogProps) {
   const [open, setOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -95,7 +96,7 @@ export default function ShareDialog({ url, title }: ShareDialogProps) {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="p-2 border border-outline-variant rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-all"
+        className={className ?? "p-2 border border-outline-variant rounded-lg text-on-surface-variant hover:bg-surface-container-low transition-all"}
         aria-label="Compartilhar"
       >
         <span className="material-symbols-outlined">share</span>

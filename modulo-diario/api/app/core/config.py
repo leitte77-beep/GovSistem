@@ -94,6 +94,17 @@ class Settings(BaseSettings):
     SIGNER_URL: str = "http://signer:8100"
     INTERNAL_API_KEY: SecretStr = SecretStr("")
 
+    # Boletim por e-mail — mesma caixa que o SaaS usa na recuperação de senha.
+    # Sem SMTP_PASSWORD o boletim fica desligado (inscrição responde 503).
+    SMTP_HOST: str = "smtp.hostinger.com"
+    SMTP_PORT: int = 465
+    SMTP_USER: str = "contato@govsistem.com.br"
+    SMTP_PASSWORD: SecretStr = SecretStr("")
+    SMTP_FROM: str = "contato@govsistem.com.br"
+    SMTP_USE_SSL: bool = True
+    # Endereço do portal público de cada cidade (subdomínio por tenant).
+    PORTAL_URL_TEMPLATE: str = "https://{slug}.govsistem.com.br"
+
     # Independent RFC 3161 validation. Empty trust store means the TSA chain is
     # reported as "não verificada" (indeterminate), never as valid.
     TSA_URL: str = ""

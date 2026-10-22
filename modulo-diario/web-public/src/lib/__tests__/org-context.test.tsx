@@ -40,7 +40,7 @@ describe("OrgProvider", () => {
       slug: "prefeitura-teste",
       logo_url: null,
       description: null,
-      contact_email: null,
+      contact: null,
       address: null,
       theme: { primary_color: "#000", secondary_color: "#fff", font_family: "Inter" },
     });
@@ -103,7 +103,7 @@ describe("OrgProvider", () => {
   it("fetches organization only once on mount", async () => {
     mockGetOrganization.mockResolvedValue({
       id: "1", name: "Test", slug: "test",
-      logo_url: null, description: null, contact_email: null, address: null,
+      logo_url: null, description: null, contact: null,
       theme: { primary_color: "#000", secondary_color: "#fff", font_family: "Inter" },
     });
 
@@ -142,7 +142,7 @@ describe("useOrg", () => {
       slug: "secretaria-x",
       logo_url: null,
       description: null,
-      contact_email: null,
+      contact: null,
       address: null,
       theme: { primary_color: "#333", secondary_color: "#444", font_family: "Arial" },
     });

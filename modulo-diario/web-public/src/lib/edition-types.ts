@@ -129,8 +129,7 @@ export interface OrganizationInfoServer {
   slug: string;
   logo_url: string | null;
   description: string | null;
-  contact_email: string | null;
-  address: string | null;
+  contact?: import("./api").OrganizationContact | null;
   theme: {
     primary_color: string;
     secondary_color: string;

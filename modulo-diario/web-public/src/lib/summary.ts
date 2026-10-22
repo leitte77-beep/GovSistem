@@ -13,18 +13,38 @@ const ACRONYMS = new Set([
   "PR",
 ]);
 
-function formatWord(word: string): string {
+// Conectivos ficam em minúscula no meio da frase. Precisam ser checados antes
+// da regra "palavra curta = sigla", senão "AO"/"DA"/"DE" saem em caixa alta.
+const LOWERCASE = new Set([
+  "a", "à", "ao", "aos", "as", "às", "o", "os",
+  "de", "da", "das", "do", "dos", "e", "em", "na", "nas", "no", "nos",
+  "para", "por", "pela", "pelas", "pelo", "pelos", "com", "sem", "sob", "ou",
+  "referente", "manutenção", "desenvolvimento",
+]);
+
+function formatWord(word: string, index: number): string {
   const match = word.match(/^([^A-Za-zÀ-ÿ]*)([A-Za-zÀ-ÿº°]+)([^A-Za-zÀ-ÿ]*)$/);
   if (!match) return word;
 
   const [, prefix, core, suffix] = match;
   const upper = core.toUpperCase();
+  const lower = core.toLowerCase();
 
-  if (ACRONYMS.has(upper) || core.length <= 2) {
-    return `${prefix}${upper}${suffix}`;
-  }
+  if (ACRONYMS.has(upper)) return `${prefix}${upper}${suffix}`;
+  if (index > 0 && !prefix && LOWERCASE.has(lower)) return `${prefix}${lower}${suffix}`;
+  if (core.length <= 2) return `${prefix}${upper}${suffix}`;
 
-  return `${prefix}${core.charAt(0).toUpperCase()}${core.slice(1).toLowerCase()}${suffix}`;
+  return `${prefix}${core.charAt(0).toUpperCase()}${lower.slice(1)}${suffix}`;
+}
+
+/** Normaliza texto vindo em CAIXA ALTA (súmulas, nome do órgão) para leitura. */
+export function formatTitleCase(text: string): string {
+  return text
+    .replace(/\s+/g, " ")
+    .trim()
+    .split(" ")
+    .map(formatWord)
+    .join(" ");
 }
 
 export function formatSummary(summary?: string | null): string {
@@ -35,20 +55,5 @@ export function formatSummary(summary?: string | null): string {
 
   if (!clean) return "Súmula não informada.";
 
-  return clean
-    .split(" ")
-    .map(formatWord)
-    .join(" ")
-    .replace(/\bDe\b/g, "de")
-    .replace(/\bDa\b/g, "da")
-    .replace(/\bDas\b/g, "das")
-    .replace(/\bDo\b/g, "do")
-    .replace(/\bDos\b/g, "dos")
-    .replace(/\bE\b/g, "e")
-    .replace(/\bEm\b/g, "em")
-    .replace(/\bPara\b/g, "para")
-    .replace(/\bCom\b/g, "com")
-    .replace(/\bReferente\b/g, "referente")
-    .replace(/\bManutenção\b/g, "manutenção")
-    .replace(/\bDesenvolvimento\b/g, "desenvolvimento");
+  return formatTitleCase(clean);
 }

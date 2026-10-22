@@ -7,7 +7,7 @@ import uuid
 from datetime import date, datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -1544,6 +1544,7 @@ async def validate_edition_signature(
 async def publish_edition(
     edition_id: uuid.UUID,
     request: Request,
+    background: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
     user: User = Depends(require_roles("PUBLICADOR", "ADMIN")),
 ):
@@ -1694,6 +1695,12 @@ async def publish_edition(
         description=f"Edition {edition.year}/{edition.number} published",
         ip_address=info["ip_address"],
     )
+
+    # Boletim por e-mail: roda depois da resposta, com sessão própria, e é
+    # idempotente por edição (newsletter_dispatches.edition_id é único).
+    from app.services import newsletter
+
+    background.add_task(newsletter.dispatch_edition, edition.id)
 
     return PublishResponse(
         edition_id=str(edition.id),

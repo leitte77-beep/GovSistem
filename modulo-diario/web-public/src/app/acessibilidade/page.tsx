@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useEffect } from "react";
 
 export default function AcessibilidadePage() {
@@ -49,9 +48,9 @@ export default function AcessibilidadePage() {
               Acessibilidade
             </h2>
             <p className="text-body-lg font-body-lg text-on-surface-variant leading-relaxed">
-              O portal busca oferecer uma experiência de consulta clara,
-              responsiva e compatível com tecnologias assistivas, garantindo que
-              o acesso à informação pública seja um direito exercido por todos.
+              O portal busca oferecer uma experiência de consulta clara e responsiva,
+              compatível com tecnologias assistivas e com tradução para Libras,
+              para que o acesso à informação pública seja um direito de todos.
             </p>
           </div>
         </div>
@@ -86,8 +85,9 @@ export default function AcessibilidadePage() {
                   Compatibilidade
                 </h4>
                 <p className="text-body-md text-on-surface-variant">
-                  Interface testada com os principais navegadores e softwares de
-                  leitura de tela (NVDA, JAWS e TalkBack).
+                  Estrutura pensada para funcionar com leitores de tela como NVDA,
+                  JAWS e TalkBack. Se algo não for anunciado corretamente,
+                  reporte para corrigirmos.
                 </p>
               </div>
               <div>
@@ -102,8 +102,8 @@ export default function AcessibilidadePage() {
               <div>
                 <h4 className="font-bold text-primary mb-2">Legibilidade</h4>
                 <p className="text-body-md text-on-surface-variant">
-                  Contrastes calculados para atender aos padrões WCAG 2.1 AA e
-                  fontes otimizadas para leitura prolongada.
+                  Cores definidas para atender ao contraste mínimo da WCAG 2.1 nível
+                  AA, verificado com ferramenta de auditoria automática.
                 </p>
               </div>
             </div>
@@ -136,8 +136,8 @@ export default function AcessibilidadePage() {
               <div>
                 <h4 className="font-bold text-primary mb-1">Ajuste de Fonte</h4>
                 <p className="text-body-sm text-on-surface-variant">
-                  Use os atalhos do navegador (Ctrl+ / Ctrl-) para
-                  redimensionar o texto conforme sua necessidade.
+                  Use o botão de acessibilidade no topo da página para aumentar a
+                  fonte, ou os atalhos do navegador (Ctrl+ / Ctrl−).
                 </p>
               </div>
             </div>
@@ -146,10 +146,11 @@ export default function AcessibilidadePage() {
                 contrast
               </span>
               <div>
-                <h4 className="font-bold text-primary mb-1">Alto Contraste</h4>
+                <h4 className="font-bold text-primary mb-1">Recursos de Leitura</h4>
                 <p className="text-body-sm text-on-surface-variant">
-                  O portal foi desenhado com paleta de alto contraste nativa,
-                  eliminando a necessidade de filtros externos.
+                  No mesmo botão: alto contraste, escala de cinza, inversão de cores,
+                  destaque de links, espaçamento ampliado e pausa de animações.
+                  O ícone de mãos no canto da tela abre o tradutor VLibras.
                 </p>
               </div>
             </div>
@@ -158,10 +159,11 @@ export default function AcessibilidadePage() {
                 description
               </span>
               <div>
-                <h4 className="font-bold text-primary mb-1">Leis de Acesso</h4>
+                <h4 className="font-bold text-primary mb-1">Normas de Referência</h4>
                 <p className="text-body-sm text-on-surface-variant">
-                  Conformidade total com a Lei Brasileira de Inclusão (Lei nº
-                  13.146/2015) no ambiente digital.
+                  Seguimos a Lei Brasileira de Inclusão (Lei nº 13.146/2015), o
+                  Modelo de Acessibilidade em Governo Eletrônico (eMAG) e a
+                  WCAG 2.1 nível AA.
                 </p>
               </div>
             </div>
@@ -170,14 +172,8 @@ export default function AcessibilidadePage() {
       </section>
 
       <section className="max-w-container-max mx-auto px-gutter mb-stack-lg">
-        <div className="relative h-[400px] rounded-2xl overflow-hidden shadow-2xl">
-          <Image
-            fill
-            sizes="100vw"
-            className="object-cover grayscale brightness-50"
-            alt="Espaço de trabalho tecnológico e acessível"
-            src="https://lh3.googleusercontent.com/aida-public/AB6AXuBBYwze62zIPj1s6zupRaXZjWpAK0oiDveSp0JuiXbDHeQsRq4wnv74TQqqSNb158EihT0y69uFdWxylNs_vvLy6QCbsB4Vqck_XLVMMG1L1v8IMknNe8luvqyFk6R0JwDRgYLfL8sD9RNtCPLiKvR0CkquAFFUPj8BnQdTAlEbIRQFdc0rTRhTbbhY3H4uDO3jdOf29LysbroEE4WUKkKimUsTNfleRAnB-PFWshVutxNeI1uvR4loiJZ08L6asnicCTwTuD2cCnTN"
-          />
+        <div className="relative h-[280px] rounded-2xl overflow-hidden shadow-2xl bg-[#071a33]">
+
           <div className="absolute inset-0 bg-gradient-to-t from-primary/80 to-transparent flex items-end p-12">
             <div className="max-w-2xl">
               <h2 className="text-headline-lg font-headline-lg text-white mb-4">

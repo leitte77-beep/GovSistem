@@ -1,20 +1,23 @@
 """Public API v1 — versioned, rate-limited, documented, only published data."""
 
 import math
+import re
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request
+from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from sqlalchemy import String, cast, func, or_, select
+from sqlalchemy import String, and_, cast, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import load_only, noload, selectinload
 
 from app.core.config import settings
 from app.core.database import get_db
 from app.core.tenant import require_tenant, resolve_tenant_from_domain
+from app.models.act_type import ActType
 from app.models.edition import Edition
 from app.models.edition_item import EditionItem
 from app.models.enums import EditionStatus
@@ -114,6 +117,44 @@ def _certificate_identity(subject: str | None) -> tuple[str, str]:
     return name, document
 
 
+# Filtro por espécie de ato no portal. O acervo legado entra como uma matéria
+# "Outros" por edição, com o sumário do PDF ("PORTARIAS; PORTARIA Nº ...") no
+# summary: por isso casa pelo tipo cadastrado OU pelo título/sumário. O texto
+# integral fica de fora (todo cabeçalho antigo cita "Lei nº 751/2015").
+ACT_FILTERS: dict[str, tuple[str, tuple[str, ...], str]] = {
+    "lei": ("Leis", ("Lei",), r"\mLEIS?\M"),
+    "decreto": ("Decretos", ("Decreto",), r"\mDECRETOS?\M"),
+    "portaria": ("Portarias", ("Portaria",), r"\mPORTARIAS?\M"),
+    "resolucao": ("Resoluções", (), r"\mRESOLU[CÇ](AO|ÃO|OES|ÕES)\M"),
+    "edital": ("Editais", ("Edital",), r"\mEDITA(L|IS)\M"),
+    "licitacao": (
+        "Licitações e compras", ("Licitação", "Processos de Compra"),
+        r"LICITA|PREG[AÃ]O|TOMADA DE PRE[CÇ]O|DISPENSA|INEXIGIBILIDADE|CHAMAMENTO|PROCESSOS? DE COMPRA",
+    ),
+    "contrato": ("Contratos e aditivos", ("Contrato",), r"\mCONTRATOS?\M|ADITIVO"),
+    "ata": ("Atas", ("Ata",), r"\mATAS?\M"),
+    "relatorio": (
+        "Relatórios contábeis", ("Relatório Contábil",),
+        r"RELAT[OÓ]RIO|BALAN[CÇ]|\mRREO\M|\mRGF\M|AUDI[EÊ]NCIA P[UÚ]BLICA",
+    ),
+}
+
+
+def _act_filter_clause(key: str):
+    """Edição que contém ao menos uma matéria da espécie pedida."""
+    _, type_names, pattern = ACT_FILTERS[key]
+    text = func.upper(func.concat(Matter.title, " ", func.coalesce(Matter.summary, "")))
+    conds = [text.op("~")(pattern)]
+    if type_names:
+        conds.append(Matter.act_type_id.in_(select(ActType.id).where(ActType.name.in_(type_names))))
+    return (
+        select(EditionItem.id)
+        .join(Matter, Matter.id == EditionItem.matter_id)
+        .where(EditionItem.edition_id == Edition.id, or_(*conds))
+        .exists()
+    )
+
+
 def _pagination_links(path: str, total: int, page: int, page_size: int, params: dict) -> dict:
     total_pages = max(0, math.ceil(total / page_size) - 1) if page_size > 0 else 0
     q = "&".join(f"{k}={v}" for k, v in params.items() if v is not None)
@@ -189,12 +230,108 @@ async def v1_get_organization(
         "slug": tenant.slug,
         "logo_url": tenant.logo_url,
         "description": tenant.description,
+        # Contato institucional (cadastrado em Configurações > Instituição),
+        # usado na página "Contato" do portal.
+        "contact": {
+            "email": tenant.email,
+            "phone": tenant.phone,
+            "site": tenant.site,
+            "address_street": tenant.address_street,
+            "address_number": tenant.address_number,
+            "address_complement": tenant.address_complement,
+            "address_district": tenant.address_district,
+            "address_city": tenant.address_city,
+            "state": tenant.state,
+            "address_postal_code": tenant.address_postal_code,
+        },
         "theme": {
             "primary_color": theme.get("primary_color", "#1a56db"),
             "secondary_color": theme.get("secondary_color", "#7c3aed"),
             "font_family": theme.get("font_family", "Inter, sans-serif"),
         },
     }
+
+
+
+def _edition_search_clause(search: str, accent_insensitive: bool = False):
+    """Busca de edições: além do título/subtítulo da edição (que quase sempre
+    é só "Edição nº X"), procura no conteúdo das matérias publicadas nela —
+    é ali que estão nomes, números de portaria, objetos de licitação etc.
+
+    Cada palavra precisa aparecer (em qualquer campo), então "portaria 251"
+    acha "Portaria Nº 251/2026". No PostgreSQL ignora acentos via unaccent.
+    """
+    def norm(expr):
+        return func.unaccent(expr) if accent_insensitive else expr
+
+    def term_clause(term: str):
+        like = norm(f"%{term}%")
+        matter_hit = (
+            select(EditionItem.id)
+            .join(Matter, Matter.id == EditionItem.matter_id)
+            .where(
+                EditionItem.edition_id == Edition.id,
+                or_(
+                    norm(Matter.title).ilike(like),
+                    norm(Matter.summary).ilike(like),
+                    norm(Matter.plain_text).ilike(like),
+                    Matter.act_number.ilike(f"%{term}%"),
+                ),
+            )
+            .exists()
+        )
+        return or_(norm(Edition.title).ilike(like), norm(Edition.subtitle).ilike(like), matter_hit)
+
+    terms = search.split() or [search]
+    return and_(*[term_clause(t) for t in terms])
+
+
+@router.get(
+    "/api/public/v1/editions/years",
+    summary="Anos com edições publicadas",
+    description="Anos (mais recente primeiro) com a quantidade de edições publicadas; alimenta o filtro do portal.",
+)
+@limiter.limit("60/minute")
+async def v1_edition_years(
+    request: Request,
+    tenant: Organization | None = Depends(resolve_tenant_from_domain),
+    db: AsyncSession = Depends(get_db),
+):
+    if tenant is None:
+        return []
+    rows = await db.execute(
+        select(Edition.year, func.count(Edition.id))
+        .where(Edition.status == EditionStatus.PUBLISHED, Edition.organization_id == tenant.id)
+        .group_by(Edition.year)
+        .order_by(Edition.year.desc())
+    )
+    return [{"year": y, "count": c} for y, c in rows.all()]
+
+
+@router.get(
+    "/api/public/v1/editions/act-filters",
+    summary="Espécies de ato para filtrar edições",
+    description="Espécies de ato com a quantidade de edições publicadas que contêm cada uma.",
+)
+@limiter.limit("60/minute")
+async def v1_edition_act_filters(
+    request: Request,
+    tenant: Organization | None = Depends(resolve_tenant_from_domain),
+    db: AsyncSession = Depends(get_db),
+):
+    if tenant is None:
+        return []
+    out = []
+    for key, (label, _, _) in ACT_FILTERS.items():
+        count = (await db.execute(
+            select(func.count(Edition.id)).where(
+                Edition.status == EditionStatus.PUBLISHED,
+                Edition.organization_id == tenant.id,
+                _act_filter_clause(key),
+            )
+        )).scalar_one()
+        out.append({"key": key, "label": label, "count": count})
+    return out
 
 
 @router.get(
@@ -209,13 +346,23 @@ async def v1_list_editions(
     year: Optional[int] = Query(None, description="Filter by year"),
     type: Optional[str] = Query(None, description="Filter by type: normal, extra, suplementar"),
     search: Optional[str] = Query(None, description="Search in title and subtitle"),
+    month: Optional[int] = Query(None, ge=1, le=12, description="Mês da publicação"),
+    date_from: Optional[date] = Query(None, description="Publicadas a partir de (inclusive)"),
+    date_to: Optional[date] = Query(None, description="Publicadas até (inclusive)"),
+    number: Optional[int] = Query(None, ge=0, description="Número da edição"),
+    act: Optional[str] = Query(None, description="Espécie de ato (ver /editions/act-filters)"),
+    order: str = Query("desc", pattern="^(asc|desc)$", description="desc = mais recentes primeiro"),
     page: int = Query(0, ge=0, description="Page number (0-indexed)"),
     page_size: int = Query(20, ge=1, le=100, description="Items per page"),
     tenant: Organization | None = Depends(resolve_tenant_from_domain),
     db: AsyncSession = Depends(get_db),
 ):
+    params = {
+        "year": year, "type": type, "search": search, "month": month,
+        "date_from": date_from, "date_to": date_to, "number": number, "act": act,
+        "order": order if order != "desc" else None,
+    }
     if tenant is None:
-        params = {"year": year, "type": type, "search": search}
         pagination = _pagination_links(
             f"{request.base_url}api/public/v1/editions", 0, page, page_size, params
         )
@@ -236,36 +383,50 @@ async def v1_list_editions(
             selectinload(Edition.signatures),
         )
     )
-    query = query.where(Edition.organization_id == tenant.id)
+    filters = [
+        Edition.status == EditionStatus.PUBLISHED,
+        Edition.organization_id == tenant.id,
+    ]
     if year:
-        query = query.where(Edition.year == year)
+        filters.append(Edition.year == year)
     if type:
-        query = query.where(Edition.type == type)
+        filters.append(Edition.type == type)
     if search:
-        like = f"%{search}%"
-        query = query.where(or_(Edition.title.ilike(like), Edition.subtitle.ilike(like)))
+        filters.append(_edition_search_clause(search, _dialect_is_postgres(db)))
+    if month:
+        filters.append(func.extract("month", Edition.publication_date) == month)
+    if date_from:
+        filters.append(Edition.publication_date >= date_from)
+    if date_to:
+        filters.append(Edition.publication_date <= date_to)
+    if number is not None:
+        filters.append(Edition.number == number)
+    if act:
+        if act not in ACT_FILTERS:
+            raise HTTPException(status_code=422, detail="Espécie de ato desconhecida")
+        filters.append(_act_filter_clause(act))
+    query = query.where(*filters)
     # Ordena pela data de publicação (a edição mais recente/publicada fica na
     # frente), com desempate pela hora de publicação e, por fim, número. É o que
     # garante que uma edição EXTRA publicada depois da última normal apareça
     # à frente dela (não no fim por ter número menor).
-    query = query.order_by(
-        Edition.publication_date.desc().nullslast(),
-        Edition.published_at.desc().nullslast(),
-        Edition.year.desc(),
-        Edition.number.desc(),
-    )
+    if order == "asc":
+        query = query.order_by(
+            Edition.publication_date.asc().nullslast(),
+            Edition.published_at.asc().nullslast(),
+            Edition.year.asc(),
+            Edition.number.asc(),
+        )
+    else:
+        query = query.order_by(
+            Edition.publication_date.desc().nullslast(),
+            Edition.published_at.desc().nullslast(),
+            Edition.year.desc(),
+            Edition.number.desc(),
+        )
 
     # Contagem no banco (antes carregava todas as edições só para contar).
-    total_query = select(func.count(Edition.id)).where(
-        Edition.status == EditionStatus.PUBLISHED,
-        Edition.organization_id == tenant.id,
-    )
-    if year:
-        total_query = total_query.where(Edition.year == year)
-    if type:
-        total_query = total_query.where(Edition.type == type)
-    if search:
-        total_query = total_query.where(or_(Edition.title.ilike(like), Edition.subtitle.ilike(like)))
+    total_query = select(func.count(Edition.id)).where(*filters)
     total_count = (await db.execute(total_query)).scalar_one()
 
     offset = page * page_size
@@ -273,7 +434,6 @@ async def v1_list_editions(
     result = await db.execute(query)
     editions = result.scalars().all()
 
-    params = {"year": year, "type": type, "search": search}
     pagination = _pagination_links(
         f"{request.base_url}api/public/v1/editions", total_count, page, page_size, params
     )
@@ -854,3 +1014,226 @@ async def v1_verify(
         verification_url=f"{PUBLIC_URL}/verificar/{code}",
         message="Document verified successfully",
     )
+
+
+# ── Boletim por e-mail ───────────────────────────────────────────────────────
+
+_EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]+\.[^@\s]{2,}$")
+
+
+def _as_utc(value: datetime) -> datetime:
+    # PostgreSQL devolve com fuso; SQLite (testes) devolve sem.
+    return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+
+
+class NewsletterSubscribeIn(BaseModel):
+    email: str
+
+
+class NewsletterTokenIn(BaseModel):
+    token: str
+
+
+@router.post("/api/public/v1/newsletter/subscribe", summary="Inscrever e-mail no boletim")
+@limiter.limit("5/minute")
+async def v1_newsletter_subscribe(
+    request: Request,
+    body: NewsletterSubscribeIn,
+    background: BackgroundTasks,
+    tenant: Organization = Depends(require_tenant),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.newsletter import NewsletterSubscriber
+    from app.services import newsletter
+
+    if not newsletter.is_enabled():
+        raise HTTPException(503, "Boletim temporariamente indisponível.")
+    email = body.email.strip().lower()
+    if len(email) > 255 or not _EMAIL_RE.match(email):
+        raise HTTPException(422, "Informe um e-mail válido.")
+
+    sub = (
+        await db.execute(
+            select(NewsletterSubscriber).where(
+                NewsletterSubscriber.organization_id == tenant.id,
+                NewsletterSubscriber.email == email,
+            )
+        )
+    ).scalar_one_or_none()
+
+    # A resposta é a mesma em todos os casos, para não revelar quem já é inscrito.
+    message = "Enviamos um link de confirmação para o seu e-mail."
+    if sub is not None and sub.status == "confirmed":
+        return {"status": "ok", "message": message}
+
+    now = datetime.now(timezone.utc)
+    if sub is None:
+        sub = NewsletterSubscriber(organization_id=tenant.id, email=email, token=newsletter.new_token())
+        db.add(sub)
+    elif sub.confirmation_sent_at and (
+        now - _as_utc(sub.confirmation_sent_at)
+    ).total_seconds() < 600:
+        # Evita usar o formulário para bombardear a caixa de alguém.
+        return {"status": "ok", "message": message}
+    sub.status = "pending"
+    sub.unsubscribed_at = None
+    sub.consent_ip = get_remote_address(request)
+    await db.commit()
+    background.add_task(newsletter.send_confirmation, sub.id)
+    return {"status": "ok", "message": message}
+
+
+async def _subscriber_by_token(db: AsyncSession, tenant: Organization, token: str):
+    from app.models.newsletter import NewsletterSubscriber
+
+    sub = (
+        await db.execute(
+            select(NewsletterSubscriber).where(
+                NewsletterSubscriber.token == token,
+                NewsletterSubscriber.organization_id == tenant.id,
+            )
+        )
+    ).scalar_one_or_none()
+    if sub is None:
+        raise HTTPException(404, "Link inválido ou expirado.")
+    return sub
+
+
+@router.post("/api/public/v1/newsletter/confirm", summary="Confirmar inscrição no boletim")
+@limiter.limit("20/minute")
+async def v1_newsletter_confirm(
+    request: Request,
+    body: NewsletterTokenIn,
+    tenant: Organization = Depends(require_tenant),
+    db: AsyncSession = Depends(get_db),
+):
+    sub = await _subscriber_by_token(db, tenant, body.token)
+    if sub.status != "confirmed":
+        sub.status = "confirmed"
+        sub.confirmed_at = datetime.now(timezone.utc)
+        sub.unsubscribed_at = None
+        await db.commit()
+    return {"status": "confirmed", "email": sub.email}
+
+
+@router.post("/api/public/v1/newsletter/unsubscribe", summary="Cancelar inscrição no boletim")
+@limiter.limit("20/minute")
+async def v1_newsletter_unsubscribe(
+    request: Request,
+    body: NewsletterTokenIn,
+    tenant: Organization = Depends(require_tenant),
+    db: AsyncSession = Depends(get_db),
+):
+    sub = await _subscriber_by_token(db, tenant, body.token)
+    if sub.status != "unsubscribed":
+        sub.status = "unsubscribed"
+        sub.unsubscribed_at = datetime.now(timezone.utc)
+        await db.commit()
+    return {"status": "unsubscribed", "email": sub.email}
+
+
+# ── Contadores de acesso ─────────────────────────────────────────────────────
+# O navegador chama o POST uma vez por sessão (controle no portal); robôs e
+# pré-visualizações de link (WhatsApp, Facebook...) não incrementam.
+
+_BOT_UA = re.compile(
+    r"bot|crawl|spider|slurp|headless|preview|facebookexternalhit|whatsapp|telegram|curl|wget|python-requests",
+    re.IGNORECASE,
+)
+
+
+def _is_bot(request: Request) -> bool:
+    ua = request.headers.get("user-agent", "")
+    return not ua or bool(_BOT_UA.search(ua))
+
+
+async def _bump(db: AsyncSession, model, key: dict, extra: dict | None = None) -> int:
+    """Incremento atômico (INSERT ... ON CONFLICT DO UPDATE ... RETURNING)."""
+    if _dialect_is_postgres(db):
+        from sqlalchemy.dialects.postgresql import insert
+    else:
+        from sqlalchemy.dialects.sqlite import insert
+    stmt = insert(model).values(**key, **(extra or {}), total=1)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=list(key),
+        set_={"total": model.total + 1, "updated_at": func.now()},
+    ).returning(model.total)
+    total = (await db.execute(stmt)).scalar_one()
+    await db.commit()
+    return int(total)
+
+
+async def _published_edition(db: AsyncSession, tenant: Organization, edition_id: uuid.UUID) -> Edition:
+    edition = (
+        await db.execute(
+            select(Edition).where(
+                Edition.id == edition_id,
+                Edition.organization_id == tenant.id,
+                Edition.status == EditionStatus.PUBLISHED,
+            )
+        )
+    ).scalar_one_or_none()
+    if edition is None:
+        raise HTTPException(404, "Edição não encontrada")
+    return edition
+
+
+@router.get("/api/public/v1/stats", summary="Total de visitas ao portal")
+@limiter.limit("120/minute")
+async def v1_stats(
+    request: Request,
+    tenant: Organization = Depends(require_tenant),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.view_counter import PortalVisitCounter
+
+    row = await db.get(PortalVisitCounter, tenant.id)
+    return {"visits": int(row.total) if row else 0}
+
+
+@router.post("/api/public/v1/stats/visit", summary="Registrar visita ao portal")
+@limiter.limit("30/minute")
+async def v1_stats_visit(
+    request: Request,
+    tenant: Organization = Depends(require_tenant),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.view_counter import PortalVisitCounter
+
+    if _is_bot(request):
+        row = await db.get(PortalVisitCounter, tenant.id)
+        return {"visits": int(row.total) if row else 0}
+    return {"visits": await _bump(db, PortalVisitCounter, {"organization_id": tenant.id})}
+
+
+@router.get("/api/public/v1/edition-views/{edition_id}", summary="Acessos à edição")
+@limiter.limit("120/minute")
+async def v1_edition_views(
+    request: Request,
+    edition_id: uuid.UUID,
+    tenant: Organization = Depends(require_tenant),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.view_counter import EditionViewCounter
+
+    await _published_edition(db, tenant, edition_id)
+    row = await db.get(EditionViewCounter, edition_id)
+    return {"views": int(row.total) if row else 0}
+
+
+@router.post("/api/public/v1/edition-views/{edition_id}", summary="Registrar acesso à edição")
+@limiter.limit("60/minute")
+async def v1_edition_view(
+    request: Request,
+    edition_id: uuid.UUID,
+    tenant: Organization = Depends(require_tenant),
+    db: AsyncSession = Depends(get_db),
+):
+    from app.models.view_counter import EditionViewCounter
+
+    await _published_edition(db, tenant, edition_id)
+    if _is_bot(request):
+        row = await db.get(EditionViewCounter, edition_id)
+        return {"views": int(row.total) if row else 0}
+    views = await _bump(db, EditionViewCounter, {"edition_id": edition_id}, {"organization_id": tenant.id})
+    return {"views": views}

@@ -14,8 +14,16 @@ export default function EditionBreadcrumb({ year, number }: EditionBreadcrumbPro
   ];
 
   return (
-    <nav aria-label="Trilha de navegação" className="text-[13px] text-slate-500 no-print">
-      <ol className="flex flex-wrap items-center gap-0.5">
+    <nav aria-label="Trilha de navegação" className="text-[13px] text-slate-600 no-print">
+      {/* No celular a trilha completa quebra em duas linhas: vira um "voltar". */}
+      <Link
+        href={`/edicoes?year=${year}`}
+        className="-ml-1 inline-flex min-h-11 items-center gap-1 rounded-md px-1 font-semibold text-brand-900 sm:hidden"
+      >
+        <span aria-hidden="true" className="material-symbols-outlined text-[18px]">arrow_back</span>
+        Diário Oficial · {year}
+      </Link>
+      <ol className="hidden flex-wrap sm:flex items-center gap-0.5">
         {items.map((item, i) => {
           const isLast = i === items.length - 1;
           return (

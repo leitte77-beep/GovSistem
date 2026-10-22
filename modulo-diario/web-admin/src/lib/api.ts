@@ -291,6 +291,13 @@ export interface BackupFile {
   created_at: string;
 }
 
+export interface NewsletterOverview {
+  enabled: boolean;
+  counts: { confirmed: number; pending: number; unsubscribed: number };
+  subscribers: { id: string; email: string; status: "pending" | "confirmed" | "unsubscribed"; created_at: string | null; confirmed_at: string | null }[];
+  dispatches: { edition: string; recipients: number; sent: number; failed: number; created_at: string | null; finished_at: string | null }[];
+}
+
 export const api = {
   // Auth
   login(email: string, password: string) {
@@ -1027,6 +1034,14 @@ export const api = {
       body: JSON.stringify(data),
     });
   },
+  // ── Boletim por e-mail ─────────────────────────────────────────────────
+  getNewsletter() {
+    return request<NewsletterOverview>("/newsletter");
+  },
+  deleteNewsletterSubscriber(id: string) {
+    return request<void>(`/newsletter/subscribers/${id}`, { method: "DELETE" });
+  },
+
   getInstitution() {
     return request<InstitutionalProfile>("/settings/institution");
   },

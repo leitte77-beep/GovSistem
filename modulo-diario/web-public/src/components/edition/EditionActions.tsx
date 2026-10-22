@@ -90,18 +90,18 @@ export default function EditionActions({
   );
 
   const ghost =
-    "inline-flex h-10 items-center gap-2 rounded-xl border border-transparent bg-slate-50 px-3.5 text-sm font-semibold text-slate-600 transition-all hover:border-brand-100 hover:bg-brand-50 hover:text-brand-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent";
+    "inline-flex h-11 items-center gap-2 rounded-xl border border-transparent bg-slate-50 px-3.5 sm:h-10 text-sm font-semibold text-slate-600 transition-all hover:border-brand-100 hover:bg-brand-50 hover:text-brand-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent";
 
   const menuItem =
     "flex w-full items-center gap-2.5 px-3.5 py-2.5 text-left text-sm text-edition-ink transition-colors hover:bg-slate-50 hover:text-brand-900";
 
   return (
-    <div className="flex flex-wrap items-center gap-1.5 no-print sm:gap-2">
+    <div className="flex items-center gap-2 no-print sm:flex-wrap">
       {downloadUrl && (
         <a
           href={downloadUrl}
           download
-          className="inline-flex h-10 items-center gap-2 rounded-xl bg-brand-900 px-4 text-sm font-semibold text-white shadow-[0_5px_14px_rgba(15,42,82,0.18)] transition hover:-translate-y-px hover:bg-brand-800 hover:shadow-[0_7px_18px_rgba(15,42,82,0.24)] active:translate-y-0 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent sm:px-5"
+          className="inline-flex h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-brand-900 px-4 text-sm sm:h-10 sm:flex-none font-semibold text-white shadow-[0_5px_14px_rgba(15,42,82,0.18)] transition hover:-translate-y-px hover:bg-brand-800 hover:shadow-[0_7px_18px_rgba(15,42,82,0.24)] active:translate-y-0 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent sm:px-5"
         >
           {icon("download")}
           <span>Baixar PDF</span>
@@ -113,7 +113,7 @@ export default function EditionActions({
           href={viewUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className={ghost}
+          className={`${ghost} hidden sm:inline-flex`}
         >
           {icon("visibility")}
           <span className="hidden sm:inline">Visualizar PDF</span>
@@ -122,7 +122,7 @@ export default function EditionActions({
 
       <button type="button" onClick={handleShare} className={ghost}>
         {icon(shared ? "check" : "share")}
-        <span className="hidden sm:inline">{shared ? "Compartilhado!" : "Compartilhar"}</span>
+        <span>{shared ? "Compartilhado!" : "Compartilhar"}</span>
       </button>
 
       {/* overflow menu */}
@@ -133,7 +133,7 @@ export default function EditionActions({
           aria-haspopup="menu"
           aria-expanded={menuOpen}
           aria-label="Mais ações"
-          className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-transparent bg-slate-50 text-slate-600 transition-colors hover:border-brand-100 hover:bg-brand-50 hover:text-brand-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent"
+          className="inline-flex h-11 w-11 items-center justify-center rounded-xl sm:h-10 sm:w-10 border border-transparent bg-slate-50 text-slate-600 transition-colors hover:border-brand-100 hover:bg-brand-50 hover:text-brand-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-accent"
         >
           {icon("more_horiz", "22px")}
         </button>
@@ -144,6 +144,19 @@ export default function EditionActions({
             aria-label="Mais ações da edição"
             className="absolute right-0 top-full z-50 mt-2 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white py-1.5 shadow-lg"
           >
+            {viewUrl && (
+              <a
+                href={viewUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                role="menuitem"
+                onClick={() => setMenuOpen(false)}
+                className={`${menuItem} sm:hidden`}
+              >
+                {icon("visibility", "18px")}
+                Visualizar PDF
+              </a>
+            )}
             {verificationUrl && (
               <Link
                 href={verificationUrl}

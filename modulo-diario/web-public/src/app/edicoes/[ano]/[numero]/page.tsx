@@ -16,10 +16,11 @@ import {
   getSiblingEditions,
   getRequestOrigin,
 } from "@/lib/server/edition-loader";
-import { formatBrasiliaDateTime, formatHeaderDate, formatLongDatePT } from "@/lib/dates";
+import { formatBrasiliaDateTime, formatHeaderDate, formatLongDatePT, formatShortDate } from "@/lib/dates";
 import { buildAuthenticityRows } from "@/components/edition/EditionStatus";
 import EditionBreadcrumb from "@/components/edition/EditionBreadcrumb";
 import EditionActions from "@/components/edition/EditionActions";
+import EditionViews from "@/components/edition/EditionViews";
 import MatterDocument from "@/components/edition/MatterDocument";
 import EditionPager from "@/components/edition/EditionPager";
 
@@ -305,24 +306,24 @@ export default async function EditionDetailPage({ params }: PageProps) {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
       <div className="edition-canvas bg-edition-canvas">
-        <div className={`${shell} py-8`}>
+        <div className={`${shell} pb-24 pt-4 sm:py-8`}>
           {/* ===== Context + actions bar ===== */}
           <div className="mx-auto w-full max-w-[1480px]">
             <div className="relative overflow-visible rounded-2xl border border-slate-200/90 bg-white shadow-[0_10px_30px_rgba(15,42,82,0.07)] no-print">
-              <div aria-hidden="true" className="absolute inset-x-6 top-0 h-[3px] rounded-b-full bg-gradient-to-r from-brand-900 via-brand-accent to-amber-400" />
-              <div className="flex flex-col gap-4 px-4 pb-4 pt-5 sm:px-5 md:flex-row md:items-center md:justify-between md:gap-6 md:px-6 md:py-4">
+              <div aria-hidden="true" className="absolute inset-x-0 top-0 h-[3px] rounded-t-2xl bg-gradient-to-r from-brand-900 via-brand-accent to-amber-400" />
+              <div className="flex flex-col gap-2 px-4 pb-3 pt-3 sm:gap-4 sm:px-5 sm:pb-4 sm:pt-5 md:flex-row md:items-center md:justify-between md:gap-6 md:px-6 md:py-4">
                 <div className="flex min-w-0 items-center gap-3">
                   <span aria-hidden="true" className="hidden h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-50 text-brand-900 sm:flex">
                     <span className="material-symbols-outlined text-[20px]">article</span>
                   </span>
                   <div className="min-w-0">
-                    <p className="mb-1 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                    <p className="mb-1 hidden text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 sm:block">
                       Você está consultando
                     </p>
                     <EditionBreadcrumb year={year} number={number} />
                   </div>
                 </div>
-                <div className="shrink-0 border-t border-slate-100 pt-3 md:border-l md:border-t-0 md:pl-6 md:pt-0">
+                <div className="shrink-0 md:border-l md:border-t-0 md:pl-6 md:pt-0">
                   <EditionActions
                     downloadUrl={downloadUrl}
                     viewUrl={viewUrl}
@@ -334,7 +335,7 @@ export default async function EditionDetailPage({ params }: PageProps) {
             </div>
 
             {/* ===== Three-zone card grid: sumário | documento | dados técnicos ===== */}
-            <div className="mt-8 grid grid-cols-1 items-start gap-6 lg:grid-cols-[230px_minmax(0,1fr)_270px] xl:grid-cols-[240px_minmax(0,1fr)_280px]">
+            <div className="mt-4 grid grid-cols-1 items-start gap-6 sm:mt-8 lg:grid-cols-[230px_minmax(0,1fr)_270px] xl:grid-cols-[240px_minmax(0,1fr)_280px]">
               {/* LEFT — Sumário */}
               <aside
                 aria-label="Sumário da edição"
@@ -348,7 +349,7 @@ export default async function EditionDetailPage({ params }: PageProps) {
                       </span>
                       Sumário
                     </h2>
-                    <span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-slate-500 ring-1 ring-inset ring-slate-200">
+                    <span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-slate-600 ring-1 ring-inset ring-slate-200">
                       {meta.length} {meta.length === 1 ? "item" : "itens"}
                     </span>
                   </div>
@@ -365,7 +366,7 @@ export default async function EditionDetailPage({ params }: PageProps) {
                             </span>
                             <span className="min-w-0 py-0.5">
                               {m.section && (
-                                <span className="mb-0.5 block text-[9px] font-bold uppercase tracking-wider text-slate-400">
+                                <span className="mb-0.5 block text-[9px] font-bold uppercase tracking-wider text-slate-500">
                                   {m.section}
                                 </span>
                               )}
@@ -388,9 +389,9 @@ export default async function EditionDetailPage({ params }: PageProps) {
                   className="absolute inset-x-0 top-0 h-2 bg-gradient-to-r from-[#0b192c] via-blue-600 to-amber-500"
                 />
 
-                <div className="px-6 py-8 sm:px-10 sm:py-12">
+                <div className="px-4 py-6 sm:px-10 sm:py-12">
                   {/* Masthead — center */}
-                  <header className="border-b border-slate-200 pb-8 text-center">
+                  <header className="border-b border-slate-200 pb-5 text-center sm:pb-8">
                     <h1 className="sr-only">
                       {`Edição nº ${editionMeta.number} de ${headerDate} — Diário Oficial Eletrônico de ${municipality}`}
                     </h1>
@@ -401,21 +402,27 @@ export default async function EditionDetailPage({ params }: PageProps) {
                         width={80}
                         height={80}
                         priority
-                        className="mx-auto h-20 w-auto"
+                        className="mx-auto h-14 w-auto sm:h-20"
                       />
                     )}
                     <div className="mt-3 space-y-1">
-                      <p className="text-2xl font-extrabold uppercase tracking-tight text-[#0b192c] sm:text-3xl">
+                      <p className="text-xl font-extrabold uppercase tracking-tight text-[#0b192c] sm:text-3xl">
                         Diário Oficial Eletrônico
                       </p>
-                      <p className="text-[13px] font-semibold uppercase tracking-wider text-slate-600">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-slate-600 sm:text-[13px]">
                         {municipality}
                       </p>
                     </div>
-                    <div className="mt-6 flex flex-wrap items-stretch justify-center gap-3 border-t border-slate-100 pt-5">
+                    {/* No celular as três caixas empilhavam com larguras diferentes: uma linha só. */}
+                    <p className="mt-4 border-t border-slate-100 pt-4 text-[13px] font-semibold text-slate-600 sm:hidden">
+                      <span className="font-extrabold text-brand-900">Edição nº {editionMeta.number}</span>
+                      {editionMeta.publication_date && <> · {formatShortDate(editionMeta.publication_date)}</>}
+                      {" · "}{totalPages} {totalPages === 1 ? "publicação" : "publicações"}
+                    </p>
+                    <div className="mt-6 hidden flex-wrap items-stretch justify-center gap-3 border-t border-slate-100 pt-5 sm:flex">
                       <span className="flex items-center gap-2 rounded-lg border border-brand-100 bg-brand-50 px-4 py-2">
-                        <span aria-hidden="true" className="material-symbols-outlined text-[16px] text-brand-accent">filter_alt</span>
-                        <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Edição nº</span>
+                        <span aria-hidden="true" className="material-symbols-outlined text-[16px] text-brand-accent">tag</span>
+                        <span className="text-[11px] font-bold uppercase tracking-wide text-slate-600">Edição nº</span>
                         <span className="text-[15px] font-extrabold text-brand-900">{editionMeta.number}</span>
                       </span>
                       <span className="flex items-center gap-2 rounded-lg border border-brand-100 bg-brand-50 px-4 py-2">
@@ -424,14 +431,14 @@ export default async function EditionDetailPage({ params }: PageProps) {
                       </span>
                       <span className="flex items-center gap-2 rounded-lg border border-brand-100 bg-brand-50 px-4 py-2">
                         <span aria-hidden="true" className="material-symbols-outlined text-[16px] text-brand-accent">article</span>
-                        <span className="text-[11px] font-bold uppercase tracking-wide text-slate-500">Publicações</span>
+                        <span className="text-[11px] font-bold uppercase tracking-wide text-slate-600">Publicações</span>
                         <span className="text-[15px] font-extrabold text-brand-900">{totalPages}</span>
                       </span>
                     </div>
                   </header>
 
                   {/* Digital signature banner (green) */}
-                  <div className="my-5 flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+                  <div className="my-4 flex items-center justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 shadow-sm sm:my-5 sm:p-4">
                     <div className="flex min-w-0 items-center gap-3">
                       <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-sm text-white">
                         <span className="material-symbols-outlined text-[18px]">check</span>
@@ -544,7 +551,16 @@ export default async function EditionDetailPage({ params }: PageProps) {
                       </div>
                     </>
                   ) : (
-                    <EmptyEdition downloadUrl={downloadUrl} />
+                    editionMeta.subtitle === LEGACY_SUBTITLE ? (
+                      <LegacyEdition
+                        downloadUrl={downloadUrl}
+                        viewUrl={viewUrl}
+                        number={editionMeta.number}
+                        publicationDate={formatLongDatePT(publicationDate)}
+                      />
+                    ) : (
+                      <EmptyEdition downloadUrl={downloadUrl} />
+                    )
                   )}
 
                   {/* Mobile-only Validação do Documento */}
@@ -554,21 +570,16 @@ export default async function EditionDetailPage({ params }: PageProps) {
                         Validação do Documento
                       </h3>
                       <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-slate-600">
                           Código de verificação
                         </p>
                         <span className="mt-1 block font-mono text-[13px] text-slate-700">{code}</span>
-                        {verificationUrl && (
-                          <a className="mt-2 block text-[12px] font-medium text-[#0066cc] underline" href={verificationUrl}>
-                            Verifique em {verificationUrl}
-                          </a>
-                        )}
                       </div>
                     </section>
                   )}
 
                   {/* Page footer */}
-                  <div className="mt-10 border-t border-slate-100 pt-4 text-center text-xs text-slate-400">
+                  <div className="mt-10 border-t border-slate-100 pt-4 text-center text-xs text-slate-500">
                     Diário Oficial Eletrônico — Edição nº {editionMeta.number} · {formatLongDatePT(publicationDate) || `Ano de ${editionMeta.year}`}
                   </div>
                 </div>
@@ -603,23 +614,18 @@ export default async function EditionDetailPage({ params }: PageProps) {
 
                     {code && (
                       <div className="space-y-1.5">
-                        <p className="font-bold uppercase tracking-wider text-slate-500 text-[10px]">
+                        <p className="font-bold uppercase tracking-wider text-slate-600 text-[10px]">
                           Código de verificação
                         </p>
                         <div className="w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 font-mono text-[13px] text-slate-700">
                           {code}
                         </div>
-                        {verificationUrl && (
-                          <p className="pt-0.5 text-[11px] text-slate-500">
-                            Verifique em <span className="font-medium text-[#0066cc] underline">{verificationUrl}</span>
-                          </p>
-                        )}
                       </div>
                     )}
 
                     {authenticity && (
                       <div className="space-y-2">
-                        <p className="font-bold uppercase tracking-wider text-slate-500 text-[10px]">
+                        <p className="font-bold uppercase tracking-wider text-slate-600 text-[10px]">
                           Autenticidade técnica
                         </p>
                         <ul className="space-y-2">
@@ -631,7 +637,7 @@ export default async function EditionDetailPage({ params }: PageProps) {
                               <span className="text-slate-600">{r.label}</span>
                               <span
                                 className={`flex shrink-0 items-center gap-1 font-bold ${
-                                  r.tone === "ok" ? "text-emerald-600" : r.tone === "warn" ? "text-amber-600" : "text-slate-500"
+                                  r.tone === "ok" ? "text-emerald-700" : r.tone === "warn" ? "text-amber-600" : "text-slate-600"
                                 }`}
                               >
                                 {r.tone === "ok" && (
@@ -647,13 +653,13 @@ export default async function EditionDetailPage({ params }: PageProps) {
 
                     {authenticity?.signatures?.[0]?.subject && (
                       <div className="space-y-1.5">
-                        <p className="font-bold uppercase tracking-wider text-slate-500 text-[10px]">
+                        <p className="font-bold uppercase tracking-wider text-slate-600 text-[10px]">
                           Signatário
                         </p>
                         <div className="rounded-lg bg-slate-50 p-3">
                           <p className="font-bold uppercase text-slate-800">{municipality}</p>
                           {formatCnpj(authenticity.signatures[0].certificate_document) && (
-                            <p className="mt-1 text-slate-500">
+                            <p className="mt-1 text-slate-600">
                               CNPJ {formatCnpj(authenticity.signatures[0].certificate_document)}
                             </p>
                           )}
@@ -663,14 +669,16 @@ export default async function EditionDetailPage({ params }: PageProps) {
 
                     {authenticity?.signed_pdf_hash && (
                       <div className="space-y-1.5">
-                        <p className="font-bold uppercase tracking-wider text-slate-500 text-[10px]">
+                        <p className="font-bold uppercase tracking-wider text-slate-600 text-[10px]">
                           SHA-256 do PDF assinado
                         </p>
-                        <div className="select-all break-all rounded-lg bg-slate-50 p-2.5 font-mono text-[10px] text-slate-500">
+                        <div className="select-all break-all rounded-lg bg-slate-50 p-2.5 font-mono text-[10px] text-slate-600">
                           {authenticity.signed_pdf_hash}
                         </div>
                       </div>
                     )}
+
+                    <EditionViews editionId={editionMeta.id} />
                   </div>
                 </div>
               </aside>
@@ -680,10 +688,85 @@ export default async function EditionDetailPage({ params }: PageProps) {
           </div>
         </div>
       </div>
+      {/* Ação principal sempre à mão no celular enquanto se lê a edição. */}
+      {downloadUrl && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 px-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] pt-3 shadow-[0_-6px_20px_rgba(15,42,82,0.08)] backdrop-blur no-print sm:hidden">
+          <a
+            href={downloadUrl}
+            download
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand-900 text-sm font-bold text-white active:scale-[0.99]"
+          >
+            <span aria-hidden="true" className="material-symbols-outlined text-[20px]">download</span>
+            Baixar PDF da edição nº {editionMeta.number}
+          </a>
+        </div>
+      )}
     </>
   );
 }
 
+
+// Subtítulo gravado pelo importador do acervo (app/commands/import_legacy_pdfs.py).
+const LEGACY_SUBTITLE = "Acervo do sistema anterior";
+
+// Edições importadas do sistema anterior só têm o PDF original: em vez de
+// "sem matérias", explica a origem e abre o próprio PDF na página.
+function LegacyEdition({
+  downloadUrl,
+  viewUrl,
+  number,
+  publicationDate,
+}: {
+  downloadUrl: string;
+  viewUrl: string;
+  number: number;
+  publicationDate: string;
+}) {
+  return (
+    <div className="overflow-hidden rounded-2xl bg-edition-sheet shadow-[var(--edition-shadow-soft)] ring-1 ring-edition-line">
+      <div className="flex flex-col items-center gap-3 px-6 py-10 text-center">
+        <span aria-hidden="true" className="material-symbols-outlined text-4xl text-[var(--edition-brand)]">
+          picture_as_pdf
+        </span>
+        <h2 className="text-xl font-semibold text-edition-ink">
+          Edição publicada no sistema anterior
+        </h2>
+        <p className="max-w-lg text-[15px] text-edition-muted">
+          A Edição nº {number}{publicationDate ? `, de ${publicationDate},` : ""} faz parte do acervo
+          histórico do Diário Oficial e está disponível no seu formato original, em PDF.
+          Para ler os atos publicados, abra ou baixe o arquivo abaixo.
+        </p>
+        <div className="mt-2 flex w-full flex-col justify-center gap-3 sm:w-auto sm:flex-row">
+          <a
+            href={viewUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex items-center justify-center gap-2 rounded-lg bg-[var(--edition-brand)] px-5 py-3 text-sm font-semibold text-white transition hover:opacity-95"
+          >
+            <span aria-hidden="true" className="material-symbols-outlined text-[18px]">open_in_new</span>
+            Abrir PDF em nova aba
+          </a>
+          <a
+            href={downloadUrl}
+            download
+            className="inline-flex items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold text-edition-ink ring-1 ring-edition-line transition hover:bg-black/5"
+          >
+            <span aria-hidden="true" className="material-symbols-outlined text-[18px]">download</span>
+            Baixar PDF
+          </a>
+        </div>
+      </div>
+      {/* Leitura direto na página no computador; no celular os navegadores
+          costumam não exibir PDF embutido, então ficam só os botões. */}
+      <iframe
+        src={viewUrl}
+        title={`PDF da Edição nº ${number}`}
+        loading="lazy"
+        className="hidden h-[80vh] w-full border-t border-edition-line bg-white md:block"
+      />
+    </div>
+  );
+}
 
 function EmptyEdition({ downloadUrl }: { downloadUrl: string }) {
   return (

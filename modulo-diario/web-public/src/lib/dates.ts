@@ -47,3 +47,10 @@ export function weekdayPT(value: string | null | undefined): string {
   if (!value) return "";
   return WEEKDAYS[new Date(`${value}T12:00:00`).getDay()];
 }
+
+/** "02/09/2026" — linha compacta do cabeçalho no celular. */
+export function formatShortDate(value: string | null | undefined): string {
+  if (!value) return "";
+  const date = new Date(`${value}T12:00:00`);
+  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
+}

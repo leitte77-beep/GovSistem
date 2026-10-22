@@ -49,6 +49,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: "Operações", href: "/operacoes", icon: "settings_suggest" },
       { label: "Configurações", href: "/settings", icon: "tune", adminOnly: true },
       { label: "Identidade institucional", href: "/settings/institution", icon: "apartment", adminOnly: true },
+      { label: "Boletim por e-mail", href: "/settings/boletim", icon: "mail", adminOnly: true },
       { label: "Inteligência artificial", href: "/settings/ai", icon: "smart_toy", adminOnly: true },
       { label: "Certificados", href: "/settings/certificates", icon: "verified_user", adminOnly: true },
       { label: "Verificar PDF", href: "/verify", icon: "picture_as_pdf" },

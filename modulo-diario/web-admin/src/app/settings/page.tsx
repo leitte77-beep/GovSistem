@@ -28,6 +28,12 @@ const SHORTCUTS: { href: string; icon: string; title: string; description: strin
     description: "Brasão, endereço, contato e padrão visual",
   },
   {
+    href: "/settings/boletim",
+    icon: "mail",
+    title: "Boletim por e-mail",
+    description: "Inscritos e envios das novas edições",
+  },
+  {
     href: "/settings/certificates",
     icon: "verified_user",
     title: "Certificados digitais",

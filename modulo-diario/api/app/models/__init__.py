@@ -33,6 +33,7 @@ from app.models.matter_attachment import MatterAttachment
 from app.models.matter_relation import MatterRelation
 from app.models.matter_review import MatterReview
 from app.models.matter_version import MatterVersion
+from app.models.newsletter import NewsletterDispatch, NewsletterSubscriber
 from app.models.numbering import ActNumberSeries
 from app.models.org_unit import OrgUnit
 from app.models.organization import Organization
@@ -54,8 +55,13 @@ from app.models.timestamp_record import TimestampRecord
 from app.models.trust_anchor import TrustAnchors
 from app.models.user import User
 from app.models.user_role import UserRole
+from app.models.view_counter import EditionViewCounter, PortalVisitCounter
 
 __all__ = [
+    "EditionViewCounter",
+    "PortalVisitCounter",
+    "NewsletterDispatch",
+    "NewsletterSubscriber",
     "Base",
     "TimestampMixin",
     "SoftDeleteMixin",

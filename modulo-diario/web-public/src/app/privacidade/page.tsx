@@ -64,6 +64,28 @@ export default function PrivacidadePage() {
             </div>
           </div>
 
+          <div id="boletim" className="md:col-span-12 lg:col-span-8 bg-surface-container-lowest border border-outline-variant rounded-xl p-8 lg:order-last">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-primary-container flex items-center justify-center">
+                <span className="material-symbols-outlined text-on-primary-container">mail</span>
+              </div>
+              <h2 className="text-headline-sm font-headline-sm text-primary">Boletim por e-mail</h2>
+            </div>
+            <div className="space-y-3 text-body-md font-body-md text-on-surface-variant leading-relaxed">
+              <p>
+                Ao assinar o boletim, guardamos o seu e-mail, a data da inscrição e da
+                confirmação e o endereço IP de onde ela foi feita, como registro do seu
+                consentimento. O e-mail só é usado para enviar as novas edições do Diário
+                Oficial deste município. Não é compartilhado nem usado para outra finalidade.
+              </p>
+              <p>
+                A inscrição só vale depois que você confirma pelo link enviado ao seu e-mail.
+                Toda mensagem traz um link para cancelar. Para excluir seus dados de vez, use
+                os canais da página de <Link href="/contato" className="underline">Contato</Link>.
+              </p>
+            </div>
+          </div>
+
           <div className="md:col-span-12 lg:col-span-4 bg-primary text-on-primary rounded-xl p-8 shadow-lg flex flex-col justify-between">
             <div>
               <span className="material-symbols-outlined text-4xl mb-4 text-secondary-container">

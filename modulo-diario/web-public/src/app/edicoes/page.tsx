@@ -38,41 +38,74 @@ function formatShortDate(dateStr: string): string {
   });
 }
 
+const MONTHS = [
+  "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
+  "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro",
+];
+
+const TYPE_OPTIONS = [
+  { value: "normal", label: "Ordinária" },
+  { value: "extra", label: "Extraordinária" },
+  { value: "suplementar", label: "Suplementar" },
+];
+
+interface Filters {
+  search: string;
+  year: string;
+  month: string;
+  act: string;
+  type: string;
+  number: string;
+  dateFrom: string;
+  dateTo: string;
+  order: "desc" | "asc";
+}
+
+const EMPTY_FILTERS: Filters = {
+  search: "", year: "", month: "", act: "", type: "",
+  number: "", dateFrom: "", dateTo: "", order: "desc",
+};
+
+const fieldClass =
+  "h-11 w-full rounded-lg border-0 bg-slate-50 px-3 text-sm text-slate-800 outline-none ring-1 ring-inset ring-slate-200 focus:bg-white focus:ring-2 focus:ring-brand-accent";
+const labelClass = "mb-1.5 block text-[11px] font-bold uppercase tracking-[0.1em] text-slate-600";
+
+function formatChipDate(d: string) {
+  return new Date(d + "T00:00:00").toLocaleDateString("pt-BR");
+}
+
 export default function EditionsPage() {
   const { org } = useOrg();
   const [editions, setEditions] = useState<EditionSummary[]>([]);
   const [pagination, setPagination] = useState<PaginationMeta | null>(null);
-  const [year, setYear] = useState("");
-  const [search, setSearch] = useState("");
+  // `draft` é o que está nos campos; `filters` é o que já foi aplicado à lista.
+  const [draft, setDraft] = useState<Filters>(EMPTY_FILTERS);
+  const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [showMore, setShowMore] = useState(false);
+  const [years, setYears] = useState<{ year: number; count: number }[]>([]);
+  const [acts, setActs] = useState<{ key: string; label: string; count: number }[]>([]);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(0);
   const pageSize = 12;
 
-  // Os anos vão do atual até o da edição mais antiga (acervo legado começa em 2015/2016).
-  const currentYear = new Date().getFullYear();
-  const [oldestYear, setOldestYear] = useState(currentYear - 9);
-  const years = Array.from({ length: currentYear - oldestYear + 1 }, (_, i) => currentYear - i);
-
   useEffect(() => {
-    api
-      .listEditions({ page_size: 1 })
-      .then((first) => {
-        const total = first.pagination.total;
-        if (!total) return;
-        return api.listEditions({ page: total - 1, page_size: 1 }).then((last) => {
-          const y = last.data[0]?.year;
-          if (y && y < currentYear) setOldestYear(y);
-        });
-      })
-      .catch((err) => notifyError("EdicoesPublic", err));
-  }, [currentYear]);
+    api.listEditionYears().then(setYears).catch((err) => notifyError("EdicoesPublic", err));
+    api.listEditionActFilters().then(setActs).catch((err) => notifyError("EdicoesPublic", err));
+  }, []);
 
   const fetchEditions = useCallback(() => {
     setLoading(true);
     api
       .listEditions({
-        year: year ? Number(year) : undefined,
-        search: search || undefined,
+        search: filters.search.trim() || undefined,
+        year: filters.year ? Number(filters.year) : undefined,
+        month: filters.month ? Number(filters.month) : undefined,
+        act: filters.act || undefined,
+        type: filters.type || undefined,
+        number: filters.number ? Number(filters.number) : undefined,
+        date_from: filters.dateFrom || undefined,
+        date_to: filters.dateTo || undefined,
+        order: filters.order,
         page,
         page_size: pageSize,
       })
@@ -82,17 +115,39 @@ export default function EditionsPage() {
       })
       .catch((err) => notifyError("EdicoesPublic", err))
       .finally(() => setLoading(false));
-  }, [year, search, page]);
+  }, [filters, page]);
 
   useEffect(() => {
     fetchEditions();
   }, [fetchEditions]);
 
+  const apply = (next: Filters) => {
+    setDraft(next);
+    setFilters(next);
+    setPage(0);
+  };
+
+  // Listas (ano, mês, ato, tipo, ordem) aplicam na hora; campos digitados no "Filtrar".
+  const applyNow = (patch: Partial<Filters>) => apply({ ...draft, ...patch });
+
   const handleFilter = (e: React.FormEvent) => {
     e.preventDefault();
-    if (page === 0) fetchEditions();
-    else setPage(0);
+    apply(draft);
   };
+
+  const chips: { key: string; label: string; clear: Partial<Filters> }[] = [];
+  if (filters.search.trim()) chips.push({ key: "search", label: `“${filters.search.trim()}”`, clear: { search: "" } });
+  if (filters.act) chips.push({ key: "act", label: acts.find((a) => a.key === filters.act)?.label ?? filters.act, clear: { act: "" } });
+  if (filters.year) chips.push({ key: "year", label: `Ano ${filters.year}`, clear: { year: "" } });
+  if (filters.month) chips.push({ key: "month", label: MONTHS[Number(filters.month) - 1], clear: { month: "" } });
+  if (filters.type) chips.push({ key: "type", label: TYPE_OPTIONS.find((t) => t.value === filters.type)?.label ?? filters.type, clear: { type: "" } });
+  if (filters.number) chips.push({ key: "number", label: `Edição nº ${filters.number}`, clear: { number: "" } });
+  if (filters.dateFrom || filters.dateTo) {
+    const de = filters.dateFrom ? `de ${formatChipDate(filters.dateFrom)}` : "";
+    const ate = filters.dateTo ? `até ${formatChipDate(filters.dateTo)}` : "";
+    chips.push({ key: "period", label: [de, ate].filter(Boolean).join(" "), clear: { dateFrom: "", dateTo: "" } });
+  }
+  const advancedCount = [filters.month, filters.type, filters.number, filters.dateFrom || filters.dateTo].filter(Boolean).length;
 
   const totalPages = pagination?.total_pages || 0;
 
@@ -128,65 +183,197 @@ export default function EditionsPage() {
       {/* Search & Filter Bar */}
       <section className="relative z-10 mx-auto -mt-16 max-w-[1240px] px-4 sm:px-6 lg:px-8">
         <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-[0_20px_55px_rgba(7,26,51,.16)] sm:p-4">
-        <form
-          onSubmit={handleFilter}
-          className="flex flex-col items-center gap-2 md:flex-row"
-        >
-          <div className="group relative w-full flex-grow rounded-xl bg-slate-50 ring-1 ring-inset ring-slate-200 focus-within:bg-white focus-within:ring-2 focus-within:ring-brand-accent">
-            <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-[21px] text-slate-500 group-focus-within:text-brand-accent">
-              search
-            </span>
-            <input
-              className="h-14 w-full border-0 bg-transparent pl-12 pr-4 text-sm text-slate-800 outline-none placeholder:text-slate-400 focus:ring-0"
-              placeholder="Busque por título, assunto ou palavra-chave..."
-              type="text"
-              aria-label="Pesquisar edições"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-          <div className="w-full md:w-56">
-            <div className="relative">
-              <span className="material-symbols-outlined pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[20px] text-brand-900">
-                calendar_today
-              </span>
-              <select
-                aria-label="Filtrar por ano"
-                className="h-14 w-full cursor-pointer appearance-none rounded-xl border-0 bg-slate-50 pl-12 pr-10 text-sm font-semibold text-slate-700 outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-brand-accent"
-                value={year}
-                onChange={(e) => setYear(e.target.value)}
-              >
-                <option value="">Todos os anos</option>
-                {years.map((y) => (
-                  <option key={y} value={y}>
-                    {y}
-                  </option>
-                ))}
-              </select>
+          <form onSubmit={handleFilter}>
+            <div className="flex flex-col gap-2 lg:flex-row">
+              <div className="group relative w-full flex-grow rounded-xl bg-slate-50 ring-1 ring-inset ring-slate-200 focus-within:bg-white focus-within:ring-2 focus-within:ring-brand-accent">
+                <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-[21px] text-slate-500 group-focus-within:text-brand-accent">
+                  search
+                </span>
+                <input
+                  className="h-14 w-full border-0 bg-transparent pl-12 pr-4 text-sm text-slate-800 outline-none placeholder:text-slate-500 focus:ring-0"
+                  placeholder="Busque por título, assunto, nº do ato ou palavra-chave..."
+                  type="search"
+                  aria-label="Pesquisar edições"
+                  value={draft.search}
+                  onChange={(e) => setDraft({ ...draft, search: e.target.value })}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2 lg:flex">
+                <div className="relative lg:w-52">
+                  <span className="material-symbols-outlined pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[20px] text-brand-900">
+                    gavel
+                  </span>
+                  <select
+                    aria-label="Filtrar por tipo de ato"
+                    className="h-14 w-full cursor-pointer appearance-none truncate rounded-xl border-0 bg-slate-50 pl-11 pr-9 text-sm font-semibold text-slate-700 outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-brand-accent"
+                    value={draft.act}
+                    onChange={(e) => applyNow({ act: e.target.value })}
+                  >
+                    <option value="">Todos os atos</option>
+                    {acts.map((a) => (
+                      <option key={a.key} value={a.key} disabled={a.count === 0}>
+                        {a.label} ({a.count.toLocaleString("pt-BR")})
+                      </option>
+                    ))}
+                  </select>
+                  <span className="material-symbols-outlined pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[20px] text-slate-500">expand_more</span>
+                </div>
+                <div className="relative lg:w-44">
+                  <span className="material-symbols-outlined pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[20px] text-brand-900">
+                    calendar_today
+                  </span>
+                  <select
+                    aria-label="Filtrar por ano"
+                    className="h-14 w-full cursor-pointer appearance-none rounded-xl border-0 bg-slate-50 pl-11 pr-9 text-sm font-semibold text-slate-700 outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-brand-accent"
+                    value={draft.year}
+                    onChange={(e) => applyNow({ year: e.target.value })}
+                  >
+                    <option value="">Todos os anos</option>
+                    {years.map((y) => (
+                      <option key={y.year} value={y.year}>
+                        {y.year} ({y.count.toLocaleString("pt-BR")})
+                      </option>
+                    ))}
+                  </select>
+                  <span className="material-symbols-outlined pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[20px] text-slate-500">expand_more</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowMore((v) => !v)}
+                  aria-expanded={showMore}
+                  aria-controls="filtros-avancados"
+                  className={`flex h-14 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold ring-1 ring-inset transition ${
+                    showMore || advancedCount
+                      ? "bg-brand-50 text-brand-900 ring-brand-100"
+                      : "bg-slate-50 text-slate-700 ring-slate-200 hover:bg-slate-100"
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[19px]">tune</span>
+                  Mais filtros
+                  {advancedCount > 0 && (
+                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-900 px-1.5 text-[11px] font-bold text-white">
+                      {advancedCount}
+                    </span>
+                  )}
+                </button>
+                <button
+                  type="submit"
+                  className="flex h-14 items-center justify-center gap-2 rounded-xl bg-brand-900 px-7 text-sm font-bold text-white shadow-[0_8px_20px_rgba(11,25,44,.18)] transition hover:-translate-y-px hover:bg-brand-800"
+                >
+                  <span className="material-symbols-outlined text-[18px]">search</span> Buscar
+                </button>
+              </div>
             </div>
-          </div>
-          <button
-            type="submit"
-            className="flex h-14 w-full items-center justify-center gap-2 rounded-xl bg-brand-900 px-8 text-sm font-bold text-white shadow-[0_8px_20px_rgba(11,25,44,.18)] transition hover:-translate-y-px hover:bg-brand-800 md:w-auto"
-          >
-            <span className="material-symbols-outlined text-[18px]">tune</span> Filtrar
-          </button>
-        </form>
+
+            {showMore && (
+              <div
+                id="filtros-avancados"
+                className="mt-3 grid grid-cols-1 gap-4 border-t border-slate-100 px-1 pb-1 pt-4 sm:grid-cols-2 lg:grid-cols-5"
+              >
+                <div>
+                  <label htmlFor="f-mes" className={labelClass}>Mês</label>
+                  <select id="f-mes" className={fieldClass} value={draft.month} onChange={(e) => applyNow({ month: e.target.value })}>
+                    <option value="">Todos</option>
+                    {MONTHS.map((m, i) => (
+                      <option key={m} value={i + 1}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="f-tipo" className={labelClass}>Tipo de edição</label>
+                  <select id="f-tipo" className={fieldClass} value={draft.type} onChange={(e) => applyNow({ type: e.target.value })}>
+                    <option value="">Todas</option>
+                    {TYPE_OPTIONS.map((t) => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label htmlFor="f-numero" className={labelClass}>Nº da edição</label>
+                  <input
+                    id="f-numero"
+                    className={fieldClass}
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    placeholder="Ex.: 203"
+                    value={draft.number}
+                    onChange={(e) => setDraft({ ...draft, number: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="f-de" className={labelClass}>Publicadas de</label>
+                  <input
+                    id="f-de"
+                    className={fieldClass}
+                    type="date"
+                    value={draft.dateFrom}
+                    max={draft.dateTo || undefined}
+                    onChange={(e) => setDraft({ ...draft, dateFrom: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="f-ate" className={labelClass}>Até</label>
+                  <input
+                    id="f-ate"
+                    className={fieldClass}
+                    type="date"
+                    value={draft.dateTo}
+                    min={draft.dateFrom || undefined}
+                    onChange={(e) => setDraft({ ...draft, dateTo: e.target.value })}
+                  />
+                </div>
+              </div>
+            )}
+          </form>
+
+          {chips.length > 0 && (
+            <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 px-1 pt-3">
+              <span className="text-[11px] font-bold uppercase tracking-[0.1em] text-slate-600">Filtros:</span>
+              {chips.map((c) => (
+                <button
+                  key={c.key}
+                  type="button"
+                  onClick={() => apply({ ...filters, ...c.clear })}
+                  aria-label={`Remover filtro ${c.label}`}
+                  className="flex items-center gap-1 rounded-full bg-brand-50 py-1 pl-3 pr-1.5 text-xs font-semibold text-brand-900 ring-1 ring-inset ring-brand-100 transition hover:bg-brand-100"
+                >
+                  {c.label}
+                  <span className="material-symbols-outlined text-[16px]">close</span>
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => apply({ ...EMPTY_FILTERS, order: filters.order })}
+                className="ml-1 text-xs font-semibold text-slate-600 underline-offset-2 hover:text-brand-900 hover:underline"
+              >
+                Limpar tudo
+              </button>
+            </div>
+          )}
         </div>
       </section>
 
       <div className="mx-auto max-w-[1240px] px-4 pb-20 pt-10 sm:px-6 lg:px-8">
       {/* Results Counter + Sort */}
-      <div className="mb-5 flex items-center justify-between px-1">
-        <span className="text-xs font-semibold text-slate-600">
+      <div className="mb-5 flex items-center justify-between gap-3 px-1">
+        <span className="text-xs font-semibold text-slate-600" aria-live="polite">
           Mostrando {editions.length} de{" "}
           {pagination?.total != null ? pagination.total.toLocaleString("pt-BR") : "..."}{" "}
           edições
         </span>
-        <div className="flex items-center gap-1.5 text-xs text-slate-600">
-          <span className="material-symbols-outlined text-[16px]">sort</span>
-          <span>Mais recentes primeiro</span>
-        </div>
+        <label className="flex items-center gap-1.5 text-xs text-slate-600">
+          <span className="material-symbols-outlined text-[16px]" aria-hidden="true">sort</span>
+          <span className="sr-only">Ordenar</span>
+          <select
+            className="cursor-pointer rounded-md border-0 bg-transparent py-1 pl-1 pr-7 text-xs font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-brand-accent"
+            value={filters.order}
+            onChange={(e) => applyNow({ order: e.target.value as Filters["order"] })}
+          >
+            <option value="desc">Mais recentes primeiro</option>
+            <option value="asc">Mais antigas primeiro</option>
+          </select>
+        </label>
       </div>
 
       {/* Loading / Empty states */}
@@ -203,6 +390,15 @@ export default function EditionsPage() {
             search_off
           </span>
           Nenhuma edição encontrada
+          {chips.length > 0 && (
+            <button
+              type="button"
+              onClick={() => apply({ ...EMPTY_FILTERS, order: filters.order })}
+              className="mt-3 block w-full text-sm font-semibold text-brand-900 underline underline-offset-2"
+            >
+              Limpar filtros
+            </button>
+          )}
         </div>
       ) : (
         <>

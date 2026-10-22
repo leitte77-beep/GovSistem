@@ -9,8 +9,13 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
 
         is_download = "/public/download/" in request.url.path
+        # PDF da edição no portal (/api/public/v1/editions/{ano}/{n}/download):
+        # o próprio portal o exibe embutido (acervo do sistema anterior).
+        is_edition_pdf = "/public/v1/editions/" in request.url.path and request.url.path.endswith("/download")
 
-        if not is_download:
+        if is_edition_pdf:
+            response.headers["X-Frame-Options"] = "SAMEORIGIN"
+        elif not is_download:
             response.headers["X-Frame-Options"] = "DENY"
 
         response.headers["X-Content-Type-Options"] = "nosniff"
@@ -31,7 +36,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
             )
 
         is_public = "/public/" in request.url.path
-        frame_ancestors = "*" if is_download else "'none'"
+        frame_ancestors = "*" if is_download else "'self'" if is_edition_pdf else "'none'"
 
         if is_public:
             response.headers["Content-Security-Policy"] = (

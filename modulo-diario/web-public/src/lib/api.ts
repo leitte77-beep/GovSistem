@@ -24,6 +24,20 @@ async function get<T>(path: string): Promise<T> {
   return res.json();
 }
 
+/** POST que devolve a mensagem de erro da API (ex.: "Informe um e-mail válido."). */
+async function post<T>(path: string, body: unknown): Promise<T> {
+  const tenantSlug = getTenantSlug();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (tenantSlug) headers["X-Tenant-Slug"] = tenantSlug;
+  const res = await fetch(`${BASE}${path}`, { method: "POST", headers, body: JSON.stringify(body) });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const detail = typeof data?.detail === "string" ? data.detail : null;
+    throw new Error(detail || (res.status === 429 ? "Muitas tentativas. Aguarde um minuto." : "Não foi possível concluir. Tente novamente."));
+  }
+  return data as T;
+}
+
 export interface EditionSummary {
   id: string;
   number: number;
@@ -51,6 +65,20 @@ export interface MatterSummary {
   pdf_url: string | null;
 }
 
+export interface EditionListParams {
+  year?: number;
+  month?: number;
+  type?: string;
+  search?: string;
+  number?: number;
+  act?: string;
+  date_from?: string;
+  date_to?: string;
+  order?: "asc" | "desc";
+  page?: number;
+  page_size?: number;
+}
+
 export interface PaginationMeta {
   page: number;
   page_size: number;
@@ -70,14 +98,26 @@ export interface MatterListResponse {
   pagination: PaginationMeta;
 }
 
+export interface OrganizationContact {
+  email: string | null;
+  phone: string | null;
+  site: string | null;
+  address_street: string | null;
+  address_number: string | null;
+  address_complement: string | null;
+  address_district: string | null;
+  address_city: string | null;
+  state: string | null;
+  address_postal_code: string | null;
+}
+
 export interface OrganizationInfo {
   id: string;
   name: string;
   slug: string;
   logo_url: string | null;
   description: string | null;
-  contact_email: string | null;
-  address: string | null;
+  contact?: OrganizationContact | null;
   theme: {
     primary_color: string;
     secondary_color: string;
@@ -103,15 +143,21 @@ export interface VerifyResult {
 }
 
 export const api = {
-  listEditions(params?: { year?: number; type?: string; search?: string; page?: number; page_size?: number }): Promise<EditionListResponse> {
+  listEditions(params?: EditionListParams): Promise<EditionListResponse> {
     const q = new URLSearchParams();
-    if (params?.year) q.set("year", String(params.year));
-    if (params?.type) q.set("type", params.type);
-    if (params?.search) q.set("search", params.search);
-    if (params?.page !== undefined) q.set("page", String(params.page));
-    if (params?.page_size !== undefined) q.set("page_size", String(params.page_size));
+    for (const [k, v] of Object.entries(params ?? {})) {
+      if (v !== undefined && v !== null && v !== "") q.set(k, String(v));
+    }
     const qs = q.toString();
     return get<EditionListResponse>(`/api/public/v1/editions${qs ? `?${qs}` : ""}`);
+  },
+
+  listEditionActFilters(): Promise<{ key: string; label: string; count: number }[]> {
+    return get<{ key: string; label: string; count: number }[]>("/api/public/v1/editions/act-filters");
+  },
+
+  listEditionYears(): Promise<{ year: number; count: number }[]> {
+    return get<{ year: number; count: number }[]>("/api/public/v1/editions/years");
   },
 
   getEdition(year: number, number: number, type?: string) {
@@ -143,6 +189,34 @@ export const api = {
     if (params?.page !== undefined) p.set("page", String(params.page));
     if (params?.page_size !== undefined) p.set("page_size", String(params.page_size));
     return get<MatterListResponse>(`/api/public/v1/matters${p.toString() ? `?${p.toString()}` : ""}`);
+  },
+
+  newsletterSubscribe(email: string): Promise<{ status: string; message: string }> {
+    return post("/api/public/v1/newsletter/subscribe", { email });
+  },
+
+  newsletterConfirm(token: string): Promise<{ status: string; email: string }> {
+    return post("/api/public/v1/newsletter/confirm", { token });
+  },
+
+  newsletterUnsubscribe(token: string): Promise<{ status: string; email: string }> {
+    return post("/api/public/v1/newsletter/unsubscribe", { token });
+  },
+
+  portalVisits(): Promise<{ visits: number }> {
+    return get("/api/public/v1/stats");
+  },
+
+  registerPortalVisit(): Promise<{ visits: number }> {
+    return post("/api/public/v1/stats/visit", {});
+  },
+
+  editionViews(editionId: string): Promise<{ views: number }> {
+    return get(`/api/public/v1/edition-views/${editionId}`);
+  },
+
+  registerEditionView(editionId: string): Promise<{ views: number }> {
+    return post(`/api/public/v1/edition-views/${editionId}`, {});
   },
 
   getOrganization(): Promise<OrganizationInfo> {

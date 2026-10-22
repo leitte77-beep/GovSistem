@@ -95,7 +95,7 @@ export default function AccessibilityPanel() {
     <>
       <button
         onClick={() => setOpen(!open)}
-        className="relative flex h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition-colors duration-200 hover:bg-slate-100 hover:text-brand-900"
+        className="relative flex h-11 w-11 items-center justify-center rounded-xl text-slate-600 transition-colors duration-200 hover:bg-slate-100 hover:text-brand-900"
         aria-label="Acessibilidade"
         title="Acessibilidade"
       >

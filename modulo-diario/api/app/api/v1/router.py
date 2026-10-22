@@ -1,6 +1,7 @@
 from fastapi import APIRouter
 
 from app.api.v1.acervo import router as acervo_router
+from app.api.v1.newsletter import router as newsletter_router
 from app.api.v1.act_types import router as act_types_router
 from app.api.v1.ai_config import router as ai_config_router
 from app.api.v1.ai_formatter import router as ai_formatter_router
@@ -36,6 +37,7 @@ api_router.include_router(auth_router)
 api_router.include_router(backup_router)
 api_router.include_router(document_models_router)
 api_router.include_router(acervo_router)
+api_router.include_router(newsletter_router)
 api_router.include_router(act_types_router)
 api_router.include_router(ai_config_router)
 api_router.include_router(ai_formatter_router)

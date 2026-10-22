@@ -3,9 +3,11 @@ import Footer from "@/components/Footer";
 import Navbar from "@/components/Navbar";
 import AccessibilityProvider from "@/components/AccessibilityProvider";
 import { OrgProvider } from "@/lib/org-context";
+import VLibras from "@/components/VLibras";
+import { getOrganizationServer } from "@/lib/server/edition-loader";
 import "./globals.css";
 
-export const metadata: Metadata = {
+const baseMetadata: Metadata = {
   metadataBase: new URL("https://diario.govsistem.com.br"),
   title: "Diário Oficial Eletrônico | Portal de Consulta Pública",
   description:
@@ -21,6 +23,19 @@ export const metadata: Metadata = {
   },
   robots: { index: true, follow: true },
 };
+
+// O favicon é o brasão do município do subdomínio; sem logo cadastrado (ou com
+// a API fora) cai no brasão padrão, para a aba nunca ficar sem ícone.
+export async function generateMetadata(): Promise<Metadata> {
+  let icon = "/brasao.png";
+  try {
+    const org = await getOrganizationServer();
+    if (org?.logo_url) icon = org.logo_url;
+  } catch {
+    // mantém o padrão
+  }
+  return { ...baseMetadata, icons: { icon, shortcut: icon, apple: icon } };
+}
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -40,6 +55,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             </main>
             <Footer />
           </OrgProvider>
+          <VLibras />
         </AccessibilityProvider>
       </body>
     </html>

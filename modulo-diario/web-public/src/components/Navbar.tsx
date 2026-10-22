@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useOrg } from "@/lib/org-context";
 import AccessibilityPanel from "./AccessibilityPanel";
+import VisitCounter from "./VisitCounter";
 
 const NAV_LINKS = [
   { href: "/edicoes", label: "Edições", icon: "newspaper", description: "Publicações oficiais" },
@@ -51,14 +52,16 @@ export default function Navbar() {
                   className={`group flex h-10 items-center gap-2 rounded-xl px-3.5 text-xs font-bold transition-all duration-200 ${
                     active
                       ? "bg-white text-brand-900 shadow-[0_3px_12px_rgba(15,42,82,.10)] ring-1 ring-inset ring-slate-200"
-                      : "text-slate-500 hover:bg-white/70 hover:text-brand-900"
+                      : "text-slate-600 hover:bg-white/70 hover:text-brand-900"
                   }`}
                 >
-                  <span className={`material-symbols-outlined text-[18px] ${active ? "text-brand-accent" : "text-slate-400 group-hover:text-brand-accent"}`}>{link.icon}</span>
+                  <span className={`material-symbols-outlined text-[18px] ${active ? "text-brand-accent" : "text-slate-500 group-hover:text-brand-accent"}`}>{link.icon}</span>
                   {link.label}
                 </Link>
               );
             })}
+            <span aria-hidden="true" className="mx-1 h-5 w-px bg-slate-200" />
+            <VisitCounter className="px-2" />
           </nav>
         </div>
         <div className="flex items-center gap-1.5">
@@ -72,7 +75,7 @@ export default function Navbar() {
           <AccessibilityPanel />
           <Link
             href="/contato"
-            className="hidden h-10 w-10 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-slate-100 hover:text-brand-900 sm:flex"
+            className="hidden h-10 w-10 items-center justify-center rounded-xl text-slate-600 transition-colors hover:bg-slate-100 hover:text-brand-900 sm:flex"
             aria-label="Ajuda"
             title="Ajuda e contato"
           >
@@ -98,11 +101,12 @@ export default function Navbar() {
               const active = isActive(link.href);
               return (
                 <Link key={link.href} href={link.href} aria-current={active ? "page" : undefined} className={`flex items-center gap-3 rounded-xl border p-3.5 transition ${active ? "border-brand-100 bg-brand-50" : "border-transparent hover:bg-slate-50"}`}>
-                  <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${active ? "bg-white text-brand-accent shadow-sm" : "bg-slate-100 text-slate-500"}`}><span className="material-symbols-outlined text-[20px]">{link.icon}</span></span>
-                  <span><span className="block text-sm font-bold text-brand-900">{link.label}</span><span className="mt-0.5 block text-xs text-slate-500">{link.description}</span></span>
+                  <span className={`flex h-10 w-10 items-center justify-center rounded-xl ${active ? "bg-white text-brand-accent shadow-sm" : "bg-slate-100 text-slate-600"}`}><span className="material-symbols-outlined text-[20px]">{link.icon}</span></span>
+                  <span><span className="block text-sm font-bold text-brand-900">{link.label}</span><span className="mt-0.5 block text-xs text-slate-600">{link.description}</span></span>
                 </Link>
               );
             })}
+            <VisitCounter className="justify-center py-2" />
             <a href={adminUrl} className="mt-2 flex items-center justify-center gap-2 rounded-xl bg-brand-900 px-4 py-3 text-sm font-bold text-white">
               <span className="material-symbols-outlined text-[19px]">account_circle</span> Área administrativa
             </a>

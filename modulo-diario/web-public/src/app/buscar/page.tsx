@@ -141,7 +141,7 @@ function SearchPageContent() {
                   aria-labelledby="search-label"
                   aria-describedby="search-tips"
                 />
-                <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-[21px] text-slate-400 group-focus-within:text-brand-accent">
+                <span className="material-symbols-outlined absolute left-4 top-1/2 -translate-y-1/2 text-[21px] text-slate-500 group-focus-within:text-brand-accent">
                   search
                 </span>
               </div>
@@ -161,9 +161,10 @@ function SearchPageContent() {
                     value={dateFrom}
                     onChange={(e) => setDateFrom(e.target.value)}
                   />
-                  <span className="shrink-0 text-xs text-slate-400">até</span>
+                  <span className="shrink-0 text-xs text-slate-500">até</span>
                   <input
                     id="date-to"
+                    aria-label="Data final da publicação"
                     className="h-12 w-full min-w-0 rounded-xl border border-slate-200 bg-slate-50 px-3 text-xs text-slate-700 outline-none focus:border-brand-accent focus:bg-white focus:ring-2 focus:ring-blue-100"
                     type="date"
                     value={dateTo}
@@ -343,7 +344,7 @@ function SearchPageContent() {
               </h2>
             </div>
             {!loading && (
-              <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500">
+              <span className="rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600">
                 {total} {total === 1 ? "resultado" : "resultados"}
               </span>
             )}
@@ -380,7 +381,7 @@ function SearchPageContent() {
                           </span>
                         )}
                         {m.org_unit && (
-                          <span className="text-xs font-semibold text-slate-500">
+                          <span className="text-xs font-semibold text-slate-600">
                             {m.org_unit}
                           </span>
                         )}
@@ -394,7 +395,7 @@ function SearchPageContent() {
                         </p>
                       )}
                       {m.publication_date && (
-                        <p className="mt-3 flex items-center gap-1.5 text-[11px] font-medium text-slate-400">
+                        <p className="mt-3 flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
                           <span className="material-symbols-outlined text-[15px]">calendar_month</span>
                           {formatDate(m.publication_date)}
                         </p>
