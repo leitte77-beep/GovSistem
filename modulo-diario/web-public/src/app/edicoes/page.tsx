@@ -7,6 +7,7 @@ import { useOrg } from "@/lib/org-context";
 import { formatSummary } from "@/lib/summary";
 import ShareDialog from "@/components/ShareDialog";
 import { notifyError } from "@/lib/error-handler";
+import FilterDropdown from "@/components/FilterDropdown";
 
 const TYPE_LABELS: Record<string, string> = {
   normal: "ORDINÁRIA",
@@ -37,6 +38,18 @@ function formatShortDate(dateStr: string): string {
     year: "numeric",
   });
 }
+
+const ACT_ICONS: Record<string, string> = {
+  lei: "menu_book",
+  decreto: "gavel",
+  portaria: "badge",
+  resolucao: "rule",
+  edital: "campaign",
+  licitacao: "shopping_cart",
+  contrato: "handshake",
+  ata: "groups",
+  relatorio: "monitoring",
+};
 
 const MONTHS = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -199,50 +212,40 @@ export default function EditionsPage() {
                 />
               </div>
               <div className="grid grid-cols-2 gap-2 lg:flex">
-                <div className="relative lg:w-52">
-                  <span className="material-symbols-outlined pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[20px] text-brand-900">
-                    gavel
-                  </span>
-                  <select
-                    aria-label="Filtrar por tipo de ato"
-                    className="h-14 w-full cursor-pointer appearance-none truncate rounded-xl border-0 bg-slate-50 pl-11 pr-9 text-sm font-semibold text-slate-700 outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-brand-accent"
-                    value={draft.act}
-                    onChange={(e) => applyNow({ act: e.target.value })}
-                  >
-                    <option value="">Todos os atos</option>
-                    {acts.map((a) => (
-                      <option key={a.key} value={a.key} disabled={a.count === 0}>
-                        {a.label} ({a.count.toLocaleString("pt-BR")})
-                      </option>
-                    ))}
-                  </select>
-                  <span className="material-symbols-outlined pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[20px] text-slate-500">expand_more</span>
-                </div>
-                <div className="relative lg:w-44">
-                  <span className="material-symbols-outlined pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-[20px] text-brand-900">
-                    calendar_today
-                  </span>
-                  <select
-                    aria-label="Filtrar por ano"
-                    className="h-14 w-full cursor-pointer appearance-none rounded-xl border-0 bg-slate-50 pl-11 pr-9 text-sm font-semibold text-slate-700 outline-none ring-1 ring-inset ring-slate-200 focus:ring-2 focus:ring-brand-accent"
-                    value={draft.year}
-                    onChange={(e) => applyNow({ year: e.target.value })}
-                  >
-                    <option value="">Todos os anos</option>
-                    {years.map((y) => (
-                      <option key={y.year} value={y.year}>
-                        {y.year} ({y.count.toLocaleString("pt-BR")})
-                      </option>
-                    ))}
-                  </select>
-                  <span className="material-symbols-outlined pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[20px] text-slate-500">expand_more</span>
-                </div>
+                <FilterDropdown
+                  className="lg:w-60"
+                  panelClassName="w-[min(20rem,calc(100vw-2rem))]"
+                  label="Tipo de ato"
+                  icon="gavel"
+                  allLabel="Todos os atos"
+                  allIcon="library_books"
+                  value={draft.act}
+                  onChange={(v) => applyNow({ act: v })}
+                  options={acts.map((a) => ({
+                    value: a.key,
+                    label: a.label,
+                    count: a.count,
+                    icon: ACT_ICONS[a.key] ?? "description",
+                  }))}
+                />
+                <FilterDropdown
+                  className="lg:w-48"
+                  panelClassName="w-[min(17rem,calc(100vw-2rem))] lg:left-auto lg:right-0"
+                  label="Ano"
+                  icon="calendar_today"
+                  allLabel="Todos os anos"
+                  allIcon="date_range"
+                  layout="grid"
+                  value={draft.year}
+                  onChange={(v) => applyNow({ year: v })}
+                  options={years.map((y) => ({ value: String(y.year), label: String(y.year), count: y.count }))}
+                />
                 <button
                   type="button"
                   onClick={() => setShowMore((v) => !v)}
                   aria-expanded={showMore}
                   aria-controls="filtros-avancados"
-                  className={`flex h-14 items-center justify-center gap-2 rounded-xl px-4 text-sm font-semibold ring-1 ring-inset transition ${
+                  className={`flex h-14 items-center justify-center gap-2 whitespace-nowrap rounded-xl px-4 text-sm font-semibold ring-1 ring-inset transition ${
                     showMore || advancedCount
                       ? "bg-brand-50 text-brand-900 ring-brand-100"
                       : "bg-slate-50 text-slate-700 ring-slate-200 hover:bg-slate-100"
