@@ -140,6 +140,7 @@ class TestGrantValidation:
     def test_grant_normalization_is_idempotent(self):
         assert normalize_grant_role("diario", "AUTOR") == "AUTOR"
         assert normalize_grant_role("govsocial", "gestor_municipal") == "gestor_municipal"
+        assert normalize_grant_role("govsaude", "GOVSAUDE_ADMIN") == "ADMIN"
 
 
 class TestRoleCatalogIntegrity:
@@ -147,7 +148,7 @@ class TestRoleCatalogIntegrity:
 
     REQUIRED = [
         "diario", "financeiro", "chatgov", "govtask", "govfrota",
-        "govsocial", "govdoc", "govpro", "govavalia", "govouve",
+        "govsocial", "govdoc", "govpro", "govavalia", "govouve", "govsaude",
     ]
 
     def test_required_modules_present(self):

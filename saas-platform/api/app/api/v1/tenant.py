@@ -1000,6 +1000,7 @@ async def _sync_grants_to_modules(
         "govsocial": settings.GOVSOCIAL_MODULE_INTERNAL_API_URL,
         "govdoc": settings.GOVDOC_MODULE_INTERNAL_API_URL,
         "govfrota": settings.GOVFROTA_MODULE_INTERNAL_API_URL,
+        "govsaude": settings.GOVSAUDE_MODULE_INTERNAL_API_URL,
     }
     base_roles = ["ORG_MEMBER"]
     if mem.membership_role == "ORG_ADMIN":

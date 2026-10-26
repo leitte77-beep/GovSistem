@@ -671,6 +671,7 @@ async def get_module_access(
             "govsocial": settings.GOVSOCIAL_MODULE_INTERNAL_API_URL,
             "govdoc": settings.GOVDOC_MODULE_INTERNAL_API_URL,
             "govfrota": settings.GOVFROTA_MODULE_INTERNAL_API_URL,
+            "govsaude": settings.GOVSAUDE_MODULE_INTERNAL_API_URL,
         }
         api_url = module_configs.get(module.slug)
         if api_url:
@@ -704,6 +705,8 @@ async def get_module_access(
         module_url = settings.GOVDOC_MODULE_ADMIN_URL
     elif module.slug == "govfrota" and settings.GOVFROTA_MODULE_ADMIN_URL:
         module_url = settings.GOVFROTA_MODULE_ADMIN_URL
+    elif module.slug == "govsaude" and settings.GOVSAUDE_MODULE_ADMIN_URL:
+        module_url = settings.GOVSAUDE_MODULE_ADMIN_URL
     return ModuleTokenResponse(
         module_token=module_token,
         module_url=module_url,

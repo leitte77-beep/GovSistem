@@ -69,7 +69,7 @@ class ModuleAccessRequest(BaseModel):
     @field_validator("module_slug")
     @classmethod
     def validate_module_slug(cls, v: str) -> str:
-        allowed = {"diario", "financeiro", "chatgov", "govtask", "govsocial", "govavalia", "govouve", "govdoc", "govfrota", "govpro"}
+        allowed = {"diario", "financeiro", "chatgov", "govtask", "govsocial", "govavalia", "govouve", "govdoc", "govfrota", "govpro", "govsaude"}
         if v not in allowed:
             raise ValueError(f"Unknown module: {v}")
         return v

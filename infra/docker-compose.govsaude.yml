@@ -1,0 +1,209 @@
+# GovSaúde — backend isolado (api, worker, beat, PostgreSQL+PostGIS, Redis,
+# MinIO e ClamAV). Suba explicitamente:
+#   docker compose -p infra -f infra/docker-compose.govsaude.yml up -d --build
+# Segredos ficam em modulo-govsaude/.env (gitignored).
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-env: &govsaude-env
+  APP_ENV: production
+  DEBUG: "false"
+  POSTGRES_HOST: govsaude-postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: ${GOVSAUDE_POSTGRES_DB:-govsaude}
+  POSTGRES_USER: ${GOVSAUDE_POSTGRES_USER:-govsaude_user}
+  POSTGRES_PASSWORD: ${GOVSAUDE_POSTGRES_PASSWORD:-govsaude_password}
+  REDIS_URL: redis://govsaude-redis:6379/0
+  STORAGE_BACKEND: s3
+  S3_ENDPOINT: govsaude-minio:9000
+  S3_BUCKET: ${GOVSAUDE_MINIO_BUCKET:-govsaude-files}
+  S3_ACCESS_KEY: ${GOVSAUDE_MINIO_ACCESS_KEY:-minio_access}
+  S3_SECRET_KEY: ${GOVSAUDE_MINIO_SECRET_KEY:-minio_secret}
+  S3_FORCE_PATH_STYLE: "true"
+  S3_SIGNED_URL_TTL_SECONDS: "300"
+  CLAMAV_ENABLED: "true"
+  CLAMAV_HOST: govsaude-clamav
+  CLAMAV_PORT: "3310"
+  SECRET_KEY: ${GOVSAUDE_SECRET_KEY:?defina GOVSAUDE_SECRET_KEY}
+  SAAS_JWT_SECRET: ${SAAS_JWT_SECRET:?defina SAAS_JWT_SECRET (igual ao SECRET_KEY da saas-platform)}
+  INTERNAL_API_KEY: ${GOVSAUDE_INTERNAL_API_KEY:-dev-internal-key-change}
+  FIELD_ENCRYPTION_KEY: ${GOVSAUDE_FIELD_ENCRYPTION_KEY:-}
+  CPF_HMAC_KEY: ${GOVSAUDE_CPF_HMAC_KEY:-}
+  CORS_ORIGINS: '["https://saude.govsistem.com.br","http://localhost:7601"]'
+  PUBLIC_URL: ${GOVSAUDE_PUBLIC_URL:-https://saude.govsistem.com.br}
+  API_PUBLIC_URL: ${GOVSAUDE_API_PUBLIC_URL:-https://saude.govsistem.com.br}
+  INTEGRACOES_AUTOMATICAS: "false"
+
+services:
+  govsaude-postgres:
+    image: postgis/postgis:16-3.4
+    logging: *default-logging
+    environment:
+      POSTGRES_DB: ${GOVSAUDE_POSTGRES_DB:-govsaude}
+      POSTGRES_USER: ${GOVSAUDE_POSTGRES_USER:-govsaude_user}
+      POSTGRES_PASSWORD: ${GOVSAUDE_POSTGRES_PASSWORD:-govsaude_password}
+    ports:
+      - "5440:5432"
+    volumes:
+      - govsaude_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${GOVSAUDE_POSTGRES_USER:-govsaude_user} -d ${GOVSAUDE_POSTGRES_DB:-govsaude}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - govsaude-network
+    restart: unless-stopped
+
+  govsaude-redis:
+    image: redis:7-alpine
+    logging: *default-logging
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6381:6379"
+    volumes:
+      - govsaude_redis:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - govsaude-network
+    restart: unless-stopped
+
+  govsaude-minio:
+    image: minio/minio:latest
+    logging: *default-logging
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${GOVSAUDE_MINIO_ACCESS_KEY:-minio_access}
+      MINIO_ROOT_PASSWORD: ${GOVSAUDE_MINIO_SECRET_KEY:-minio_secret}
+    ports:
+      - "9102:9000"
+      - "9103:9001"
+    volumes:
+      - govsaude_minio:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - govsaude-network
+    restart: unless-stopped
+
+  govsaude-minio-init:
+    image: minio/mc:latest
+    logging: *default-logging
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mc alias set local http://govsaude-minio:9000 ${GOVSAUDE_MINIO_ACCESS_KEY:-minio_access} ${GOVSAUDE_MINIO_SECRET_KEY:-minio_secret}
+        mc mb local/${GOVSAUDE_MINIO_BUCKET:-govsaude-files} --ignore-existing
+        mc anonymous set none local/${GOVSAUDE_MINIO_BUCKET:-govsaude-files}
+        echo "Bucket privado do GovSaúde inicializado"
+    depends_on:
+      govsaude-minio:
+        condition: service_healthy
+    networks:
+      - govsaude-network
+
+  govsaude-clamav:
+    image: clamav/clamav:stable
+    logging: *default-logging
+    volumes:
+      - govsaude_clamav:/var/lib/clamav
+    networks:
+      - govsaude-network
+    restart: unless-stopped
+
+  govsaude-api:
+    build:
+      context: ../modulo-govsaude/api
+      dockerfile: Dockerfile
+    image: infra-govsaude-api:latest
+    logging: *default-logging
+    environment:
+      <<: *govsaude-env
+      RUN_MIGRATIONS: "1"
+    env_file:
+      - path: ../modulo-govsaude/.env
+        required: false
+    ports:
+      - "8210:8000"
+    depends_on:
+      govsaude-postgres:
+        condition: service_healthy
+      govsaude-redis:
+        condition: service_healthy
+      govsaude-minio:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/govsaude/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - govsaude-network
+      - infra-network
+    restart: unless-stopped
+
+  govsaude-worker:
+    image: infra-govsaude-api:latest
+    build:
+      context: ../modulo-govsaude/api
+      dockerfile: Dockerfile
+    logging: *default-logging
+    environment:
+      <<: *govsaude-env
+      RUN_MIGRATIONS: "0"
+    command: ["celery", "-A", "app.tasks.celery_app.celery_app", "worker", "-l", "INFO", "-Q", "celery"]
+    depends_on:
+      govsaude-api:
+        condition: service_healthy
+    networks:
+      - govsaude-network
+    restart: unless-stopped
+
+  govsaude-beat:
+    image: infra-govsaude-api:latest
+    build:
+      context: ../modulo-govsaude/api
+      dockerfile: Dockerfile
+    logging: *default-logging
+    environment:
+      <<: *govsaude-env
+      RUN_MIGRATIONS: "0"
+    command: ["celery", "-A", "app.tasks.celery_app.celery_app", "beat", "-l", "INFO"]
+    depends_on:
+      govsaude-api:
+        condition: service_healthy
+    networks:
+      - govsaude-network
+    restart: unless-stopped
+
+volumes:
+  govsaude_pgdata:
+    name: infra_govsaude_pgdata
+  govsaude_redis:
+    name: infra_govsaude_redis
+  govsaude_minio:
+    name: infra_govsaude_minio
+  govsaude_clamav:
+    name: infra_govsaude_clamav
+
+networks:
+  govsaude-network:
+    name: infra_govsaude_network
+    driver: bridge
+  infra-network:
+    name: infra_doe-network
+    external: true

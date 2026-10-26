@@ -81,6 +81,7 @@ MODULE_HEALTH_URLS = {
     "govsocial": ("GOVSOCIAL_MODULE_INTERNAL_API_URL", "/health"),
     "govdoc": ("GOVDOC_MODULE_INTERNAL_API_URL", "/health"),
     "govpro": ("GOVPRO_MODULE_INTERNAL_API_URL", "/health"),
+    "govsaude": ("GOVSAUDE_MODULE_INTERNAL_API_URL", "/api/govsaude/health"),
 }
 
 

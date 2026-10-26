@@ -61,6 +61,9 @@ Estas são as únicas combinações (módulo, role) aceitas na validação do `P
 ### govsocial — GovSocial
 `GOVSOCIAL_ADMIN`, `gestor_municipal`, `coordenador_unidade`, `tecnico_superior`, `tecnico_medio`, `recepcao`, `vigilancia`, `conselho`
 
+### govsaude — GovSaúde *(adicionado em 2026-10-26)*
+`ADMIN`, `gestor_municipal`, `coordenador_unidade`, `recepcao`, `medico`, `enfermeiro`, `tecnico_enfermagem`, `cirurgiao_dentista`, `asb_tsb`, `farmaceutico`, `auxiliar_farmacia`, `almoxarife`, `acs`, `ace`, `vacinador`, `laboratorio_tecnico`, `laboratorio_responsavel`, `regulador`, `faturista`, `multiprofissional`, `fiscal_vigilancia_sanitaria`, `coordenador_vigilancia`, `encarregado_dados`, `consulta_gestao`, `suporte_plataforma`
+
 ### govdoc — GovDoc
 `admin_geral`, `admin_secretaria`, `gestor_setor`, `colaborador`, `leitor`, `auditor`
 
@@ -73,7 +76,7 @@ Estas são as únicas combinações (módulo, role) aceitas na validação do `P
 ### govouve — GovOuve *(adicionado em 2026-08-27)*
 `GOVOUVE_ADMIN`, `GOVOUVE_GESTOR`, `GOVOUVE_OUVIDORIA`
 
-**Mapa de nomes legados** (`LEGACY_ROLE_MAP`): aceita `ADMIN`→`DIARIO_ADMIN` (diario), `ADMIN`→`GOVTASK_ADMIN` (govtask), `ADMIN`→`GOVSOCIAL_ADMIN` + `AUDITOR`→`auditor` (govsocial/govdoc). Ao gravar, normaliza para o nome canônico.
+**Mapa de nomes legados** (`LEGACY_ROLE_MAP`): aceita `ADMIN`→`DIARIO_ADMIN` (diario), `ADMIN`→`GOVTASK_ADMIN` (govtask), `ADMIN`→`GOVSOCIAL_ADMIN` + `AUDITOR`→`auditor` (govsocial/govdoc), `GOVSAUDE_ADMIN`→`ADMIN` (govsaude). Ao gravar, normaliza para o nome canônico.
 
 ---
 
@@ -107,6 +110,7 @@ Módulo ativo por organização. Nota: **`govavalia` e `govouve` estão ativos m
 | **govouve** | | | | | | |
 | **govpro** | | ✅ | | | | |
 | **govsocial** | ✅ | ✅ | ✅ | | | |
+| **govsaude** | ✅ | ✅ | ✅ | | | |
 | **govtask** | ✅ | ✅ | | | | |
 
 ---

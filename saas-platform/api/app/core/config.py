@@ -78,6 +78,8 @@ class Settings(BaseSettings):
     GOVPRO_MODULE_ADMIN_URL: str | None = None
     GOVFROTA_MODULE_INTERNAL_API_URL: str | None = None
     GOVFROTA_MODULE_ADMIN_URL: str | None = None
+    GOVSAUDE_MODULE_INTERNAL_API_URL: str | None = None
+    GOVSAUDE_MODULE_ADMIN_URL: str | None = None
 
     # ------------------------------------------------------------------
     # Feature flags do novo modelo multi-tenant (defaults de ambiente;
