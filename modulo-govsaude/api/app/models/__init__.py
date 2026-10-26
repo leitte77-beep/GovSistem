@@ -40,6 +40,13 @@ from app.models.estoque import (
     RegistroTemperatura,
     Requisicao,
 )
+from app.models.imunizacao import (
+    AgendamentoVacina,
+    AplicacaoVacina,
+    EsquemaVacinal,
+    FrascoAberto,
+    Vacina,
+)
 from app.models.integracoes import (
     IntegracaoConfiguracao,
     IntegracaoEnvio,
@@ -131,6 +138,11 @@ from app.models.territorio import (
 )
 
 __all__ = [
+    "AgendamentoVacina",
+    "AplicacaoVacina",
+    "EsquemaVacinal",
+    "FrascoAberto",
+    "Vacina",
     "AnexoClinico",
     "CompetenciaEstoque",
     "Dispensacao",

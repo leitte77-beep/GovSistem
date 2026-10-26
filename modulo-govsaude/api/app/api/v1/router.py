@@ -14,6 +14,7 @@ from app.api.v1.estoque import router as estoque_router
 from app.api.v1.filas import router as filas_router
 from app.api.v1.formularios import router as formularios_router
 from app.api.v1.importacoes import router as importacoes_router
+from app.api.v1.imunizacao import router as imunizacao_router
 from app.api.v1.inscricoes_programa import router as inscricoes_programa_router
 from app.api.v1.internal import router as internal_router
 from app.api.v1.jobs import router as jobs_router
@@ -48,6 +49,7 @@ api_router.include_router(territorios_router)
 api_router.include_router(prontuarios_router)
 api_router.include_router(estoque_router)
 api_router.include_router(anexos_router)
+api_router.include_router(imunizacao_router)
 api_router.include_router(relatorios_router)
 api_router.include_router(agendas_router)
 api_router.include_router(protocolos_router)

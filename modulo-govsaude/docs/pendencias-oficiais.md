@@ -66,6 +66,16 @@ depende de artefato oficial fica atrás de uma porta e recebe o estado
 | Etapas, campos obrigatórios e validade de consulta | Definição municipal | Secretaria municipal de saúde | Configurações `prontuario.*` nascem vazias; sem regra, nada é exigido |
 | Assinatura digital | ICP-Brasil / assinatura gov.br | ITI / gov.br | Assinatura atual é eletrônica interna (usuário + carimbo de tempo + auditoria) |
 
+## Fase 9 — imunização
+
+| Item | Artefato necessário | Onde obter | Consequência |
+|---|---|---|---|
+| Calendário/esquemas do PNI | Doses, idades mínima/máxima, intervalos e grupos por imunobiológico, na versão vigente | Ministério da Saúde/PNI (Calendário Nacional de Vacinação, Instrução Normativa anual, notas técnicas) | Nenhum esquema semeado; sem esquema ativo a aplicação só informa `SEM_ESQUEMA_ATIVO` |
+| Validade pós-abertura | Prazo por imunobiológico e apresentação | Bula do fabricante / Manual de Normas e Procedimentos para Vacinação | Obrigatória no cadastro da vacina multidose; o sistema não supõe valor |
+| Estratégias de vacinação e domínios RIA | Lista oficial (rotina, campanha, bloqueio etc.) e códigos | Modelo RIA da RNDS | Estratégia é texto do tenant |
+| RNDS — RIA | StructureDefinitions/perfis FHIR do RIA e credencial do estabelecimento | Portal RNDS/DATASUS | `exportacao-rnds` retorna `PENDENTE_ESPECIFICACAO_OFICIAL`; contrato `xfail` |
+| URL pública do QR | Domínio público do município | Prefeitura | Configurar `PUBLIC_BASE_URL`; sem ela o QR traz só o caminho |
+
 ## Fase 8 — estoque e assistência farmacêutica
 
 | Item | Artefato necessário | Onde obter | Consequência |

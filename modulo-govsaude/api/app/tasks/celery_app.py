@@ -45,5 +45,9 @@ celery_app.conf.update(
             "task": "govsaude.marcar_faltas_automaticas",
             "schedule": 900.0,
         },
+        "descartar-frascos-vencidos": {
+            "task": "govsaude.descartar_frascos_vencidos",
+            "schedule": 600.0,
+        },
     },
 )

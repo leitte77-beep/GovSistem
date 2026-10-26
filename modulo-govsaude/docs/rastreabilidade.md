@@ -256,7 +256,35 @@ Correção desta revisão: vários IDs estavam trocados (ex.: bloqueio era B.4-0
 sugestão B.4-007 → B.4-005; controlados B.4-024 → B.4-022). B.4-035 (acesso
 reforçado a controlados) não estava atendido e foi implementado.
 
-## Fases 9–16
+## Fase 9 — imunização
+
+Regras em `app/services/imunizacao.py`, rotas em `app/api/v1/imunizacao.py`,
+migração `0012`, tarefa `govsaude.descartar_frascos_vencidos`. Testes em
+`tests/test_fase9_imunizacao.py` (5 + 1 `xfail`). Nenhum esquema do PNI é
+semeado: o tenant cadastra a versão vigente e só a ativa informando a fonte
+normativa.
+
+| Requisito | O que foi entregue | Endpoints | Testes | Status |
+|---|---|---|---|---|
+| B.7-001 | Vacinas com produto de estoque (tipo VACINA), fabricante, apresentação, via, doses por frasco e validade pós-abertura; esquemas com doses, idades, intervalos e sexo | `/imunizacao/vacinas`, `/imunizacao/esquemas` | `test_b7_001_029_*` | IMPLEMENTADO (regras do PNI: dados a carregar) |
+| B.7-002 | Faixa etária, sexo, ordem, dose repetida e intervalo mínimo; ALERTAR ou BLOQUEAR por esquema, com exceção clínica justificada e auditada | `POST /imunizacao/aplicacoes` | `test_b7_002_009_010_027_*` | IMPLEMENTADO |
+| B.7-003, B.7-004 | Frasco multidose: abertura (sai do estoque), doses, prazo de uso, esgotamento | `/imunizacao/frascos`, `/locais/{id}/frascos` | `test_b7_003_004_005_026_*` | IMPLEMENTADO |
+| B.7-005 | Descarte manual com motivo; automático (tarefa periódica) e assistido dos vencidos; perdas apuradas | `.../descartar`, `/frascos/descartar-vencidos` | idem | IMPLEMENTADO |
+| B.7-006, B.7-007 | Agendamento por cidadão/unidade/vacina/dose; baixa ao aplicar; falta e reagendamento encadeado | `/imunizacao/agendamentos…` | `test_b7_006_007_008_011_024_*` | IMPLEMENTADO |
+| B.7-008 | Registro de dose aplicada fora da rede, sem estoque, com alerta “não houve aplicação local” | `POST /imunizacao/aplicacoes` (`origem=EXTERNA`) | idem | IMPLEMENTADO |
+| B.7-009 | Aplicação nominal: data, lote, validade (do lote), dose, estratégia, profissional, unidade | idem | `test_b7_002_*` | IMPLEMENTADO (domínio oficial de estratégias a carregar) |
+| B.7-010 | Baixa automática: monodose no estoque; multidose no frasco | idem | `test_b7_002_*`, `test_b7_003_*` | IMPLEMENTADO |
+| B.7-011 | Aprazamento pelos esquemas vigentes com memória de cálculo; tabelas atualizáveis por versão | `/cidadaos/{id}/aprazamento` | `test_b7_006_*` | IMPLEMENTADO |
+| B.7-012 | Carteira/certificado em JSON e PDF com histórico, doses futuras e QR; verificação pública sem dado sensível | `/cidadaos/{id}/carteira`, `/imunizacao/verificar/{token}` | `test_b7_012_028_*` | IMPLEMENTADO |
+| B.7-013 | Exportação RIA/RNDS pela porta | `/aplicacoes/{id}/exportacao-rnds` | idem + `test_b7_013_contrato_rnds_ria` (`xfail`) | PENDENTE_ESPECIFICACAO_OFICIAL (Fase 11) |
+| B.7-024 | Busca ativa de doses atrasadas | `/imunizacao/busca-ativa` | `test_b7_006_*` | IMPLEMENTADO (recorte territorial: pendente) |
+| B.7-025 | Aplicações por unidade, profissional, vacina, dose, estratégia, faixa etária ou mês; CSV/XLSX/PDF | `/imunizacao/relatorios/aplicacoes` | `test_b7_012_*` | PARCIAL (por território e população-alvo: pendente) |
+| B.7-026 | Frascos, aplicações, perdas e saldo por lote e unidade | `/imunizacao/relatorios/locais/{id}/frascos` | `test_b7_003_*` | IMPLEMENTADO |
+| B.7-027 | Lote vencido ou interditado bloqueia sem exceção | `POST /imunizacao/aplicacoes` | `test_b7_002_*` | IMPLEMENTADO |
+| B.7-028 | Retificação com nova versão e justificativa; invalidação sem apagar; auditoria de leitura e escrita | `.../retificar`, `.../invalidar`, `/cidadaos/{id}/aplicacoes?todas=` | `test_b7_012_028_*` | IMPLEMENTADO |
+| B.7-029 | Esquemas versionados por vigência; ativação encerra a versão anterior | `/imunizacao/esquemas/{id}/ativacao` | `test_b7_001_029_*` | IMPLEMENTADO |
+
+## Fases 10–16
 
 Não iniciadas.
 

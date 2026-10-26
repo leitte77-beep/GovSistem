@@ -92,6 +92,8 @@ class Settings(BaseSettings):
 
     # ── Redis / fila ────────────────────────────────────────────────────────
     REDIS_URL: str = ""
+    # Base pública usada no QR de verificação de documentos (ex.: https://saude.municipio.gov.br).
+    PUBLIC_BASE_URL: str = ""
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6381
     REDIS_DB: int = 0
@@ -211,9 +213,7 @@ class Settings(BaseSettings):
     AUDIT_RETENTION_YEARS: int = 20
 
     _cors = field_validator("CORS_ORIGINS", mode="before")(_split_list)
-    _mimes = field_validator("ALLOWED_MIME_TYPES", "ALLOWED_EXTENSIONS", mode="before")(
-        _split_list
-    )
+    _mimes = field_validator("ALLOWED_MIME_TYPES", "ALLOWED_EXTENSIONS", mode="before")(_split_list)
 
     @property
     def MAX_FILE_SIZE_BYTES(self) -> int:
@@ -232,9 +232,7 @@ class Settings(BaseSettings):
         """Chave Fernet atual, normalizada para 32 bytes urlsafe-base64."""
         raw = self.FIELD_ENCRYPTION_KEY.get_secret_value()
         if not raw:
-            digest = hashlib.sha256(
-                self.SECRET_KEY.get_secret_value().encode("utf-8")
-            ).digest()
+            digest = hashlib.sha256(self.SECRET_KEY.get_secret_value().encode("utf-8")).digest()
             return base64.urlsafe_b64encode(digest)
         return _normalizar_chave_fernet(raw)
 
@@ -248,9 +246,7 @@ class Settings(BaseSettings):
         raw = self.CPF_HMAC_KEY.get_secret_value()
         if raw:
             return raw.encode("utf-8")
-        return hashlib.sha256(
-            self.SECRET_KEY.get_secret_value().encode("utf-8")
-        ).digest()
+        return hashlib.sha256(self.SECRET_KEY.get_secret_value().encode("utf-8")).digest()
 
     @model_validator(mode="after")
     def _validar_segredos(self):

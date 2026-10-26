@@ -27,3 +27,21 @@ async def _marcar_faltas() -> dict:
 @celery_app.task(name="govsaude.marcar_faltas_automaticas")
 def marcar_faltas_automaticas_task() -> dict:
     return asyncio.run(_marcar_faltas())
+
+
+async def _descartar_frascos() -> dict:
+    from app.services.imunizacao import descartar_vencidos
+
+    async with async_session() as db:
+        try:
+            return await descartar_vencidos(db)
+        except Exception:  # noqa: BLE001 - mantém a tarefa viva para nova tentativa
+            await db.rollback()
+            logger.exception("Falha no descarte automático de frascos")
+            raise
+
+
+@celery_app.task(name="govsaude.descartar_frascos_vencidos")
+def descartar_frascos_vencidos_task() -> dict:
+    """B.7-005 — descarte automático de frascos com prazo pós-abertura expirado."""
+    return asyncio.run(_descartar_frascos())

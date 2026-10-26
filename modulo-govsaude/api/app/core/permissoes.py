@@ -253,14 +253,27 @@ GRUPOS_NACIONAIS: dict[str, dict] = {
     },
     "gestor_municipal": {
         "nome": "Gestor municipal",
-        "permissoes": _LEITURA | _ATENDIMENTO_BASICO | _CLINICO | _GESTAO | _FARMACIA
-        | _LABORATORIO | _IMUNIZACAO | _VIGILANCIA,
+        "permissoes": _LEITURA
+        | _ATENDIMENTO_BASICO
+        | _CLINICO
+        | _GESTAO
+        | _FARMACIA
+        | _LABORATORIO
+        | _IMUNIZACAO
+        | _VIGILANCIA
+        | _p(Permissao.IMUNIZACAO_GERENCIAR),
         "requer_consentimento": False,
     },
     "coordenador_unidade": {
         "nome": "Coordenador de unidade",
-        "permissoes": _LEITURA | _ATENDIMENTO_BASICO | _CLINICO | _GESTAO | _FARMACIA
-        | _LABORATORIO | _IMUNIZACAO,
+        "permissoes": _LEITURA
+        | _ATENDIMENTO_BASICO
+        | _CLINICO
+        | _GESTAO
+        | _FARMACIA
+        | _LABORATORIO
+        | _IMUNIZACAO
+        | _p(Permissao.IMUNIZACAO_GERENCIAR),
         "requer_consentimento": False,
     },
     "recepcao": {
@@ -312,7 +325,9 @@ GRUPOS_NACIONAIS: dict[str, dict] = {
     },
     "farmaceutico": {
         "nome": "Farmacêutico",
-        "permissoes": _LEITURA | _FARMACIA | _p(
+        "permissoes": _LEITURA
+        | _FARMACIA
+        | _p(
             Permissao.DISPENSACAO_CRIAR,
             Permissao.DISPENSACAO_ESTORNAR,
             Permissao.ESTOQUE_CONTROLADOS,
@@ -370,7 +385,8 @@ GRUPOS_NACIONAIS: dict[str, dict] = {
     },
     "regulador": {
         "nome": "Regulador",
-        "permissoes": _LEITURA | _p(
+        "permissoes": _LEITURA
+        | _p(
             Permissao.REGULACAO_GERENCIAR,
             Permissao.AUTORIZACAO_GERENCIAR,
             Permissao.PRONTUARIO_LER,

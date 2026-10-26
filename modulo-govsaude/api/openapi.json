@@ -1077,141 +1077,6 @@
         "title": "AgendamentoComprovanteOut",
         "type": "object"
       },
-      "AgendamentoCreate": {
-        "additionalProperties": false,
-        "properties": {
-          "agenda_id": {
-            "format": "uuid",
-            "title": "Agenda Id",
-            "type": "string"
-          },
-          "cidadao_id": {
-            "format": "uuid",
-            "title": "Cidadao Id",
-            "type": "string"
-          },
-          "encaixe": {
-            "default": false,
-            "title": "Encaixe",
-            "type": "boolean"
-          },
-          "forcar_incompatibilidade": {
-            "default": false,
-            "title": "Forcar Incompatibilidade",
-            "type": "boolean"
-          },
-          "id_cliente": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Id Cliente"
-          },
-          "inicio_em": {
-            "format": "date-time",
-            "title": "Inicio Em",
-            "type": "string"
-          },
-          "justificativa_excecao": {
-            "anyOf": [
-              {
-                "maxLength": 2000,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Justificativa Excecao"
-          },
-          "nivel_risco_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Nivel Risco Id"
-          },
-          "observacoes": {
-            "anyOf": [
-              {
-                "maxLength": 4000,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Observacoes"
-          },
-          "origem": {
-            "default": "RECEPCAO",
-            "enum": [
-              "RECEPCAO",
-              "APP",
-              "WEB",
-              "TELEFONE",
-              "PRESENCIAL",
-              "IMPORTACAO",
-              "OUTRO"
-            ],
-            "title": "Origem",
-            "type": "string"
-          },
-          "prioridade_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Prioridade Id"
-          },
-          "procedimento_sigtap": {
-            "anyOf": [
-              {
-                "pattern": "^\\d{10}$",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Procedimento Sigtap"
-          },
-          "protocolo_risco_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Protocolo Risco Id"
-          }
-        },
-        "required": [
-          "agenda_id",
-          "cidadao_id",
-          "inicio_em"
-        ],
-        "title": "AgendamentoCreate",
-        "type": "object"
-      },
       "AgendamentoFalta": {
         "additionalProperties": false,
         "properties": {
@@ -1226,373 +1091,6 @@
           "motivo"
         ],
         "title": "AgendamentoFalta",
-        "type": "object"
-      },
-      "AgendamentoOut": {
-        "properties": {
-          "agenda_id": {
-            "format": "uuid",
-            "title": "Agenda Id",
-            "type": "string"
-          },
-          "agenda_nome": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Agenda Nome"
-          },
-          "alertas": {
-            "items": {
-              "$ref": "#/components/schemas/AlertaOut"
-            },
-            "title": "Alertas",
-            "type": "array"
-          },
-          "cancelado_em": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cancelado Em"
-          },
-          "cidadao_id": {
-            "format": "uuid",
-            "title": "Cidadao Id",
-            "type": "string"
-          },
-          "cidadao_nome_abreviado": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cidadao Nome Abreviado"
-          },
-          "cidadao_nome_exibicao": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cidadao Nome Exibicao"
-          },
-          "codigo_acesso": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "description": "Token do QR/código de barras, exibido apenas na criação.",
-            "title": "Codigo Acesso"
-          },
-          "concluido_em": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Concluido Em"
-          },
-          "confirmado_em": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Confirmado Em"
-          },
-          "encaixe": {
-            "title": "Encaixe",
-            "type": "boolean"
-          },
-          "especialidade_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Especialidade Id"
-          },
-          "estabelecimento_id": {
-            "format": "uuid",
-            "title": "Estabelecimento Id",
-            "type": "string"
-          },
-          "excecao_justificada": {
-            "title": "Excecao Justificada",
-            "type": "boolean"
-          },
-          "falta_automatica": {
-            "title": "Falta Automatica",
-            "type": "boolean"
-          },
-          "falta_em": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Falta Em"
-          },
-          "falta_revertida_em": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Falta Revertida Em"
-          },
-          "fim_em": {
-            "format": "date-time",
-            "title": "Fim Em",
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "id_cliente": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Id Cliente"
-          },
-          "iniciado_em": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Iniciado Em"
-          },
-          "inicio_em": {
-            "format": "date-time",
-            "title": "Inicio Em",
-            "type": "string"
-          },
-          "justificativa_excecao": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Justificativa Excecao"
-          },
-          "justificativa_reversao": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Justificativa Reversao"
-          },
-          "motivo_cancelamento": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Motivo Cancelamento"
-          },
-          "nivel_risco_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Nivel Risco Id"
-          },
-          "observacoes": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Observacoes"
-          },
-          "origem": {
-            "title": "Origem",
-            "type": "string"
-          },
-          "prioridade_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Prioridade Id"
-          },
-          "procedimento_sigtap": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Procedimento Sigtap"
-          },
-          "profissional_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Profissional Id"
-          },
-          "protocolo_risco_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Protocolo Risco Id"
-          },
-          "reagendado_de_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reagendado De Id"
-          },
-          "recepcionado_em": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Recepcionado Em"
-          },
-          "setor_id": {
-            "anyOf": [
-              {
-                "format": "uuid",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Setor Id"
-          },
-          "situacao": {
-            "title": "Situacao",
-            "type": "string"
-          },
-          "tenant_id": {
-            "format": "uuid",
-            "title": "Tenant Id",
-            "type": "string"
-          },
-          "versao": {
-            "title": "Versao",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "id",
-          "tenant_id",
-          "agenda_id",
-          "estabelecimento_id",
-          "cidadao_id",
-          "inicio_em",
-          "fim_em",
-          "situacao",
-          "origem",
-          "encaixe",
-          "excecao_justificada",
-          "falta_automatica",
-          "versao"
-        ],
-        "title": "AgendamentoOut",
         "type": "object"
       },
       "AgendamentoReagendar": {
@@ -2143,6 +1641,422 @@
         "title": "AnimalOut",
         "type": "object"
       },
+      "AplicacaoCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "agendamento_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agendamento Id"
+          },
+          "aplicada_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aplicada Em"
+          },
+          "cidadao_id": {
+            "format": "uuid",
+            "title": "Cidadao Id",
+            "type": "string"
+          },
+          "dose": {
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Dose",
+            "type": "string"
+          },
+          "estabelecimento_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estabelecimento Id"
+          },
+          "estrategia": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estrategia"
+          },
+          "excecao_justificativa": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excecao Justificativa"
+          },
+          "frasco_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frasco Id"
+          },
+          "local_externo": {
+            "anyOf": [
+              {
+                "maxLength": 240,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Externo"
+          },
+          "local_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Id"
+          },
+          "lote_externo": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lote Externo"
+          },
+          "lote_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lote Id"
+          },
+          "origem": {
+            "default": "LOCAL",
+            "enum": [
+              "LOCAL",
+              "EXTERNA"
+            ],
+            "title": "Origem",
+            "type": "string"
+          },
+          "vacina_id": {
+            "format": "uuid",
+            "title": "Vacina Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cidadao_id",
+          "vacina_id",
+          "dose"
+        ],
+        "title": "AplicacaoCreate",
+        "type": "object"
+      },
+      "AplicacaoOut": {
+        "properties": {
+          "alertas": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alertas"
+          },
+          "aplicada_em": {
+            "format": "date-time",
+            "title": "Aplicada Em",
+            "type": "string"
+          },
+          "cidadao_id": {
+            "format": "uuid",
+            "title": "Cidadao Id",
+            "type": "string"
+          },
+          "dose": {
+            "title": "Dose",
+            "type": "string"
+          },
+          "esquema_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Esquema Id"
+          },
+          "estabelecimento_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estabelecimento Id"
+          },
+          "estrategia": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estrategia"
+          },
+          "excecao_justificativa": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excecao Justificativa"
+          },
+          "frasco_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frasco Id"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "local_externo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Externo"
+          },
+          "local_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Local Id"
+          },
+          "lote_externo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lote Externo"
+          },
+          "lote_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lote Id"
+          },
+          "motivo_alteracao": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivo Alteracao"
+          },
+          "origem": {
+            "title": "Origem",
+            "type": "string"
+          },
+          "retifica_de_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Retifica De Id"
+          },
+          "situacao": {
+            "title": "Situacao",
+            "type": "string"
+          },
+          "vacina_id": {
+            "format": "uuid",
+            "title": "Vacina Id",
+            "type": "string"
+          },
+          "versao": {
+            "title": "Versao",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "cidadao_id",
+          "vacina_id",
+          "esquema_id",
+          "dose",
+          "estrategia",
+          "aplicada_em",
+          "origem",
+          "estabelecimento_id",
+          "local_id",
+          "lote_id",
+          "frasco_id",
+          "lote_externo",
+          "local_externo",
+          "alertas",
+          "excecao_justificativa",
+          "situacao",
+          "retifica_de_id",
+          "motivo_alteracao",
+          "versao"
+        ],
+        "title": "AplicacaoOut",
+        "type": "object"
+      },
+      "AplicacaoRetificar": {
+        "additionalProperties": false,
+        "properties": {
+          "aplicada_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aplicada Em"
+          },
+          "dose": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dose"
+          },
+          "estrategia": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estrategia"
+          },
+          "justificativa": {
+            "maxLength": 2000,
+            "minLength": 20,
+            "title": "Justificativa",
+            "type": "string"
+          }
+        },
+        "required": [
+          "justificativa"
+        ],
+        "title": "AplicacaoRetificar",
+        "type": "object"
+      },
       "AtendimentoCancelar": {
         "additionalProperties": false,
         "properties": {
@@ -2231,6 +2145,32 @@
           }
         },
         "title": "AtendimentoUpdate",
+        "type": "object"
+      },
+      "AtivacaoEsquema": {
+        "additionalProperties": false,
+        "properties": {
+          "ativo": {
+            "title": "Ativo",
+            "type": "boolean"
+          },
+          "fonte_normativa": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fonte Normativa"
+          }
+        },
+        "required": [
+          "ativo"
+        ],
+        "title": "AtivacaoEsquema",
         "type": "object"
       },
       "AuditoriaOut": {
@@ -6058,6 +5998,92 @@
         "title": "DomicilioOut",
         "type": "object"
       },
+      "DoseEsquema": {
+        "additionalProperties": false,
+        "properties": {
+          "dose": {
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Dose",
+            "type": "string"
+          },
+          "idade_max_dias": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idade Max Dias"
+          },
+          "idade_min_dias": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Idade Min Dias"
+          },
+          "intervalo_min_dias": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intervalo Min Dias"
+          },
+          "intervalo_recomendado_dias": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intervalo Recomendado Dias"
+          },
+          "ordem": {
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Ordem",
+            "type": "integer"
+          },
+          "sexo": {
+            "anyOf": [
+              {
+                "enum": [
+                  "FEMININO",
+                  "MASCULINO"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Sexo"
+          }
+        },
+        "required": [
+          "dose",
+          "ordem"
+        ],
+        "title": "DoseEsquema",
+        "type": "object"
+      },
       "DuplicidadeOut": {
         "properties": {
           "candidato": {
@@ -7039,6 +7065,184 @@
           "hora_fim"
         ],
         "title": "EscalaCreate",
+        "type": "object"
+      },
+      "EsquemaCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "acao_violacao": {
+            "default": "ALERTAR",
+            "enum": [
+              "ALERTAR",
+              "BLOQUEAR"
+            ],
+            "title": "Acao Violacao",
+            "type": "string"
+          },
+          "ativo": {
+            "default": false,
+            "title": "Ativo",
+            "type": "boolean"
+          },
+          "codigo": {
+            "maxLength": 40,
+            "minLength": 2,
+            "title": "Codigo",
+            "type": "string"
+          },
+          "doses": {
+            "items": {
+              "$ref": "#/components/schemas/DoseEsquema"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Doses",
+            "type": "array"
+          },
+          "fonte_normativa": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fonte Normativa"
+          },
+          "nome": {
+            "maxLength": 200,
+            "minLength": 2,
+            "title": "Nome",
+            "type": "string"
+          },
+          "vacina_id": {
+            "format": "uuid",
+            "title": "Vacina Id",
+            "type": "string"
+          },
+          "vigencia_fim": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vigencia Fim"
+          },
+          "vigencia_inicio": {
+            "format": "date",
+            "title": "Vigencia Inicio",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vacina_id",
+          "codigo",
+          "nome",
+          "vigencia_inicio",
+          "doses"
+        ],
+        "title": "EsquemaCreate",
+        "type": "object"
+      },
+      "EsquemaOut": {
+        "properties": {
+          "acao_violacao": {
+            "title": "Acao Violacao",
+            "type": "string"
+          },
+          "ativo": {
+            "title": "Ativo",
+            "type": "boolean"
+          },
+          "codigo": {
+            "title": "Codigo",
+            "type": "string"
+          },
+          "doses": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Doses",
+            "type": "array"
+          },
+          "fonte_normativa": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fonte Normativa"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "nome": {
+            "title": "Nome",
+            "type": "string"
+          },
+          "numero_versao": {
+            "title": "Numero Versao",
+            "type": "integer"
+          },
+          "origem": {
+            "title": "Origem",
+            "type": "string"
+          },
+          "vacina_id": {
+            "format": "uuid",
+            "title": "Vacina Id",
+            "type": "string"
+          },
+          "versao": {
+            "title": "Versao",
+            "type": "integer"
+          },
+          "vigencia_fim": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Vigencia Fim"
+          },
+          "vigencia_inicio": {
+            "format": "date",
+            "title": "Vigencia Inicio",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "vacina_id",
+          "codigo",
+          "nome",
+          "numero_versao",
+          "vigencia_inicio",
+          "vigencia_fim",
+          "ativo",
+          "origem",
+          "fonte_normativa",
+          "acao_violacao",
+          "doses",
+          "versao"
+        ],
+        "title": "EsquemaOut",
         "type": "object"
       },
       "EstabelecimentoCreate": {
@@ -8676,6 +8880,146 @@
           "versao"
         ],
         "title": "FotoOut",
+        "type": "object"
+      },
+      "FrascoAbrir": {
+        "additionalProperties": false,
+        "properties": {
+          "aberto_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aberto Em"
+          },
+          "local_id": {
+            "format": "uuid",
+            "title": "Local Id",
+            "type": "string"
+          },
+          "lote_id": {
+            "format": "uuid",
+            "title": "Lote Id",
+            "type": "string"
+          },
+          "vacina_id": {
+            "format": "uuid",
+            "title": "Vacina Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "vacina_id",
+          "local_id",
+          "lote_id"
+        ],
+        "title": "FrascoAbrir",
+        "type": "object"
+      },
+      "FrascoOut": {
+        "properties": {
+          "aberto_em": {
+            "format": "date-time",
+            "title": "Aberto Em",
+            "type": "string"
+          },
+          "descartado_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Descartado Em"
+          },
+          "descarte_automatico": {
+            "title": "Descarte Automatico",
+            "type": "boolean"
+          },
+          "descarte_motivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Descarte Motivo"
+          },
+          "doses_aplicadas": {
+            "title": "Doses Aplicadas",
+            "type": "integer"
+          },
+          "doses_perdidas": {
+            "title": "Doses Perdidas",
+            "type": "integer"
+          },
+          "doses_total": {
+            "title": "Doses Total",
+            "type": "integer"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "local_id": {
+            "format": "uuid",
+            "title": "Local Id",
+            "type": "string"
+          },
+          "lote_id": {
+            "format": "uuid",
+            "title": "Lote Id",
+            "type": "string"
+          },
+          "situacao": {
+            "title": "Situacao",
+            "type": "string"
+          },
+          "usar_ate": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Usar Ate"
+          },
+          "vacina_id": {
+            "format": "uuid",
+            "title": "Vacina Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "vacina_id",
+          "local_id",
+          "lote_id",
+          "aberto_em",
+          "usar_ate",
+          "doses_total",
+          "doses_aplicadas",
+          "doses_perdidas",
+          "situacao",
+          "descartado_em",
+          "descarte_motivo",
+          "descarte_automatico"
+        ],
+        "title": "FrascoOut",
         "type": "object"
       },
       "GerarProgramacoes": {
@@ -11397,7 +11741,7 @@
         "properties": {
           "itens": {
             "items": {
-              "$ref": "#/components/schemas/AgendamentoOut"
+              "$ref": "#/components/schemas/app__schemas__agenda__AgendamentoOut"
             },
             "title": "Itens",
             "type": "array"
@@ -16883,6 +17227,28 @@
         "title": "ProtocoloRiscoUpdate",
         "type": "object"
       },
+      "Reagendar": {
+        "additionalProperties": false,
+        "properties": {
+          "data_prevista": {
+            "format": "date",
+            "title": "Data Prevista",
+            "type": "string"
+          },
+          "motivo": {
+            "maxLength": 2000,
+            "minLength": 5,
+            "title": "Motivo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "data_prevista",
+          "motivo"
+        ],
+        "title": "Reagendar",
+        "type": "object"
+      },
       "ReativacaoRequest": {
         "additionalProperties": false,
         "properties": {
@@ -19919,6 +20285,223 @@
         "title": "UsuarioUpdate",
         "type": "object"
       },
+      "VacinaCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "apresentacao": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apresentacao"
+          },
+          "codigo": {
+            "maxLength": 30,
+            "minLength": 1,
+            "title": "Codigo",
+            "type": "string"
+          },
+          "codigo_referencia": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codigo Referencia"
+          },
+          "doses_por_frasco": {
+            "default": 1,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Doses Por Frasco",
+            "type": "integer"
+          },
+          "fabricante": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fabricante"
+          },
+          "nome": {
+            "maxLength": 240,
+            "minLength": 2,
+            "title": "Nome",
+            "type": "string"
+          },
+          "produto_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Produto Id"
+          },
+          "validade_pos_abertura_horas": {
+            "anyOf": [
+              {
+                "maximum": 1440.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validade Pos Abertura Horas"
+          },
+          "via": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Via"
+          }
+        },
+        "required": [
+          "codigo",
+          "nome"
+        ],
+        "title": "VacinaCreate",
+        "type": "object"
+      },
+      "VacinaOut": {
+        "additionalProperties": false,
+        "properties": {
+          "apresentacao": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apresentacao"
+          },
+          "codigo": {
+            "maxLength": 30,
+            "minLength": 1,
+            "title": "Codigo",
+            "type": "string"
+          },
+          "codigo_referencia": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codigo Referencia"
+          },
+          "doses_por_frasco": {
+            "default": 1,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Doses Por Frasco",
+            "type": "integer"
+          },
+          "fabricante": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fabricante"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "nome": {
+            "maxLength": 240,
+            "minLength": 2,
+            "title": "Nome",
+            "type": "string"
+          },
+          "produto_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Produto Id"
+          },
+          "validade_pos_abertura_horas": {
+            "anyOf": [
+              {
+                "maximum": 1440.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validade Pos Abertura Horas"
+          },
+          "versao": {
+            "title": "Versao",
+            "type": "integer"
+          },
+          "via": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Via"
+          }
+        },
+        "required": [
+          "codigo",
+          "nome",
+          "id",
+          "versao"
+        ],
+        "title": "VacinaOut",
+        "type": "object"
+      },
       "ValidadeConsultaOut": {
         "properties": {
           "cidadao_id": {
@@ -20842,6 +21425,508 @@
         "title": "VisitaOut",
         "type": "object"
       },
+      "app__schemas__agenda__AgendamentoCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "agenda_id": {
+            "format": "uuid",
+            "title": "Agenda Id",
+            "type": "string"
+          },
+          "cidadao_id": {
+            "format": "uuid",
+            "title": "Cidadao Id",
+            "type": "string"
+          },
+          "encaixe": {
+            "default": false,
+            "title": "Encaixe",
+            "type": "boolean"
+          },
+          "forcar_incompatibilidade": {
+            "default": false,
+            "title": "Forcar Incompatibilidade",
+            "type": "boolean"
+          },
+          "id_cliente": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Cliente"
+          },
+          "inicio_em": {
+            "format": "date-time",
+            "title": "Inicio Em",
+            "type": "string"
+          },
+          "justificativa_excecao": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Justificativa Excecao"
+          },
+          "nivel_risco_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nivel Risco Id"
+          },
+          "observacoes": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observacoes"
+          },
+          "origem": {
+            "default": "RECEPCAO",
+            "enum": [
+              "RECEPCAO",
+              "APP",
+              "WEB",
+              "TELEFONE",
+              "PRESENCIAL",
+              "IMPORTACAO",
+              "OUTRO"
+            ],
+            "title": "Origem",
+            "type": "string"
+          },
+          "prioridade_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prioridade Id"
+          },
+          "procedimento_sigtap": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{10}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Procedimento Sigtap"
+          },
+          "protocolo_risco_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Protocolo Risco Id"
+          }
+        },
+        "required": [
+          "agenda_id",
+          "cidadao_id",
+          "inicio_em"
+        ],
+        "title": "AgendamentoCreate",
+        "type": "object"
+      },
+      "app__schemas__agenda__AgendamentoOut": {
+        "properties": {
+          "agenda_id": {
+            "format": "uuid",
+            "title": "Agenda Id",
+            "type": "string"
+          },
+          "agenda_nome": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agenda Nome"
+          },
+          "alertas": {
+            "items": {
+              "$ref": "#/components/schemas/AlertaOut"
+            },
+            "title": "Alertas",
+            "type": "array"
+          },
+          "cancelado_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cancelado Em"
+          },
+          "cidadao_id": {
+            "format": "uuid",
+            "title": "Cidadao Id",
+            "type": "string"
+          },
+          "cidadao_nome_abreviado": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cidadao Nome Abreviado"
+          },
+          "cidadao_nome_exibicao": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cidadao Nome Exibicao"
+          },
+          "codigo_acesso": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Token do QR/código de barras, exibido apenas na criação.",
+            "title": "Codigo Acesso"
+          },
+          "concluido_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Concluido Em"
+          },
+          "confirmado_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confirmado Em"
+          },
+          "encaixe": {
+            "title": "Encaixe",
+            "type": "boolean"
+          },
+          "especialidade_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Especialidade Id"
+          },
+          "estabelecimento_id": {
+            "format": "uuid",
+            "title": "Estabelecimento Id",
+            "type": "string"
+          },
+          "excecao_justificada": {
+            "title": "Excecao Justificada",
+            "type": "boolean"
+          },
+          "falta_automatica": {
+            "title": "Falta Automatica",
+            "type": "boolean"
+          },
+          "falta_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Falta Em"
+          },
+          "falta_revertida_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Falta Revertida Em"
+          },
+          "fim_em": {
+            "format": "date-time",
+            "title": "Fim Em",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "id_cliente": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Cliente"
+          },
+          "iniciado_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Iniciado Em"
+          },
+          "inicio_em": {
+            "format": "date-time",
+            "title": "Inicio Em",
+            "type": "string"
+          },
+          "justificativa_excecao": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Justificativa Excecao"
+          },
+          "justificativa_reversao": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Justificativa Reversao"
+          },
+          "motivo_cancelamento": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivo Cancelamento"
+          },
+          "nivel_risco_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nivel Risco Id"
+          },
+          "observacoes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observacoes"
+          },
+          "origem": {
+            "title": "Origem",
+            "type": "string"
+          },
+          "prioridade_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prioridade Id"
+          },
+          "procedimento_sigtap": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Procedimento Sigtap"
+          },
+          "profissional_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profissional Id"
+          },
+          "protocolo_risco_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Protocolo Risco Id"
+          },
+          "reagendado_de_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reagendado De Id"
+          },
+          "recepcionado_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recepcionado Em"
+          },
+          "setor_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Setor Id"
+          },
+          "situacao": {
+            "title": "Situacao",
+            "type": "string"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "versao": {
+            "title": "Versao",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "agenda_id",
+          "estabelecimento_id",
+          "cidadao_id",
+          "inicio_em",
+          "fim_em",
+          "situacao",
+          "origem",
+          "encaixe",
+          "excecao_justificada",
+          "falta_automatica",
+          "versao"
+        ],
+        "title": "AgendamentoOut",
+        "type": "object"
+      },
       "app__schemas__cidadao__CondicaoCreate": {
         "additionalProperties": false,
         "properties": {
@@ -21239,6 +22324,164 @@
           "versao"
         ],
         "title": "DocumentoOut",
+        "type": "object"
+      },
+      "app__schemas__imunizacao__AgendamentoCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "cidadao_id": {
+            "format": "uuid",
+            "title": "Cidadao Id",
+            "type": "string"
+          },
+          "data_prevista": {
+            "format": "date",
+            "title": "Data Prevista",
+            "type": "string"
+          },
+          "dose": {
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Dose",
+            "type": "string"
+          },
+          "estabelecimento_id": {
+            "format": "uuid",
+            "title": "Estabelecimento Id",
+            "type": "string"
+          },
+          "observacao": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observacao"
+          },
+          "vacina_id": {
+            "format": "uuid",
+            "title": "Vacina Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "cidadao_id",
+          "estabelecimento_id",
+          "vacina_id",
+          "dose",
+          "data_prevista"
+        ],
+        "title": "AgendamentoCreate",
+        "type": "object"
+      },
+      "app__schemas__imunizacao__AgendamentoOut": {
+        "additionalProperties": false,
+        "properties": {
+          "aplicacao_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aplicacao Id"
+          },
+          "cidadao_id": {
+            "format": "uuid",
+            "title": "Cidadao Id",
+            "type": "string"
+          },
+          "data_prevista": {
+            "format": "date",
+            "title": "Data Prevista",
+            "type": "string"
+          },
+          "dose": {
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Dose",
+            "type": "string"
+          },
+          "estabelecimento_id": {
+            "format": "uuid",
+            "title": "Estabelecimento Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "motivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivo"
+          },
+          "observacao": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observacao"
+          },
+          "reagendado_para_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reagendado Para Id"
+          },
+          "situacao": {
+            "title": "Situacao",
+            "type": "string"
+          },
+          "vacina_id": {
+            "format": "uuid",
+            "title": "Vacina Id",
+            "type": "string"
+          },
+          "versao": {
+            "title": "Versao",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "cidadao_id",
+          "estabelecimento_id",
+          "vacina_id",
+          "dose",
+          "data_prevista",
+          "id",
+          "situacao",
+          "aplicacao_id",
+          "reagendado_para_id",
+          "motivo",
+          "versao"
+        ],
+        "title": "AgendamentoOut",
         "type": "object"
       },
       "app__schemas__odontologia__AtendimentoCreate": {
@@ -22414,7 +23657,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AgendamentoCreate"
+                "$ref": "#/components/schemas/app__schemas__agenda__AgendamentoCreate"
               }
             }
           },
@@ -22425,7 +23668,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AgendamentoOut"
+                  "$ref": "#/components/schemas/app__schemas__agenda__AgendamentoOut"
                 }
               }
             },
@@ -22474,7 +23717,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AgendamentoOut"
+                  "$ref": "#/components/schemas/app__schemas__agenda__AgendamentoOut"
                 }
               }
             },
@@ -22547,7 +23790,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AgendamentoOut"
+                  "$ref": "#/components/schemas/app__schemas__agenda__AgendamentoOut"
                 }
               }
             },
@@ -22606,7 +23849,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AgendamentoOut"
+                  "$ref": "#/components/schemas/app__schemas__agenda__AgendamentoOut"
                 }
               }
             },
@@ -22704,7 +23947,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AgendamentoOut"
+                  "$ref": "#/components/schemas/app__schemas__agenda__AgendamentoOut"
                 }
               }
             },
@@ -22763,7 +24006,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AgendamentoOut"
+                  "$ref": "#/components/schemas/app__schemas__agenda__AgendamentoOut"
                 }
               }
             },
@@ -22822,7 +24065,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AgendamentoOut"
+                  "$ref": "#/components/schemas/app__schemas__agenda__AgendamentoOut"
                 }
               }
             },
@@ -22881,7 +24124,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AgendamentoOut"
+                  "$ref": "#/components/schemas/app__schemas__agenda__AgendamentoOut"
                 }
               }
             },
@@ -32573,6 +33816,1369 @@
         "summary": "Relatorio Importacao Cnes",
         "tags": [
           "Importações"
+        ]
+      }
+    },
+    "/api/govsaude/v1/imunizacao/agendamentos": {
+      "post": {
+        "description": "B.7-006 — agendamento por cidadão, unidade, vacina e dose.",
+        "operationId": "agendar_api_govsaude_v1_imunizacao_agendamentos_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__schemas__imunizacao__AgendamentoCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__schemas__imunizacao__AgendamentoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Agendar",
+        "tags": [
+          "Imunização"
+        ]
+      }
+    },
+    "/api/govsaude/v1/imunizacao/agendamentos/{id}/falta": {
+      "post": {
+        "description": "B.7-007 — falta registrada.",
+        "operationId": "falta_api_govsaude_v1_imunizacao_agendamentos__id__falta_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Motivo"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__schemas__imunizacao__AgendamentoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Falta",
+        "tags": [
+          "Imunização"
+        ]
+      }
+    },
+    "/api/govsaude/v1/imunizacao/agendamentos/{id}/reagendar": {
+      "post": {
+        "description": "B.7-007 — reagendamento encadeado.",
+        "operationId": "reagendar_api_govsaude_v1_imunizacao_agendamentos__id__reagendar_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Reagendar"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__schemas__imunizacao__AgendamentoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reagendar",
+        "tags": [
+          "Imunização"
+        ]
+      }
+    },
+    "/api/govsaude/v1/imunizacao/aplicacoes": {
+      "post": {
+        "description": "B.7-002, B.7-008, B.7-009, B.7-010, B.7-027 — aplicação nominal com regras,\nbaixa de estoque/frasco e registro externo.",
+        "operationId": "aplicar_api_govsaude_v1_imunizacao_aplicacoes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AplicacaoCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AplicacaoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Aplicar",
+        "tags": [
+          "Imunização"
+        ]
+      }
+    },
+    "/api/govsaude/v1/imunizacao/aplicacoes/{id}": {
+      "get": {
+        "description": "B.7-028.",
+        "operationId": "obter_api_govsaude_v1_imunizacao_aplicacoes__id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AplicacaoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Obter",
+        "tags": [
+          "Imunização"
+        ]
+      }
+    },
+    "/api/govsaude/v1/imunizacao/aplicacoes/{id}/exportacao-rnds": {
+      "get": {
+        "description": "B.7-013 — RIA/RNDS; pendente sem os artefatos oficiais (Fase 11).",
+        "operationId": "exportacao_rnds_api_govsaude_v1_imunizacao_aplicacoes__id__exportacao_rnds_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Exportacao Rnds",
+        "tags": [
+          "Imunização"
+        ]
+      }
+    },
+    "/api/govsaude/v1/imunizacao/aplicacoes/{id}/invalidar": {
+      "post": {
+        "description": "B.7-028 — invalida registro indevido sem apagá-lo.",
+        "operationId": "invalidar_api_govsaude_v1_imunizacao_aplicacoes__id__invalidar_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Motivo"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AplicacaoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Invalidar",
+        "tags": [
+          "Imunização"
+        ]
+      }
+    },
+    "/api/govsaude/v1/imunizacao/aplicacoes/{id}/retificar": {
+      "post": {
+        "description": "B.7-028 — retificação com nova versão e justificativa.",
+        "operationId": "retificar_api_govsaude_v1_imunizacao_aplicacoes__id__retificar_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AplicacaoRetificar"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AplicacaoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retificar",
+        "tags": [
+          "Imunização"
+        ]
+      }
+    },
+    "/api/govsaude/v1/imunizacao/busca-ativa": {
+      "get": {
+        "description": "B.7-024 — cidadãos com doses atrasadas pelo aprazamento.",
+        "operationId": "busca_ativa_api_govsaude_v1_imunizacao_busca_ativa_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "vacina_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Vacina Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limite",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limite",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Busca Ativa",
+        "tags": [
+          "Imunização"
+        ]
+      }
+    },
+    "/api/govsaude/v1/imunizacao/cidadaos/{cidadao_id}/agendamentos": {
+      "get": {
+        "description": "B.7-006, B.7-007.",
+        "operationId": "agendamentos_api_govsaude_v1_imunizacao_cidadaos__cidadao_id__agendamentos_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cidadao_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Cidadao Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/app__schemas__imunizacao__AgendamentoOut"
+                  },
+                  "title": "Response Agendamentos Api Govsaude V1 Imunizacao Cidadaos  Cidadao Id  Agendamentos Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Agendamentos",
+        "tags": [
+          "Imunização"
+        ]
+      }
+    },
+    "/api/govsaude/v1/imunizacao/cidadaos/{cidadao_id}/aplicacoes": {
+      "get": {
+        "description": "B.7-009, B.7-028 — histórico vacinal (``todas`` inclui retificadas/invalidadas).",
+        "operationId": "historico_api_govsaude_v1_imunizacao_cidadaos__cidadao_id__aplicacoes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cidadao_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Cidadao Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "todas",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Todas",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AplicacaoOut"
+                  },
+                  "title": "Response Historico Api Govsaude V1 Imunizacao Cidadaos  Cidadao Id  Aplicacoes Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Historico",
+        "tags": [
+          "Imunização"
+        ]
+      }
+    },
+    "/api/govsaude/v1/imunizacao/cidadaos/{cidadao_id}/aprazamento": {
+      "get": {
+        "description": "B.7-011 — próximas doses pelos esquemas vigentes, com memória de cálculo.",
+        "operationId": "aprazamento_api_govsaude_v1_imunizacao_cidadaos__cidadao_id__aprazamento_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cidadao_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Cidadao Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Aprazamento",
+        "tags": [
+          "Imunização"
+        ]
+      }
+    },
+    "/api/govsaude/v1/imunizacao/cidadaos/{cidadao_id}/carteira": {
+      "get": {
+        "description": "B.7-012 — carteira/certificado com histórico, doses futuras e QR de verificação.",
+        "operationId": "carteira_api_govsaude_v1_imunizacao_cidadaos__cidadao_id__carteira_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cidadao_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Cidadao Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "formato",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "pattern": "^(json|pdf)$",
+              "title": "Formato",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Carteira",
+        "tags": [
+          "Imunização"
+        ]
+      }
+    },
+    "/api/govsaude/v1/imunizacao/esquemas": {
+      "get": {
+        "description": "B.7-029 — versões e vigências.",
+        "operationId": "listar_esquemas_api_govsaude_v1_imunizacao_esquemas_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "vacina_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Vacina Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/EsquemaOut"
+                  },
+                  "title": "Response Listar Esquemas Api Govsaude V1 Imunizacao Esquemas Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Listar Esquemas",
+        "tags": [
+          "Imunização"
+        ]
+      },
+      "post": {
+        "description": "B.7-001, B.7-011, B.7-029 — nova versão do esquema (doses, idades, intervalos, sexo).",
+        "operationId": "criar_esquema_api_govsaude_v1_imunizacao_esquemas_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EsquemaCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EsquemaOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Criar Esquema",
+        "tags": [
+          "Imunização"
+        ]
+      }
+    },
+    "/api/govsaude/v1/imunizacao/esquemas/{id}/ativacao": {
+      "post": {
+        "description": "B.7-029 — ativa com fonte normativa; a versão anterior encerra a vigência.",
+        "operationId": "ativacao_api_govsaude_v1_imunizacao_esquemas__id__ativacao_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AtivacaoEsquema"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EsquemaOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ativacao",
+        "tags": [
+          "Imunização"
+        ]
+      }
+    },
+    "/api/govsaude/v1/imunizacao/frascos": {
+      "post": {
+        "description": "B.7-003, B.7-004 — abertura com prazo de uso; o frasco sai do estoque.",
+        "operationId": "abrir_frasco_api_govsaude_v1_imunizacao_frascos_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FrascoAbrir"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FrascoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Abrir Frasco",
+        "tags": [
+          "Imunização"
+        ]
+      }
+    },
+    "/api/govsaude/v1/imunizacao/frascos/descartar-vencidos": {
+      "post": {
+        "description": "B.7-005 — descarte assistido dos frascos com prazo de uso expirado.",
+        "operationId": "descartar_vencidos_api_govsaude_v1_imunizacao_frascos_descartar_vencidos_post",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Descartar Vencidos",
+        "tags": [
+          "Imunização"
+        ]
+      }
+    },
+    "/api/govsaude/v1/imunizacao/frascos/{id}/descartar": {
+      "post": {
+        "description": "B.7-003, B.7-005 — descarte com motivo; doses restantes viram perda.",
+        "operationId": "descartar_api_govsaude_v1_imunizacao_frascos__id__descartar_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Motivo"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FrascoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Descartar",
+        "tags": [
+          "Imunização"
+        ]
+      }
+    },
+    "/api/govsaude/v1/imunizacao/locais/{local_id}/frascos": {
+      "get": {
+        "description": "B.7-003 — frascos do local por situação.",
+        "operationId": "frascos_api_govsaude_v1_imunizacao_locais__local_id__frascos_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "local_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Local Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "situacao",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(ABERTO|ESGOTADO|DESCARTADO)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "ABERTO",
+              "title": "Situacao"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FrascoOut"
+                  },
+                  "title": "Response Frascos Api Govsaude V1 Imunizacao Locais  Local Id  Frascos Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Frascos",
+        "tags": [
+          "Imunização"
+        ]
+      }
+    },
+    "/api/govsaude/v1/imunizacao/relatorios/aplicacoes": {
+      "get": {
+        "description": "B.7-025 — aplicações por unidade, profissional, vacina, dose, estratégia, idade ou mês.",
+        "operationId": "relatorio_aplicacoes_api_govsaude_v1_imunizacao_relatorios_aplicacoes_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "inicio",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Inicio",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fim",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Fim",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agrupar_por",
+            "required": false,
+            "schema": {
+              "default": "mes",
+              "pattern": "^(mes|estabelecimento|profissional|vacina|dose|estrategia|faixa_etaria)$",
+              "title": "Agrupar Por",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "comparar",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Comparar",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "formato",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "pattern": "^(json|csv|xlsx|pdf)$",
+              "title": "Formato",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Relatorio Aplicacoes",
+        "tags": [
+          "Imunização"
+        ]
+      }
+    },
+    "/api/govsaude/v1/imunizacao/relatorios/locais/{local_id}/frascos": {
+      "get": {
+        "description": "B.7-026 — frascos, aplicações, perdas e saldo por lote.",
+        "operationId": "relatorio_frascos_api_govsaude_v1_imunizacao_relatorios_locais__local_id__frascos_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "local_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Local Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "inicio",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Inicio",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fim",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Fim",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "formato",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "pattern": "^(json|csv|xlsx|pdf)$",
+              "title": "Formato",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Relatorio Frascos",
+        "tags": [
+          "Imunização"
+        ]
+      }
+    },
+    "/api/govsaude/v1/imunizacao/vacinas": {
+      "get": {
+        "description": "B.7-001.",
+        "operationId": "listar_vacinas_api_govsaude_v1_imunizacao_vacinas_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/VacinaOut"
+                  },
+                  "title": "Response Listar Vacinas Api Govsaude V1 Imunizacao Vacinas Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Listar Vacinas",
+        "tags": [
+          "Imunização"
+        ]
+      },
+      "post": {
+        "description": "B.7-001 — imunobiológico: produto de estoque, fabricante, apresentação, doses/frasco.",
+        "operationId": "criar_vacina_api_govsaude_v1_imunizacao_vacinas_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VacinaCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VacinaOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Criar Vacina",
+        "tags": [
+          "Imunização"
+        ]
+      }
+    },
+    "/api/govsaude/v1/imunizacao/verificar/{token}": {
+      "get": {
+        "description": "B.7-012 — verificação pública do QR (titular abreviado, sem dado clínico).",
+        "operationId": "verificar_api_govsaude_v1_imunizacao_verificar__token__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "token",
+            "required": true,
+            "schema": {
+              "title": "Token",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Verificar",
+        "tags": [
+          "Imunização"
         ]
       }
     },

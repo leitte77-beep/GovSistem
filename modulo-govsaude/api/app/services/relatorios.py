@@ -249,6 +249,8 @@ GRUPOS_MOV = {
     "VENCIMENTO": "perdas",
     "AJUSTE_POSITIVO": "ajustes",
     "AJUSTE_NEGATIVO": "ajustes",
+    "APLICACAO_VACINA": "saidas",
+    "ABERTURA_FRASCO": "saidas",
 }
 
 
