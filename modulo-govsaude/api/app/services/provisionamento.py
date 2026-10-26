@@ -24,6 +24,7 @@ from app.services.seeds import (
     garantir_configuracoes_padrao,
     garantir_grupos_tenant,
     garantir_prioridades_configuraveis,
+    garantir_programas_padrao,
 )
 
 logger = logging.getLogger("govsaude.provisionamento")
@@ -100,6 +101,7 @@ async def provisionar_organizacao(
     await garantir_grupos_tenant(db, organizacao.id)
     await garantir_configuracoes_padrao(db, organizacao.id)
     await garantir_prioridades_configuraveis(db, organizacao.id)
+    await garantir_programas_padrao(db, organizacao.id)
     return organizacao
 
 

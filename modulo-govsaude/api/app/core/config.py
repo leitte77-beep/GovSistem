@@ -40,10 +40,15 @@ class Settings(BaseSettings):
     # ── Identidade ──────────────────────────────────────────────────────────
     APP_NAME: str = "GovSaúde API"
     APP_TITLE: str = "GovSaúde — Gestão da Saúde Pública Municipal"
-    VERSION: str = "0.4.0"
+    VERSION: str = "0.7.0"
     RELEASE_NOTES: str = (
-        "Fase 4 — agenda, recepção, fila ordenada, classificação de risco, "
-        "painéis de chamada e falta automática auditada."
+        "Fase 7 — odontologia: catálogo parametrizável, odontograma versionado "
+        "(FDI), atendimento com anamnese e digitação retroativa, procedimentos "
+        "programados × realizados, documentos e relatórios. "
+        "Fase 6 — motor genérico de programas e linhas de cuidado, inscrições, "
+        "programação previsto × realizado, busca ativa, formulários versionados, "
+        "indicadores e estimativa de demanda futura. Seeds nacionais entram "
+        "inativos e sem regra clínica oficial até a validação do tenant."
     )
     APP_ENV: str = "development"
     DEBUG: bool = False

@@ -61,6 +61,29 @@ from app.models.nucleo import (
     UsuarioGrupo,
     VinculoProfissional,
 )
+from app.models.odontologia import (
+    OdontoAtendimento,
+    OdontoCondicao,
+    OdontoDocumento,
+    Odontograma,
+    OdontoProcedimento,
+)
+from app.models.programa import (
+    Programa,
+    ProgramaBuscaAtiva,
+    ProgramaInscricao,
+    ProgramaItem,
+    ProgramaProgramacao,
+)
+from app.models.prontuario import (
+    Atendimento,
+    EvolucaoSOAP,
+    PlanoCuidado,
+    Prescricao,
+    ProblemaClinico,
+    RegistroAssistencial,
+    SinalVital,
+)
 from app.models.rede import (
     Escala,
     HorarioFuncionamento,
@@ -85,9 +108,41 @@ from app.models.referencia import (
     SigtapProcedimento,
     VersaoReferencia,
 )
-from app.models.territorio import AnimalDomicilio, Domicilio, Familia, FamiliaDomicilio, FamiliaMembro, Territorio, VisitaDomiciliar
+from app.models.territorio import (
+    AnimalDomicilio,
+    Domicilio,
+    Familia,
+    FamiliaDomicilio,
+    FamiliaMembro,
+    Territorio,
+    VisitaDomiciliar,
+)
 
 __all__ = [
+    "SinalVital",
+    "ProblemaClinico",
+    "Prescricao",
+    "PlanoCuidado",
+    "EvolucaoSOAP",
+    "Atendimento",
+    "RegistroAssistencial",
+    "VisitaDomiciliar",
+    "Territorio",
+    "FamiliaMembro",
+    "FamiliaDomicilio",
+    "Familia",
+    "Domicilio",
+    "AnimalDomicilio",
+    "ProgramaProgramacao",
+    "ProgramaItem",
+    "ProgramaInscricao",
+    "ProgramaBuscaAtiva",
+    "Programa",
+    "OdontoAtendimento",
+    "OdontoCondicao",
+    "OdontoDocumento",
+    "Odontograma",
+    "OdontoProcedimento",
     "Agenda",
     "AgendaBloqueio",
     "AgendaHorario",

@@ -156,9 +156,78 @@ dashboard. O GeoJSON é a porta de integração para geoprocessamento municipal 
 expõe apenas a geometria e metadados do território, sem pessoa, família,
 domicílio ou trajetos.
 
-## Fases 5–16
+## Fase 5 — prontuário (PEC) ambulatorial
 
-As fases 5–16 não foram iniciadas nesta entrega.
+| Requisito | O que foi entregue | Endpoints | Status |
+|---|---|---|---|
+| B.6-004, B.6-006 | Atendimento, evolução SOAP, sinais vitais, problemas, plano de cuidados e prescrição estruturada | `/prontuarios/atendimentos`, SOAP, sinais, problemas, planos e prescrições | IMPLEMENTADO (núcleo PEC) |
+| B.6-009…044 | Assinatura, encerramento, retificação encadeada e linha do tempo auditada; escrita bloqueada após encerramento | `.../encerrar`, `/evolucoes/{id}/assinar`, `.../retificar`, `.../linha-do-tempo` | IMPLEMENTADO (núcleo PEC) |
+| B.12-013, B.12-021…025 | Isolamento de tenant, escopo de estabelecimento, sigilo e auditoria de leitura/escrita | todas as rotas do PEC | IMPLEMENTADO (núcleo PEC) |
+
+Alertas de alergia/interação, disponibilidade em estoque, regras de exame,
+notificações compulsórias e integrações dependem de bases oficiais ou das fases
+de estoque/regulação; não foram inferidos pelo sistema.
+
+## Fase 6 — ações programáticas e linhas de cuidado
+
+O catálogo oficial do Lote 02 não está no repositório; os IDs B.2-001…015 vêm
+da seção 12 do `PROMPT-BACKEND-GOVSAUDE.md` e a associação por funcionalidade
+abaixo é **inferida** (validar no catálogo). Testes em
+`tests/test_fase6_programas.py`.
+
+| Requisito | O que foi entregue | Endpoints | Status |
+|---|---|---|---|
+| B.2-001…002 | Motor genérico de programas/linhas de cuidado com itens previstos (consulta, exame, fornecimento, vacina, procedimento, orientação), periodicidade, faixa etária/sexo/gestante por item, nova versão por vigência e `If-Match` | `/programas`, `/programas/{id}/itens`, `/programas/{id}/nova-versao`, `/programas/linhas-cuidado` | IMPLEMENTADO (mapeamento inferido) |
+| B.2-003…005 | Elegibilidade por sexo/idade/gestante/condição ativa; inscrição com exceção justificada; situação ATIVA/SUSPENSA/ENCERRADA/TRANSFERIDA com motivo; inscrição vigente única | `/programas/{id}/elegibilidade`, `/inscricoes-programa`, `.../encerrar` | IMPLEMENTADO (mapeamento inferido) |
+| B.2-004 | Formulário dinâmico versionado por programa e validação de `dados_clinicos` | `/formularios`, `/formularios/{codigo}/respostas` | IMPLEMENTADO |
+| B.2-006…008 | Programação previsto × realizado, geração idempotente por horizonte, realização vinculável ao atendimento, remarcação e perda | `/inscricoes-programa/{id}/gerar-programacoes`, `/programas/{id}/gerar-programacoes`, `/programacoes-programa` (+ `realizar`, `remarcar`, `perder`) | IMPLEMENTADO |
+| B.2-009 | Busca ativa: pendências por atraso, tentativas com desfecho, lista nominal (CPF/CNS mascarados) | `/buscas-ativas`, `/buscas-ativas/pendencias`, `/programas/{id}/lista-nominal` | IMPLEMENTADO |
+| B.2-010 | Estimativa de demanda futura por item, com fórmula exposta | `/programas/{id}/estimativa-demanda` | IMPLEMENTADO (integração com estoque entra na Fase 8) |
+| B.2-011…014 | Modelos de saúde da mulher, criança, hipertensão, diabetes e gestante como **seed** `SEED_A_VALIDAR` com formulário próprio | seed em `services/seeds.py:garantir_programas_padrao` | IMPLEMENTADO (estrutura; regras clínicas pendentes, ver pendências) |
+| B.2-015 | Resumo do programa: inscritos por situação, previsto × realizado por item | `/programas/{id}/resumo` | IMPLEMENTADO (indicadores oficiais na Fase 12) |
+
+### Observações de rastreabilidade da Fase 6
+
+- Os seeds trazem só a estrutura (nome, itens, formulário). Periodicidade,
+  faixa etária e condições CID-10/CIAP-2 ficam vazias e o programa nasce
+  **inativo**; o tenant preenche a partir do protocolo oficial e ativa via
+  `PATCH /programas/{id}` (`ativo=true`).
+- Item sem periodicidade gera uma única programação (ação pontual).
+- A elegibilidade alerta; o profissional inscreve fora do critério com
+  `justificativa_excecao`, auditada.
+
+## Fase 7 — odontologia
+
+IDs B.3-001…027 da seção 12 do `PROMPT-BACKEND-GOVSAUDE.md`; a associação por
+funcionalidade é **inferida** (validar no catálogo do Lote 02). B.3-002 e
+B.3-027 (LEDI) são escopo da Fase 11 e aqui só têm a porta. Testes em
+`tests/test_fase7_odontologia.py`.
+
+| Requisito | O que foi entregue | Endpoints | Status |
+|---|---|---|---|
+| B.3-001 | Catálogo de condições/procedimentos do tenant com cor, aplicabilidade (dente, face, sextante, arcada, boca), dentição e SIGTAP conferido na base importada | `/odontologia/condicoes` | IMPLEMENTADO |
+| B.3-003/004 | Triagem (JSON) e classificação de risco validada contra `odontologia.classificacoes_risco` do tenant | `POST/PATCH /odontologia/atendimentos` | IMPLEMENTADO (mapeamento inferido) |
+| B.3-005 | Anamnese por formulário dinâmico versionado; grava a versão usada | idem | IMPLEMENTADO |
+| B.3-006/024 | Odontograma versionado e imutável: notação FDI, faces por anatomia, controle de concorrência por `versao_base`, histórico e planejado | `/odontologia/cidadaos/{id}/odontograma`, `.../versoes` | IMPLEMENTADO |
+| B.3-009/010 | Atendimento odontológico aberto → finalizado/cancelado; evolução cifrada; leitura auditada `READ_SENSIVEL`; escopo por estabelecimento | `/odontologia/atendimentos`, `.../finalizar`, `.../cancelar` | IMPLEMENTADO |
+| B.3-011/018/022 | Procedimentos programados × realizados por dente/face/região, vinculados ao atendimento, com insumos | `/odontologia/procedimentos`, `.../realizar`, `.../cancelar` | IMPLEMENTADO (baixa de estoque dos insumos na Fase 8) |
+| B.3-013 | Digitação retroativa com justificativa e limite configurável (`odontologia.retroativo_dias_maximos`) | `POST /odontologia/atendimentos` | IMPLEMENTADO |
+| B.3-014 | Documentos (atestado, declaração, receita, orientação, encaminhamento) com conteúdo cifrado | `/odontologia/atendimentos/{id}/documentos` | IMPLEMENTADO (modelos e assinatura digital pendentes) |
+| B.3-019…021 | Relatório de produção por dente, face ou procedimento | `/odontologia/relatorios/procedimentos` | IMPLEMENTADO (mapeamento inferido) |
+| B.3-027 | Exportação LEDI do atendimento odontológico | `/odontologia/atendimentos/{id}/exportacao-ledi` | PENDENTE_ESPECIFICACAO_OFICIAL (teste de contrato `xfail`) |
+| B.3-008 | Agenda odontológica | entregue na Fase 4 | IMPLEMENTADO |
+| Demais IDs B.3 | Não identificados sem o catálogo oficial | — | A CONFERIR |
+
+### Observações de rastreabilidade da Fase 7
+
+- Nenhum catálogo de condição, cor ou código SIGTAP é semeado: o tenant cadastra.
+- Atendimento finalizado não é editado; retificação com nova versão fica para
+  quando o requisito for confirmado (mesmo padrão pendente da Fase 5).
+- Procedimento realizado não é cancelado; atendimento com produção não é cancelado.
+
+## Fases 8–16
+
+As fases 8–16 não foram iniciadas nesta entrega.
 
 ## Pendências oficiais
 

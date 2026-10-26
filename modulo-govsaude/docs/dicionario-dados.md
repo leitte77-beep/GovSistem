@@ -242,6 +242,55 @@ lógica. `chamadas_painel`: fila, destino, tipo (`NORMAL|PREFERENCIAL|
 RECHAMADA`), texto exibido, texto para voz, autor e instante. Classe: PUBLICO
 (configuração do painel) / PESSOAL (histórico com nome abreviado).
 
+## Fase 6 — programas e linhas de cuidado
+
+### programas / programa_itens
+`programas`: `tenant_id`, `codigo`, `nome`, `tipo` (`PROGRAMA|LINHA_CUIDADO`),
+`linha_cuidado`, `descricao`, `criterios_elegibilidade` JSON (sexos, idades,
+gestante, condições CID-10/CIAP-2 e flag de exigência), `periodicidade_padrao_dias`,
+`formulario_id`, `marcador_gestante`, `base_normativa`, `fonte`, `origem`
+(`TENANT|SEED_A_VALIDAR`), `versao_programa`, `ativo`, vigência, `versao` e
+baixa lógica. Classe: PUBLICO (configuração assistencial).
+`programa_itens`: `programa_id`, `tipo` (`CONSULTA|EXAME|FORNECIMENTO|VACINA|
+PROCEDIMENTO|ORIENTACAO`), `codigo`, `descricao`, `periodicidade_dias`,
+faixa etária em meses, sexo, gestante, obrigatoriedade, quantidade, unidade,
+ordem, observações, `ativo`. Classe: PUBLICO. Nenhuma periodicidade/faixa
+oficial é fixada no código; seeds entram vazios e `SEED_A_VALIDAR`.
+
+### programa_inscricoes
+`tenant_id`, `programa_id`, `cidadao_id`, `estabelecimento_id`, `equipe_id`,
+`profissional_responsavel_id`, `situacao` (`ATIVA|SUSPENSA|ENCERRADA|
+TRANSFERIDA`), `motivo_saida`, `data_entrada`/`data_saida`, `gestante`,
+`dados_clinicos` JSON estruturado, `observacoes_cifradas` [C],
+`excecao_justificada`, `justificativa_excecao`, `versao`. Classe:
+PESSOAL/SENSIVEL_SAUDE. `dados_clinicos` é validado pelo formulário versionado;
+observações livres são cifradas (Fernet) e nunca aparecem em URL/log. Índice
+único parcial impede duas inscrições vigentes do mesmo cidadão no programa.
+
+### programa_programacoes
+`tenant_id`, `inscricao_id`, `item_id`, `tipo`, `previsto_para`,
+`realizado_em`, `situacao` (`PREVISTO|REALIZADO|REMARCADO|PERDIDO|CANCELADO`),
+`quantidade`, `atendimento_id` (UUID, sem FK para não acoplar à Fase 5),
+`observacoes_cifradas` [C], `responsavel_id`, `remarcado_de_id`, `versao`.
+Classe: PESSOAL/SENSIVEL_SAUDE. O índice único parcial
+`(tenant, inscricao, item, previsto_para)` para situações abertas garante
+idempotência da geração. Nada é apagado: remarcação/perda apenas mudam a
+situação e preservam o histórico na auditoria.
+
+### programa_buscas_ativas
+`tenant_id`, `inscricao_id`, `programacao_id`, `motivo`, `situacao`
+(`PENDENTE|CONTATADO|RECUPERADO|SEM_SUCESSO|TRANSFERIDO`), `tentativa`,
+`contato_em`, `proxima_tentativa_em`, `desfecho`, `observacoes_cifradas` [C],
+`responsavel_id`, `versao`. Classe: PESSOAL/SENSIVEL_SAUDE (contato e
+desfecho). Lista nominal expõe nome de exibição e CPF/CNS mascarados.
+
+### formularios_dinamicos / respostas_formulario
+`formularios_dinamicos`: `codigo`, `nome`, `versao`, `schema_json` (JSON Schema
+versionado), vigência e `ativo`. Classe: PUBLICO.
+`respostas_formulario`: `formulario_id`, `entidade`, `entidade_id`, `resposta`
+JSON, `versao_formulario`. Classe: PESSOAL/SENSIVEL_SAUDE quando vinculada a
+`programa_inscricao`; leitura audita `READ_SENSIVEL` e a escrita gera diff.
+
 ## Referência (schema `referencia`, sem tenant)
 
 `municipios_ibge`, `ceps`, `cbo`, `cid10`, `ciap2`, `cnae`,

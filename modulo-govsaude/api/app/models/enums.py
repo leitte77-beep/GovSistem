@@ -337,3 +337,53 @@ class MetodoIdentificacao(str, Enum):
     QR_CODE = "QR_CODE"
     BIOMETRIA = "BIOMETRIA"
     MANUAL = "MANUAL"
+
+
+class TipoPrograma(str, Enum):
+    PROGRAMA = "PROGRAMA"
+    LINHA_CUIDADO = "LINHA_CUIDADO"
+
+
+class OrigemPrograma(str, Enum):
+    TENANT = "TENANT"
+    SEED_A_VALIDAR = "SEED_A_VALIDAR"
+
+
+class TipoItemPrograma(str, Enum):
+    CONSULTA = "CONSULTA"
+    EXAME = "EXAME"
+    FORNECIMENTO = "FORNECIMENTO"
+    VACINA = "VACINA"
+    PROCEDIMENTO = "PROCEDIMENTO"
+    ORIENTACAO = "ORIENTACAO"
+
+
+class SituacaoInscricaoPrograma(str, Enum):
+    ATIVA = "ATIVA"
+    SUSPENSA = "SUSPENSA"
+    ENCERRADA = "ENCERRADA"
+    TRANSFERIDA = "TRANSFERIDA"
+
+
+class SituacaoProgramacao(str, Enum):
+    PREVISTO = "PREVISTO"
+    REALIZADO = "REALIZADO"
+    REMARCADO = "REMARCADO"
+    PERDIDO = "PERDIDO"
+    CANCELADO = "CANCELADO"
+
+
+class MotivoBuscaAtiva(str, Enum):
+    ATRASO = "ATRASO"
+    FALTA = "FALTA"
+    EXAME_PENDENTE = "EXAME_PENDENTE"
+    FORNECIMENTO_PENDENTE = "FORNECIMENTO_PENDENTE"
+    OUTRO = "OUTRO"
+
+
+class SituacaoBuscaAtiva(str, Enum):
+    PENDENTE = "PENDENTE"
+    CONTATADO = "CONTATADO"
+    RECUPERADO = "RECUPERADO"
+    SEM_SUCESSO = "SEM_SUCESSO"
+    TRANSFERIDO = "TRANSFERIDO"

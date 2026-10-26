@@ -23,6 +23,7 @@
 | Saúde | anamnese, evolução, diagnósticos, prescrições, exames, vacinas, alergias, saúde mental, HIV/IST, violência | SENSIVEL_SAUDE / SIGILOSO |
 | Território | domicílio, família, microárea, visitas, trajetos GPS | PESSOAL/SENSÍVEL_SAUDE |
 | Agenda e recepção | agendamento, fila, classificação de risco, chamadas, nome abreviado | PESSOAL/SENSÍVEL_SAUDE |
+| Programas e linhas de cuidado | inscrição, critérios de elegibilidade, condições, dados clínicos estruturados, programação, busca ativa e desfecho de contato | PESSOAL/SENSÍVEL_SAUDE |
 | Profissionais | nome, CBO, conselho, vínculos, escala | PESSOAL |
 | Acesso e autenticação | login, IP, user-agent, MFA, sessões, permissões | PESSOAL |
 | Auditoria | quem acessou o quê, quando, finalidade, diff mascarado | PESSOAL/SENSÍVEL |
@@ -42,6 +43,9 @@ cumprimento de obrigações legais e exercício regular de direitos.
 - Níveis de sigilo com registro velado e quebra justificada/auditada.
 - Sigilo por estabelecimento/equipe/especialidade.
 - CPF/CNS guardados com HMAC e ciphertext; mascarados em listagens.
+- Programas: `dados_clinicos` e observações só são exibidos a quem tem
+  `programa:gerenciar` ou `prontuario:ler`; busca ativa e lista nominal exigem
+  `programa:busca_ativa`, escopo de estabelecimento e documentos mascarados.
 - Logs de aplicação sem dados pessoais; `request_id` para correlação.
 
 ## 5. Retenção e eliminação

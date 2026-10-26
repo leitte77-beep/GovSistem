@@ -73,6 +73,7 @@ class Permissao(str, Enum):
     # Programas / odontologia
     PROGRAMA_LER = "programa:ler"
     PROGRAMA_GERENCIAR = "programa:gerenciar"
+    PROGRAMA_BUSCA_ATIVA = "programa:busca_ativa"
     ODONTOLOGIA_LER = "odontologia:ler"
     ODONTOLOGIA_GERENCIAR = "odontologia:gerenciar"
 
@@ -158,6 +159,7 @@ _CLINICO = _p(
     Permissao.EXAME_SOLICITAR,
     Permissao.ENCAMINHAMENTO_CRIAR,
     Permissao.PROGRAMA_GERENCIAR,
+    Permissao.PROGRAMA_BUSCA_ATIVA,
     Permissao.ODONTOLOGIA_LER,
     Permissao.ODONTOLOGIA_GERENCIAR,
     Permissao.NOTIFICACAO_COMPULSORIA,
@@ -186,6 +188,7 @@ _GESTAO = _p(
     Permissao.INTEGRACAO_LER,
     Permissao.INTEGRACAO_GERENCIAR,
     Permissao.INDICADOR_GERENCIAR,
+    Permissao.PROGRAMA_BUSCA_ATIVA,
     Permissao.CONTRATO_LER,
     Permissao.CONTRATO_GERENCIAR,
     Permissao.AUTORIZACAO_GERENCIAR,
@@ -236,6 +239,7 @@ _ACS = _p(
     Permissao.FILA_LER,
     Permissao.NOTIFICACAO_LER,
     Permissao.PROGRAMA_LER,
+    Permissao.PROGRAMA_BUSCA_ATIVA,
     Permissao.IMUNIZACAO_LER,
     Permissao.INDICADOR_LER,
 )

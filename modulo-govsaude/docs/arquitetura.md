@@ -108,6 +108,29 @@ mesma transação; o SSE usa o canal por estabelecimento/setor já existente. A
 falta automática é uma tarefa Celery idempotente por estado. Biometria é uma
 porta com adaptador pendente: não há template biométrico no banco.
 
+## Fase 6
+
+O subpacote `app/models/programa.py` concentra programas/linhas de cuidado,
+itens previstos, inscrições, programação previsto × realizado e busca ativa. O
+`app/motores/formularios.py` implementa apenas o subconjunto de JSON Schema
+necessário às fichas (sem dependência nova). `app/services/programas.py`
+concentra elegibilidade, geração idempotente de programação, indicadores,
+lista nominal e estimativa de demanda; `app/services/formularios.py` mantém os
+formulários versionados. As rotas ficam em `api/v1/programas.py`,
+`inscricoes_programa.py`, `programacoes_programa.py`, `buscas_ativas.py` e
+`formularios.py`.
+
+Os seeds nacionais (`garantir_programas_padrao`) criam somente a **estrutura**
+dos cinco modelos (mulher, criança, hipertensão, diabetes, gestante), com
+formulário próprio, **inativos** e sem periodicidade, faixa etária ou condição
+oficial. O tenant valida o protocolo, preenche as regras e ativa o programa.
+Elegibilidade bloqueia a inscrição sem justificativa; a exceção é auditada. A
+geração de programação é idempotente pelo índice parcial
+`(tenant, inscrição, item, data)` e a remarcação preserva o registro anterior
+como `REMARCADO`. Toda leitura nominal é filtrada por escopo de estabelecimento
+e mascara CPF/CNS; `dados_clinicos` e observações livres só aparecem para quem
+tem `programa:gerenciar` ou `prontuario:ler`.
+
 ## Decisões relevantes da Fase 0
 
 1. **IDs do módulo preservam o UUID da plataforma** quando o payload traz UUID,

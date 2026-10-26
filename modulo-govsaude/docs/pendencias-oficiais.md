@@ -53,6 +53,20 @@ depende de artefato oficial fica atrás de uma porta e recebe o estado
 | Regra de antecedência/tolerância | Definição municipal de antecedência mínima/máxima e tolerância de atraso por agenda | Gestor municipal | Campos configuráveis por agenda; os defaults (`0 h`, `365 dias`, `30 min`) são operacionais e precisam de validação |
 | Integração com painéis físicos | Protocolo do painel/TV ou API do fornecedor, se o município já possui telas | Fornecedor do painel | A API entrega SSE + histórico + texto de voz; a integração específica do hardware não foi antecipada |
 
+## Fase 6 — programas e linhas de cuidado
+
+| Item | Artefato necessário | Onde obter | Consequência |
+|---|---|---|---|
+| Protocolos dos modelos (mulher, criança, hipertensão, diabetes, gestante) | Periodicidade de consultas/exames/fornecimentos, faixas etárias e códigos CID-10/CIAP-2 de entrada vigentes | Cadernos de Atenção Básica/protocolos MS-SAPS e protocolo municipal | Seeds `SEED_A_VALIDAR` sem regra clínica e inativos; o motor não agenda nada até o tenant preencher e ativar |
+
+## Fase 7 — odontologia
+
+| Item | Artefato necessário | Onde obter | Consequência |
+|---|---|---|---|
+| LEDI — ficha de atendimento odontológico | `.thrift` oficial da versão vigente | Portal e-SUS APS / documentação LEDI | `exportacao-ledi` retorna `PENDENTE_ESPECIFICACAO_OFICIAL`; contrato em `xfail` |
+| Catálogo odontológico | Condições/procedimentos, cores e SIGTAP adotados pelo município | Coordenação de saúde bucal + tabela SIGTAP importada | Catálogo vazio até o tenant cadastrar |
+| Classificação de risco odontológico | Protocolo municipal (níveis e critérios) | Coordenação de saúde bucal | Configuração `odontologia.classificacoes_risco` vazia aceita qualquer valor |
+
 ## Pontos que exigem validação humana antes de produção
 
 1. **Código IBGE de município**: o requisito fala em 7 dígitos com DV, mas o
@@ -113,3 +127,12 @@ depende de artefato oficial fica atrás de uma porta e recebe o estado
 3. Implemente `mapeador.py` e `validador.py` contra o fixture oficial.
 4. Adicione teste de contrato que compara o payload gerado ao fixture.
 5. Atualize esta página e `docs/rastreabilidade.md`.
+16. **Mapeamento dos IDs da Fase 6**: a divisão de B.2-001…015 por
+    funcionalidade foi inferida; conferir no catálogo oficial do Lote 02.
+17. **Primeira programação**: com periodicidade, a primeira data prevista é
+    `data_base + periodicidade` (a inscrição não gera consulta no mesmo dia).
+    Confirmar com a coordenação da APS.
+18. **Mapeamento dos IDs da Fase 7**: só parte de B.3-001…027 pôde ser associada;
+    conferir no catálogo oficial do Lote 02.
+19. **Digitação retroativa**: considerada retroativa a data de início com mais
+    de 24 h; limite padrão de 30 dias. Validar com a coordenação.

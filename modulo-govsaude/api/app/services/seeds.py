@@ -91,6 +91,16 @@ async def garantir_grupos_tenant(db: AsyncSession, tenant_id: uuid.UUID) -> None
 
 
 CONFIGURACOES_PADRAO: dict[str, dict] = {
+    "odontologia.retroativo_dias_maximos": {
+        "valor": {"valor": 30},
+        "tipo": "numero",
+        "descricao": "Dias máximos para digitação retroativa de atendimento odontológico (B.3-013); exige justificativa.",
+    },
+    "odontologia.classificacoes_risco": {
+        "valor": {"valor": []},
+        "tipo": "json",
+        "descricao": "Classificações de risco odontológico aceitas (B.3-004). Vazio = sem validação; preencher com o protocolo municipal.",
+    },
     "geral.fuso_horario": {
         "valor": {"valor": "America/Sao_Paulo"},
         "tipo": "texto",
@@ -249,4 +259,350 @@ async def garantir_configuracoes_padrao(db: AsyncSession, tenant_id: uuid.UUID) 
                 vigencia_inicio=hoje,
             )
         )
+    await db.flush()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Fase 6 — formulários e modelos pré-configurados de programas
+# ─────────────────────────────────────────────────────────────────────────────
+FORMULARIOS_PROGRAMAS_SEED: list[dict] = [
+    {
+        "codigo": "SAUDE_MULHER_DADOS",
+        "nome": "Saúde da mulher — dados estruturados",
+        "schema_json": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "gestante": {"type": "boolean"},
+                "dum": {"type": ["string", "null"], "format": "date"},
+                "ultima_coleta_colo": {
+                    "type": ["string", "null"],
+                    "format": "date",
+                },
+                "ultima_mamografia": {
+                    "type": ["string", "null"],
+                    "format": "date",
+                },
+                "planejamento_reprodutivo": {
+                    "type": ["string", "null"],
+                    "enum": [
+                        "NAO_SE_APLICA",
+                        "PRESERVATIVO",
+                        "PILULA",
+                        "DIU",
+                        "LAQUEADURA",
+                        "OUTRO",
+                        None,
+                    ],
+                },
+                "climaterio": {"type": "boolean"},
+            },
+        },
+    },
+    {
+        "codigo": "SAUDE_CRIANCA_DADOS",
+        "nome": "Saúde da criança — crescimento e desenvolvimento",
+        "schema_json": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "peso_kg": {"type": ["number", "null"], "minimum": 0, "maximum": 200},
+                "altura_cm": {
+                    "type": ["number", "null"],
+                    "minimum": 20,
+                    "maximum": 250,
+                },
+                "perimetro_cefalico_cm": {
+                    "type": ["number", "null"],
+                    "minimum": 20,
+                    "maximum": 70,
+                },
+                "desenvolvimento": {
+                    "type": ["string", "null"],
+                    "enum": ["ADEQUADO", "ALERTA", "ENCAMINHADO", None],
+                },
+                "alimentacao": {
+                    "type": ["string", "null"],
+                    "enum": [
+                        "ALEITAMENTO_EXCLUSIVO",
+                        "ALEITAMENTO_MISTO",
+                        "ALIMENTACAO_COMPLEMENTAR",
+                        "OUTRA",
+                        None,
+                    ],
+                },
+                "vacinacao_em_dia": {"type": "boolean"},
+            },
+        },
+    },
+    {
+        "codigo": "GESTANTE_DADOS",
+        "nome": "Gestante — dados estruturados do pré-natal",
+        "schema_json": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "dum": {"type": ["string", "null"], "format": "date"},
+                "gestacoes": {"type": ["integer", "null"], "minimum": 0, "maximum": 30},
+                "partos": {"type": ["integer", "null"], "minimum": 0, "maximum": 30},
+                "abortos": {"type": ["integer", "null"], "minimum": 0, "maximum": 30},
+                "risco_gestacional": {
+                    "type": ["string", "null"],
+                    "enum": ["HABITUAL", "ALTO", "A_VALIDAR", None],
+                },
+            },
+        },
+    },
+    {
+        "codigo": "CRONICAS_DADOS",
+        "nome": "Condições crônicas — dados estruturados",
+        "schema_json": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "hipertenso": {"type": "boolean"},
+                "diabetico": {"type": "boolean"},
+                "tabagista": {"type": "boolean"},
+                "ultima_avaliacao": {
+                    "type": ["string", "null"],
+                    "format": "date",
+                },
+            },
+        },
+    },
+]
+
+_AVISO_SEED = (
+    "SEED A_VALIDAR — estrutura do modelo sem regra clínica. Periodicidade, "
+    "faixa etária e condições (CID-10/CIAP-2) devem ser preenchidas pelo tenant "
+    "a partir do protocolo oficial vigente; o programa nasce inativo."
+)
+
+PROGRAMAS_SEED: list[dict] = [
+    {
+        "codigo": "SAUDE_MULHER",
+        "nome": "Saúde da mulher",
+        "tipo": "PROGRAMA",
+        "linha_cuidado": "SAUDE_MULHER",
+        "descricao": (
+            "Acompanhamento de colo/mama, planejamento reprodutivo e climatério. "
+            f"{_AVISO_SEED}"
+        ),
+        "formulario": "SAUDE_MULHER_DADOS",
+        "criterios": {
+            "sexos": ["FEMININO"],
+            "idade_min_anos": None,
+            "idade_max_anos": None,
+            "condicoes": [],
+            "exigir_condicao": False,
+        },
+        "periodicidade_padrao_dias": None,
+        "itens": [
+            ("CONSULTA", "Avaliação em saúde da mulher", None),
+            ("EXAME", "Citologia oncótica (colo do útero)", None),
+            ("EXAME", "Mamografia", None),
+            ("FORNECIMENTO", "Planejamento reprodutivo", None),
+            ("CONSULTA", "Acompanhamento do climatério", None),
+        ],
+    },
+    {
+        "codigo": "SAUDE_CRIANCA",
+        "nome": "Saúde da criança",
+        "tipo": "PROGRAMA",
+        "linha_cuidado": "SAUDE_CRIANCA",
+        "descricao": (
+            "Crescimento, desenvolvimento, alimentação e situação vacinal. "
+            f"{_AVISO_SEED}"
+        ),
+        "formulario": "SAUDE_CRIANCA_DADOS",
+        "criterios": {
+            "sexos": None,
+            "idade_min_anos": None,
+            "idade_max_anos": None,
+            "condicoes": [],
+            "exigir_condicao": False,
+        },
+        "periodicidade_padrao_dias": None,
+        "itens": [
+            ("CONSULTA", "Puericultura (crescimento e desenvolvimento)", None),
+            ("CONSULTA", "Avaliação nutricional", None),
+            ("VACINA", "Verificação da situação vacinal", None),
+            ("ORIENTACAO", "Alimentação e aleitamento", None),
+        ],
+    },
+    {
+        "codigo": "HIPERTENSAO",
+        "nome": "Hipertensão arterial",
+        "tipo": "PROGRAMA",
+        "linha_cuidado": "CONDICOES_CRONICAS",
+        "descricao": (
+            "Acompanhamento de hipertensão com consultas, avaliação e fornecimento. "
+            f"{_AVISO_SEED}"
+        ),
+        "formulario": "CRONICAS_DADOS",
+        "criterios": {
+            "sexos": None,
+            "idade_min_anos": None,
+            "idade_max_anos": None,
+            "condicoes": [],
+            "exigir_condicao": False,
+        },
+        "periodicidade_padrao_dias": None,
+        "itens": [
+            ("CONSULTA", "Consulta de acompanhamento da hipertensão", None),
+            ("EXAME", "Avaliação clínica e exames de rotina", None),
+            ("FORNECIMENTO", "Medicação anti-hipertensiva", None),
+        ],
+    },
+    {
+        "codigo": "DIABETES",
+        "nome": "Diabetes mellitus",
+        "tipo": "PROGRAMA",
+        "linha_cuidado": "CONDICOES_CRONICAS",
+        "descricao": (
+            "Acompanhamento de diabetes com consultas, exames e fornecimento. "
+            f"{_AVISO_SEED}"
+        ),
+        "formulario": "CRONICAS_DADOS",
+        "criterios": {
+            "sexos": None,
+            "idade_min_anos": None,
+            "idade_max_anos": None,
+            "condicoes": [],
+            "exigir_condicao": False,
+        },
+        "periodicidade_padrao_dias": None,
+        "itens": [
+            ("CONSULTA", "Consulta de acompanhamento do diabetes", None),
+            ("EXAME", "Avaliação clínica e exames de rotina", None),
+            ("FORNECIMENTO", "Medicação para diabetes", None),
+        ],
+    },
+    {
+        "codigo": "GESTANTE",
+        "nome": "Gestante — pré-natal",
+        "tipo": "PROGRAMA",
+        "linha_cuidado": "GESTACAO",
+        "descricao": (
+            "Acompanhamento do pré-natal com consultas, exames e vacinação. "
+            f"{_AVISO_SEED}"
+        ),
+        "formulario": "GESTANTE_DADOS",
+        "marcador_gestante": True,
+        "criterios": {
+            "sexos": ["FEMININO"],
+            "idade_min_anos": None,
+            "idade_max_anos": None,
+            "condicoes": [],
+            "exigir_condicao": False,
+        },
+        "periodicidade_padrao_dias": None,
+        "itens": [
+            ("CONSULTA", "Consulta de pré-natal", None),
+            ("EXAME", "Rotinas laboratoriais do pré-natal", None),
+            ("VACINA", "Vacinação da gestante (conforme calendário)", None),
+        ],
+    },
+]
+
+
+def _criterios_sem_regra_oficial(criterios: dict) -> dict:
+    """Mantém apenas a estrutura; regra clínica oficial entra na validação do tenant."""
+    base = dict(criterios)
+    base["idade_min_anos"] = None
+    base["idade_max_anos"] = None
+    base["condicoes"] = []
+    base["exigir_condicao"] = False
+    base.setdefault("observacoes", "SEED A_VALIDAR: defina as regras oficiais do protocolo.")
+    return base
+
+
+async def garantir_programas_padrao(
+    db: AsyncSession, tenant_id: uuid.UUID
+) -> None:
+    """Seed idempotente dos modelos da Fase 6, marcados como A_VALIDAR."""
+    from app.models.nucleo import FormularioDinamico
+    from app.models.programa import Programa, ProgramaItem
+
+    formularios: dict[str, uuid.UUID] = {}
+    existentes_form = {
+        (codigo, versao): formulario_id
+        for formulario_id, codigo, versao in (
+            await db.execute(
+                select(
+                    FormularioDinamico.id,
+                    FormularioDinamico.codigo,
+                    FormularioDinamico.versao,
+                ).where(FormularioDinamico.tenant_id == tenant_id)
+            )
+        ).all()
+    }
+    for definicao in FORMULARIOS_PROGRAMAS_SEED:
+        chave = (definicao["codigo"], 1)
+        if chave in existentes_form:
+            formularios[definicao["codigo"]] = existentes_form[chave]
+            continue
+        formulario = FormularioDinamico(
+            tenant_id=tenant_id,
+            codigo=definicao["codigo"],
+            nome=definicao["nome"],
+            versao=1,
+            schema_json=definicao["schema_json"],
+            ativo=True,
+            vigencia_inicio=date.today(),
+        )
+        db.add(formulario)
+        await db.flush()
+        formularios[definicao["codigo"]] = formulario.id
+
+    existentes_programa = {
+        codigo
+        for (codigo,) in (
+            await db.execute(
+                select(Programa.codigo).where(Programa.tenant_id == tenant_id)
+            )
+        ).all()
+    }
+    for definicao in PROGRAMAS_SEED:
+        if definicao["codigo"] in existentes_programa:
+            continue
+        programa = Programa(
+            tenant_id=tenant_id,
+            codigo=definicao["codigo"],
+            nome=definicao["nome"],
+            tipo=definicao["tipo"],
+            linha_cuidado=definicao["linha_cuidado"],
+            descricao=definicao["descricao"],
+            criterios_elegibilidade=_criterios_sem_regra_oficial(definicao["criterios"]),
+            periodicidade_padrao_dias=None,
+            formulario_id=formularios.get(definicao.get("formulario")),
+            marcador_gestante=bool(definicao.get("marcador_gestante", False)),
+            base_normativa=None,
+            fonte="SEED interno — validar com o protocolo oficial vigente.",
+            origem="SEED_A_VALIDAR",
+            versao_programa="1",
+            ativo=False,
+            vigencia_inicio=date.today(),
+            versao=1,
+        )
+        db.add(programa)
+        await db.flush()
+        for ordem, (tipo, descricao, _periodo_nao_validado) in enumerate(
+            definicao["itens"], start=1
+        ):
+            db.add(
+                ProgramaItem(
+                    tenant_id=tenant_id,
+                    programa_id=programa.id,
+                    tipo=tipo,
+                    descricao=descricao,
+                    periodicidade_dias=None,
+                    obrigatorio=True,
+                    quantidade=1,
+                    ordem=ordem,
+                    ativo=True,
+                    versao=1,
+                    observacoes=_AVISO_SEED,
+                )
+            )
     await db.flush()

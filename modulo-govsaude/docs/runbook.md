@@ -201,6 +201,47 @@ async def rodar():
 - Bloqueios de agenda podem ser criados/cancelados; o cancelamento exige
   motivo e é auditado.
 
+## Fase 6 — programas e linhas de cuidado
+
+A migração `0007_programas_fase6` cria `programas`, `programa_itens`,
+`programa_inscricoes`, `programa_programacoes` e `programa_buscas_ativas`
+(idempotente; downgrade remove apenas essas tabelas).
+
+```bash
+alembic upgrade head
+alembic downgrade -1   # remove apenas o que a Fase 6 introduziu
+```
+
+O provisionamento (`garantir_programas_padrao`) é idempotente e roda no
+primeiro acesso do tenant. Ele cria os formulários e os cinco modelos
+(mulher, criança, hipertensão, diabetes, gestante) **inativos**, sem
+periodicidade, faixa etária ou condição oficial (`origem=SEED_A_VALIDAR`).
+Fluxo operacional:
+
+1. O gestor confere o protocolo municipal/oficial e preenche os itens,
+   periodicidade e critérios (`PATCH /programas/{id}` e `/itens`).
+2. Ativa o programa com `PATCH /programas/{id}` e `If-Match`, `{"ativo": true}`.
+3. Inscreve o cidadão (`POST /inscricoes-programa`) com exceção justificada
+   quando fora do critério; a exceção é auditada.
+4. Gera a programação por horizonte (`POST .../gerar-programacoes`). A operação
+   é idempotente: repetir não duplica datas.
+5. Registra realização/perda/remarcação em `/programacoes-programa/{id}/*`.
+6. Usa `/buscas-ativas/pendencias` e `/programas/{id}/lista-nominal` para a
+   busca ativa; CPF/CNS saem mascarados.
+7. Acompanha `/programas/{id}/resumo` e `/estimativa-demanda`.
+
+Sinais de atenção:
+
+- Programa inativo ou fora da vigência bloqueia inscrição por regra de negócio
+  (`422`), não por erro de infraestrutura.
+- A geração não cria a primeira ação no dia da inscrição: a primeira data é
+  `data_base + periodicidade`. Item sem periodicidade gera uma única ação.
+- A lista nominal e a busca ativa respeitam o escopo de estabelecimento do
+  usuário; sem escopo, a lista volta vazia (não vaza outro município/unidade).
+- Se o seed for interrompido, rode novamente o provisionamento: a criação é
+  idempotente por `(tenant, codigo, versao_programa)` e `(tenant, codigo,
+  versao)` dos formulários.
+
 ## Referências oficiais
 
 1. Coloque CSVs oficiais em `api/scripts/dados_oficiais/` (ver README local).

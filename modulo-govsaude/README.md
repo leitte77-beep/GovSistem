@@ -4,11 +4,14 @@ Módulo SaaS multi-tenant para secretarias municipais de saúde, UBS/USF, centro
 de especialidades, policlínicas, laboratórios, farmácias, vigilância sanitária e
 consórcios intermunicipais. Faz parte do monorepo GovSistem.
 
-**Versão:** 0.4.0 — **Fases 0, 1, 2 e 4**. A Fase 1 cobre a rede de atenção e
-cadastros-base; a Fase 2 entrega o cadastro único do cidadão; a Fase 4 entrega
-agenda, recepção, fila ordenada, classificação de risco, painéis de chamada e
-falta automática auditada. A **Fase 3 (território e saúde da família)** ainda
-não foi iniciada; as fases 5–16 também não foram antecipadas.
+**Versão:** 0.6.0 — **Fases 0, 1, 2, 3, 4, 5 (núcleo PEC) e 6**. A Fase 1 cobre a rede de
+atenção e cadastros-base; a Fase 2 entrega o cadastro único do cidadão; a Fase 3
+entrega território, famílias, domicílios e visitas; a Fase 4 entrega agenda,
+recepção, fila ordenada, classificação de risco, painéis de chamada e falta
+automática auditada; a Fase 6 entrega programas, linhas de cuidado, programação,
+busca ativa, formulários, indicadores e estimativa de demanda. A Fase 5 entrega
+o núcleo seguro do PEC ambulatorial; integrações que dependem de bases oficiais
+ou das fases posteriores permanecem explicitamente fora desse núcleo.
 
 ## O que existe nesta fase
 
@@ -27,10 +30,32 @@ não foi iniciada; as fases 5–16 também não foram antecipadas.
 - Outbox `integracao_envios`, jobs, SSE base, MinIO com chave opaca e validação
   de anexo (magic number + ClamAV opcional).
 - Schema `referencia` e importadores de tabelas oficiais.
-- Migrações `0001` a `0004`, seeds, Docker Compose com PostgreSQL+PostGIS, Redis, MinIO,
+- Migrações `0001` a `0007`, seeds, Docker Compose com PostgreSQL+PostGIS, Redis, MinIO,
   ClamAV, API, worker e beat.
 - OpenAPI versionado + teste de contrato.
 - Registro do módulo `govsaude` na saas-platform (migração e catálogo de papéis).
+
+## Fase 7 — odontologia
+
+- Catálogo de condições/procedimentos do tenant (cor, aplicabilidade, SIGTAP).
+- Odontograma versionado e imutável com notação FDI e validação de faces.
+- Atendimento com triagem, risco, anamnese por formulário, digitação
+  retroativa justificada, documentos cifrados; procedimentos programados ×
+  realizados; relatório por dente/face/procedimento; LEDI pendente.
+- Migração `0008`. Rotas em `/odontologia`.
+
+## Fase 6 — ações programáticas e linhas de cuidado
+
+- Motor genérico: programas/linhas de cuidado com itens previstos e
+  periodicidade, critérios de elegibilidade, formulário dinâmico versionado.
+- Inscrição com situação, motivo de saída e exceção justificada; programação
+  previsto × realizado idempotente; remarcação/perda; busca ativa com
+  tentativas; lista nominal mascarada; resumo e estimativa de demanda.
+- Modelos de mulher, criança, hipertensão, diabetes e gestante como seed
+  `SEED_A_VALIDAR`, **inativos e sem regra clínica** até o município validar.
+- Migração `0007`, permissão nova `programa:busca_ativa`.
+  Rotas: `/programas`, `/inscricoes-programa`, `/programacoes-programa`,
+  `/buscas-ativas`, `/formularios`.
 
 ## Fase 1 — rede de atenção e cadastros-base
 
@@ -128,8 +153,8 @@ não foi iniciada; as fases 5–16 também não foram antecipadas.
   `govsaude:<tenant>:<estabelecimento>:<setor>`.
 - Migração `0004`, testes de isolamento, RBAC de unidade, sigilo de leitura,
   incompatibilidade, idempotência, concorrência, fila, painel e falta/reversão.
-- Nota de escopo: a Fase 3 (território/domicílios/visitas) continua pendente e
-  não foi implementada por esta entrega.
+- A Fase 3 (território/domicílios/visitas) é entregue em separado
+  (`0005_territorio_saude_familia`).
 
 ### Endpoints principais da Fase 4
 
