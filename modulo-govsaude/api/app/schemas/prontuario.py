@@ -6,9 +6,8 @@ import uuid
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-SistemaProblema = Literal["CID10", "CIAP2", "CIPE"]
 TipoReceituario = Literal["COMUM", "ANTIMICROBIANO", "CONTROLADO"]
 
 
@@ -18,6 +17,13 @@ class AtendimentoCreate(BaseModel):
     estabelecimento_id: uuid.UUID | None = None
     iniciado_em: datetime
     sigiloso: bool = False
+    nivel_sigilo: Literal["NORMAL", "RESTRITO_ESPECIALIDADE", "SIGILOSO"] | None = Field(
+        default=None, description="B.6-035; `sigiloso=true` sem nível equivale a SIGILOSO."
+    )
+    especialidade_id: uuid.UUID | None = None
+    fila_id: uuid.UUID | None = Field(
+        default=None, description="Fila da recepção/triagem que originou o atendimento."
+    )
     tipo: str = Field(default="CONSULTA", min_length=2, max_length=40)
     dados_triagem: dict | None = None
     classificacao_risco: str | None = Field(default=None, max_length=40)
@@ -33,6 +39,8 @@ class AtendimentoOut(AtendimentoCreate):
     etapa: str | None
     finalizado_em: datetime | None
     versao: int
+    nivel_sigilo: str = "NORMAL"
+    alertas_alergia: list[dict] = []
 
 
 class AtendimentoEncerrar(BaseModel):
@@ -86,53 +94,18 @@ class SinalVitalOut(BaseModel):
     created_at: datetime
 
 
-class ProblemaCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    codigo: str = Field(min_length=1, max_length=20)
-    sistema: SistemaProblema
-    descricao: str | None = Field(default=None, max_length=2000)
-
-
-class ProblemaOut(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-    id: uuid.UUID
-    cidadao_id: uuid.UUID
-    codigo: str
-    sistema: str
-    descricao: str | None
-    ativo: bool
-    validado_referencia: bool
-    encerrado_em: datetime | None
-    encerrado_motivo: str | None
-
-
-class Encerramento(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    motivo: str = Field(min_length=5, max_length=2000)
-
-
-class AlergiaCreate(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    categoria: Literal["MEDICAMENTO", "ALIMENTO", "AMBIENTAL", "OUTRA"]
-    agente_codigo: str | None = Field(default=None, max_length=30)
-    agente_descricao: str = Field(min_length=2, max_length=300)
-    criticidade: str | None = Field(default=None, max_length=40)
-    reacao: str | None = Field(default=None, max_length=2000)
-
-
-class AlergiaOut(AlergiaCreate):
-    model_config = ConfigDict(from_attributes=True)
-    id: uuid.UUID
-    cidadao_id: uuid.UUID
-    ativo: bool
-    encerrado_em: datetime | None
-    encerrado_motivo: str | None
-
-
 class PlanoCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     objetivo: str = Field(min_length=2, max_length=4000)
     acoes: dict
+    vigencia_inicio: date | None = None
+    vigencia_fim: date | None = None
+
+    @model_validator(mode="after")
+    def _vigencia(self):
+        if self.vigencia_inicio and self.vigencia_fim and self.vigencia_fim < self.vigencia_inicio:
+            raise ValueError("vigencia_fim anterior a vigencia_inicio")
+        return self
 
 
 class PlanoOut(PlanoCreate):
@@ -204,6 +177,7 @@ class RegistroAssistencialOut(BaseModel):
     status: str
     dados: dict
     sigiloso: bool
+    nivel_sigilo: str = "NORMAL"
     versao_formulario: int | None
     assinado_em: datetime | None
     retifica_de_id: uuid.UUID | None

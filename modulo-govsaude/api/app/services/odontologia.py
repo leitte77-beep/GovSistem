@@ -384,7 +384,7 @@ async def gravar_odontograma(
     return item
 
 
-# ── Atendimento (B.3-003/004/005/009/010/013) ────────────────────────────────
+# ── Atendimento (B.3-003/004/005/009/010/016) ────────────────────────────────
 async def _anamnese(
     db: AsyncSession, tenant_id: uuid.UUID, codigo: str | None, resposta: dict | None
 ) -> tuple[uuid.UUID | None, int | None]:
@@ -429,7 +429,7 @@ async def _validar_risco(db: AsyncSession, tenant_id: uuid.UUID, risco: str | No
 async def _retroativo(
     db: AsyncSession, tenant_id: uuid.UUID, iniciado_em: datetime, justificativa: str | None
 ) -> bool:
-    """B.3-013 — digitação retroativa só com justificativa e dentro do limite do tenant."""
+    """B.3-016 — digitação retroativa só com justificativa e dentro do limite do tenant."""
     agora = _agora()
     if iniciado_em.tzinfo is None:
         iniciado_em = iniciado_em.replace(tzinfo=timezone.utc)
@@ -696,7 +696,7 @@ async def cancelar_atendimento(
     return item
 
 
-# ── Procedimentos (B.3-011/018/022) ──────────────────────────────────────────
+# ── Procedimentos (B.3-009/011/022) ──────────────────────────────────────────
 async def criar_procedimento(
     db: AsyncSession, tenant_id: uuid.UUID, dados: ProcedimentoCreate, ator: Usuario, cliente: dict
 ) -> OdontoProcedimento:
@@ -858,9 +858,18 @@ async def cancelar_procedimento(
 
 
 async def listar_procedimentos(
-    db: AsyncSession, tenant_id: uuid.UUID, cidadao_id: uuid.UUID | None, situacao: str | None
+    db: AsyncSession,
+    tenant_id: uuid.UUID,
+    cidadao_id: uuid.UUID | None,
+    situacao: str | None,
+    atrasados: bool = False,
 ) -> list[OdontoProcedimento]:
     filtros = [OdontoProcedimento.tenant_id == tenant_id]
+    if atrasados:
+        filtros += [
+            OdontoProcedimento.situacao == "PROGRAMADO",
+            OdontoProcedimento.programado_para < date.today(),
+        ]
     if cidadao_id:
         filtros.append(OdontoProcedimento.cidadao_id == cidadao_id)
     if situacao:
@@ -877,7 +886,7 @@ async def listar_procedimentos(
     )
 
 
-# ── Documentos (B.3-014) ─────────────────────────────────────────────────────
+# ── Documentos (B.3-013) ─────────────────────────────────────────────────────
 async def emitir_documento(
     db: AsyncSession,
     tenant_id: uuid.UUID,
@@ -945,7 +954,7 @@ async def listar_documentos(
     )
 
 
-# ── Relatórios (B.3-019…021) e LEDI (B.3-027) ────────────────────────────────
+# ── Relatórios (B.3-020) e LEDI (B.3-002/027) ────────────────────────────────
 async def relatorio(
     db: AsyncSession,
     tenant_id: uuid.UUID,

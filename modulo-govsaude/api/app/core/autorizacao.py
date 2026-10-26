@@ -39,11 +39,7 @@ def permissoes_efetivas(usuario: Usuario) -> set[str]:
     ativos = grupos_ativos(usuario)
     if any(ug.grupo.codigo == "ADMIN" for ug in ativos):
         return set(_PERMISSOES_ADMIN)
-    perms = {
-        gp.permissao_codigo
-        for ug in ativos
-        for gp in (ug.grupo.permissoes or [])
-    }
+    perms = {gp.permissao_codigo for ug in ativos for gp in (ug.grupo.permissoes or [])}
     perms.update(usuario.permissoes_extras or [])
     perms.difference_update(usuario.permissoes_revogadas or [])
     return perms
@@ -151,8 +147,23 @@ def exigir(permissao: Permissao | str):
     async def _verificar(usuario: Usuario = Depends(get_current_user)) -> Usuario:
         if not tem_permissao(usuario, codigo):
             raise PermissionDenied(
+                f"Seu perfil não permite esta operação. Permissão necessária: {codigo}."
+            )
+        return usuario
+
+    return _verificar
+
+
+def exigir_alguma(*permissoes: Permissao | str):
+    """Exige ao menos uma das permissões (ex.: cadastro ou prontuário)."""
+
+    codigos = [p.value if isinstance(p, Permissao) else str(p) for p in permissoes]
+
+    async def _verificar(usuario: Usuario = Depends(get_current_user)) -> Usuario:
+        if not any(tem_permissao(usuario, c) for c in codigos):
+            raise PermissionDenied(
                 "Seu perfil não permite esta operação. "
-                f"Permissão necessária: {codigo}."
+                f"Permissão necessária: uma de {', '.join(codigos)}."
             )
         return usuario
 

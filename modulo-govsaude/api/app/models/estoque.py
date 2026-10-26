@@ -70,7 +70,7 @@ class Produto(
 class LocalEstoque(
     Base, UUIDPrimaryKeyMixin, TimestampMixin, TenantMixin, VersaoMixin, ActorMixin, BaixaMixin
 ):
-    """B.4-001/002 — almoxarifado, farmácia, sala de vacina etc. de um estabelecimento."""
+    """B.4-001 — almoxarifado, farmácia, sala de vacina etc. de um estabelecimento."""
 
     __tablename__ = "locais_estoque"
     __table_args__ = (UniqueConstraint("tenant_id", "nome", name="uq_locais_estoque_nome"),)
@@ -88,7 +88,7 @@ class LocalEstoque(
 
 
 class Lote(Base, UUIDPrimaryKeyMixin, TimestampMixin, TenantMixin, VersaoMixin, ActorMixin):
-    """B.4-005/012 — lote com validade; bloqueio impede saída."""
+    """B.4-001/002 — lote com validade; bloqueio impede saída."""
 
     __tablename__ = "lotes_estoque"
     __table_args__ = (
@@ -107,7 +107,7 @@ class Lote(Base, UUIDPrimaryKeyMixin, TimestampMixin, TenantMixin, VersaoMixin, 
 class ParametroEstoque(
     Base, UUIDPrimaryKeyMixin, TimestampMixin, TenantMixin, VersaoMixin, ActorMixin
 ):
-    """B.4-004 — mínimo, máximo e ponto de pedido por local × produto."""
+    """B.4-004 — mínimo, máximo, ideal e ponto de pedido por local × produto."""
 
     __tablename__ = "parametros_estoque"
     __table_args__ = (
@@ -121,6 +121,7 @@ class ParametroEstoque(
     )
     minimo: Mapped[float | None] = mapped_column(Quantidade, nullable=True)
     maximo: Mapped[float | None] = mapped_column(Quantidade, nullable=True)
+    ideal: Mapped[float | None] = mapped_column(Quantidade, nullable=True)
     ponto_pedido: Mapped[float | None] = mapped_column(Quantidade, nullable=True)
 
 
@@ -153,6 +154,7 @@ class Movimentacao(Base, UUIDPrimaryKeyMixin, TimestampMixin, TenantMixin, Actor
     motivo: Mapped[str | None] = mapped_column(Text, nullable=True)
     referencia_tipo: Mapped[str | None] = mapped_column(String(40), nullable=True)
     referencia_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    centro_custo: Mapped[str | None] = mapped_column(String(40), nullable=True)
 
 
 class Requisicao(Base, UUIDPrimaryKeyMixin, TimestampMixin, TenantMixin, VersaoMixin, ActorMixin):

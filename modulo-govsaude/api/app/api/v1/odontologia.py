@@ -141,7 +141,7 @@ async def criar_atendimento(
     ator: Usuario = Gerenciar,
     db: AsyncSession = Db,
 ):
-    """B.3-003/004/005/009/010/013 — triagem, risco, anamnese e digitação retroativa."""
+    """B.3-003/004/005/009/010/016 — triagem, risco, anamnese e digitação retroativa."""
     return await odontologia.criar_atendimento(
         db, tenant_id, corpo, ator, dados_do_cliente(request)
     )
@@ -219,7 +219,7 @@ async def listar_documentos(
     ator: Usuario = Ler,
     db: AsyncSession = Db,
 ):
-    """B.3-014 — documentos do atendimento."""
+    """B.3-013, B.3-018 — documentos do atendimento."""
     return await odontologia.listar_documentos(db, tenant_id, atendimento_id, ator)
 
 
@@ -234,7 +234,7 @@ async def emitir_documento(
     ator: Usuario = Gerenciar,
     db: AsyncSession = Db,
 ):
-    """B.3-014 — atestado, declaração, receita, orientação (conteúdo cifrado)."""
+    """B.3-013 — atestado, declaração, receita, orientação (conteúdo cifrado)."""
     return await odontologia.emitir_documento(
         db, tenant_id, atendimento_id, corpo, ator, dados_do_cliente(request)
     )
@@ -247,7 +247,7 @@ async def exportacao_ledi(
     ator: Usuario = Ler,
     db: AsyncSession = Db,
 ):
-    """B.3-027 — exportação LEDI; pendente sem o artefato oficial."""
+    """B.3-002, B.3-027 — exportação LEDI; pendente sem o artefato oficial."""
     return await odontologia.exportacao_ledi(db, tenant_id, atendimento_id, ator)
 
 
@@ -255,12 +255,13 @@ async def exportacao_ledi(
 async def listar_procedimentos(
     cidadao_id: uuid.UUID | None = None,
     situacao: str | None = Query(default=None, pattern="^(PROGRAMADO|REALIZADO|CANCELADO)$"),
+    atrasados: bool = Query(default=False, description="Só programados com data vencida."),
     tenant_id: uuid.UUID = Tenant,
     _: Usuario = Ler,
     db: AsyncSession = Db,
 ):
-    """B.3-011/022 — procedimentos programados e realizados."""
-    return await odontologia.listar_procedimentos(db, tenant_id, cidadao_id, situacao)
+    """B.3-011, B.3-022 — procedimentos programados/realizados e lista de atrasados."""
+    return await odontologia.listar_procedimentos(db, tenant_id, cidadao_id, situacao, atrasados)
 
 
 @router.post("/procedimentos", response_model=ProcedimentoOut, status_code=201)
@@ -271,7 +272,7 @@ async def criar_procedimento(
     ator: Usuario = Gerenciar,
     db: AsyncSession = Db,
 ):
-    """B.3-011/018/022 — programa ou registra procedimento por dente/face."""
+    """B.3-009, B.3-011 — programa ou registra procedimento por dente/face."""
     return await odontologia.criar_procedimento(
         db, tenant_id, corpo, ator, dados_do_cliente(request)
     )
@@ -286,7 +287,7 @@ async def realizar(
     ator: Usuario = Gerenciar,
     db: AsyncSession = Db,
 ):
-    """B.3-022 — programado → realizado, vinculado ao atendimento."""
+    """B.3-009, B.3-011 — programado → realizado, vinculado ao atendimento."""
     return await odontologia.realizar_procedimento(
         db, tenant_id, procedimento_id, corpo, ator, dados_do_cliente(request)
     )
@@ -301,7 +302,7 @@ async def cancelar_procedimento(
     ator: Usuario = Gerenciar,
     db: AsyncSession = Db,
 ):
-    """B.3-022 — cancela programado, com motivo."""
+    """B.3-011 — cancela programado, com motivo."""
     return await odontologia.cancelar_procedimento(
         db, tenant_id, procedimento_id, corpo.motivo, ator, dados_do_cliente(request)
     )
@@ -317,5 +318,5 @@ async def relatorio(
     _: Usuario = Ler,
     db: AsyncSession = Db,
 ):
-    """B.3-019…021 — produção por dente, face ou procedimento."""
+    """B.3-020 — produção por dente, face ou procedimento."""
     return await odontologia.relatorio(db, tenant_id, inicio, fim, agrupar_por, estabelecimento_id)

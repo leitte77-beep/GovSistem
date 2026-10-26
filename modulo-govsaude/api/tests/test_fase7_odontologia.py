@@ -91,7 +91,7 @@ async def test_b3_006_024_odontograma_versionado_fdi_e_faces(client, token):
 
 
 @pytest.mark.asyncio
-async def test_b3_005_013_anamnese_risco_e_retroativo(client, token, mundo):
+async def test_b3_005_016_anamnese_risco_e_retroativo(client, token, mundo):
     form = await client.post(
         "/api/govsaude/v1/formularios",
         json={"codigo": "ODONTO_ANAMNESE", "nome": "Anamnese odontológica", "schema_json": {"type": "object", "additionalProperties": False, "required": ["sangramento_gengival"], "properties": {"sangramento_gengival": {"type": "boolean"}}}},
@@ -117,7 +117,7 @@ async def test_b3_005_013_anamnese_risco_e_retroativo(client, token, mundo):
 
 
 @pytest.mark.asyncio
-async def test_b3_011_022_procedimentos_documentos_relatorio_e_fechamento(client, token, mundo):
+async def test_b3_011_013_022_procedimentos_documentos_relatorio_e_fechamento(client, token, mundo):
     restauracao = await _condicao(client, token, "RESTAURACAO", tipo="PROCEDIMENTO")
     carie = await _condicao(client, token, "CARIE")
     cidadao = await _cidadao(client, token)
@@ -128,8 +128,12 @@ async def test_b3_011_022_procedimentos_documentos_relatorio_e_fechamento(client
     programado = await client.post(f"{API}/procedimentos", json={"cidadao_id": cidadao, "condicao_id": restauracao["id"], "dente": 16, "faces": ["O"], "programado_para": date.today().isoformat()}, headers=token("medico"))
     assert programado.status_code == 201, programado.text
     assert programado.json()["situacao"] == "PROGRAMADO"
+    atrasado = await client.post(f"{API}/procedimentos", json={"cidadao_id": cidadao, "condicao_id": restauracao["id"], "dente": 26, "programado_para": (date.today() - timedelta(days=10)).isoformat()}, headers=token("medico"))
+    assert atrasado.status_code == 201, atrasado.text
+    lista = await client.get(f"{API}/procedimentos", params={"atrasados": True}, headers=token("medico"))
+    assert [p["id"] for p in lista.json()] == [atrasado.json()["id"]], "B.3-022"
     planejado = await client.get(f"{API}/cidadaos/{cidadao}/odontograma", headers=token("medico"))
-    assert len(planejado.json()["planejados"]) == 1
+    assert len(planejado.json()["planejados"]) == 2
 
     atendimento = (await _atendimento(client, token, mundo, cidadao)).json()
     alheio = (await _atendimento(client, token, mundo, outro_cidadao)).json()
@@ -163,7 +167,7 @@ async def test_b3_011_022_procedimentos_documentos_relatorio_e_fechamento(client
 
 
 @pytest.mark.asyncio
-async def test_b3_027_exportacao_ledi_pendente_de_especificacao(client, token, mundo):
+async def test_b3_002_027_exportacao_ledi_pendente_de_especificacao(client, token, mundo):
     cidadao = await _cidadao(client, token)
     atendimento = (await _atendimento(client, token, mundo, cidadao)).json()
     r = await client.get(f"{API}/atendimentos/{atendimento['id']}/exportacao-ledi", headers=token("medico"))

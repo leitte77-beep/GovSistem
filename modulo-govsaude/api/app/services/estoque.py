@@ -1,6 +1,6 @@
 """Regras de domínio da Fase 8 — estoque, almoxarifado e assistência farmacêutica.
 
-B.4-001…029, B.4-035…040, B.4-043, B.6-019 (disponibilidade). O ledger
+B.4-001…027, B.4-035…037, B.4-019/B.6-019 (disponibilidade). O ledger
 ``movimentacoes_estoque`` é a fonte da verdade: saldo, custo médio, consumo,
 curva ABC e sugestão de compra são calculados a partir dele, com a memória de
 cálculo exposta. Limiares (vencimento, duplicidade, desvio, ABC, cobertura)
@@ -65,9 +65,13 @@ NEGATIVOS = {
     "AJUSTE_NEGATIVO",
     "TRANSFERENCIA_SAIDA",
     "DISPENSACAO",
+    "QUEBRA",
+    "VENCIMENTO",
 }
+# Baixas que retiram do estoque justamente o lote bloqueado/vencido (B.4-012).
+BAIXA_DE_LOTE_INDISPONIVEL = {"PERDA", "QUEBRA", "VENCIMENTO", "AJUSTE_NEGATIVO"}
 CONSUMO = {"SAIDA", "CONSUMO_INTERNO", "DISPENSACAO", "ESTORNO_DISPENSACAO"}
-EXIGE_MOTIVO = {"PERDA", "AJUSTE_POSITIVO", "AJUSTE_NEGATIVO", "DOACAO", "DEVOLUCAO"}
+EXIGE_MOTIVO = {"PERDA", "QUEBRA", "AJUSTE_POSITIVO", "AJUSTE_NEGATIVO", "DOACAO", "DEVOLUCAO"}
 EPSILON = 0.0005
 
 
@@ -319,7 +323,7 @@ async def listar_lotes(db, tenant_id, produto_id) -> list[Lote]:
 async def bloquear_lote(
     db, tenant_id, lote_id, bloqueado: bool, motivo: str, ator, cliente
 ) -> Lote:
-    """B.4-012 — bloqueio/desbloqueio de lote com motivo auditado."""
+    """B.4-002 — bloqueio/desbloqueio de lote com motivo auditado."""
     item = await db.scalar(select(Lote).where(Lote.id == lote_id, Lote.tenant_id == tenant_id))
     if item is None:
         raise NotFound("Lote não encontrado.")
@@ -345,7 +349,13 @@ async def bloquear_lote(
     return item
 
 
-# ── Ledger (B.4-005/006/009/011/012/018) ────────────────────────────────────
+def exigir_controlado(ator: Usuario, prod: Produto) -> None:
+    """B.4-035 — acesso reforçado: controlado só movimenta/dispensa com permissão própria."""
+    if prod.controlado and not tem_permissao(ator, Permissao.ESTOQUE_CONTROLADOS):
+        raise PermissionDenied("Medicamento controlado exige a permissão estoque:controlados.")
+
+
+# ── Ledger (B.4-006/007/009/012/018/036) ────────────────────────────────────
 async def saldo(
     db: AsyncSession,
     tenant_id: uuid.UUID,
@@ -442,6 +452,7 @@ async def _lancar(
     motivo=None,
     referencia_tipo=None,
     referencia_id=None,
+    centro_custo=None,
 ) -> Movimentacao:
     sinal = 1 if tipo in POSITIVOS else -1
     mov = Movimentacao(
@@ -458,6 +469,7 @@ async def _lancar(
         motivo=motivo,
         referencia_tipo=referencia_tipo,
         referencia_id=referencia_id,
+        centro_custo=centro_custo,
         criado_por_id=ator.id,
         atualizado_por_id=ator.id,
     )
@@ -482,6 +494,7 @@ async def _consumir(
     motivo=None,
     referencia_tipo=None,
     referencia_id=None,
+    centro_custo=None,
 ) -> list[Movimentacao]:
     """Saída por lote informado ou FEFO; lote bloqueado/vencido não sai (B.4-012)."""
     hoje = _utc(ocorrido_em).date()
@@ -511,6 +524,8 @@ async def _consumir(
             ).all()
         )
     for lote in candidatos:
+        if tipo in BAIXA_DE_LOTE_INDISPONIVEL:
+            break
         if lote.bloqueado:
             raise Conflict(
                 f"Lote {lote.numero} bloqueado: {lote.bloqueio_motivo}", code="lote_bloqueado"
@@ -543,6 +558,7 @@ async def _consumir(
                 motivo=motivo,
                 referencia_tipo=referencia_tipo,
                 referencia_id=referencia_id,
+                centro_custo=centro_custo,
             )
         )
         restante = _q(restante - usar)
@@ -597,7 +613,7 @@ async def _lote_entrada(db, tenant_id, ator, produto_id, dados: MovimentacaoCrea
 
 
 async def movimentar(db, tenant_id, dados: MovimentacaoCreate, ator, cliente) -> list[Movimentacao]:
-    """B.4-005/009/011 — entrada, saída, perda, devolução, doação, consumo interno e ajuste."""
+    """B.4-009/012 — entrada, saída, perda, devolução, doação, consumo interno e ajuste."""
     ajuste = dados.tipo.startswith("AJUSTE")
     if ajuste and not tem_permissao(ator, Permissao.ESTOQUE_AJUSTAR):
         raise PermissionDenied("Ajuste de estoque exige permissão específica.")
@@ -611,6 +627,15 @@ async def movimentar(db, tenant_id, dados: MovimentacaoCreate, ator, cliente) ->
     prod = await produto(db, tenant_id, dados.produto_id)
     if prod.baixa_em is not None:
         raise Conflict("Produto baixado não movimenta.", code="produto_baixado")
+    exigir_controlado(ator, prod)
+    if dados.tipo == "VENCIMENTO":
+        if dados.lote_id is None:
+            raise Unprocessable("Baixa por vencimento exige o lote.", code="lote_obrigatorio")
+        lote = await db.scalar(
+            select(Lote).where(Lote.id == dados.lote_id, Lote.tenant_id == tenant_id)
+        )
+        if lote is not None and lote.validade >= _utc(dados.ocorrido_em or _agora()).date():
+            raise Unprocessable("O lote ainda não venceu.", code="lote_nao_vencido")
     if dados.tipo in EXIGE_MOTIVO and len((dados.motivo or "").strip()) < 5:
         raise Unprocessable("Este tipo de movimentação exige motivo.", code="motivo_obrigatorio")
     ocorrido = _utc(dados.ocorrido_em or _agora())
@@ -623,6 +648,7 @@ async def movimentar(db, tenant_id, dados: MovimentacaoCreate, ator, cliente) ->
         "competencia": competencia,
         "documento": dados.documento,
         "motivo": dados.motivo,
+        "centro_custo": dados.centro_custo,
     }
     if dados.tipo in POSITIVOS:
         if dados.tipo == "ENTRADA" and dados.custo_unitario is None:
@@ -695,7 +721,7 @@ async def extrato(
 
 
 async def posicao(db, tenant_id, local_id, ator, em: date | None = None, produto_id=None) -> dict:
-    """B.4-009 — saldo por produto × lote em qualquer data, com custo médio."""
+    """B.4-027 — saldo por produto × lote em qualquer data, com custo médio."""
     loc = await local(db, tenant_id, local_id, ator, Permissao.ESTOQUE_LER)
     ate = await _fim_do_dia(db, tenant_id, em) if em else None
     stmt = (
@@ -737,7 +763,29 @@ async def posicao(db, tenant_id, local_id, ator, em: date | None = None, produto
     for item in itens:
         medio = item["custo_medio"]
         item["valor_total"] = round(item["quantidade"] * medio, 2) if medio is not None else None
-    return {"local_id": loc.id, "data_referencia": em, "itens": itens}
+    pendentes = (
+        await db.scalars(
+            select(Requisicao)
+            .where(
+                Requisicao.tenant_id == tenant_id,
+                Requisicao.situacao.in_(("SOLICITADA", "ATENDIDA", "ATENDIDA_PARCIAL")),
+                (Requisicao.origem_local_id == loc.id) | (Requisicao.destino_local_id == loc.id),
+            )
+            .order_by(Requisicao.created_at)
+        )
+    ).all()
+    # B.4-027 — pedidos pendentes junto do saldo.
+    pedidos = [
+        {
+            "requisicao_id": r.id,
+            "numero": r.numero,
+            "situacao": r.situacao,
+            "papel": "FORNECEDOR" if r.origem_local_id == loc.id else "SOLICITANTE",
+            "itens": r.itens,
+        }
+        for r in pendentes
+    ]
+    return {"local_id": loc.id, "data_referencia": em, "itens": itens, "pedidos_pendentes": pedidos}
 
 
 # ── Requisições e transferências (B.4-014/015) ──────────────────────────────
@@ -1192,7 +1240,7 @@ async def reabrir_competencia(
     return item
 
 
-# ── Dispensação (B.4-020/021/024) ───────────────────────────────────────────
+# ── Dispensação (B.4-020…023) ───────────────────────────────────────────
 async def _duplicidades(db, tenant_id, cidadao_id, produtos: set[str], janela: int) -> list[dict]:
     if janela <= 0:
         return []
@@ -1246,6 +1294,7 @@ async def dispensar(db, tenant_id, dados: DispensacaoCreate, ator, cliente) -> D
     exigidos = await configuracoes.valor(db, tenant_id, "estoque.campos_documento_controlado", [])
     for item in dados.itens:
         prod = await produto(db, tenant_id, item.produto_id)
+        exigir_controlado(ator, prod)
         if prod.controlado or prod.antimicrobiano:
             faltando = [c for c in exigidos if not (dados.documento or {}).get(c)]
             if not dados.documento or faltando:
@@ -1343,6 +1392,8 @@ async def estornar_dispensacao(db, tenant_id, dispensacao_id, motivo, ator, clie
     await local(db, tenant_id, disp.local_id, ator, Permissao.DISPENSACAO_ESTORNAR)
     if disp.estornada_em:
         raise Conflict("Dispensação já estornada.", code="ja_estornada")
+    for item in disp.itens:
+        exigir_controlado(ator, await produto(db, tenant_id, uuid.UUID(item["produto_id"])))
     ocorrido = _agora()
     competencia = await competencia_de(db, tenant_id, ocorrido)
     await _movimentavel(db, tenant_id, disp.local_id, competencia)
@@ -1381,6 +1432,51 @@ async def estornar_dispensacao(db, tenant_id, dispensacao_id, motivo, ator, clie
     await db.commit()
     await db.refresh(disp)
     return disp
+
+
+async def comprovante_dispensacao(db, tenant_id, dispensacao_id, ator, cliente) -> dict:
+    """B.4-023 — dados do comprovante (a renderização em PDF fica no front/relatório)."""
+    disp = await db.scalar(
+        select(Dispensacao).where(
+            Dispensacao.id == dispensacao_id, Dispensacao.tenant_id == tenant_id
+        )
+    )
+    if disp is None:
+        raise NotFound("Dispensação não encontrada.")
+    loc = await local(db, tenant_id, disp.local_id, ator, Permissao.DISPENSACAO_LER)
+    cidadao = await db.get(Cidadao, disp.cidadao_id)
+    profissional = await db.get(Usuario, disp.criado_por_id) if disp.criado_por_id else None
+    itens = []
+    for item in disp.itens:
+        prod = await produto(db, tenant_id, uuid.UUID(item["produto_id"]))
+        for lote_info in item["lotes"]:
+            lote = await db.get(Lote, uuid.UUID(lote_info["lote_id"]))
+            itens.append(
+                {
+                    "produto": prod.nome,
+                    "unidade": prod.unidade,
+                    "lote": lote.numero,
+                    "validade": lote.validade,
+                    "quantidade": lote_info["quantidade"],
+                }
+            )
+    await _auditar(db, ator, tenant_id, "IMPRIMIR", "dispensacao", disp.id, cliente)
+    await db.commit()
+    return {
+        "dispensacao_id": disp.id,
+        "data": disp.created_at,
+        "situacao": disp.situacao,
+        "estornada": disp.estornada_em is not None,
+        "local": loc.nome,
+        "cidadao": getattr(cidadao, "nome_social", None) or cidadao.nome,
+        "profissional": profissional.nome if profissional else None,
+        "documento": disp.documento,
+        "itens": itens,
+        "assinatura": {
+            "situacao": "PENDENTE",
+            "motivo": "assinatura do cidadão quando exigida pela política municipal",
+        },
+    }
 
 
 async def historico_dispensacoes(db, tenant_id, cidadao_id, ator) -> list[Dispensacao]:
@@ -1454,7 +1550,7 @@ async def listar_temperaturas(db, tenant_id, local_id, ator) -> list[RegistroTem
     )
 
 
-# ── Indicadores: consumo, alertas, ABC, sugestão (B.4-004/007/010/035…040) ───
+# ── Indicadores: consumo, alertas, ABC, sugestão (B.4-004/005/016/026) ───
 async def _consumo_por_mes(db, tenant_id, local_id, produto_id, meses: int) -> list[float]:
     """Consumo dos últimos ``meses`` meses fechados (mais antigo primeiro)."""
     agora = _agora()
@@ -1610,7 +1706,7 @@ async def alertas(db, tenant_id, local_id, ator) -> dict:
 
 
 async def curva_abc(db, tenant_id, local_id, inicio: date, fim: date, ator) -> dict:
-    """B.4-039 — classes por valor consumido no período; limites configuráveis."""
+    """B.4-026 — classes por valor consumido no período; limites configuráveis."""
     loc = await local(db, tenant_id, local_id, ator, Permissao.ESTOQUE_LER)
     if fim < inicio:
         raise Unprocessable("Período inválido.", code="periodo_invalido")
@@ -1662,7 +1758,7 @@ async def curva_abc(db, tenant_id, local_id, inicio: date, fim: date, ator) -> d
 
 
 async def sugestao_compra(db, tenant_id, local_id, ator) -> dict:
-    """B.4-007/040 — sugestão com memória de cálculo, cobertura e giro."""
+    """B.4-005/026 — sugestão com memória de cálculo, cobertura e giro."""
     loc = await local(db, tenant_id, local_id, ator, Permissao.ESTOQUE_LER)
     meses = int(await configuracoes.valor(db, tenant_id, "estoque.sugestao_meses_historico", 3))
     cobertura_meses = float(
@@ -1680,7 +1776,9 @@ async def sugestao_compra(db, tenant_id, local_id, ator) -> dict:
                 ParametroEstoque.produto_id == pid,
             )
         )
-        if param and param.maximo is not None:
+        if param and param.ideal is not None:
+            alvo, origem = param.ideal, "parametro_ideal"
+        elif param and param.maximo is not None:
             alvo, origem = param.maximo, "parametro_maximo"
         else:
             alvo, origem = round(media * cobertura_meses, 3), "consumo_medio_x_cobertura"
@@ -1708,7 +1806,7 @@ async def sugestao_compra(db, tenant_id, local_id, ator) -> dict:
     return {"local_id": loc.id, "itens": [i for i in itens if i["quantidade_sugerida"] > 0]}
 
 
-# ── Integração com a prescrição (B.6-019) ───────────────────────────────────
+# ── Integração com a prescrição (B.4-019, B.6-019) ───────────────────────────────────
 async def disponibilidade(
     db: AsyncSession, tenant_id: uuid.UUID, estabelecimento_id: uuid.UUID | None, codigos: list[str]
 ) -> dict:

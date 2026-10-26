@@ -14,6 +14,8 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 from sqlalchemy import select
 
+from tests.conftest import _criar_usuario
+
 from app.models.auditoria import AuditTrail
 
 API = "/api/govsaude/v1/estoque"
@@ -78,7 +80,7 @@ async def test_b4_001_003_cadastros_isolados_e_restritos(client, token, mundo):
 
 
 @pytest.mark.asyncio
-async def test_b4_005_006_009_ledger_saldo_em_data_custo_medio_e_fefo(client, token, mundo, db):
+async def test_b4_006_009_012_027_ledger_saldo_em_data_custo_medio_e_fefo(client, token, mundo, db):
     prod = await _produto(client, token)
     loc = await _local(client, token, mundo)
     sem_custo = await client.post(f"{API}/movimentacoes", json={"local_id": loc["id"], "produto_id": prod["id"], "tipo": "ENTRADA", "quantidade": 1, "lote_numero": "L0", "validade": _validade()}, headers=token("admin"))
@@ -113,7 +115,7 @@ async def test_b4_005_006_009_ledger_saldo_em_data_custo_medio_e_fefo(client, to
 
 
 @pytest.mark.asyncio
-async def test_b4_012_035_lote_bloqueado_vencido_e_alertas(client, token, mundo):
+async def test_b4_002_012_016_lote_bloqueado_vencido_e_alertas(client, token, mundo):
     prod = await _produto(client, token)
     loc = await _local(client, token, mundo)
     await client.put(f"{API}/locais/{loc['id']}/parametros", json={"produto_id": prod["id"], "minimo": 50, "maximo": 200, "ponto_pedido": 80}, headers=token("admin"))
@@ -129,11 +131,18 @@ async def test_b4_012_035_lote_bloqueado_vencido_e_alertas(client, token, mundo)
     assert (await _saida(client, token, loc, prod, 1)).json()["codigo"] == "saldo_insuficiente", "FEFO ignora bloqueado e vencido"
     vencido_id = (await client.get(f"{API}/produtos/{prod['id']}/lotes", headers=token("gestor"))).json()[0]["id"]
     assert (await _saida(client, token, loc, prod, 1, lote_id=vencido_id)).json()["codigo"] == "lote_vencido"
+    nao_vencido = await _saida(client, token, loc, prod, 1, tipo="VENCIMENTO", lote_id=lote_id)
+    assert nao_vencido.json()["codigo"] == "lote_nao_vencido"
+    baixa = await _saida(client, token, loc, prod, 5, tipo="VENCIMENTO", lote_id=vencido_id, motivo="Vencido no armário", centro_custo="CC-FARMACIA")
+    assert baixa.status_code == 201, "vencido sai por baixa de vencimento"
+    assert baixa.json()[0]["centro_custo"] == "CC-FARMACIA"
+    quebra = await _saida(client, token, loc, prod, 1, tipo="QUEBRA", lote_id=lote_id, motivo="Frasco quebrou")
+    assert quebra.status_code == 201, "lote bloqueado pode ser baixado por quebra"
 
     alertas = (await client.get(f"{API}/locais/{loc['id']}/alertas", headers=token("gestor"))).json()
-    assert alertas["abaixo_minimo"][0]["saldo"] == 35
+    assert alertas["abaixo_minimo"][0]["saldo"] == 29
     assert [x["numero"] for x in alertas["a_vencer"]] == ["L-PERTO"]
-    assert [x["numero"] for x in alertas["vencidos"]] == ["L-VENCIDO"]
+    assert alertas["vencidos"] == []
     assert alertas["lote_bloqueado"][0]["motivo"] == "Alerta sanitário"
     assert alertas["frascos_abertos"]["situacao"] == "PENDENTE"
     assert (await client.get(f"{API}/locais/{loc['id']}/alertas", headers=token("admin_b"))).status_code == 404
@@ -154,6 +163,8 @@ async def test_b4_014_015_requisicao_parcial_aceite_e_recusa(client, token, mund
     assert req["numero"].endswith("-000001")
     # Gestor não tem escopo na origem (UBS B): não atende.
     assert (await client.post(f"{API}/requisicoes/{req['id']}/atender", json={"itens": [{"produto_id": prod["id"], "quantidade": 50}]}, headers=token("gestor"))).status_code == 404
+    pend = (await client.get(f"{API}/locais/{central['id']}/saldos", headers=token("admin"))).json()["pedidos_pendentes"]
+    assert pend[0]["papel"] == "FORNECEDOR" and pend[0]["situacao"] == "SOLICITADA"
     excedente = await client.post(f"{API}/requisicoes/{req['id']}/atender", json={"itens": [{"produto_id": prod["id"], "quantidade": 81}]}, headers=token("admin"))
     assert excedente.json()["codigo"] == "quantidade_excedente"
     atendida = await client.post(f"{API}/requisicoes/{req['id']}/atender", json={"itens": [{"produto_id": prod["id"], "quantidade": 50}]}, headers=token("admin"))
@@ -206,7 +217,7 @@ async def test_b4_017_018_inventario_e_competencia(client, token, mundo):
 
 
 @pytest.mark.asyncio
-async def test_b4_020_021_024_dispensacao_parcial_duplicidade_controlado_estorno(client, token, mundo):
+async def test_b4_020_023_035_dispensacao_parcial_duplicidade_controlado_estorno(client, token, mundo, db):
     prod = await _produto(client, token)
     controlado = await _produto(client, token, codigo="CLON2", controlado=True, lista_controle="LISTA-TENANT")
     loc = await _local(client, token, mundo)
@@ -225,10 +236,17 @@ async def test_b4_020_021_024_dispensacao_parcial_duplicidade_controlado_estorno
     justificada = await client.post(url, json={"cidadao_id": cidadao, "local_id": loc2["id"], "itens": [{"produto_id": prod["id"], "quantidade": 10}], "justificativa": "Perda do medicamento comprovada por boletim"}, headers=token("gestor"))
     assert justificada.status_code == 201 and justificada.json()["alertas"]["duplicidade"]
 
-    sem_doc = await client.post(url, json={"cidadao_id": cidadao, "local_id": loc["id"], "itens": [{"produto_id": controlado["id"], "quantidade": 1}]}, headers=token("gestor"))
+    sem_perm = await client.post(url, json={"cidadao_id": cidadao, "local_id": loc["id"], "itens": [{"produto_id": controlado["id"], "quantidade": 1}], "documento": {"numero": "123"}}, headers=token("gestor"))
+    assert sem_perm.status_code == 403, "B.4-035: controlado exige estoque:controlados"
+    mundo["usuarios"]["farmaceutico"] = await _criar_usuario(db, tenant_id=mundo["org_a"].id, nome="Farmacêutico A", email="farma-a@teste.local", grupo="farmaceutico", estabelecimento_id=mundo["estab_a"].id)
+    await db.commit()
+    sem_doc = await client.post(url, json={"cidadao_id": cidadao, "local_id": loc["id"], "itens": [{"produto_id": controlado["id"], "quantidade": 1}]}, headers=token("farmaceutico"))
     assert sem_doc.json()["codigo"] == "documento_obrigatorio"
-    com_doc = await client.post(url, json={"cidadao_id": cidadao, "local_id": loc["id"], "itens": [{"produto_id": controlado["id"], "quantidade": 1}], "documento": {"numero": "123"}}, headers=token("gestor"))
+    com_doc = await client.post(url, json={"cidadao_id": cidadao, "local_id": loc["id"], "itens": [{"produto_id": controlado["id"], "quantidade": 1}], "documento": {"numero": "123"}}, headers=token("farmaceutico"))
     assert com_doc.status_code == 201, com_doc.text
+    comp = await client.get(f"{url}/{com_doc.json()['id']}/comprovante", headers=token("farmaceutico"))
+    assert comp.status_code == 200 and comp.json()["itens"][0]["lote"] == "C1" and comp.json()["profissional"] == "Farmacêutico A"
+    assert (await client.get(f"{url}/{com_doc.json()['id']}/comprovante", headers=token("admin_b"))).status_code == 404
 
     est = await client.post(f"{url}/{d1.json()['id']}/estornar", json={"motivo": "Lançado no cidadão errado"}, headers=token("gestor"))
     assert est.status_code == 200 and est.json()["estornada_em"]
@@ -244,7 +262,7 @@ async def test_b4_020_021_024_dispensacao_parcial_duplicidade_controlado_estorno
 
 
 @pytest.mark.asyncio
-async def test_b4_036_037_039_040_indicadores_temperatura_e_disponibilidade(client, token, mundo):
+async def test_b4_005_016_019_026_037_indicadores_temperatura_e_disponibilidade(client, token, mundo):
     prod = await _produto(client, token, codigo_obm="OBM-TESTE-1")
     barato = await _produto(client, token, codigo="BARATO")
     loc = await _local(client, token, mundo, temperatura_min=2, temperatura_max=8)
@@ -269,11 +287,11 @@ async def test_b4_036_037_039_040_indicadores_temperatura_e_disponibilidade(clie
     assert [(i["produto_id"], i["classe"]) for i in abc["itens"]] == [(prod["id"], "A"), (barato["id"], "C")]
     assert (await client.get(f"{API}/locais/{loc['id']}/curva-abc", params={"inicio": date.today().isoformat(), "fim": inicio}, headers=token("gestor"))).status_code == 422
 
-    await client.put(f"{API}/locais/{loc['id']}/parametros", json={"produto_id": prod["id"], "maximo": 1000}, headers=token("admin"))
+    await client.put(f"{API}/locais/{loc['id']}/parametros", json={"produto_id": prod["id"], "maximo": 1200, "ideal": 1000}, headers=token("admin"))
     sug = (await client.get(f"{API}/locais/{loc['id']}/sugestao-compra", headers=token("gestor"))).json()
     item = next(i for i in sug["itens"] if i["produto_id"] == prod["id"])
     assert item["quantidade_sugerida"] == 1000 - item["memoria_calculo"]["saldo_atual"]
-    assert item["memoria_calculo"]["origem_alvo"] == "parametro_maximo" and item["memoria_calculo"]["formula"]
+    assert item["memoria_calculo"]["origem_alvo"] == "parametro_ideal" and item["memoria_calculo"]["formula"]
 
     fora = await client.post(f"{API}/locais/{loc['id']}/temperaturas", json={"temperatura": 11.5}, headers=token("gestor"))
     assert fora.status_code == 201 and fora.json()["fora_da_faixa"] is True

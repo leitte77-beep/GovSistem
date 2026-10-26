@@ -93,7 +93,7 @@ class Odontograma(Base, UUIDPrimaryKeyMixin, TimestampMixin, TenantMixin, ActorM
 class OdontoAtendimento(
     Base, UUIDPrimaryKeyMixin, TimestampMixin, TenantMixin, VersaoMixin, ActorMixin
 ):
-    """B.3-003/004/005/009/010/013 — atendimento odontológico."""
+    """B.3-003/004/005/009/010/016 — atendimento odontológico."""
 
     __tablename__ = "odonto_atendimentos"
     __table_args__ = (
@@ -136,7 +136,7 @@ class OdontoAtendimento(
 class OdontoProcedimento(
     Base, UUIDPrimaryKeyMixin, TimestampMixin, TenantMixin, VersaoMixin, ActorMixin
 ):
-    """B.3-011/018/022 — procedimento programado ou realizado por dente/face."""
+    """B.3-009/011/022 — procedimento programado ou realizado por dente/face."""
 
     __tablename__ = "odonto_procedimentos"
     __table_args__ = (
@@ -173,7 +173,7 @@ class OdontoProcedimento(
 class OdontoDocumento(
     Base, UUIDPrimaryKeyMixin, TimestampMixin, TenantMixin, BaixaMixin, ActorMixin
 ):
-    """B.3-014 — documento emitido no atendimento odontológico."""
+    """B.3-013 — documento emitido no atendimento odontológico."""
 
     __tablename__ = "odonto_documentos"
     __table_args__ = (

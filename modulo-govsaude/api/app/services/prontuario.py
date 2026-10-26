@@ -1,4 +1,4 @@
-"""Regras de domínio da Fase 5 — PEC ambulatorial (B.6-004…058, B.12-013/021…025).
+"""Regras de domínio da Fase 5 — PEC ambulatorial (B.6-004…058, B.12-013, B.12-021/022).
 
 O serviço implementa o motor; etapas, campos obrigatórios, tipos de registro,
 tabelas de classificação nutricional, validade de consulta e contingência
@@ -19,27 +19,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.autorizacao import escopo_permite, pode_ver_conteudo, tem_permissao, velar
 from app.core.errors import Conflict, NotFound, PermissionDenied, Unprocessable
 from app.core.permissoes import Permissao
-from app.models.cidadao import Cidadao
-from app.models.nucleo import Estabelecimento, FormularioDinamico, Usuario
+from app.models.agenda import FilaAtendimento
+from app.models.cidadao import Cidadao, CidadaoAlergia, CidadaoCondicao
+from app.models.nucleo import Especialidade, Estabelecimento, FormularioDinamico, Usuario
 from app.models.prontuario import (
-    Alergia,
     Atendimento,
     EvolucaoSOAP,
     PlanoCuidado,
     Prescricao,
-    ProblemaClinico,
     RegistroAssistencial,
     SinalVital,
 )
-from app.models.referencia import Ciap2, Cid10, Medicamento
+from app.models.referencia import Medicamento
 from app.motores.formularios import validar_resposta
 from app.schemas.prontuario import (
-    AlergiaCreate,
     AtendimentoCreate,
     PlanoCreate,
     PrescricaoCopiar,
     PrescricaoCreate,
-    ProblemaCreate,
     RegistroAssistencialCreate,
     RetificacaoRegistroCreate,
     RetificacaoSOAPCreate,
@@ -87,7 +84,18 @@ async def _cidadao(db: AsyncSession, tenant_id: uuid.UUID, cidadao_id: uuid.UUID
     return item
 
 
-# ── Atendimento, etapas e acesso (B.6-004, B.12-021…025) ────────────────────
+def _nivel(registro) -> str:
+    """Nível efetivo; ``sigiloso`` legado sem nível vale SIGILOSO."""
+    nivel = getattr(registro, "nivel_sigilo", None) or "NORMAL"
+    return "SIGILOSO" if nivel == "NORMAL" and registro.sigiloso else nivel
+
+
+def _ve(ator: Usuario, registro) -> bool:
+    """B.6-006/035 — conteúdo só para quem o nível de sigilo e a especialidade permitem."""
+    return pode_ver_conteudo(ator, _nivel(registro), especialidade_id=registro.especialidade_id)
+
+
+# ── Atendimento, etapas e acesso (B.6-004, B.6-006) ────────────────────
 async def atendimento(
     db: AsyncSession,
     tenant_id: uuid.UUID,
@@ -104,7 +112,7 @@ async def atendimento(
     if (
         item is None
         or not escopo_permite(ator, permissao, estabelecimento_id=item.estabelecimento_id)
-        or (item.sigiloso and not pode_ver_conteudo(ator, "SIGILOSO"))
+        or not _ve(ator, item)
     ):
         raise NotFound("Atendimento não encontrado.")
     return item
@@ -121,7 +129,7 @@ def _aberto(item: Atendimento) -> None:
 async def _validar_retroativo(
     db: AsyncSession, tenant_id: uuid.UUID, dados: AtendimentoCreate, ator: Usuario
 ) -> None:
-    """B.6-056 — contingência: flag do tenant, autorização, período e justificativa."""
+    """B.6-036 — contingência: flag do tenant, autorização, período e justificativa."""
     agora = _agora()
     iniciado = _utc(dados.iniciado_em)
     if iniciado > agora + timedelta(minutes=5):
@@ -154,10 +162,36 @@ async def _validar_retroativo(
         )
 
 
+async def _validar_fila(db: AsyncSession, tenant_id: uuid.UUID, dados: AtendimentoCreate):
+    """B.6-004/012 — o atendimento continua a fila da recepção/triagem do mesmo cidadão."""
+    fila = await db.scalar(
+        select(FilaAtendimento).where(
+            FilaAtendimento.id == dados.fila_id, FilaAtendimento.tenant_id == tenant_id
+        )
+    )
+    if fila is None:
+        raise NotFound("Fila não encontrada.")
+    if fila.cidadao_id != dados.cidadao_id:
+        raise Unprocessable("A fila é de outro cidadão.", code="cidadao_divergente")
+    if fila.situacao in ("ATENDIDO", "EVADIDO", "CANCELADO"):
+        raise Conflict("A fila já foi encerrada.", code="fila_encerrada")
+    if dados.estabelecimento_id and dados.estabelecimento_id != fila.estabelecimento_id:
+        raise Unprocessable(
+            "Estabelecimento diferente do da fila.", code="estabelecimento_divergente"
+        )
+    if await db.scalar(
+        select(Atendimento.id).where(
+            Atendimento.tenant_id == tenant_id, Atendimento.fila_id == fila.id
+        )
+    ):
+        raise Conflict("Já existe atendimento para esta fila.", code="fila_com_atendimento")
+    return fila.estabelecimento_id
+
+
 async def abrir_atendimento(
     db: AsyncSession, tenant_id: uuid.UUID, dados: AtendimentoCreate, ator: Usuario, cliente: dict
 ) -> Atendimento:
-    """B.6-004/056 — abre o atendimento na primeira etapa configurada."""
+    """B.6-004/036 — abre o atendimento na primeira etapa configurada."""
     await _cidadao(db, tenant_id, dados.cidadao_id)
     if dados.estabelecimento_id:
         estab = await db.scalar(
@@ -171,8 +205,24 @@ async def abrir_atendimento(
         ):
             raise NotFound("Estabelecimento não encontrado.")
     await _validar_retroativo(db, tenant_id, dados, ator)
-    etapas = await configuracoes.valor(db, tenant_id, "prontuario.etapas", [])
     valores = dados.model_dump()
+    nivel = dados.nivel_sigilo or ("SIGILOSO" if dados.sigiloso else "NORMAL")
+    if nivel == "RESTRITO_ESPECIALIDADE":
+        if dados.especialidade_id is None:
+            raise Unprocessable(
+                "Sigilo por especialidade exige a especialidade autorizada.",
+                code="especialidade_obrigatoria",
+            )
+    if dados.especialidade_id and not await db.scalar(
+        select(Especialidade.id).where(
+            Especialidade.id == dados.especialidade_id, Especialidade.tenant_id == tenant_id
+        )
+    ):
+        raise NotFound("Especialidade não encontrada.")
+    valores.update(nivel_sigilo=nivel, sigiloso=nivel != "NORMAL")
+    if dados.fila_id:
+        valores["estabelecimento_id"] = await _validar_fila(db, tenant_id, dados)
+    etapas = await configuracoes.valor(db, tenant_id, "prontuario.etapas", [])
     if not dados.retroativo:
         valores["justificativa_retroativa"] = None
     item = Atendimento(
@@ -205,6 +255,25 @@ async def obter_atendimento(
     db: AsyncSession, tenant_id: uuid.UUID, atendimento_id: uuid.UUID, ator: Usuario, cliente: dict
 ) -> Atendimento:
     item = await atendimento(db, tenant_id, atendimento_id, ator, Permissao.PRONTUARIO_LER)
+    alergias = (
+        await db.scalars(
+            select(CidadaoAlergia).where(
+                CidadaoAlergia.tenant_id == tenant_id,
+                CidadaoAlergia.cidadao_id == item.cidadao_id,
+                CidadaoAlergia.baixa_em.is_(None),
+            )
+        )
+    ).all()
+    # B.6-015 — alergia aparece no fluxo clínico, não só na prescrição.
+    item.alertas_alergia = [
+        {
+            "alergia_id": str(a.id),
+            "substancia": a.substancia,
+            "codigo": a.codigo,
+            "gravidade": a.gravidade,
+        }
+        for a in alergias
+    ]
     await registrar_leitura_sensivel(
         db,
         usuario=ator,
@@ -283,7 +352,7 @@ def _regra_aplica(regra: dict, item: Atendimento, cidadao: Cidadao) -> bool:
 
 
 async def campos_pendentes(db: AsyncSession, tenant_id: uuid.UUID, item: Atendimento) -> list[str]:
-    """B.6-006 — campos obrigatórios por unidade/idade/sexo/tipo, definidos pelo tenant."""
+    """B.6-014 — campos obrigatórios por unidade/idade/sexo/tipo, definidos pelo tenant."""
     regras = await configuracoes.valor(db, tenant_id, "prontuario.campos_obrigatorios", [])
     cidadao = await _cidadao(db, tenant_id, item.cidadao_id)
     exigidos: set[str] = set()
@@ -307,10 +376,11 @@ async def campos_pendentes(db: AsyncSession, tenant_id: uuid.UUID, item: Atendim
     ):
         preenchidos.add("sinais_vitais")
     if await db.scalar(
-        select(func.count(ProblemaClinico.id)).where(
-            ProblemaClinico.tenant_id == tenant_id,
-            ProblemaClinico.cidadao_id == item.cidadao_id,
-            ProblemaClinico.ativo.is_(True),
+        select(func.count(CidadaoCondicao.id)).where(
+            CidadaoCondicao.tenant_id == tenant_id,
+            CidadaoCondicao.cidadao_id == item.cidadao_id,
+            CidadaoCondicao.situacao == "ATIVA",
+            CidadaoCondicao.baixa_em.is_(None),
         )
     ):
         preenchidos.add("problema")
@@ -508,7 +578,7 @@ async def retificar_soap(
     return nova
 
 
-# ── Sinais vitais e antropometria (B.6-010/011/012) ─────────────────────────
+# ── Sinais vitais e antropometria (B.6-010…012) ─────────────────────────
 async def _classificar_imc(
     db: AsyncSession, tenant_id: uuid.UUID, imc: float, cidadao: Cidadao, em: date
 ) -> dict:
@@ -587,14 +657,14 @@ async def _atendimentos_visiveis(db, tenant_id, cidadao_id, ator) -> dict[uuid.U
         a.id: a
         for a in linhas
         if escopo_permite(ator, Permissao.PRONTUARIO_LER, estabelecimento_id=a.estabelecimento_id)
-        and (not a.sigiloso or pode_ver_conteudo(ator, "SIGILOSO"))
+        and _ve(ator, a)
     }
 
 
 async def serie_sinais(
     db: AsyncSession, tenant_id: uuid.UUID, cidadao_id: uuid.UUID, ator: Usuario, cliente: dict
 ) -> list[SinalVital]:
-    """B.6-012 — série histórica do cidadão, respeitando escopo e sigilo."""
+    """B.6-011 — série histórica do cidadão, respeitando escopo e sigilo."""
     await _cidadao(db, tenant_id, cidadao_id)
     visiveis = await _atendimentos_visiveis(db, tenant_id, cidadao_id, ator)
     linhas = (
@@ -614,185 +684,6 @@ async def serie_sinais(
     )
     await db.commit()
     return [s for s in linhas if s.atendimento_id in visiveis]
-
-
-# ── Problemas e alergias (B.6-015/016) ──────────────────────────────────────
-async def _validar_codigo(db: AsyncSession, sistema: str, codigo: str) -> bool:
-    """Confere na base oficial importada; sem base, aceita e marca não validado."""
-    modelo = {"CID10": Cid10, "CIAP2": Ciap2}.get(sistema)
-    if modelo is None or not await db.scalar(select(func.count()).select_from(modelo)):
-        return False
-    if not await db.scalar(
-        select(modelo.codigo).where(modelo.codigo == codigo, modelo.ativo.is_(True))
-    ):
-        raise Unprocessable(
-            f"Código {codigo} não existe na tabela {sistema} importada.", code="codigo_inexistente"
-        )
-    return True
-
-
-async def registrar_problema(
-    db: AsyncSession,
-    tenant_id: uuid.UUID,
-    cidadao_id: uuid.UUID,
-    dados: ProblemaCreate,
-    ator: Usuario,
-    cliente: dict,
-) -> ProblemaClinico:
-    await _cidadao(db, tenant_id, cidadao_id)
-    codigo = dados.codigo.strip().upper()
-    if await db.scalar(
-        select(ProblemaClinico.id).where(
-            ProblemaClinico.tenant_id == tenant_id,
-            ProblemaClinico.cidadao_id == cidadao_id,
-            ProblemaClinico.sistema == dados.sistema,
-            ProblemaClinico.codigo == codigo,
-            ProblemaClinico.ativo.is_(True),
-        )
-    ):
-        raise Conflict("Problema já ativo na lista do cidadão.", code="problema_duplicado")
-    validado = await _validar_codigo(db, dados.sistema, codigo)
-    item = ProblemaClinico(
-        tenant_id=tenant_id,
-        cidadao_id=cidadao_id,
-        codigo=codigo,
-        sistema=dados.sistema,
-        descricao=dados.descricao,
-        validado_referencia=validado,
-        criado_por_id=ator.id,
-        atualizado_por_id=ator.id,
-    )
-    db.add(item)
-    await db.flush()
-    await _auditar(db, ator, tenant_id, "CRIAR", "problema_clinico", item.id, cliente)
-    await db.commit()
-    await db.refresh(item)
-    return item
-
-
-async def listar_problemas(
-    db: AsyncSession, tenant_id: uuid.UUID, cidadao_id: uuid.UUID, ator: Usuario, cliente: dict
-) -> list[ProblemaClinico]:
-    await _cidadao(db, tenant_id, cidadao_id)
-    linhas = (
-        await db.scalars(
-            select(ProblemaClinico)
-            .where(ProblemaClinico.tenant_id == tenant_id, ProblemaClinico.cidadao_id == cidadao_id)
-            .order_by(ProblemaClinico.ativo.desc(), ProblemaClinico.created_at.desc())
-        )
-    ).all()
-    await registrar_leitura_sensivel(
-        db,
-        usuario=ator,
-        recurso="problema_clinico",
-        recurso_id=cidadao_id,
-        finalidade="consulta_prontuario",
-        cliente=cliente,
-    )
-    await db.commit()
-    return list(linhas)
-
-
-async def _encerrar(db, tenant_id, modelo, item_id, motivo, ator, cliente, recurso, texto):
-    item = await db.scalar(
-        select(modelo).where(modelo.id == item_id, modelo.tenant_id == tenant_id)
-    )
-    if item is None:
-        raise NotFound(texto)
-    if not item.ativo:
-        raise Conflict("Registro já encerrado.", code="ja_encerrado")
-    item.ativo = False
-    item.encerrado_em = _agora()
-    item.encerrado_motivo = motivo
-    item.atualizado_por_id = ator.id
-    await _auditar(db, ator, tenant_id, "BAIXAR", recurso, item.id, cliente, justificativa=motivo)
-    await db.commit()
-    await db.refresh(item)
-    return item
-
-
-async def encerrar_problema(db, tenant_id, problema_id, motivo, ator, cliente) -> ProblemaClinico:
-    return await _encerrar(
-        db,
-        tenant_id,
-        ProblemaClinico,
-        problema_id,
-        motivo,
-        ator,
-        cliente,
-        "problema_clinico",
-        "Problema não encontrado.",
-    )
-
-
-async def registrar_alergia(
-    db: AsyncSession,
-    tenant_id: uuid.UUID,
-    cidadao_id: uuid.UUID,
-    dados: AlergiaCreate,
-    ator: Usuario,
-    cliente: dict,
-) -> Alergia:
-    await _cidadao(db, tenant_id, cidadao_id)
-    item = Alergia(
-        tenant_id=tenant_id,
-        cidadao_id=cidadao_id,
-        **dados.model_dump(),
-        criado_por_id=ator.id,
-        atualizado_por_id=ator.id,
-    )
-    db.add(item)
-    await db.flush()
-    await _auditar(
-        db,
-        ator,
-        tenant_id,
-        "CRIAR",
-        "alergia",
-        item.id,
-        cliente,
-        dados_depois={"categoria": item.categoria},
-    )
-    await db.commit()
-    await db.refresh(item)
-    return item
-
-
-async def listar_alergias(
-    db: AsyncSession, tenant_id: uuid.UUID, cidadao_id: uuid.UUID, ator: Usuario, cliente: dict
-) -> list[Alergia]:
-    await _cidadao(db, tenant_id, cidadao_id)
-    linhas = (
-        await db.scalars(
-            select(Alergia)
-            .where(Alergia.tenant_id == tenant_id, Alergia.cidadao_id == cidadao_id)
-            .order_by(Alergia.ativo.desc(), Alergia.created_at.desc())
-        )
-    ).all()
-    await registrar_leitura_sensivel(
-        db,
-        usuario=ator,
-        recurso="alergia",
-        recurso_id=cidadao_id,
-        finalidade="consulta_prontuario",
-        cliente=cliente,
-    )
-    await db.commit()
-    return list(linhas)
-
-
-async def encerrar_alergia(db, tenant_id, alergia_id, motivo, ator, cliente) -> Alergia:
-    return await _encerrar(
-        db,
-        tenant_id,
-        Alergia,
-        alergia_id,
-        motivo,
-        ator,
-        cliente,
-        "alergia",
-        "Alergia não encontrada.",
-    )
 
 
 # ── Plano de cuidados (B.6-017) ─────────────────────────────────────────────
@@ -821,7 +712,7 @@ async def registrar_plano(
     return plano
 
 
-# ── Prescrição (B.6-019/033) ────────────────────────────────────────────────
+# ── Prescrição (B.6-019…021, B.6-033) ────────────────────────────────────────────────
 def receituarios(itens: list[dict]) -> list[dict]:
     """B.6-033 — separa os itens por tipo de receituário."""
     grupos: dict[str, list[int]] = {}
@@ -840,22 +731,21 @@ async def _alertas(
     """Alerta, não bloqueia (regra 9). Só alerta o que é verificável sem inferência."""
     alergias = (
         await db.scalars(
-            select(Alergia).where(
-                Alergia.tenant_id == tenant_id,
-                Alergia.cidadao_id == cidadao_id,
-                Alergia.ativo.is_(True),
-                Alergia.categoria == "MEDICAMENTO",
-                Alergia.agente_codigo.is_not(None),
+            select(CidadaoAlergia).where(
+                CidadaoAlergia.tenant_id == tenant_id,
+                CidadaoAlergia.cidadao_id == cidadao_id,
+                CidadaoAlergia.baixa_em.is_(None),
+                CidadaoAlergia.codigo.is_not(None),
             )
         )
     ).all()
-    por_codigo = {a.agente_codigo: a for a in alergias}
+    por_codigo = {a.codigo: a for a in alergias}
     alerta_alergia = [
         {
             "item": i,
             "medicamento_codigo": it["medicamento_codigo"],
             "alergia_id": str(por_codigo[it["medicamento_codigo"]].id),
-            "agente": por_codigo[it["medicamento_codigo"]].agente_descricao,
+            "agente": por_codigo[it["medicamento_codigo"]].substancia,
         }
         for i, it in enumerate(itens)
         if it.get("medicamento_codigo") in por_codigo
@@ -975,7 +865,7 @@ async def copiar_prescricao(
     ator: Usuario,
     cliente: dict,
 ) -> Prescricao:
-    """B.6-019 — cópia assistida: só do mesmo cidadão; alertas reavaliados."""
+    """B.6-021 — cópia assistida: só do mesmo cidadão; alertas reavaliados."""
     item = await atendimento(db, tenant_id, atendimento_id, ator, Permissao.PRESCRICAO_CRIAR)
     _aberto(item)
     origem = await db.scalar(
@@ -1048,7 +938,7 @@ async def assinar_prescricao(
     return item
 
 
-# ── Registros assistenciais configuráveis (B.6-013/018/023/025/032/034/037…039) ──
+# ── Registros assistenciais configuráveis (B.6-013/018/022…025/030…032/037…039) ──
 async def _formulario(db, tenant_id, codigo: str) -> FormularioDinamico:
     formulario = await db.scalar(
         select(FormularioDinamico)
@@ -1098,6 +988,7 @@ async def criar_registro(
     await _cidadao(db, tenant_id, dados.cidadao_id)
     estabelecimento_id = None
     sigiloso = dados.sigiloso
+    nivel, especialidade_id = ("SIGILOSO" if dados.sigiloso else "NORMAL"), None
     if dados.atendimento_id:
         item = await atendimento(
             db, tenant_id, dados.atendimento_id, ator, Permissao.PRONTUARIO_EDITAR
@@ -1109,12 +1000,16 @@ async def criar_registro(
             )
         estabelecimento_id = item.estabelecimento_id
         sigiloso = sigiloso or item.sigiloso
+        if _nivel(item) != "NORMAL":
+            nivel, especialidade_id = _nivel(item), item.especialidade_id
     formulario_id, versao_formulario = await _validar_tipo(db, tenant_id, dados.tipo, dados.dados)
     registro = RegistroAssistencial(
         tenant_id=tenant_id,
         estabelecimento_id=estabelecimento_id,
         **dados.model_dump(exclude={"sigiloso"}),
         sigiloso=sigiloso,
+        nivel_sigilo=nivel,
+        especialidade_id=especialidade_id,
         formulario_id=formulario_id,
         versao_formulario=versao_formulario,
         criado_por_id=ator.id,
@@ -1139,7 +1034,7 @@ async def criar_registro(
 
 def _registro_visivel(ator: Usuario, registro: RegistroAssistencial, permissao: Permissao) -> bool:
     return escopo_permite(ator, permissao, estabelecimento_id=registro.estabelecimento_id) and (
-        not registro.sigiloso or pode_ver_conteudo(ator, "SIGILOSO")
+        _ve(ator, registro)
     )
 
 
@@ -1155,7 +1050,7 @@ async def _registro(db, tenant_id, registro_id, ator, permissao) -> RegistroAssi
 
 
 async def assinar_registro(db, tenant_id, registro_id, ator, cliente) -> RegistroAssistencial:
-    """B.6-032/034 — documento clínico assinado fica imutável."""
+    """B.6-032/056 — documento clínico assinado fica imutável."""
     item = await _registro(db, tenant_id, registro_id, ator, Permissao.PRONTUARIO_ASSINAR)
     if item.assinado_em:
         raise Conflict("Registro já assinado.", code="ja_assinado")
@@ -1192,6 +1087,8 @@ async def retificar_registro(
         tipo=original.tipo,
         dados=dados.dados,
         sigiloso=original.sigiloso,
+        nivel_sigilo=original.nivel_sigilo,
+        especialidade_id=original.especialidade_id,
         formulario_id=formulario_id,
         versao_formulario=versao_formulario,
         retifica_de_id=original.id,
@@ -1244,7 +1141,7 @@ async def listar_registros(
     return [r for r in linhas if _registro_visivel(ator, r, Permissao.PRONTUARIO_LER)]
 
 
-# ── Linha do tempo (B.6-048/049) ────────────────────────────────────────────
+# ── Linha do tempo (B.6-026, B.6-035) ────────────────────────────────────────────
 async def linha_do_tempo(
     db: AsyncSession, tenant_id: uuid.UUID, cidadao_id: uuid.UUID, ator: Usuario, cliente: dict
 ) -> list[dict]:
@@ -1277,7 +1174,8 @@ async def linha_do_tempo(
                     "sigiloso": a.sigiloso,
                 },
                 ator,
-                nivel_sigilo="SIGILOSO" if a.sigiloso else "NORMAL",
+                nivel_sigilo=_nivel(a),
+                especialidade_id=a.especialidade_id,
             )
         )
     registros = (
@@ -1307,7 +1205,8 @@ async def linha_do_tempo(
                     "sigiloso": r.sigiloso,
                 },
                 ator,
-                nivel_sigilo="SIGILOSO" if r.sigiloso else "NORMAL",
+                nivel_sigilo=_nivel(r),
+                especialidade_id=r.especialidade_id,
             )
         )
     eventos.sort(key=lambda e: _utc(e["data_atendimento"]), reverse=True)

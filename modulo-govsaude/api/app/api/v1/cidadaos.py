@@ -24,7 +24,7 @@ from app.api.v1.rede_helpers import (
     resposta_cache,
 )
 from app.core.auth import get_tenant_id
-from app.core.autorizacao import exigir
+from app.core.autorizacao import exigir, exigir_alguma
 from app.core.database import get_db
 from app.core.permissoes import Permissao
 from app.core.security import hash_bytes
@@ -750,7 +750,7 @@ async def criar_alergia(
     request: Request,
     response: Response,
     tenant_id: uuid.UUID = Depends(get_tenant_id),
-    ator: Usuario = Depends(exigir(Permissao.CIDADAO_EDITAR)),
+    ator: Usuario = Depends(exigir_alguma(Permissao.CIDADAO_EDITAR, Permissao.PRONTUARIO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
     chave, request_hash, cache = await cache_idempotencia(
@@ -778,7 +778,7 @@ async def baixar_alergia(
     corpo: BaixaCidadaoRequest,
     request: Request,
     tenant_id: uuid.UUID = Depends(get_tenant_id),
-    ator: Usuario = Depends(exigir(Permissao.CIDADAO_EDITAR)),
+    ator: Usuario = Depends(exigir_alguma(Permissao.CIDADAO_EDITAR, Permissao.PRONTUARIO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
     return AlergiaOut.model_validate(
@@ -810,7 +810,7 @@ async def criar_condicao(
     request: Request,
     response: Response,
     tenant_id: uuid.UUID = Depends(get_tenant_id),
-    ator: Usuario = Depends(exigir(Permissao.CIDADAO_EDITAR)),
+    ator: Usuario = Depends(exigir_alguma(Permissao.CIDADAO_EDITAR, Permissao.PRONTUARIO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
     chave, request_hash, cache = await cache_idempotencia(
@@ -838,7 +838,7 @@ async def baixar_condicao(
     corpo: BaixaCidadaoRequest,
     request: Request,
     tenant_id: uuid.UUID = Depends(get_tenant_id),
-    ator: Usuario = Depends(exigir(Permissao.CIDADAO_EDITAR)),
+    ator: Usuario = Depends(exigir_alguma(Permissao.CIDADAO_EDITAR, Permissao.PRONTUARIO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
     return CondicaoOut.model_validate(

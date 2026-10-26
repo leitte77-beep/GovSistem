@@ -1,4 +1,4 @@
-"""Fase 5 — PEC ambulatorial (B.6-004…058, B.12-013/021…025).
+"""Fase 5 — PEC ambulatorial (B.6-004…058, B.12-013, B.12-021/022).
 
 Rotas finas: regras em ``app/services/prontuario.py``. Cross-tenant, fora do
 escopo de estabelecimento ou sigiloso sem permissão respondem 404.
@@ -17,20 +17,15 @@ from app.core.database import get_db
 from app.core.permissoes import Permissao
 from app.models.nucleo import Usuario
 from app.schemas.prontuario import (
-    AlergiaCreate,
-    AlergiaOut,
     AtendimentoCreate,
     AtendimentoEncerrar,
     AtendimentoOut,
-    Encerramento,
     EtapaAvancar,
     PlanoCreate,
     PlanoOut,
     PrescricaoCopiar,
     PrescricaoCreate,
     PrescricaoOut,
-    ProblemaCreate,
-    ProblemaOut,
     RegistroAssistencialCreate,
     RegistroAssistencialOut,
     RetificacaoRegistroCreate,
@@ -62,7 +57,7 @@ async def abrir(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_CRIAR)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.6-004, B.6-056 — abre atendimento; retroativo só em contingência autorizada."""
+    """B.6-004, B.6-036 — abre atendimento; retroativo só em contingência autorizada."""
     return await svc.abrir_atendimento(db, t, c, u, dados_do_cliente(r))
 
 
@@ -74,7 +69,7 @@ async def obter(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.6-004, B.12-021 — leitura auditada (READ_SENSIVEL)."""
+    """B.6-004, B.6-015, B.6-056 — leitura auditada; traz as alergias ativas do cidadão."""
     return await svc.obter_atendimento(db, t, id, u, dados_do_cliente(r))
 
 
@@ -98,7 +93,7 @@ async def pendencias(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.6-006 — campos obrigatórios ainda não preenchidos."""
+    """B.6-014 — campos obrigatórios ainda não preenchidos."""
     item = await svc.atendimento(db, t, id, u, Permissao.PRONTUARIO_LER)
     return {
         "atendimento_id": str(item.id),
@@ -115,7 +110,7 @@ async def encerrar(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.6-006 — encerra só com os campos obrigatórios do tenant preenchidos."""
+    """B.6-014 — encerra só com os campos obrigatórios do tenant preenchidos."""
     return await svc.encerrar_atendimento(db, t, id, c.finalizado_em, u, dados_do_cliente(r))
 
 
@@ -129,7 +124,7 @@ async def soap(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.6-004 — evolução SOAP cifrada em repouso."""
+    """B.6-004, B.6-027 — evolução SOAP (anamnese, exame, avaliação, conduta) cifrada."""
     return await svc.registrar_soap(db, t, id, c, u, dados_do_cliente(r))
 
 
@@ -141,7 +136,7 @@ async def listar_soap(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.6-004, B.6-057 — evoluções do atendimento, inclusive retificações."""
+    """B.6-026, B.6-057 — evoluções do atendimento, inclusive retificações."""
     return await svc.listar_soap(db, t, id, u, dados_do_cliente(r))
 
 
@@ -153,7 +148,7 @@ async def assinar(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_ASSINAR)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.6-034 — assinatura da evolução."""
+    """B.6-056 — assinatura da evolução (auditada)."""
     return await svc.assinar_soap(db, t, id, u, dados_do_cliente(r))
 
 
@@ -180,7 +175,7 @@ async def sinais(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.6-010, B.6-011 — sinais e antropometria; IMC classificado pela tabela do tenant."""
+    """B.6-010, B.6-012 — sinais e antropometria; IMC classificado pela tabela do tenant."""
     return await svc.registrar_sinais(db, t, id, c, u, dados_do_cliente(r))
 
 
@@ -192,85 +187,8 @@ async def serie_sinais(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.6-012 — série histórica."""
+    """B.6-011 — evolução de peso, IMC, pressão e demais medidas."""
     return await svc.serie_sinais(db, t, cidadao_id, u, dados_do_cliente(r))
-
-
-# ── Problemas e alergias ────────────────────────────────────────────────────
-@router.post("/cidadaos/{cidadao_id}/problemas", response_model=ProblemaOut, status_code=201)
-async def problema(
-    cidadao_id: uuid.UUID,
-    c: ProblemaCreate,
-    r: Request,
-    t: uuid.UUID = Depends(get_tenant_id),
-    u: Usuario = Depends(exigir(Permissao.PRONTUARIO_EDITAR)),
-    db: AsyncSession = Depends(get_db),
-):
-    """B.6-016 — problema CID-10/CIAP-2/CIPE, conferido na base importada."""
-    return await svc.registrar_problema(db, t, cidadao_id, c, u, dados_do_cliente(r))
-
-
-@router.get("/cidadaos/{cidadao_id}/problemas", response_model=list[ProblemaOut])
-async def listar_problemas(
-    cidadao_id: uuid.UUID,
-    r: Request,
-    t: uuid.UUID = Depends(get_tenant_id),
-    u: Usuario = Depends(exigir(Permissao.PRONTUARIO_LER)),
-    db: AsyncSession = Depends(get_db),
-):
-    """B.6-016 — lista de problemas ativos e encerrados."""
-    return await svc.listar_problemas(db, t, cidadao_id, u, dados_do_cliente(r))
-
-
-@router.post("/problemas/{id}/encerrar", response_model=ProblemaOut)
-async def encerrar_problema(
-    id: uuid.UUID,
-    c: Encerramento,
-    r: Request,
-    t: uuid.UUID = Depends(get_tenant_id),
-    u: Usuario = Depends(exigir(Permissao.PRONTUARIO_EDITAR)),
-    db: AsyncSession = Depends(get_db),
-):
-    """B.6-016 — baixa lógica com motivo."""
-    return await svc.encerrar_problema(db, t, id, c.motivo, u, dados_do_cliente(r))
-
-
-@router.post("/cidadaos/{cidadao_id}/alergias", response_model=AlergiaOut, status_code=201)
-async def alergia(
-    cidadao_id: uuid.UUID,
-    c: AlergiaCreate,
-    r: Request,
-    t: uuid.UUID = Depends(get_tenant_id),
-    u: Usuario = Depends(exigir(Permissao.PRONTUARIO_EDITAR)),
-    db: AsyncSession = Depends(get_db),
-):
-    """B.6-015 — alergia que alimenta o alerta da prescrição."""
-    return await svc.registrar_alergia(db, t, cidadao_id, c, u, dados_do_cliente(r))
-
-
-@router.get("/cidadaos/{cidadao_id}/alergias", response_model=list[AlergiaOut])
-async def listar_alergias(
-    cidadao_id: uuid.UUID,
-    r: Request,
-    t: uuid.UUID = Depends(get_tenant_id),
-    u: Usuario = Depends(exigir(Permissao.PRONTUARIO_LER)),
-    db: AsyncSession = Depends(get_db),
-):
-    """B.6-015."""
-    return await svc.listar_alergias(db, t, cidadao_id, u, dados_do_cliente(r))
-
-
-@router.post("/alergias/{id}/encerrar", response_model=AlergiaOut)
-async def encerrar_alergia(
-    id: uuid.UUID,
-    c: Encerramento,
-    r: Request,
-    t: uuid.UUID = Depends(get_tenant_id),
-    u: Usuario = Depends(exigir(Permissao.PRONTUARIO_EDITAR)),
-    db: AsyncSession = Depends(get_db),
-):
-    """B.6-015 — baixa lógica com motivo."""
-    return await svc.encerrar_alergia(db, t, id, c.motivo, u, dados_do_cliente(r))
 
 
 # ── Plano de cuidados e prescrição ──────────────────────────────────────────
@@ -283,7 +201,7 @@ async def plano(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.6-017 — plano de cuidados."""
+    """B.6-017 — plano de cuidados com vigência."""
     return await svc.registrar_plano(db, t, id, c, u, dados_do_cliente(r))
 
 
@@ -296,7 +214,7 @@ async def prescrever(
     u: Usuario = Depends(exigir(Permissao.PRESCRICAO_CRIAR)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.6-019, B.6-033 — prescrição com alertas (alergia/duplicidade) e receituários separados."""
+    """B.6-019, B.6-020, B.6-033 — prescrição com disponibilidade, alertas e receituários."""
     return _prescricao(await svc.prescrever(db, t, id, c, u, dados_do_cliente(r)))
 
 
@@ -309,7 +227,7 @@ async def copiar(
     u: Usuario = Depends(exigir(Permissao.PRESCRICAO_CRIAR)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.6-019 — cópia assistida de prescrição anterior do mesmo cidadão."""
+    """B.6-021 — cópia assistida de prescrição anterior do mesmo cidadão."""
     return _prescricao(await svc.copiar_prescricao(db, t, id, c, u, dados_do_cliente(r)))
 
 
@@ -336,7 +254,7 @@ async def assinar_prescricao(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_ASSINAR)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.6-019, B.6-034."""
+    """B.6-034, B.6-056 — assinatura da prescrição."""
     return _prescricao(await svc.assinar_prescricao(db, t, id, u, dados_do_cliente(r)))
 
 
@@ -361,7 +279,7 @@ async def linha_do_tempo(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.6-048, B.6-049 — atendimentos e registros; sigilosos velados."""
+    """B.6-026, B.6-006, B.6-035 — linha do tempo; sigilosos velados."""
     return await svc.linha_do_tempo(db, t, cidadao_id, u, dados_do_cliente(r))
 
 
@@ -374,7 +292,7 @@ async def criar_registro(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.6-013, B.6-018, B.6-023, B.6-025, B.6-032, B.6-037…039 — exame, encaminhamento,
+    """B.6-013, B.6-018, B.6-022…025, B.6-030…032, B.6-037…039 — exame, encaminhamento,
     documento, notificação, ficha, escala, atenção domiciliar/psicossocial, atividade coletiva.
 
     ``tipo`` e o formulário de validação vêm de ``prontuario.tipos_registro``.
@@ -391,7 +309,7 @@ async def listar_registros(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.6-048 — registros visíveis no escopo e no nível de sigilo do usuário."""
+    """B.6-006, B.6-026 — registros visíveis no escopo e no sigilo do usuário."""
     return await svc.listar_registros(db, t, cidadao_id, tipo, u, dados_do_cliente(r))
 
 
@@ -403,7 +321,7 @@ async def assinar_registro(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_ASSINAR)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.6-032, B.6-034 — documento clínico assinado."""
+    """B.6-032, B.6-056 — documento clínico assinado."""
     return await svc.assinar_registro(db, t, id, u, dados_do_cliente(r))
 
 

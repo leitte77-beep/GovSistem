@@ -355,6 +355,7 @@ class AlergiaCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     substancia: str = Field(min_length=2, max_length=200)
+    codigo: str | None = Field(default=None, max_length=30)
     tipo: str | None = Field(default=None, max_length=60)
     gravidade: str | None = Field(default=None, max_length=40)
     reacao: str | None = Field(default=None, max_length=2000)
@@ -369,6 +370,7 @@ class AlergiaOut(BaseModel):
     tenant_id: uuid.UUID
     cidadao_id: uuid.UUID
     substancia: str
+    codigo: str | None = None
     tipo: str | None = None
     gravidade: str | None = None
     reacao: str | None = None

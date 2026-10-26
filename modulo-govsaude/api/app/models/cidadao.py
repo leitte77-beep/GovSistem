@@ -329,6 +329,8 @@ class CidadaoAlergia(
     )
     substancia: Mapped[str] = mapped_column(String(200), nullable=False)
     substancia_busca: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    # Código do medicamento (OBM) quando conhecido: alimenta o alerta da prescrição.
+    codigo: Mapped[str | None] = mapped_column(String(30), nullable=True)
     tipo: Mapped[str | None] = mapped_column(String(60), nullable=True)
     gravidade: Mapped[str | None] = mapped_column(String(40), nullable=True)
     reacao: Mapped[str | None] = mapped_column(Text, nullable=True)

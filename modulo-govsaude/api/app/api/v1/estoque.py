@@ -97,7 +97,7 @@ async def lotes(
     u: Usuario = Depends(exigir(Permissao.ESTOQUE_LER)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.4-005."""
+    """B.4-001 — lotes do produto."""
     return await svc.listar_lotes(db, t, id)
 
 
@@ -110,7 +110,7 @@ async def bloqueio(
     u: Usuario = Depends(exigir(Permissao.ESTOQUE_AJUSTAR)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.4-012 — bloqueia/desbloqueia lote com motivo."""
+    """B.4-002 — bloqueia/desbloqueia lote com motivo."""
     return await svc.bloquear_lote(db, t, id, c.bloqueado, c.motivo, u, dados_do_cliente(r))
 
 
@@ -145,7 +145,7 @@ async def parametro(
     u: Usuario = Depends(exigir(Permissao.ESTOQUE_AJUSTAR)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.4-004 — mínimo, máximo e ponto de pedido."""
+    """B.4-004 — mínimo, máximo, ideal e ponto de pedido."""
     return await svc.definir_parametro(db, t, id, c, u, dados_do_cliente(r))
 
 
@@ -158,7 +158,7 @@ async def movimentar(
     u: Usuario = Depends(exigir(Permissao.ESTOQUE_MOVIMENTAR)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.4-005, B.4-011 — lançamento no ledger imutável; saída FEFO quando sem lote."""
+    """B.4-007, B.4-009, B.4-012, B.4-035 — lançamento no ledger imutável; FEFO sem lote."""
     return await svc.movimentar(db, t, c, u, dados_do_cliente(r))
 
 
@@ -172,7 +172,7 @@ async def extrato(
     u: Usuario = Depends(exigir(Permissao.ESTOQUE_LER)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.4-011 — extrato do local (até 500 lançamentos)."""
+    """B.4-036 — extrato/rastreabilidade do local (até 500 lançamentos)."""
     return await svc.extrato(db, t, id, u, produto_id, inicio, fim)
 
 
@@ -185,7 +185,7 @@ async def saldos(
     u: Usuario = Depends(exigir(Permissao.ESTOQUE_LER)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.4-006, B.4-009 — saldo por lote em qualquer data, custo médio e valor."""
+    """B.4-006, B.4-027 — saldo por lote em qualquer data, custo e pedidos pendentes."""
     return await svc.posicao(db, t, id, u, em, produto_id)
 
 
@@ -222,7 +222,7 @@ async def atender(
     u: Usuario = Depends(exigir(Permissao.ESTOQUE_MOVIMENTAR)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.4-014 — atendimento total ou parcial pela origem."""
+    """B.4-005, B.4-014 — atendimento total ou parcial pela origem (redistribuição)."""
     return await svc.atender_requisicao(db, t, id, c, u, dados_do_cliente(r))
 
 
@@ -336,7 +336,7 @@ async def dispensar(
     u: Usuario = Depends(exigir(Permissao.DISPENSACAO_CRIAR)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.4-020, B.4-021, B.4-024 — total/parcial por lote; duplicidade bloqueia salvo
+    """B.4-020…022, B.4-035 — total/parcial por lote; duplicidade bloqueia salvo
     justificativa."""
     return await svc.dispensar(db, t, c, u, dados_do_cliente(r))
 
@@ -352,6 +352,18 @@ async def estornar(
 ):
     """B.4-020 — estorno devolve os mesmos lotes."""
     return await svc.estornar_dispensacao(db, t, id, c.motivo, u, dados_do_cliente(r))
+
+
+@router.get("/dispensacoes/{id}/comprovante")
+async def comprovante(
+    id: uuid.UUID,
+    r: Request,
+    t: uuid.UUID = Depends(get_tenant_id),
+    u: Usuario = Depends(exigir(Permissao.DISPENSACAO_LER)),
+    db: AsyncSession = Depends(get_db),
+):
+    """B.4-023 — comprovante de dispensação (impressão auditada)."""
+    return await svc.comprovante_dispensacao(db, t, id, u, dados_do_cliente(r))
 
 
 @router.get("/cidadaos/{cidadao_id}/dispensacoes", response_model=list[DispensacaoOut])
@@ -397,7 +409,7 @@ async def alertas(
     u: Usuario = Depends(exigir(Permissao.ESTOQUE_LER)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.4-004, B.4-035, B.4-036, B.4-037 — mínimo, ponto de pedido, vencimento,
+    """B.4-004, B.4-016, B.4-037 — mínimo, ponto de pedido, vencimento,
     lote bloqueado, consumo anormal (desvio estatístico) e temperatura."""
     return await svc.alertas(db, t, id, u)
 
@@ -411,7 +423,7 @@ async def curva_abc(
     u: Usuario = Depends(exigir(Permissao.ESTOQUE_LER)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.4-039 — curva ABC por valor consumido."""
+    """B.4-026 — curva ABC por valor consumido."""
     return await svc.curva_abc(db, t, id, inicio, fim, u)
 
 
@@ -422,5 +434,5 @@ async def sugestao(
     u: Usuario = Depends(exigir(Permissao.ESTOQUE_LER)),
     db: AsyncSession = Depends(get_db),
 ):
-    """B.4-007, B.4-038, B.4-040 — sugestão com memória de cálculo, cobertura e giro."""
+    """B.4-005, B.4-026 — sugestão com memória de cálculo, cobertura e giro."""
     return await svc.sugestao_compra(db, t, id, u)

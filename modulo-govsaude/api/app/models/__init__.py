@@ -88,12 +88,10 @@ from app.models.estoque import (
     Requisicao,
 )
 from app.models.prontuario import (
-    Alergia,
     Atendimento,
     EvolucaoSOAP,
     PlanoCuidado,
     Prescricao,
-    ProblemaClinico,
     RegistroAssistencial,
     SinalVital,
 )
@@ -143,11 +141,9 @@ __all__ = [
     "RegistroTemperatura",
     "Requisicao",
     "SinalVital",
-    "ProblemaClinico",
     "Prescricao",
     "PlanoCuidado",
     "EvolucaoSOAP",
-    "Alergia",
     "Atendimento",
     "RegistroAssistencial",
     "VisitaDomiciliar",

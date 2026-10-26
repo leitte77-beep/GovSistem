@@ -94,7 +94,7 @@ CONFIGURACOES_PADRAO: dict[str, dict] = {
     "odontologia.retroativo_dias_maximos": {
         "valor": {"valor": 30},
         "tipo": "numero",
-        "descricao": "Dias máximos para digitação retroativa de atendimento odontológico (B.3-013); exige justificativa.",
+        "descricao": "Dias máximos para digitação retroativa de atendimento odontológico (B.3-016); exige justificativa.",
     },
     "odontologia.classificacoes_risco": {
         "valor": {"valor": []},
@@ -109,17 +109,17 @@ CONFIGURACOES_PADRAO: dict[str, dict] = {
     "prontuario.campos_obrigatorios": {
         "valor": {"valor": []},
         "tipo": "json",
-        "descricao": "Regras de campos obrigatórios no encerramento (B.6-006): lista de {tipo_atendimento, estabelecimento_id, sexo, idade_min_anos, idade_max_anos, campos}.",
+        "descricao": "Regras de campos obrigatórios no encerramento (B.6-014): lista de {tipo_atendimento, estabelecimento_id, sexo, idade_min_anos, idade_max_anos, campos}.",
     },
     "prontuario.retroativo_contingencia_ativa": {
         "valor": {"valor": False},
         "tipo": "booleano",
-        "descricao": "Liga a digitação retroativa em contingência (B.6-056). Desligada = retroativo recusado.",
+        "descricao": "Liga a digitação retroativa em contingência (B.6-036). Desligada = retroativo recusado.",
     },
     "prontuario.retroativo_dias_maximos": {
         "valor": {"valor": 30},
         "tipo": "numero",
-        "descricao": "Período máximo, em dias, da digitação retroativa do PEC (B.6-056).",
+        "descricao": "Período máximo, em dias, da digitação retroativa do PEC (B.6-036).",
     },
     "prontuario.tipos_registro": {
         "valor": {"valor": {}},
@@ -139,7 +139,7 @@ CONFIGURACOES_PADRAO: dict[str, dict] = {
     "estoque.alerta_vencimento_dias": {
         "valor": {"valor": 90},
         "tipo": "numero",
-        "descricao": "Antecedência, em dias, do alerta de lote a vencer (B.4-035). Valor operacional; validar com a assistência farmacêutica.",
+        "descricao": "Antecedência, em dias, do alerta de lote a vencer (B.4-016). Valor operacional; validar com a assistência farmacêutica.",
     },
     "estoque.janela_duplicidade_dias": {
         "valor": {"valor": 30},
@@ -149,32 +149,32 @@ CONFIGURACOES_PADRAO: dict[str, dict] = {
     "estoque.campos_documento_controlado": {
         "valor": {"valor": []},
         "tipo": "json",
-        "descricao": "Campos obrigatórios do documento na dispensação de controlado/antimicrobiano (B.4-024). Vazio = exige só o documento; preencher conforme a norma vigente.",
+        "descricao": "Campos obrigatórios do documento na dispensação de controlado/antimicrobiano (B.4-022). Vazio = exige só o documento; preencher conforme a norma vigente.",
     },
     "estoque.consumo_anormal_desvios": {
         "valor": {"valor": 2},
         "tipo": "numero",
-        "descricao": "Número de desvios-padrão acima da média mensal que caracteriza consumo anormal (B.4-036).",
+        "descricao": "Número de desvios-padrão acima da média mensal que caracteriza consumo anormal (B.4-016).",
     },
     "estoque.consumo_meses_historico": {
         "valor": {"valor": 6},
         "tipo": "numero",
-        "descricao": "Meses fechados usados na média/desvio de consumo (B.4-036).",
+        "descricao": "Meses fechados usados na média/desvio de consumo (B.4-016).",
     },
     "estoque.curva_abc_limites": {
         "valor": {"valor": [80, 95]},
         "tipo": "json",
-        "descricao": "Percentuais acumulados que separam as classes A/B/C (B.4-039).",
+        "descricao": "Percentuais acumulados que separam as classes A/B/C (B.4-026).",
     },
     "estoque.sugestao_meses_historico": {
         "valor": {"valor": 3},
         "tipo": "numero",
-        "descricao": "Meses de consumo usados na sugestão de compra (B.4-007).",
+        "descricao": "Meses de consumo usados na sugestão de compra (B.4-005).",
     },
     "estoque.sugestao_cobertura_meses": {
         "valor": {"valor": 1},
         "tipo": "numero",
-        "descricao": "Cobertura alvo, em meses, quando o produto não tem estoque máximo (B.4-007).",
+        "descricao": "Cobertura alvo, em meses, quando o produto não tem estoque máximo (B.4-005).",
     },
     "geral.fuso_horario": {
         "valor": {"valor": "America/Sao_Paulo"},

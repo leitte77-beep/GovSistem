@@ -88,6 +88,7 @@ class Permissao(str, Enum):
     DISPENSACAO_LER = "dispensacao:ler"
     DISPENSACAO_CRIAR = "dispensacao:criar"
     DISPENSACAO_ESTORNAR = "dispensacao:estornar"
+    ESTOQUE_CONTROLADOS = "estoque:controlados"
     LABORATORIO_LER = "laboratorio:ler"
     LABORATORIO_COLETAR = "laboratorio:coletar"
     LABORATORIO_RESULTADO = "laboratorio:resultado"
@@ -312,7 +313,9 @@ GRUPOS_NACIONAIS: dict[str, dict] = {
     "farmaceutico": {
         "nome": "Farmacêutico",
         "permissoes": _LEITURA | _FARMACIA | _p(
-            Permissao.DISPENSACAO_CRIAR, Permissao.DISPENSACAO_ESTORNAR
+            Permissao.DISPENSACAO_CRIAR,
+            Permissao.DISPENSACAO_ESTORNAR,
+            Permissao.ESTOQUE_CONTROLADOS,
         ),
         "requer_consentimento": False,
     },

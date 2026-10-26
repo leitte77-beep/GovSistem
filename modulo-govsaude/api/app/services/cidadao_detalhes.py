@@ -409,6 +409,7 @@ async def criar_alergia(
         cidadao_id=cidadao.id,
         substancia=dados.substancia.strip(),
         substancia_busca=busca,
+        codigo=dados.codigo,
         tipo=dados.tipo,
         gravidade=dados.gravidade,
         reacao=dados.reacao,

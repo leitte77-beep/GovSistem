@@ -18,7 +18,6 @@ TABELAS = [
     "atendimentos",
     "evolucoes_soap",
     "sinais_vitais",
-    "problemas_clinicos",
     "planos_cuidado",
     "prescricoes",
     "registros_assistenciais",

@@ -1,16 +1,17 @@
-"""PEC ambulatorial (Fase 5, B.6-004…058, B.12-013/021…025).
+"""PEC ambulatorial (Fase 5, B.6-004…058).
 
-SOAP e documentos ficam cifrados em repouso. Nada é excluído: problema e
-alergia são encerrados com motivo; evolução e registro assinados só mudam por
-retificação encadeada (B.6-057).
+SOAP fica cifrado em repouso. Alergias e problemas/condições são os do cadastro
+do cidadão (``cidadao_alergias``/``cidadao_condicoes``, Fase 2): o PEC não
+duplica a lista. Evolução e registro assinados só mudam por retificação
+encadeada (B.6-057).
 """
 
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, Uuid
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Index, String, Text, Uuid
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.encryption import CampoProtegido
@@ -49,6 +50,15 @@ class Atendimento(Base, UUIDPrimaryKeyMixin, TimestampMixin, TenantMixin, Versao
     iniciado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     finalizado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     sigiloso: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # B.6-035 — NORMAL, RESTRITO_ESPECIALIDADE (só a especialidade autorizada) ou SIGILOSO.
+    nivel_sigilo: Mapped[str] = mapped_column(String(30), default="NORMAL", nullable=False)
+    especialidade_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("especialidades.id", ondelete="RESTRICT"), nullable=True
+    )
+    # B.6-004 — atendimento aberto a partir da fila (recepção → triagem → consulta).
+    fila_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("filas_atendimento.id", ondelete="RESTRICT"), nullable=True, unique=True
+    )
 
 
 class EvolucaoSOAP(Base, UUIDPrimaryKeyMixin, TimestampMixin, TenantMixin, VersaoMixin, ActorMixin):
@@ -81,39 +91,6 @@ class SinalVital(Base, UUIDPrimaryKeyMixin, TimestampMixin, TenantMixin, ActorMi
     dados: Mapped[dict] = mapped_column(JSONType, nullable=False)
 
 
-class ProblemaClinico(Base, UUIDPrimaryKeyMixin, TimestampMixin, TenantMixin, ActorMixin):
-    __tablename__ = "problemas_clinicos"
-    __table_args__ = (Index("ix_problemas_clinicos_cidadao", "tenant_id", "cidadao_id", "ativo"),)
-    cidadao_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("cidadaos.id", ondelete="RESTRICT"), nullable=False
-    )
-    codigo: Mapped[str] = mapped_column(String(20), nullable=False)
-    sistema: Mapped[str] = mapped_column(String(10), nullable=False)
-    descricao: Mapped[str | None] = mapped_column(Text, nullable=True)
-    ativo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    validado_referencia: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
-    encerrado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    encerrado_motivo: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-
-class Alergia(Base, UUIDPrimaryKeyMixin, TimestampMixin, TenantMixin, ActorMixin):
-    """B.6-015 — alergia/intolerância; alimenta o alerta da prescrição."""
-
-    __tablename__ = "alergias"
-    __table_args__ = (Index("ix_alergias_cidadao", "tenant_id", "cidadao_id", "ativo"),)
-    cidadao_id: Mapped[uuid.UUID] = mapped_column(
-        Uuid, ForeignKey("cidadaos.id", ondelete="RESTRICT"), nullable=False
-    )
-    categoria: Mapped[str] = mapped_column(String(20), nullable=False)
-    agente_codigo: Mapped[str | None] = mapped_column(String(30), nullable=True)
-    agente_descricao: Mapped[str] = mapped_column(String(300), nullable=False)
-    criticidade: Mapped[str | None] = mapped_column(String(40), nullable=True)
-    reacao: Mapped[str | None] = mapped_column(Text, nullable=True)
-    ativo: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
-    encerrado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    encerrado_motivo: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-
 class PlanoCuidado(Base, UUIDPrimaryKeyMixin, TimestampMixin, TenantMixin, VersaoMixin, ActorMixin):
     __tablename__ = "planos_cuidado"
     atendimento_id: Mapped[uuid.UUID] = mapped_column(
@@ -122,6 +99,8 @@ class PlanoCuidado(Base, UUIDPrimaryKeyMixin, TimestampMixin, TenantMixin, Versa
     objetivo: Mapped[str] = mapped_column(Text, nullable=False)
     acoes: Mapped[dict] = mapped_column(JSONType, nullable=False)
     status: Mapped[str] = mapped_column(String(20), default="ATIVO", nullable=False)
+    vigencia_inicio: Mapped[date | None] = mapped_column(Date, nullable=True)
+    vigencia_fim: Mapped[date | None] = mapped_column(Date, nullable=True)
 
 
 class Prescricao(Base, UUIDPrimaryKeyMixin, TimestampMixin, TenantMixin, VersaoMixin, ActorMixin):
@@ -166,6 +145,10 @@ class RegistroAssistencial(
     status: Mapped[str] = mapped_column(String(30), default="ATIVO", nullable=False)
     dados: Mapped[dict] = mapped_column(JSONType, nullable=False)
     sigiloso: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    nivel_sigilo: Mapped[str] = mapped_column(String(30), default="NORMAL", nullable=False)
+    especialidade_id: Mapped[uuid.UUID | None] = mapped_column(
+        Uuid, ForeignKey("especialidades.id", ondelete="RESTRICT"), nullable=True
+    )
     formulario_id: Mapped[uuid.UUID | None] = mapped_column(
         Uuid, ForeignKey("formularios_dinamicos.id", ondelete="SET NULL"), nullable=True
     )

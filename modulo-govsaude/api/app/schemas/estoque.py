@@ -18,6 +18,8 @@ TipoManual = Literal[
     "CONSUMO_INTERNO",
     "AJUSTE_POSITIVO",
     "AJUSTE_NEGATIVO",
+    "QUEBRA",
+    "VENCIMENTO",
 ]
 
 
@@ -84,6 +86,7 @@ class ParametroSet(BaseModel):
     produto_id: uuid.UUID
     minimo: float | None = Field(default=None, ge=0)
     maximo: float | None = Field(default=None, ge=0)
+    ideal: float | None = Field(default=None, ge=0)
     ponto_pedido: float | None = Field(default=None, ge=0)
 
     @model_validator(mode="after")
@@ -132,8 +135,12 @@ class MovimentacaoCreate(BaseModel):
     fabricante: str | None = Field(default=None, max_length=200)
     custo_unitario: float | None = Field(default=None, ge=0)
     ocorrido_em: datetime | None = None
-    documento: dict | None = None
+    documento: dict | None = Field(
+        default=None,
+        description="Ex.: tipo (NF, PEDIDO, EMPENHO, CONTRATO), numero, fornecedor (B.4-009).",
+    )
     motivo: str | None = Field(default=None, max_length=2000)
+    centro_custo: str | None = Field(default=None, max_length=40)
 
 
 class MovimentacaoOut(BaseModel):
@@ -151,6 +158,7 @@ class MovimentacaoOut(BaseModel):
     motivo: str | None
     referencia_tipo: str | None
     referencia_id: uuid.UUID | None
+    centro_custo: str | None = None
 
 
 class ItemRequisicao(BaseModel):

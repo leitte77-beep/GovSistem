@@ -2,7 +2,7 @@
 
 Etapas e campos obrigatórios configuráveis, SOAP cifrado com assinatura e
 retificação, sinais vitais com IMC e classificação só por tabela do tenant,
-problemas/alergias com baixa lógica, prescrição com alertas e receituários,
+alergias e problemas do cadastro único, prescrição com alertas e receituários,
 cópia assistida, registros configuráveis por formulário, sigilo, retroativo em
 contingência e validade de consulta. Inclui negativos de tenant, RBAC, escopo
 e sigilo.
@@ -47,7 +47,7 @@ async def _abrir(client, token, mundo, cidadao, quem="medico", **extra):
 
 
 @pytest.mark.asyncio
-async def test_b6_004_006_etapas_e_campos_obrigatorios_configuraveis(client, token, mundo):
+async def test_b6_004_014_etapas_e_campos_obrigatorios_configuraveis(client, token, mundo):
     await _config(client, token, "prontuario.etapas", ["ACOLHIMENTO", "TRIAGEM", "CONSULTA"])
     await _config(client, token, "prontuario.campos_obrigatorios", [
         {"tipo_atendimento": "CONSULTA", "sexo": "FEMININO", "idade_min_anos": 18, "campos": ["avaliacao", "sinais_vitais"]},
@@ -87,7 +87,7 @@ async def test_b6_004_006_etapas_e_campos_obrigatorios_configuraveis(client, tok
 
 
 @pytest.mark.asyncio
-async def test_b6_057_soap_cifrado_assinatura_e_retificacao(client, token, mundo, db):
+async def test_b6_027_057_soap_cifrado_assinatura_e_retificacao(client, token, mundo, db):
     cidadao = await _cidadao(client, token)
     at = (await _abrir(client, token, mundo, cidadao)).json()
     ev = await client.post(f"{API}/atendimentos/{at['id']}/soap", json={"subjetivo": "Cefaleia há 3 dias"}, headers=token("medico"))
@@ -117,7 +117,7 @@ async def test_b6_057_soap_cifrado_assinatura_e_retificacao(client, token, mundo
 
 
 @pytest.mark.asyncio
-async def test_b6_010_012_imc_classificado_apenas_por_tabela_do_tenant(client, token, mundo):
+async def test_b6_010_011_imc_classificado_apenas_por_tabela_do_tenant(client, token, mundo):
     cidadao = await _cidadao(client, token)
     at = (await _abrir(client, token, mundo, cidadao)).json()
     url = f"{API}/atendimentos/{at['id']}/sinais-vitais"
@@ -141,34 +141,36 @@ async def test_b6_010_012_imc_classificado_apenas_por_tabela_do_tenant(client, t
 
 
 @pytest.mark.asyncio
-async def test_b6_015_016_problemas_e_alergias_com_baixa_logica(client, token, mundo):
+async def test_b6_015_016_alergias_e_problemas_vem_do_cadastro_unico(client, token, mundo):
+    """B.6-015/016 — o PEC usa a lista do cadastro (Fase 2); o médico registra e o
+    atendimento exibe a alergia ativa."""
+    await _config(client, token, "prontuario.campos_obrigatorios", [{"campos": ["problema"]}])
     cidadao = await _cidadao(client, token)
-    url = f"{API}/cidadaos/{cidadao}/problemas"
-    p = await client.post(url, json={"codigo": "i10", "sistema": "CID10"}, headers=token("medico"))
-    assert p.status_code == 201 and p.json()["codigo"] == "I10"
-    assert p.json()["validado_referencia"] is False, "sem base CID importada não se valida de memória"
-    assert (await client.post(url, json={"codigo": "I10", "sistema": "CID10"}, headers=token("medico"))).status_code == 409
-    assert (await client.post(url, json={"codigo": "X", "sistema": "CID11"}, headers=token("medico"))).status_code == 422
-    sem_motivo = await client.post(f"{API}/problemas/{p.json()['id']}/encerrar", json={"motivo": ""}, headers=token("medico"))
-    assert sem_motivo.status_code == 422
-    enc = await client.post(f"{API}/problemas/{p.json()['id']}/encerrar", json={"motivo": "Resolvido após tratamento"}, headers=token("medico"))
-    assert enc.status_code == 200 and enc.json()["ativo"] is False
-    assert (await client.post(f"{API}/problemas/{p.json()['id']}/encerrar", json={"motivo": "De novo aqui"}, headers=token("medico"))).status_code == 409
-    lista = await client.get(url, headers=token("medico"))
-    assert len(lista.json()) == 1 and lista.json()[0]["encerrado_motivo"] == "Resolvido após tratamento"
-
-    al = await client.post(f"{API}/cidadaos/{cidadao}/alergias", json={"categoria": "MEDICAMENTO", "agente_codigo": "MED-TESTE-1", "agente_descricao": "Medicamento de teste"}, headers=token("medico"))
+    base = f"/api/govsaude/v1/cidadaos/{cidadao}"
+    al = await client.post(f"{base}/alergias", json={"substancia": "Medicamento de teste", "codigo": "MED-TESTE-1"}, headers=token("medico"))
     assert al.status_code == 201, al.text
-    assert (await client.post(f"{API}/alergias/{al.json()['id']}/encerrar", json={"motivo": "Teste"}, headers=token("admin_b"))).status_code == 404
-    assert (await client.get(f"{API}/cidadaos/{cidadao}/alergias", headers=token("admin_b"))).status_code == 404
-    assert (await client.post(f"{API}/cidadaos/{cidadao}/alergias", json={"categoria": "MEDICAMENTO", "agente_descricao": "Xyz"}, headers=token("recepcao"))).status_code == 403
+    assert (await client.post(f"{base}/alergias", json={"substancia": "Xyz"}, headers=token("consulta"))).status_code == 403
+    at = (await _abrir(client, token, mundo, cidadao)).json()
+    lido = (await client.get(f"{API}/atendimentos/{at['id']}", headers=token("medico"))).json()
+    assert [a["codigo"] for a in lido["alertas_alergia"]] == ["MED-TESTE-1"]
+
+    assert (await client.get(f"{API}/atendimentos/{at['id']}/pendencias", headers=token("medico"))).json()["campos_pendentes"] == ["problema"]
+    cond = await client.post(f"{base}/condicoes", json={"tipo_codigo": "CID10", "codigo": "I10"}, headers=token("medico"))
+    assert cond.status_code == 201, cond.text
+    assert (await client.get(f"{API}/atendimentos/{at['id']}/pendencias", headers=token("medico"))).json()["campos_pendentes"] == []
+
+    baixa = await client.post(f"{base}/alergias/{al.json()['id']}/baixar", json={"motivo": "Registro feito no paciente errado"}, headers=token("medico"))
+    assert baixa.status_code == 200
+    lido = (await client.get(f"{API}/atendimentos/{at['id']}", headers=token("medico"))).json()
+    assert lido["alertas_alergia"] == []
+    assert (await client.get(f"{base}/alergias", headers=token("admin_b"))).status_code == 404
 
 
 @pytest.mark.asyncio
-async def test_b6_019_033_prescricao_alertas_receituarios_e_copia(client, token, mundo):
+async def test_b6_019_021_033_prescricao_alertas_receituarios_e_copia(client, token, mundo):
     cidadao = await _cidadao(client, token)
     outro = await _cidadao(client, token, nome="Outro Paciente")
-    await client.post(f"{API}/cidadaos/{cidadao}/alergias", json={"categoria": "MEDICAMENTO", "agente_codigo": "MED-A", "agente_descricao": "Medicamento A"}, headers=token("medico"))
+    await client.post(f"/api/govsaude/v1/cidadaos/{cidadao}/alergias", json={"substancia": "Medicamento A", "codigo": "MED-A"}, headers=token("medico"))
     at = (await _abrir(client, token, mundo, cidadao)).json()
     itens = [
         {"medicamento_codigo": "MED-A", "descricao": "Medicamento A", "posologia": "1x ao dia", "uso_continuo": True},
@@ -240,7 +242,7 @@ async def test_b6_025_057_registros_configuraveis_formulario_assinatura_retifica
 
 
 @pytest.mark.asyncio
-async def test_b12_021_025_sigilo_escopo_e_linha_do_tempo(client, token, mundo):
+async def test_b6_006_026_035_sigilo_escopo_e_linha_do_tempo(client, token, mundo):
     cidadao = await _cidadao(client, token)
     normal = (await _abrir(client, token, mundo, cidadao)).json()
     sigiloso = (await _abrir(client, token, mundo, cidadao, sigiloso=True)).json()
@@ -264,7 +266,7 @@ async def test_b12_021_025_sigilo_escopo_e_linha_do_tempo(client, token, mundo):
 
 
 @pytest.mark.asyncio
-async def test_b6_056_retroativo_em_contingencia_e_b6_041_validade(client, token, mundo):
+async def test_b6_036_retroativo_em_contingencia_e_b6_041_validade(client, token, mundo):
     cidadao = await _cidadao(client, token)
     nao_sinalizado = await _abrir(client, token, mundo, cidadao, iniciado_em=_agora(days=3))
     assert nao_sinalizado.status_code == 422 and nao_sinalizado.json()["codigo"] == "retroativo_nao_sinalizado"
@@ -291,3 +293,63 @@ async def test_b6_056_retroativo_em_contingencia_e_b6_041_validade(client, token
     vigente = (await client.get(url, params={"tipo": "CONSULTA"}, headers=token("medico"))).json()
     assert vigente["situacao"] == "VIGENTE" and vigente["dias_validade"] == 30
     assert (await client.get(url, params={"tipo": "CONSULTA"}, headers=token("admin_b"))).status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_b6_035_sigilo_por_especialidade_autorizada(client, token, mundo, db):
+    """B.6-035 — atendimento restrito à especialidade: só quem tem vínculo nela vê."""
+    from datetime import date as _date
+
+    from app.models.nucleo import Especialidade, UsuarioGrupo
+    from tests.conftest import _criar_usuario
+
+    org = mundo["org_a"].id
+    saude_mental = Especialidade(tenant_id=org, codigo="SM", nome="Saúde mental")
+    outra = Especialidade(tenant_id=org, codigo="CARD", nome="Cardiologia")
+    db.add_all([saude_mental, outra])
+    await db.flush()
+    for chave, esp in (("enf_sm", saude_mental), ("enf_card", outra)):
+        u = await _criar_usuario(db, tenant_id=org, nome=f"Enf {chave}", email=f"{chave}@teste.local", grupo="enfermeiro", estabelecimento_id=mundo["estab_a"].id)
+        vinculo = await db.scalar(select(UsuarioGrupo).where(UsuarioGrupo.usuario_id == u.id))
+        vinculo.especialidade_id = esp.id
+        vinculo.vigencia_inicio = _date.today()
+        mundo["usuarios"][chave] = u
+    await db.commit()
+
+    cidadao = await _cidadao(client, token)
+    sem_esp = await _abrir(client, token, mundo, cidadao, nivel_sigilo="RESTRITO_ESPECIALIDADE")
+    assert sem_esp.status_code == 422 and sem_esp.json()["codigo"] == "especialidade_obrigatoria"
+    at = await _abrir(client, token, mundo, cidadao, nivel_sigilo="RESTRITO_ESPECIALIDADE", especialidade_id=str(saude_mental.id))
+    assert at.status_code == 201, at.text
+    assert at.json()["nivel_sigilo"] == "RESTRITO_ESPECIALIDADE" and at.json()["sigiloso"] is True
+    url = f"{API}/atendimentos/{at.json()['id']}"
+    assert (await client.get(url, headers=token("enf_sm"))).status_code == 200
+    assert (await client.get(url, headers=token("enf_card"))).status_code == 404
+    assert (await client.get(url, headers=token("gestor"))).status_code == 404
+    assert (await client.get(url, headers=token("medico"))).status_code == 200, "permissão de sigilo vê"
+    tempo = (await client.get(f"{API}/cidadaos/{cidadao}/linha-do-tempo", headers=token("enf_card"))).json()
+    assert tempo[0]["velado"] is True
+
+
+@pytest.mark.asyncio
+async def test_b6_004_012_atendimento_continua_a_fila_da_recepcao(client, token, mundo, db):
+    """PoC Lote 02, cenário 3 — recepção → triagem → consulta no mesmo fluxo."""
+    from app.models.nucleo import Setor
+
+    setor = Setor(tenant_id=mundo["org_a"].id, estabelecimento_id=mundo["estab_a"].id, nome="Acolhimento PEC", tipo="ATENDIMENTO", ativo=True, versao=1)
+    db.add(setor)
+    await db.commit()
+    cidadao = await _cidadao(client, token)
+    outro = await _cidadao(client, token, nome="Outro Paciente")
+    fila = await client.post("/api/govsaude/v1/filas", json={"estabelecimento_id": str(mundo["estab_a"].id), "setor_id": str(setor.id), "cidadao_id": cidadao, "origem": "DEMANDA_ESPONTANEA"}, headers=token("admin"))
+    assert fila.status_code == 201, fila.text
+    fila_id = fila.json()["id"]
+
+    alheio = await client.post(f"{API}/atendimentos", json={"cidadao_id": outro, "fila_id": fila_id, "iniciado_em": _agora()}, headers=token("medico"))
+    assert alheio.status_code == 422 and alheio.json()["codigo"] == "cidadao_divergente"
+    at = await client.post(f"{API}/atendimentos", json={"cidadao_id": cidadao, "fila_id": fila_id, "iniciado_em": _agora()}, headers=token("medico"))
+    assert at.status_code == 201, at.text
+    assert at.json()["estabelecimento_id"] == str(mundo["estab_a"].id), "herda a unidade da fila"
+    de_novo = await client.post(f"{API}/atendimentos", json={"cidadao_id": cidadao, "fila_id": fila_id, "iniciado_em": _agora()}, headers=token("medico"))
+    assert de_novo.status_code == 409 and de_novo.json()["codigo"] == "fila_com_atendimento"
+    assert (await client.post(f"{API}/atendimentos", json={"cidadao_id": cidadao, "fila_id": fila_id, "iniciado_em": _agora()}, headers=token("admin_b"))).status_code == 404
