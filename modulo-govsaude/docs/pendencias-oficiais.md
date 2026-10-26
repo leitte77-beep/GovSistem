@@ -66,6 +66,19 @@ depende de artefato oficial fica atrás de uma porta e recebe o estado
 | Etapas, campos obrigatórios e validade de consulta | Definição municipal | Secretaria municipal de saúde | Configurações `prontuario.*` nascem vazias; sem regra, nada é exigido |
 | Assinatura digital | ICP-Brasil / assinatura gov.br | ITI / gov.br | Assinatura atual é eletrônica interna (usuário + carimbo de tempo + auditoria) |
 
+## Fase 8 — estoque e assistência farmacêutica
+
+| Item | Artefato necessário | Onde obter | Consequência |
+|---|---|---|---|
+| Portaria SVS/MS 344/1998 — livros, BMPO e balanços | Modelos/layout vigentes de escrituração e balanços (e o meio oficial de envio, se houver) | ANVISA / vigilância sanitária | Dispensação exige documento; escrituração e balanços não são gerados |
+| Campos obrigatórios da retenção de receita | Norma vigente de receituário de controlados e antimicrobianos | ANVISA (Portaria 344, RDC de antimicrobianos) | `estoque.campos_documento_controlado` vazio: exige apenas o documento |
+| Listas de controle | Listas oficiais vigentes (A1…C5 etc.) | ANVISA | `lista_controle` é texto do tenant; não há lista no seed |
+| BNAFAR (REPE/RESMPE) | Layouts oficiais e regras de envio diário | Ministério da Saúde/BNAFAR | Exportação entra na Fase 11 pela porta pendente |
+| CATMAT/OBM | Tabelas oficiais | Compras.gov.br / CMED-ANVISA | Códigos aceitos estruturalmente |
+| Limiares operacionais | Antecedência de vencimento, janela de duplicidade, desvios, ABC e cobertura | Assistência farmacêutica municipal | Seeds `estoque.*` com valores operacionais (90 dias, 30 dias, 2σ, 80/95%, 1 mês) a validar |
+| Frascos multidose abertos | Validade pós-abertura por imunobiológico | Manual de normas do PNI | Alerta `PENDENTE` até a Fase 10 |
+| Integração contábil/compras | Contrato de API do GovCompras/contábil (Lote 01) | Plataforma GovSistem | Sem integração; nenhum dado clínico trafega |
+
 ## Fase 6 — programas e linhas de cuidado
 
 | Item | Artefato necessário | Onde obter | Consequência |

@@ -4148,6 +4148,44 @@
         "title": "CoberturaOut",
         "type": "object"
       },
+      "CompetenciaOut": {
+        "properties": {
+          "competencia": {
+            "title": "Competencia",
+            "type": "string"
+          },
+          "encerrada_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encerrada Em"
+          },
+          "reaberta_motivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reaberta Motivo"
+          }
+        },
+        "required": [
+          "competencia",
+          "encerrada_em",
+          "reaberta_motivo"
+        ],
+        "title": "CompetenciaOut",
+        "type": "object"
+      },
       "CondicaoElegibilidade": {
         "additionalProperties": false,
         "properties": {
@@ -4541,6 +4579,45 @@
           "cep"
         ],
         "title": "ConsultaCepRequest",
+        "type": "object"
+      },
+      "Contagem": {
+        "additionalProperties": false,
+        "properties": {
+          "lote_id": {
+            "format": "uuid",
+            "title": "Lote Id",
+            "type": "string"
+          },
+          "quantidade": {
+            "minimum": 0.0,
+            "title": "Quantidade",
+            "type": "number"
+          }
+        },
+        "required": [
+          "lote_id",
+          "quantidade"
+        ],
+        "title": "Contagem",
+        "type": "object"
+      },
+      "ContagensSet": {
+        "additionalProperties": false,
+        "properties": {
+          "contagens": {
+            "items": {
+              "$ref": "#/components/schemas/Contagem"
+            },
+            "minItems": 1,
+            "title": "Contagens",
+            "type": "array"
+          }
+        },
+        "required": [
+          "contagens"
+        ],
+        "title": "ContagensSet",
         "type": "object"
       },
       "ContatoCreate": {
@@ -4964,6 +5041,183 @@
           "memoria_calculo"
         ],
         "title": "DemandaItemOut",
+        "type": "object"
+      },
+      "DispensacaoCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "cidadao_id": {
+            "format": "uuid",
+            "title": "Cidadao Id",
+            "type": "string"
+          },
+          "documento": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Documento"
+          },
+          "itens": {
+            "items": {
+              "$ref": "#/components/schemas/ItemDispensacao"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Itens",
+            "type": "array"
+          },
+          "justificativa": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Justificativa"
+          },
+          "local_id": {
+            "format": "uuid",
+            "title": "Local Id",
+            "type": "string"
+          },
+          "prescricao_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prescricao Id"
+          }
+        },
+        "required": [
+          "cidadao_id",
+          "local_id",
+          "itens"
+        ],
+        "title": "DispensacaoCreate",
+        "type": "object"
+      },
+      "DispensacaoOut": {
+        "properties": {
+          "alertas": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alertas"
+          },
+          "cidadao_id": {
+            "format": "uuid",
+            "title": "Cidadao Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "documento": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Documento"
+          },
+          "estornada_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estornada Em"
+          },
+          "estorno_motivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estorno Motivo"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "itens": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Itens",
+            "type": "array"
+          },
+          "local_id": {
+            "format": "uuid",
+            "title": "Local Id",
+            "type": "string"
+          },
+          "prescricao_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prescricao Id"
+          },
+          "situacao": {
+            "title": "Situacao",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "cidadao_id",
+          "local_id",
+          "prescricao_id",
+          "situacao",
+          "itens",
+          "documento",
+          "alertas",
+          "estornada_em",
+          "estorno_motivo",
+          "created_at"
+        ],
+        "title": "DispensacaoOut",
         "type": "object"
       },
       "DisponibilidadeDiaOut": {
@@ -9175,6 +9429,176 @@
         "title": "Insumo",
         "type": "object"
       },
+      "InventarioCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "local_id": {
+            "format": "uuid",
+            "title": "Local Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "local_id"
+        ],
+        "title": "InventarioCreate",
+        "type": "object"
+      },
+      "InventarioOut": {
+        "properties": {
+          "contagens": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Contagens",
+            "type": "array"
+          },
+          "divergencias": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Divergencias"
+          },
+          "encerrado_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encerrado Em"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "local_id": {
+            "format": "uuid",
+            "title": "Local Id",
+            "type": "string"
+          },
+          "situacao": {
+            "title": "Situacao",
+            "type": "string"
+          },
+          "versao": {
+            "title": "Versao",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "local_id",
+          "situacao",
+          "contagens",
+          "divergencias",
+          "encerrado_em",
+          "versao"
+        ],
+        "title": "InventarioOut",
+        "type": "object"
+      },
+      "ItemAtendimento": {
+        "additionalProperties": false,
+        "properties": {
+          "produto_id": {
+            "format": "uuid",
+            "title": "Produto Id",
+            "type": "string"
+          },
+          "quantidade": {
+            "minimum": 0.0,
+            "title": "Quantidade",
+            "type": "number"
+          }
+        },
+        "required": [
+          "produto_id",
+          "quantidade"
+        ],
+        "title": "ItemAtendimento",
+        "type": "object"
+      },
+      "ItemDispensacao": {
+        "additionalProperties": false,
+        "properties": {
+          "lote_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lote Id"
+          },
+          "produto_id": {
+            "format": "uuid",
+            "title": "Produto Id",
+            "type": "string"
+          },
+          "quantidade": {
+            "exclusiveMinimum": 0.0,
+            "title": "Quantidade",
+            "type": "number"
+          },
+          "quantidade_prescrita": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantidade Prescrita"
+          }
+        },
+        "required": [
+          "produto_id",
+          "quantidade"
+        ],
+        "title": "ItemDispensacao",
+        "type": "object"
+      },
+      "ItemRequisicao": {
+        "additionalProperties": false,
+        "properties": {
+          "produto_id": {
+            "format": "uuid",
+            "title": "Produto Id",
+            "type": "string"
+          },
+          "quantidade": {
+            "exclusiveMinimum": 0.0,
+            "title": "Quantidade",
+            "type": "number"
+          }
+        },
+        "required": [
+          "produto_id",
+          "quantidade"
+        ],
+        "title": "ItemRequisicao",
+        "type": "object"
+      },
       "JobOut": {
         "properties": {
           "concluido_em": {
@@ -9424,6 +9848,119 @@
         "title": "ListaNominalOut",
         "type": "object"
       },
+      "LocalCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "estabelecimento_id": {
+            "format": "uuid",
+            "title": "Estabelecimento Id",
+            "type": "string"
+          },
+          "nome": {
+            "maxLength": 200,
+            "minLength": 2,
+            "title": "Nome",
+            "type": "string"
+          },
+          "temperatura_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperatura Max"
+          },
+          "temperatura_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperatura Min"
+          },
+          "tipo": {
+            "maxLength": 30,
+            "minLength": 2,
+            "title": "Tipo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "estabelecimento_id",
+          "nome",
+          "tipo"
+        ],
+        "title": "LocalCreate",
+        "type": "object"
+      },
+      "LocalOut": {
+        "additionalProperties": false,
+        "properties": {
+          "estabelecimento_id": {
+            "format": "uuid",
+            "title": "Estabelecimento Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "nome": {
+            "maxLength": 200,
+            "minLength": 2,
+            "title": "Nome",
+            "type": "string"
+          },
+          "temperatura_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperatura Max"
+          },
+          "temperatura_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperatura Min"
+          },
+          "tipo": {
+            "maxLength": 30,
+            "minLength": 2,
+            "title": "Tipo",
+            "type": "string"
+          },
+          "versao": {
+            "title": "Versao",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "estabelecimento_id",
+          "nome",
+          "tipo",
+          "id",
+          "versao"
+        ],
+        "title": "LocalOut",
+        "type": "object"
+      },
       "LoginRequest": {
         "additionalProperties": false,
         "properties": {
@@ -9470,6 +10007,92 @@
           "senha"
         ],
         "title": "LoginRequest",
+        "type": "object"
+      },
+      "LoteBloqueio": {
+        "additionalProperties": false,
+        "properties": {
+          "bloqueado": {
+            "title": "Bloqueado",
+            "type": "boolean"
+          },
+          "motivo": {
+            "maxLength": 2000,
+            "minLength": 5,
+            "title": "Motivo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "bloqueado",
+          "motivo"
+        ],
+        "title": "LoteBloqueio",
+        "type": "object"
+      },
+      "LoteOut": {
+        "properties": {
+          "bloqueado": {
+            "title": "Bloqueado",
+            "type": "boolean"
+          },
+          "bloqueio_motivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bloqueio Motivo"
+          },
+          "fabricante": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fabricante"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "numero": {
+            "title": "Numero",
+            "type": "string"
+          },
+          "produto_id": {
+            "format": "uuid",
+            "title": "Produto Id",
+            "type": "string"
+          },
+          "validade": {
+            "format": "date",
+            "title": "Validade",
+            "type": "string"
+          },
+          "versao": {
+            "title": "Versao",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "produto_id",
+          "numero",
+          "validade",
+          "fabricante",
+          "bloqueado",
+          "bloqueio_motivo",
+          "versao"
+        ],
+        "title": "LoteOut",
         "type": "object"
       },
       "Marcacao": {
@@ -9637,6 +10260,276 @@
           "codigo"
         ],
         "title": "MfaCodigoRequest",
+        "type": "object"
+      },
+      "Motivo": {
+        "additionalProperties": false,
+        "properties": {
+          "motivo": {
+            "maxLength": 2000,
+            "minLength": 5,
+            "title": "Motivo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "motivo"
+        ],
+        "title": "Motivo",
+        "type": "object"
+      },
+      "MovimentacaoCreate": {
+        "additionalProperties": false,
+        "description": "Entrada/devolução informam o lote (criado se não existir); saída usa FEFO se omitido.",
+        "properties": {
+          "custo_unitario": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custo Unitario"
+          },
+          "documento": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Documento"
+          },
+          "fabricante": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fabricante"
+          },
+          "local_id": {
+            "format": "uuid",
+            "title": "Local Id",
+            "type": "string"
+          },
+          "lote_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lote Id"
+          },
+          "lote_numero": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lote Numero"
+          },
+          "motivo": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivo"
+          },
+          "ocorrido_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ocorrido Em"
+          },
+          "produto_id": {
+            "format": "uuid",
+            "title": "Produto Id",
+            "type": "string"
+          },
+          "quantidade": {
+            "exclusiveMinimum": 0.0,
+            "title": "Quantidade",
+            "type": "number"
+          },
+          "tipo": {
+            "enum": [
+              "ENTRADA",
+              "DEVOLUCAO",
+              "SAIDA",
+              "PERDA",
+              "DOACAO",
+              "CONSUMO_INTERNO",
+              "AJUSTE_POSITIVO",
+              "AJUSTE_NEGATIVO"
+            ],
+            "title": "Tipo",
+            "type": "string"
+          },
+          "validade": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validade"
+          }
+        },
+        "required": [
+          "local_id",
+          "produto_id",
+          "tipo",
+          "quantidade"
+        ],
+        "title": "MovimentacaoCreate",
+        "type": "object"
+      },
+      "MovimentacaoOut": {
+        "properties": {
+          "competencia": {
+            "title": "Competencia",
+            "type": "string"
+          },
+          "custo_unitario": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Custo Unitario"
+          },
+          "documento": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Documento"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "local_id": {
+            "format": "uuid",
+            "title": "Local Id",
+            "type": "string"
+          },
+          "lote_id": {
+            "format": "uuid",
+            "title": "Lote Id",
+            "type": "string"
+          },
+          "motivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivo"
+          },
+          "ocorrido_em": {
+            "format": "date-time",
+            "title": "Ocorrido Em",
+            "type": "string"
+          },
+          "produto_id": {
+            "format": "uuid",
+            "title": "Produto Id",
+            "type": "string"
+          },
+          "quantidade": {
+            "title": "Quantidade",
+            "type": "number"
+          },
+          "referencia_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referencia Id"
+          },
+          "referencia_tipo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referencia Tipo"
+          },
+          "tipo": {
+            "title": "Tipo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "local_id",
+          "produto_id",
+          "lote_id",
+          "tipo",
+          "quantidade",
+          "custo_unitario",
+          "ocorrido_em",
+          "competencia",
+          "documento",
+          "motivo",
+          "referencia_tipo",
+          "referencia_id"
+        ],
+        "title": "MovimentacaoOut",
         "type": "object"
       },
       "NivelRiscoCreate": {
@@ -11174,6 +12067,125 @@
           "regra_ordenacao"
         ],
         "title": "PainelEstadoOut",
+        "type": "object"
+      },
+      "ParametroOut": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "local_id": {
+            "format": "uuid",
+            "title": "Local Id",
+            "type": "string"
+          },
+          "maximo": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maximo"
+          },
+          "minimo": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimo"
+          },
+          "ponto_pedido": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ponto Pedido"
+          },
+          "produto_id": {
+            "format": "uuid",
+            "title": "Produto Id",
+            "type": "string"
+          },
+          "versao": {
+            "title": "Versao",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "produto_id",
+          "id",
+          "local_id",
+          "versao"
+        ],
+        "title": "ParametroOut",
+        "type": "object"
+      },
+      "ParametroSet": {
+        "additionalProperties": false,
+        "properties": {
+          "maximo": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maximo"
+          },
+          "minimo": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimo"
+          },
+          "ponto_pedido": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ponto Pedido"
+          },
+          "produto_id": {
+            "format": "uuid",
+            "title": "Produto Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "produto_id"
+        ],
+        "title": "ParametroSet",
         "type": "object"
       },
       "PendenciaBuscaAtivaOut": {
@@ -12920,6 +13932,339 @@
           "atendimento_id"
         ],
         "title": "ProcedimentoRealizar",
+        "type": "object"
+      },
+      "ProdutoCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "antimicrobiano": {
+            "default": false,
+            "title": "Antimicrobiano",
+            "type": "boolean"
+          },
+          "apresentacao": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apresentacao"
+          },
+          "catmat": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{1,20}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catmat"
+          },
+          "codigo": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Codigo",
+            "type": "string"
+          },
+          "codigo_obm": {
+            "anyOf": [
+              {
+                "maxLength": 30,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codigo Obm"
+          },
+          "controlado": {
+            "default": false,
+            "title": "Controlado",
+            "type": "boolean"
+          },
+          "lista_controle": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lista Controle"
+          },
+          "nome": {
+            "maxLength": 300,
+            "minLength": 2,
+            "title": "Nome",
+            "type": "string"
+          },
+          "principio_ativo": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Principio Ativo"
+          },
+          "remume": {
+            "default": false,
+            "title": "Remume",
+            "type": "boolean"
+          },
+          "tipo": {
+            "enum": [
+              "MEDICAMENTO",
+              "VACINA",
+              "INSUMO",
+              "MATERIAL"
+            ],
+            "title": "Tipo",
+            "type": "string"
+          },
+          "unidade": {
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Unidade",
+            "type": "string"
+          }
+        },
+        "required": [
+          "codigo",
+          "nome",
+          "tipo",
+          "unidade"
+        ],
+        "title": "ProdutoCreate",
+        "type": "object"
+      },
+      "ProdutoOut": {
+        "additionalProperties": false,
+        "properties": {
+          "antimicrobiano": {
+            "default": false,
+            "title": "Antimicrobiano",
+            "type": "boolean"
+          },
+          "apresentacao": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apresentacao"
+          },
+          "baixa_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baixa Em"
+          },
+          "catmat": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{1,20}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Catmat"
+          },
+          "codigo": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Codigo",
+            "type": "string"
+          },
+          "codigo_obm": {
+            "anyOf": [
+              {
+                "maxLength": 30,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codigo Obm"
+          },
+          "controlado": {
+            "default": false,
+            "title": "Controlado",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "lista_controle": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lista Controle"
+          },
+          "nome": {
+            "maxLength": 300,
+            "minLength": 2,
+            "title": "Nome",
+            "type": "string"
+          },
+          "principio_ativo": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Principio Ativo"
+          },
+          "remume": {
+            "default": false,
+            "title": "Remume",
+            "type": "boolean"
+          },
+          "tipo": {
+            "enum": [
+              "MEDICAMENTO",
+              "VACINA",
+              "INSUMO",
+              "MATERIAL"
+            ],
+            "title": "Tipo",
+            "type": "string"
+          },
+          "unidade": {
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Unidade",
+            "type": "string"
+          },
+          "versao": {
+            "title": "Versao",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "codigo",
+          "nome",
+          "tipo",
+          "unidade",
+          "id",
+          "versao",
+          "baixa_em"
+        ],
+        "title": "ProdutoOut",
+        "type": "object"
+      },
+      "ProdutoUpdate": {
+        "additionalProperties": false,
+        "properties": {
+          "antimicrobiano": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Antimicrobiano"
+          },
+          "apresentacao": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Apresentacao"
+          },
+          "controlado": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Controlado"
+          },
+          "lista_controle": {
+            "anyOf": [
+              {
+                "maxLength": 20,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lista Controle"
+          },
+          "nome": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "minLength": 2,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nome"
+          },
+          "remume": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Remume"
+          }
+        },
+        "title": "ProdutoUpdate",
         "type": "object"
       },
       "ProfissionalCreate": {
@@ -15387,6 +16732,167 @@
         "title": "RelatorioOut",
         "type": "object"
       },
+      "RequisicaoAtender": {
+        "additionalProperties": false,
+        "properties": {
+          "itens": {
+            "items": {
+              "$ref": "#/components/schemas/ItemAtendimento"
+            },
+            "minItems": 1,
+            "title": "Itens",
+            "type": "array"
+          }
+        },
+        "required": [
+          "itens"
+        ],
+        "title": "RequisicaoAtender",
+        "type": "object"
+      },
+      "RequisicaoCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "destino_local_id": {
+            "format": "uuid",
+            "title": "Destino Local Id",
+            "type": "string"
+          },
+          "itens": {
+            "items": {
+              "$ref": "#/components/schemas/ItemRequisicao"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Itens",
+            "type": "array"
+          },
+          "observacao": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observacao"
+          },
+          "origem_local_id": {
+            "format": "uuid",
+            "title": "Origem Local Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "origem_local_id",
+          "destino_local_id",
+          "itens"
+        ],
+        "title": "RequisicaoCreate",
+        "type": "object"
+      },
+      "RequisicaoOut": {
+        "properties": {
+          "atendida_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Atendida Em"
+          },
+          "concluida_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Concluida Em"
+          },
+          "destino_local_id": {
+            "format": "uuid",
+            "title": "Destino Local Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "itens": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Itens",
+            "type": "array"
+          },
+          "motivo_recusa": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivo Recusa"
+          },
+          "numero": {
+            "title": "Numero",
+            "type": "string"
+          },
+          "observacao": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observacao"
+          },
+          "origem_local_id": {
+            "format": "uuid",
+            "title": "Origem Local Id",
+            "type": "string"
+          },
+          "situacao": {
+            "title": "Situacao",
+            "type": "string"
+          },
+          "versao": {
+            "title": "Versao",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "numero",
+          "origem_local_id",
+          "destino_local_id",
+          "situacao",
+          "itens",
+          "observacao",
+          "motivo_recusa",
+          "atendida_em",
+          "concluida_em",
+          "versao"
+        ],
+        "title": "RequisicaoOut",
+        "type": "object"
+      },
       "RespostaCreate": {
         "additionalProperties": false,
         "properties": {
@@ -16718,6 +18224,96 @@
           "organization_id"
         ],
         "title": "SyncUsuarioRequest",
+        "type": "object"
+      },
+      "TemperaturaCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "medido_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Medido Em"
+          },
+          "observacao": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observacao"
+          },
+          "origem": {
+            "default": "MANUAL",
+            "enum": [
+              "MANUAL",
+              "EQUIPAMENTO"
+            ],
+            "title": "Origem",
+            "type": "string"
+          },
+          "temperatura": {
+            "maximum": 100.0,
+            "minimum": -100.0,
+            "title": "Temperatura",
+            "type": "number"
+          }
+        },
+        "required": [
+          "temperatura"
+        ],
+        "title": "TemperaturaCreate",
+        "type": "object"
+      },
+      "TemperaturaOut": {
+        "properties": {
+          "fora_da_faixa": {
+            "title": "Fora Da Faixa",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "local_id": {
+            "format": "uuid",
+            "title": "Local Id",
+            "type": "string"
+          },
+          "medido_em": {
+            "format": "date-time",
+            "title": "Medido Em",
+            "type": "string"
+          },
+          "origem": {
+            "title": "Origem",
+            "type": "string"
+          },
+          "temperatura": {
+            "title": "Temperatura",
+            "type": "number"
+          }
+        },
+        "required": [
+          "id",
+          "local_id",
+          "temperatura",
+          "medido_em",
+          "fora_da_faixa",
+          "origem"
+        ],
+        "title": "TemperaturaOut",
         "type": "object"
       },
       "TermoAceiteRequest": {
@@ -27280,6 +28876,1686 @@
         "summary": "Atualizar Setor",
         "tags": [
           "Rede de atenção"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/cidadaos/{cidadao_id}/dispensacoes": {
+      "get": {
+        "description": "B.4-021 — histórico do cidadão em qualquer unidade.",
+        "operationId": "historico_api_govsaude_v1_estoque_cidadaos__cidadao_id__dispensacoes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cidadao_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Cidadao Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/DispensacaoOut"
+                  },
+                  "title": "Response Historico Api Govsaude V1 Estoque Cidadaos  Cidadao Id  Dispensacoes Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Historico",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/competencias/{competencia}/encerrar": {
+      "post": {
+        "description": "B.4-018 — encerra competência; movimentação nela passa a ser recusada.",
+        "operationId": "encerrar_competencia_api_govsaude_v1_estoque_competencias__competencia__encerrar_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "competencia",
+            "required": true,
+            "schema": {
+              "pattern": "^\\d{4}(0[1-9]|1[0-2])$",
+              "title": "Competencia",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompetenciaOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Encerrar Competencia",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/competencias/{competencia}/reabrir": {
+      "post": {
+        "description": "B.4-018 — reabertura justificada.",
+        "operationId": "reabrir_competencia_api_govsaude_v1_estoque_competencias__competencia__reabrir_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "competencia",
+            "required": true,
+            "schema": {
+              "pattern": "^\\d{4}(0[1-9]|1[0-2])$",
+              "title": "Competencia",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Motivo"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompetenciaOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reabrir Competencia",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/dispensacoes": {
+      "post": {
+        "description": "B.4-020, B.4-021, B.4-024 — total/parcial por lote; duplicidade bloqueia salvo\njustificativa.",
+        "operationId": "dispensar_api_govsaude_v1_estoque_dispensacoes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DispensacaoCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispensacaoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Dispensar",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/dispensacoes/{id}/estornar": {
+      "post": {
+        "description": "B.4-020 — estorno devolve os mesmos lotes.",
+        "operationId": "estornar_api_govsaude_v1_estoque_dispensacoes__id__estornar_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Motivo"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DispensacaoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Estornar",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/inventarios": {
+      "post": {
+        "description": "B.4-017 — abre inventário e bloqueia movimentação do local.",
+        "operationId": "abrir_inventario_api_govsaude_v1_estoque_inventarios_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InventarioCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventarioOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Abrir Inventario",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/inventarios/{id}/contagens": {
+      "put": {
+        "description": "B.4-017 — contagem por lote (regrava o lote já contado).",
+        "operationId": "contagens_api_govsaude_v1_estoque_inventarios__id__contagens_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContagensSet"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventarioOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Contagens",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/inventarios/{id}/encerrar": {
+      "post": {
+        "description": "B.4-017 — divergências viram ajustes no ledger.",
+        "operationId": "encerrar_inventario_api_govsaude_v1_estoque_inventarios__id__encerrar_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InventarioOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Encerrar Inventario",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/locais": {
+      "get": {
+        "description": "B.4-001 — locais no escopo do usuário.",
+        "operationId": "listar_locais_api_govsaude_v1_estoque_locais_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LocalOut"
+                  },
+                  "title": "Response Listar Locais Api Govsaude V1 Estoque Locais Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Listar Locais",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      },
+      "post": {
+        "description": "B.4-001 — local de estoque do estabelecimento, com faixa de temperatura.",
+        "operationId": "criar_local_api_govsaude_v1_estoque_locais_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LocalCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Criar Local",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/locais/{id}/alertas": {
+      "get": {
+        "description": "B.4-004, B.4-035, B.4-036, B.4-037 — mínimo, ponto de pedido, vencimento,\nlote bloqueado, consumo anormal (desvio estatístico) e temperatura.",
+        "operationId": "alertas_api_govsaude_v1_estoque_locais__id__alertas_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Alertas",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/locais/{id}/curva-abc": {
+      "get": {
+        "description": "B.4-039 — curva ABC por valor consumido.",
+        "operationId": "curva_abc_api_govsaude_v1_estoque_locais__id__curva_abc_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "inicio",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Inicio",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fim",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Fim",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Curva Abc",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/locais/{id}/movimentacoes": {
+      "get": {
+        "description": "B.4-011 — extrato do local (até 500 lançamentos).",
+        "operationId": "extrato_api_govsaude_v1_estoque_locais__id__movimentacoes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "produto_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Produto Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "inicio",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Inicio"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fim",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fim"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MovimentacaoOut"
+                  },
+                  "title": "Response Extrato Api Govsaude V1 Estoque Locais  Id  Movimentacoes Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Extrato",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/locais/{id}/parametros": {
+      "put": {
+        "description": "B.4-004 — mínimo, máximo e ponto de pedido.",
+        "operationId": "parametro_api_govsaude_v1_estoque_locais__id__parametros_put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ParametroSet"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ParametroOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Parametro",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/locais/{id}/saldos": {
+      "get": {
+        "description": "B.4-006, B.4-009 — saldo por lote em qualquer data, custo médio e valor.",
+        "operationId": "saldos_api_govsaude_v1_estoque_locais__id__saldos_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Saldo ao fim deste dia (fuso do tenant).",
+            "in": "query",
+            "name": "em",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "Saldo ao fim deste dia (fuso do tenant).",
+              "title": "Em"
+            }
+          },
+          {
+            "in": "query",
+            "name": "produto_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Produto Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Saldos",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/locais/{id}/sugestao-compra": {
+      "get": {
+        "description": "B.4-007, B.4-038, B.4-040 — sugestão com memória de cálculo, cobertura e giro.",
+        "operationId": "sugestao_api_govsaude_v1_estoque_locais__id__sugestao_compra_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Sugestao",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/locais/{id}/temperaturas": {
+      "get": {
+        "description": "B.4-037.",
+        "operationId": "temperaturas_api_govsaude_v1_estoque_locais__id__temperaturas_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TemperaturaOut"
+                  },
+                  "title": "Response Temperaturas Api Govsaude V1 Estoque Locais  Id  Temperaturas Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Temperaturas",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      },
+      "post": {
+        "description": "B.4-037 — leitura manual ou de equipamento; fora da faixa do local alerta.",
+        "operationId": "temperatura_api_govsaude_v1_estoque_locais__id__temperaturas_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TemperaturaCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TemperaturaOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Temperatura",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/lotes/{id}/bloqueio": {
+      "post": {
+        "description": "B.4-012 — bloqueia/desbloqueia lote com motivo.",
+        "operationId": "bloqueio_api_govsaude_v1_estoque_lotes__id__bloqueio_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoteBloqueio"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LoteOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Bloqueio",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/movimentacoes": {
+      "post": {
+        "description": "B.4-005, B.4-011 — lançamento no ledger imutável; saída FEFO quando sem lote.",
+        "operationId": "movimentar_api_govsaude_v1_estoque_movimentacoes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MovimentacaoCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/MovimentacaoOut"
+                  },
+                  "title": "Response Movimentar Api Govsaude V1 Estoque Movimentacoes Post",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Movimentar",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/produtos": {
+      "get": {
+        "description": "B.4-003.",
+        "operationId": "listar_produtos_api_govsaude_v1_estoque_produtos_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "busca",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 100,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Busca"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProdutoOut"
+                  },
+                  "title": "Response Listar Produtos Api Govsaude V1 Estoque Produtos Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Listar Produtos",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      },
+      "post": {
+        "description": "B.4-003 — produto (Rename/Remume, CATMAT, OBM, controlado, antimicrobiano).",
+        "operationId": "criar_produto_api_govsaude_v1_estoque_produtos_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProdutoCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProdutoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Criar Produto",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/produtos/{id}": {
+      "patch": {
+        "description": "B.4-003 — alteração com If-Match.",
+        "operationId": "atualizar_produto_api_govsaude_v1_estoque_produtos__id__patch",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "If-Match",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If-Match"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProdutoUpdate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProdutoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Atualizar Produto",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/produtos/{id}/lotes": {
+      "get": {
+        "description": "B.4-005.",
+        "operationId": "lotes_api_govsaude_v1_estoque_produtos__id__lotes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/LoteOut"
+                  },
+                  "title": "Response Lotes Api Govsaude V1 Estoque Produtos  Id  Lotes Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Lotes",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/requisicoes": {
+      "post": {
+        "description": "B.4-014 — requisição do destino à origem, com número por tenant/ano.",
+        "operationId": "criar_requisicao_api_govsaude_v1_estoque_requisicoes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequisicaoCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequisicaoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Criar Requisicao",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/requisicoes/{id}": {
+      "get": {
+        "description": "B.4-014.",
+        "operationId": "obter_requisicao_api_govsaude_v1_estoque_requisicoes__id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequisicaoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Obter Requisicao",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/requisicoes/{id}/atender": {
+      "post": {
+        "description": "B.4-014 — atendimento total ou parcial pela origem.",
+        "operationId": "atender_api_govsaude_v1_estoque_requisicoes__id__atender_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RequisicaoAtender"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequisicaoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Atender",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/requisicoes/{id}/cancelar": {
+      "post": {
+        "description": "B.4-014 — cancelamento antes do atendimento.",
+        "operationId": "cancelar_api_govsaude_v1_estoque_requisicoes__id__cancelar_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Motivo"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequisicaoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cancelar",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/requisicoes/{id}/receber": {
+      "post": {
+        "description": "B.4-015 — aceite da transferência pelo destino.",
+        "operationId": "receber_api_govsaude_v1_estoque_requisicoes__id__receber_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequisicaoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Receber",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/requisicoes/{id}/recusar": {
+      "post": {
+        "description": "B.4-015 — recusa com motivo; o saldo volta à origem.",
+        "operationId": "recusar_api_govsaude_v1_estoque_requisicoes__id__recusar_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Motivo"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RequisicaoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Recusar",
+        "tags": [
+          "Estoque e assistência farmacêutica"
         ]
       }
     },

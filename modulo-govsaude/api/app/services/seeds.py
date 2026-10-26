@@ -136,6 +136,46 @@ CONFIGURACOES_PADRAO: dict[str, dict] = {
         "tipo": "json",
         "descricao": "Validade de consulta para reconsulta por tipo de atendimento, em dias (B.6-041). Vazio = não controlado.",
     },
+    "estoque.alerta_vencimento_dias": {
+        "valor": {"valor": 90},
+        "tipo": "numero",
+        "descricao": "Antecedência, em dias, do alerta de lote a vencer (B.4-035). Valor operacional; validar com a assistência farmacêutica.",
+    },
+    "estoque.janela_duplicidade_dias": {
+        "valor": {"valor": 30},
+        "tipo": "numero",
+        "descricao": "Janela, em dias, para bloquear dispensação duplicada do mesmo produto ao cidadão em qualquer unidade (B.4-021); 0 desliga. Valor operacional.",
+    },
+    "estoque.campos_documento_controlado": {
+        "valor": {"valor": []},
+        "tipo": "json",
+        "descricao": "Campos obrigatórios do documento na dispensação de controlado/antimicrobiano (B.4-024). Vazio = exige só o documento; preencher conforme a norma vigente.",
+    },
+    "estoque.consumo_anormal_desvios": {
+        "valor": {"valor": 2},
+        "tipo": "numero",
+        "descricao": "Número de desvios-padrão acima da média mensal que caracteriza consumo anormal (B.4-036).",
+    },
+    "estoque.consumo_meses_historico": {
+        "valor": {"valor": 6},
+        "tipo": "numero",
+        "descricao": "Meses fechados usados na média/desvio de consumo (B.4-036).",
+    },
+    "estoque.curva_abc_limites": {
+        "valor": {"valor": [80, 95]},
+        "tipo": "json",
+        "descricao": "Percentuais acumulados que separam as classes A/B/C (B.4-039).",
+    },
+    "estoque.sugestao_meses_historico": {
+        "valor": {"valor": 3},
+        "tipo": "numero",
+        "descricao": "Meses de consumo usados na sugestão de compra (B.4-007).",
+    },
+    "estoque.sugestao_cobertura_meses": {
+        "valor": {"valor": 1},
+        "tipo": "numero",
+        "descricao": "Cobertura alvo, em meses, quando o produto não tem estoque máximo (B.4-007).",
+    },
     "geral.fuso_horario": {
         "valor": {"valor": "America/Sao_Paulo"},
         "tipo": "texto",

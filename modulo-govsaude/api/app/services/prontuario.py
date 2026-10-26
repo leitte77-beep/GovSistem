@@ -46,7 +46,7 @@ from app.schemas.prontuario import (
     SinalVitalCreate,
     SOAPCreate,
 )
-from app.services import configuracoes
+from app.services import configuracoes, estoque
 from app.services.auditoria import registrar, registrar_leitura_sensivel
 
 CAMPOS_SOAP = ("subjetivo", "objetivo", "avaliacao", "plano")
@@ -884,7 +884,6 @@ async def _alertas(
         "duplicidade": {"na_prescricao": duplicados, "uso_continuo_ativo": duplicados_uso},
         "interacao": ALERTA_SEM_BASE,
         "medicamento_potencialmente_perigoso": ALERTA_SEM_BASE,
-        "disponibilidade_estoque": {"situacao": "NAO_AVALIADO", "motivo": "estoque_fase_8"},
     }
 
 
@@ -916,6 +915,12 @@ async def _gravar_prescricao(
 ) -> Prescricao:
     await _validar_medicamentos(db, itens)
     alertas = await _alertas(db, tenant_id, item.cidadao_id, itens)
+    alertas["disponibilidade_estoque"] = await estoque.disponibilidade(
+        db,
+        tenant_id,
+        item.estabelecimento_id,
+        codigos=[i["medicamento_codigo"] for i in itens if i.get("medicamento_codigo")],
+    )
     prescricao = Prescricao(
         tenant_id=tenant_id,
         atendimento_id=item.id,

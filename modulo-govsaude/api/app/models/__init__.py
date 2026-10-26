@@ -75,6 +75,18 @@ from app.models.programa import (
     ProgramaItem,
     ProgramaProgramacao,
 )
+from app.models.estoque import (
+    CompetenciaEstoque,
+    Dispensacao,
+    Inventario,
+    LocalEstoque,
+    Lote,
+    Movimentacao,
+    ParametroEstoque,
+    Produto,
+    RegistroTemperatura,
+    Requisicao,
+)
 from app.models.prontuario import (
     Alergia,
     Atendimento,
@@ -120,6 +132,16 @@ from app.models.territorio import (
 )
 
 __all__ = [
+    "CompetenciaEstoque",
+    "Dispensacao",
+    "Inventario",
+    "LocalEstoque",
+    "Lote",
+    "Movimentacao",
+    "ParametroEstoque",
+    "Produto",
+    "RegistroTemperatura",
+    "Requisicao",
     "SinalVital",
     "ProblemaClinico",
     "Prescricao",

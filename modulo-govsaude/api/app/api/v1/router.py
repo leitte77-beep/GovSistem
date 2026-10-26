@@ -19,6 +19,7 @@ from app.api.v1.odontologia import router as odontologia_router
 from app.api.v1.paineis import router as paineis_router
 from app.api.v1.programacoes_programa import router as programacoes_programa_router
 from app.api.v1.programas import router as programas_router
+from app.api.v1.estoque import router as estoque_router
 from app.api.v1.prontuarios import router as prontuarios_router
 from app.api.v1.protocolos_risco import router as protocolos_router
 from app.api.v1.recepcao import router as recepcao_router
@@ -43,6 +44,7 @@ api_router.include_router(rede_router)
 api_router.include_router(cidadaos_router)
 api_router.include_router(territorios_router)
 api_router.include_router(prontuarios_router)
+api_router.include_router(estoque_router)
 api_router.include_router(agendas_router)
 api_router.include_router(protocolos_router)
 api_router.include_router(agendamentos_router)

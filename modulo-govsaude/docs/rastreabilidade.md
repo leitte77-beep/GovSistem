@@ -173,7 +173,7 @@ rotas em `app/api/v1/prontuarios.py`, migração `0009`. Testes em
 | B.6-015 | Alergias com baixa lógica; alimentam alerta de prescrição por código | `/cidadaos/{id}/alergias`, `/alergias/{id}/encerrar` | `test_b6_015_016_problemas_e_alergias_com_baixa_logica` | IMPLEMENTADO |
 | B.6-016 | Problemas CID-10/CIAP-2/CIPE; conferidos na base importada quando existe (`validado_referencia`); duplicado ativo recusado; encerramento com motivo | `/cidadaos/{id}/problemas`, `/problemas/{id}/encerrar` | idem | IMPLEMENTADO |
 | B.6-017 | Plano de cuidados | `.../{id}/planos-cuidado` | — (coberto indiretamente) | IMPLEMENTADO |
-| B.6-019, B.6-033 | Prescrição estruturada (via, posologia, uso contínuo, receituário), separação de receituários, alertas de alergia e duplicidade (na prescrição e uso contínuo ativo), cópia assistida do mesmo cidadão, assinatura; código conferido em `referencia.medicamentos` se importada | `.../{id}/prescricoes`, `.../prescricoes/copiar`, `/cidadaos/{id}/prescricoes`, `/prescricoes/{id}/assinar` | `test_b6_019_033_prescricao_alertas_receituarios_e_copia` | IMPLEMENTADO; interação, MPP e estoque `NAO_AVALIADO` (sem base / Fase 8) |
+| B.6-019, B.6-033 | Prescrição estruturada (via, posologia, uso contínuo, receituário), separação de receituários, alertas de alergia e duplicidade (na prescrição e uso contínuo ativo), cópia assistida do mesmo cidadão, assinatura; código conferido em `referencia.medicamentos` se importada | `.../{id}/prescricoes`, `.../prescricoes/copiar`, `/cidadaos/{id}/prescricoes`, `/prescricoes/{id}/assinar` | `test_b6_019_033_prescricao_alertas_receituarios_e_copia` | IMPLEMENTADO; disponibilidade em estoque pelos locais do estabelecimento (`codigo_obm`, Fase 8); interação e MPP `NAO_AVALIADO` (sem base) |
 | B.6-034 | Assinatura de evolução, prescrição e documento clínico (assinatura eletrônica interna) | `/evolucoes/{id}/assinar`, `/prescricoes/{id}/assinar`, `/registros/{id}/assinar` | `test_b6_057_...`, `test_b6_025_057_...` | PARCIAL (assinatura ICP-Brasil/gov.br e modelos de documento pendentes) |
 | B.6-041 | Validade de consulta/reconsulta por tipo (`prontuario.validade_consulta_dias`) | `/cidadaos/{id}/validade-consulta` | `test_b6_056_retroativo_em_contingencia_e_b6_041_validade` | IMPLEMENTADO |
 | B.6-048, B.6-049 | Linha do tempo de atendimentos e registros; sigiloso velado | `/cidadaos/{id}/linha-do-tempo` | `test_b12_021_025_sigilo_escopo_e_linha_do_tempo` | IMPLEMENTADO |
@@ -181,6 +181,37 @@ rotas em `app/api/v1/prontuarios.py`, migração `0009`. Testes em
 | B.6-057 | Retificação de evolução e registro assinados gera nova versão encadeada; anterior preservada (`RETIFICADO`) | `/evolucoes/{id}/retificar`, `/registros/{id}/retificar` | `test_b6_057_...`, `test_b6_025_057_...` | IMPLEMENTADO |
 | B.12-013, B.12-021…025 | Tenant (404), escopo de estabelecimento (404), sigilo por `PRONTUARIO_LER_SIGILOSO`, RBAC (403), leitura auditada `READ_SENSIVEL` | todas as rotas do PEC | `test_b12_021_025_...` e negativos em todos os testes | IMPLEMENTADO |
 | B.6-009, B.6-024, B.6-028, B.6-043, B.6-044, B.6-055, B.6-058 | Protocolos estruturados, RAAS, observação/internação, produção programada × realizado, benefícios custeados | — | — | PENDENTE (o registro configurável cobre o dado clínico; regras e exportações entram com as fases de faturamento/regulação) |
+
+## Fase 8 — estoque, almoxarifado e assistência farmacêutica
+
+IDs da seção 12 e do item 9 do modelo de dados do `PROMPT-BACKEND-GOVSAUDE.md`;
+a associação por funcionalidade é **inferida** (validar no catálogo do Lote 02).
+Regras em `app/services/estoque.py`, rotas em `app/api/v1/estoque.py`, migração
+`0010` (com trigger PostgreSQL que impede UPDATE/DELETE no ledger). Testes em
+`tests/test_fase8_estoque.py` (7).
+
+| Requisito | O que foi entregue | Endpoints | Testes | Status |
+|---|---|---|---|---|
+| B.4-001/002 | Locais de estoque por estabelecimento, com faixa de temperatura; escopo por estabelecimento (404) | `/estoque/locais` | `test_b4_001_003_cadastros_isolados_e_restritos` | IMPLEMENTADO |
+| B.4-003 | Produtos (medicamento/vacina/insumo/material, princípio ativo, CATMAT, OBM, Remume, controlado, antimicrobiano), `If-Match` | `/estoque/produtos`, `PATCH /estoque/produtos/{id}` | idem | IMPLEMENTADO |
+| B.4-004 | Mínimo, máximo e ponto de pedido por local × produto, com alertas | `PUT /estoque/locais/{id}/parametros`, `.../alertas` | `test_b4_012_035_...` | IMPLEMENTADO |
+| B.4-005, B.4-011 | Ledger imutável (entrada, saída, perda, devolução, doação, consumo interno, ajuste com permissão própria), lote criado na entrada, FEFO na saída | `POST /estoque/movimentacoes`, `.../movimentacoes` (extrato) | `test_b4_005_006_009_ledger_saldo_em_data_custo_medio_e_fefo` | IMPLEMENTADO |
+| B.4-006 | Custo médio ponderado móvel e custo da última aquisição; saída valorizada pelo custo médio | `.../saldos` | idem | IMPLEMENTADO |
+| B.4-007, B.4-038, B.4-040 | Sugestão de compra com memória de cálculo (máximo ou consumo médio × cobertura), cobertura em dias e giro | `.../sugestao-compra` | `test_b4_036_037_039_040_...` | IMPLEMENTADO |
+| B.4-009 | Saldo por produto × lote em qualquer data (fuso do tenant) | `.../saldos?em=` | `test_b4_005_...` | IMPLEMENTADO (snapshot diário é otimização futura) |
+| B.4-012 | Bloqueio/desbloqueio de lote com motivo; lote bloqueado ou vencido não sai | `/estoque/lotes/{id}/bloqueio` | `test_b4_012_035_lote_bloqueado_vencido_e_alertas` | IMPLEMENTADO |
+| B.4-014/015 | Requisição numerada por tenant/ano, atendimento total/parcial (saldo em trânsito), aceite ou recusa com devolução à origem, cancelamento | `/estoque/requisicoes`, `.../atender`, `.../receber`, `.../recusar`, `.../cancelar` | `test_b4_014_015_requisicao_parcial_aceite_e_recusa` | IMPLEMENTADO |
+| B.4-017 | Inventário por lote; local bloqueado durante a contagem; divergência vira ajuste referenciado | `/estoque/inventarios`, `.../contagens`, `.../encerrar` | `test_b4_017_018_inventario_e_competencia` | IMPLEMENTADO |
+| B.4-018 | Competência encerrada recusa movimentação; reabertura justificada | `/estoque/competencias/{AAAAMM}/encerrar`, `.../reabrir` | idem | IMPLEMENTADO |
+| B.4-020 | Dispensação total/parcial por lote, vinculável à prescrição do mesmo cidadão; estorno devolve os mesmos lotes | `/estoque/dispensacoes`, `.../estornar`, `/estoque/cidadaos/{id}/dispensacoes` | `test_b4_020_021_024_...` | IMPLEMENTADO |
+| B.4-021 | Duplicidade em qualquer unidade (janela configurável) **bloqueia**, salvo justificativa auditada | `POST /estoque/dispensacoes` | idem | IMPLEMENTADO |
+| B.4-024 | Controlado/antimicrobiano exige documento de retenção com campos configuráveis | idem | idem | PARCIAL (livros, BMPO e balanços pendentes) |
+| B.4-035 | Alerta de lote a vencer/vencido | `.../alertas` | `test_b4_012_035_...` | IMPLEMENTADO |
+| B.4-036 | Consumo anormal por desvio estatístico (média ± k·desvio dos meses fechados), regra exposta | `.../alertas` | `test_b4_036_...` | IMPLEMENTADO |
+| B.4-037 | Registro de temperatura (manual/equipamento) e alerta fora da faixa | `.../temperaturas` | idem | IMPLEMENTADO |
+| B.4-039 | Curva ABC por valor consumido, limites configuráveis | `.../curva-abc` | idem | IMPLEMENTADO |
+| B.6-019 | Disponibilidade em estoque na prescrição | `POST /prontuarios/atendimentos/{id}/prescricoes` | `test_b4_036_...` | IMPLEMENTADO |
+| B.4-008, B.4-010, B.4-013, B.4-016, B.4-019, B.4-022, B.4-023, B.4-025…029, B.4-043, B.2-010 | Kits, etiquetas, integração com compras/empenhos/contabilidade, livros e balanços Portaria 344, conciliação físico × contábil, APIs de equipamentos, contingência, frascos abertos, baixa de insumos odontológicos | — | — | PENDENTE |
 
 ## Fase 6 — ações programáticas e linhas de cuidado
 
