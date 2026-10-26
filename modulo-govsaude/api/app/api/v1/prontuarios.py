@@ -1,83 +1,59 @@
-"""PEC ambulatorial: registros clínicos versionáveis, auditáveis e isolados por tenant."""
+"""Fase 5 — PEC ambulatorial (B.6-004…058, B.12-013/021…025).
+
+Rotas finas: regras em ``app/services/prontuario.py``. Cross-tenant, fora do
+escopo de estabelecimento ou sigiloso sem permissão respondem 404.
+"""
 
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, Request
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_tenant_id
-from app.core.autorizacao import escopo_permite, exigir, pode_ver_conteudo, velar
+from app.core.autorizacao import exigir
 from app.core.database import get_db
-from app.core.errors import Conflict, NotFound
 from app.core.permissoes import Permissao
-from app.models.cidadao import Cidadao
-from app.models.nucleo import Estabelecimento, Usuario
-from app.models.prontuario import (
-    Atendimento,
-    EvolucaoSOAP,
-    PlanoCuidado,
-    Prescricao,
-    ProblemaClinico,
-    RegistroAssistencial,
-    SinalVital,
-)
+from app.models.nucleo import Usuario
 from app.schemas.prontuario import (
+    AlergiaCreate,
+    AlergiaOut,
     AtendimentoCreate,
     AtendimentoEncerrar,
     AtendimentoOut,
+    Encerramento,
+    EtapaAvancar,
     PlanoCreate,
+    PlanoOut,
+    PrescricaoCopiar,
     PrescricaoCreate,
+    PrescricaoOut,
     ProblemaCreate,
+    ProblemaOut,
     RegistroAssistencialCreate,
     RegistroAssistencialOut,
+    RetificacaoRegistroCreate,
     RetificacaoSOAPCreate,
     SinalVitalCreate,
+    SinalVitalOut,
     SOAPCreate,
     SOAPOut,
+    ValidadeConsultaOut,
 )
-from app.services.auditoria import dados_do_cliente, registrar, registrar_leitura_sensivel
+from app.services import prontuario as svc
+from app.services.auditoria import dados_do_cliente
 
 router = APIRouter(prefix="/prontuarios", tags=["Prontuário eletrônico"])
 
 
-async def _at(db, tenant_id, atendimento_id):
-    x = await db.scalar(
-        select(Atendimento).where(
-            Atendimento.id == atendimento_id, Atendimento.tenant_id == tenant_id
-        )
-    )
-    if not x:
-        raise NotFound("Atendimento não encontrado.")
-    return x
+def _prescricao(p) -> PrescricaoOut:
+    out = PrescricaoOut.model_validate(p)
+    out.receituarios = svc.receituarios(p.itens)
+    return out
 
 
-def _escopo(u, a, permissao):
-    if not escopo_permite(u, permissao, estabelecimento_id=a.estabelecimento_id):
-        raise NotFound("Atendimento não encontrado.")
-
-
-def _aberto(a):
-    if a.status != "ABERTO":
-        raise Conflict("Atendimento encerrado; registre uma retificação ou abra novo atendimento.")
-
-
-async def _audit(db, r, u, t, acao, recurso, recurso_id, depois=None):
-    await registrar(
-        db,
-        acao=acao,
-        usuario=u,
-        tenant_id=t,
-        recurso=recurso,
-        recurso_id=recurso_id,
-        dados_depois=depois,
-        cliente=dados_do_cliente(r),
-    )
-
-
+# ── Atendimento ─────────────────────────────────────────────────────────────
 @router.post("/atendimentos", response_model=AtendimentoOut, status_code=201)
 async def abrir(
     c: AtendimentoCreate,
@@ -86,35 +62,8 @@ async def abrir(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_CRIAR)),
     db: AsyncSession = Depends(get_db),
 ):
-    if c.retroativo and len((c.justificativa_retroativa or "").strip()) < 20:
-        raise Conflict("Digitação retroativa exige justificativa com pelo menos 20 caracteres.")
-    if not await db.scalar(
-        select(Cidadao.id).where(Cidadao.id == c.cidadao_id, Cidadao.tenant_id == t)
-    ):
-        raise NotFound("Cidadão não encontrado.")
-    if c.estabelecimento_id:
-        e = await db.scalar(
-            select(Estabelecimento).where(
-                Estabelecimento.id == c.estabelecimento_id, Estabelecimento.tenant_id == t
-            )
-        )
-        if not e or not escopo_permite(
-            u, Permissao.PRONTUARIO_CRIAR, estabelecimento_id=c.estabelecimento_id
-        ):
-            raise NotFound("Estabelecimento não encontrado.")
-    x = Atendimento(
-        tenant_id=t,
-        profissional_id=None,
-        **c.model_dump(),
-        criado_por_id=u.id,
-        atualizado_por_id=u.id,
-    )
-    db.add(x)
-    await db.flush()
-    await _audit(db, r, u, t, "CRIAR", "atendimento", x.id, {"status": x.status})
-    await db.commit()
-    await db.refresh(x)
-    return x
+    """B.6-004, B.6-056 — abre atendimento; retroativo só em contingência autorizada."""
+    return await svc.abrir_atendimento(db, t, c, u, dados_do_cliente(r))
 
 
 @router.get("/atendimentos/{id}", response_model=AtendimentoOut)
@@ -125,20 +74,36 @@ async def obter(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
-    x = await _at(db, t, id)
-    _escopo(u, x, Permissao.PRONTUARIO_LER)
-    if x.sigiloso and not pode_ver_conteudo(u, "SIGILOSO"):
-        raise NotFound("Atendimento não encontrado.")
-    await registrar_leitura_sensivel(
-        db,
-        usuario=u,
-        recurso="atendimento",
-        recurso_id=x.id,
-        finalidade="consulta_prontuario",
-        cliente=dados_do_cliente(r),
-    )
-    await db.commit()
-    return x
+    """B.6-004, B.12-021 — leitura auditada (READ_SENSIVEL)."""
+    return await svc.obter_atendimento(db, t, id, u, dados_do_cliente(r))
+
+
+@router.post("/atendimentos/{id}/etapa", response_model=AtendimentoOut)
+async def etapa(
+    id: uuid.UUID,
+    c: EtapaAvancar,
+    r: Request,
+    t: uuid.UUID = Depends(get_tenant_id),
+    u: Usuario = Depends(exigir(Permissao.PRONTUARIO_EDITAR)),
+    db: AsyncSession = Depends(get_db),
+):
+    """B.6-004 — avança nas etapas configuradas (`prontuario.etapas`)."""
+    return await svc.avancar_etapa(db, t, id, c.etapa, u, dados_do_cliente(r))
+
+
+@router.get("/atendimentos/{id}/pendencias")
+async def pendencias(
+    id: uuid.UUID,
+    t: uuid.UUID = Depends(get_tenant_id),
+    u: Usuario = Depends(exigir(Permissao.PRONTUARIO_LER)),
+    db: AsyncSession = Depends(get_db),
+):
+    """B.6-006 — campos obrigatórios ainda não preenchidos."""
+    item = await svc.atendimento(db, t, id, u, Permissao.PRONTUARIO_LER)
+    return {
+        "atendimento_id": str(item.id),
+        "campos_pendentes": await svc.campos_pendentes(db, t, item),
+    }
 
 
 @router.post("/atendimentos/{id}/encerrar", response_model=AtendimentoOut)
@@ -150,19 +115,11 @@ async def encerrar(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
-    x = await _at(db, t, id)
-    _escopo(u, x, Permissao.PRONTUARIO_EDITAR)
-    _aberto(x)
-    x.status = "ENCERRADO"
-    x.finalizado_em = c.finalizado_em or datetime.now(timezone.utc)
-    x.atualizado_por_id = u.id
-    x.versao += 1
-    await _audit(db, r, u, t, "ENCERRAR", "atendimento", x.id, {"status": x.status})
-    await db.commit()
-    await db.refresh(x)
-    return x
+    """B.6-006 — encerra só com os campos obrigatórios do tenant preenchidos."""
+    return await svc.encerrar_atendimento(db, t, id, c.finalizado_em, u, dados_do_cliente(r))
 
 
+# ── SOAP ────────────────────────────────────────────────────────────────────
 @router.post("/atendimentos/{id}/soap", response_model=SOAPOut, status_code=201)
 async def soap(
     id: uuid.UUID,
@@ -172,18 +129,20 @@ async def soap(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
-    a = await _at(db, t, id)
-    _escopo(u, a, Permissao.PRONTUARIO_EDITAR)
-    _aberto(a)
-    x = EvolucaoSOAP(
-        tenant_id=t, atendimento_id=id, **c.model_dump(), criado_por_id=u.id, atualizado_por_id=u.id
-    )
-    db.add(x)
-    await db.flush()
-    await _audit(db, r, u, t, "CRIAR", "evolucao_soap", x.id)
-    await db.commit()
-    await db.refresh(x)
-    return x
+    """B.6-004 — evolução SOAP cifrada em repouso."""
+    return await svc.registrar_soap(db, t, id, c, u, dados_do_cliente(r))
+
+
+@router.get("/atendimentos/{id}/soap", response_model=list[SOAPOut])
+async def listar_soap(
+    id: uuid.UUID,
+    r: Request,
+    t: uuid.UUID = Depends(get_tenant_id),
+    u: Usuario = Depends(exigir(Permissao.PRONTUARIO_LER)),
+    db: AsyncSession = Depends(get_db),
+):
+    """B.6-004, B.6-057 — evoluções do atendimento, inclusive retificações."""
+    return await svc.listar_soap(db, t, id, u, dados_do_cliente(r))
 
 
 @router.post("/evolucoes/{id}/assinar", response_model=SOAPOut)
@@ -194,22 +153,8 @@ async def assinar(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_ASSINAR)),
     db: AsyncSession = Depends(get_db),
 ):
-    x = await db.scalar(
-        select(EvolucaoSOAP).where(EvolucaoSOAP.id == id, EvolucaoSOAP.tenant_id == t)
-    )
-    if not x:
-        raise NotFound("Evolução não encontrada.")
-    a = await _at(db, t, x.atendimento_id)
-    _escopo(u, a, Permissao.PRONTUARIO_ASSINAR)
-    if x.assinado_em:
-        raise Conflict("Evolução já assinada.")
-    x.assinado_em = datetime.now(timezone.utc)
-    x.atualizado_por_id = u.id
-    x.versao += 1
-    await _audit(db, r, u, t, "ASSINAR", "evolucao_soap", x.id)
-    await db.commit()
-    await db.refresh(x)
-    return x
+    """B.6-034 — assinatura da evolução."""
+    return await svc.assinar_soap(db, t, id, u, dados_do_cliente(r))
 
 
 @router.post("/evolucoes/{id}/retificar", response_model=SOAPOut, status_code=201)
@@ -221,41 +166,12 @@ async def retificar(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_RETIFICAR)),
     db: AsyncSession = Depends(get_db),
 ):
-    original = await db.scalar(
-        select(EvolucaoSOAP).where(EvolucaoSOAP.id == id, EvolucaoSOAP.tenant_id == t)
-    )
-    if not original:
-        raise NotFound("Evolução não encontrada.")
-    if not original.assinado_em:
-        raise Conflict("Apenas evolução assinada pode ser retificada.")
-    a = await _at(db, t, original.atendimento_id)
-    _escopo(u, a, Permissao.PRONTUARIO_RETIFICAR)
-    x = EvolucaoSOAP(
-        tenant_id=t,
-        atendimento_id=original.atendimento_id,
-        retifica_de_id=original.id,
-        **c.model_dump(exclude={"justificativa"}),
-        criado_por_id=u.id,
-        atualizado_por_id=u.id,
-    )
-    db.add(x)
-    await db.flush()
-    await _audit(
-        db,
-        r,
-        u,
-        t,
-        "RETIFICAR",
-        "evolucao_soap",
-        x.id,
-        {"retifica_de_id": str(original.id), "justificativa": c.justificativa},
-    )
-    await db.commit()
-    await db.refresh(x)
-    return x
+    """B.6-057 — retificação com nova versão e justificativa."""
+    return await svc.retificar_soap(db, t, id, c, u, dados_do_cliente(r))
 
 
-@router.post("/atendimentos/{id}/sinais-vitais", status_code=201)
+# ── Sinais vitais ───────────────────────────────────────────────────────────
+@router.post("/atendimentos/{id}/sinais-vitais", response_model=SinalVitalOut, status_code=201)
 async def sinais(
     id: uuid.UUID,
     c: SinalVitalCreate,
@@ -264,25 +180,24 @@ async def sinais(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
-    a = await _at(db, t, id)
-    _escopo(u, a, Permissao.PRONTUARIO_EDITAR)
-    _aberto(a)
-    x = SinalVital(
-        tenant_id=t,
-        atendimento_id=id,
-        cidadao_id=a.cidadao_id,
-        dados=c.dados,
-        criado_por_id=u.id,
-        atualizado_por_id=u.id,
-    )
-    db.add(x)
-    await db.flush()
-    await _audit(db, r, u, t, "CRIAR", "sinal_vital", x.id)
-    await db.commit()
-    return {"id": str(x.id), "dados": x.dados}
+    """B.6-010, B.6-011 — sinais e antropometria; IMC classificado pela tabela do tenant."""
+    return await svc.registrar_sinais(db, t, id, c, u, dados_do_cliente(r))
 
 
-@router.post("/cidadaos/{cidadao_id}/problemas", status_code=201)
+@router.get("/cidadaos/{cidadao_id}/sinais-vitais", response_model=list[SinalVitalOut])
+async def serie_sinais(
+    cidadao_id: uuid.UUID,
+    r: Request,
+    t: uuid.UUID = Depends(get_tenant_id),
+    u: Usuario = Depends(exigir(Permissao.PRONTUARIO_LER)),
+    db: AsyncSession = Depends(get_db),
+):
+    """B.6-012 — série histórica."""
+    return await svc.serie_sinais(db, t, cidadao_id, u, dados_do_cliente(r))
+
+
+# ── Problemas e alergias ────────────────────────────────────────────────────
+@router.post("/cidadaos/{cidadao_id}/problemas", response_model=ProblemaOut, status_code=201)
 async def problema(
     cidadao_id: uuid.UUID,
     c: ProblemaCreate,
@@ -291,25 +206,75 @@ async def problema(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
-    if not await db.scalar(
-        select(Cidadao.id).where(Cidadao.id == cidadao_id, Cidadao.tenant_id == t)
-    ):
-        raise NotFound("Cidadão não encontrado.")
-    x = ProblemaClinico(
-        tenant_id=t,
-        cidadao_id=cidadao_id,
-        **c.model_dump(),
-        criado_por_id=u.id,
-        atualizado_por_id=u.id,
-    )
-    db.add(x)
-    await db.flush()
-    await _audit(db, r, u, t, "CRIAR", "problema_clinico", x.id)
-    await db.commit()
-    return {"id": str(x.id)}
+    """B.6-016 — problema CID-10/CIAP-2/CIPE, conferido na base importada."""
+    return await svc.registrar_problema(db, t, cidadao_id, c, u, dados_do_cliente(r))
 
 
-@router.post("/atendimentos/{id}/planos-cuidado", status_code=201)
+@router.get("/cidadaos/{cidadao_id}/problemas", response_model=list[ProblemaOut])
+async def listar_problemas(
+    cidadao_id: uuid.UUID,
+    r: Request,
+    t: uuid.UUID = Depends(get_tenant_id),
+    u: Usuario = Depends(exigir(Permissao.PRONTUARIO_LER)),
+    db: AsyncSession = Depends(get_db),
+):
+    """B.6-016 — lista de problemas ativos e encerrados."""
+    return await svc.listar_problemas(db, t, cidadao_id, u, dados_do_cliente(r))
+
+
+@router.post("/problemas/{id}/encerrar", response_model=ProblemaOut)
+async def encerrar_problema(
+    id: uuid.UUID,
+    c: Encerramento,
+    r: Request,
+    t: uuid.UUID = Depends(get_tenant_id),
+    u: Usuario = Depends(exigir(Permissao.PRONTUARIO_EDITAR)),
+    db: AsyncSession = Depends(get_db),
+):
+    """B.6-016 — baixa lógica com motivo."""
+    return await svc.encerrar_problema(db, t, id, c.motivo, u, dados_do_cliente(r))
+
+
+@router.post("/cidadaos/{cidadao_id}/alergias", response_model=AlergiaOut, status_code=201)
+async def alergia(
+    cidadao_id: uuid.UUID,
+    c: AlergiaCreate,
+    r: Request,
+    t: uuid.UUID = Depends(get_tenant_id),
+    u: Usuario = Depends(exigir(Permissao.PRONTUARIO_EDITAR)),
+    db: AsyncSession = Depends(get_db),
+):
+    """B.6-015 — alergia que alimenta o alerta da prescrição."""
+    return await svc.registrar_alergia(db, t, cidadao_id, c, u, dados_do_cliente(r))
+
+
+@router.get("/cidadaos/{cidadao_id}/alergias", response_model=list[AlergiaOut])
+async def listar_alergias(
+    cidadao_id: uuid.UUID,
+    r: Request,
+    t: uuid.UUID = Depends(get_tenant_id),
+    u: Usuario = Depends(exigir(Permissao.PRONTUARIO_LER)),
+    db: AsyncSession = Depends(get_db),
+):
+    """B.6-015."""
+    return await svc.listar_alergias(db, t, cidadao_id, u, dados_do_cliente(r))
+
+
+@router.post("/alergias/{id}/encerrar", response_model=AlergiaOut)
+async def encerrar_alergia(
+    id: uuid.UUID,
+    c: Encerramento,
+    r: Request,
+    t: uuid.UUID = Depends(get_tenant_id),
+    u: Usuario = Depends(exigir(Permissao.PRONTUARIO_EDITAR)),
+    db: AsyncSession = Depends(get_db),
+):
+    """B.6-015 — baixa lógica com motivo."""
+    return await svc.encerrar_alergia(db, t, id, c.motivo, u, dados_do_cliente(r))
+
+
+# ── Plano de cuidados e prescrição ──────────────────────────────────────────
+@router.post("/atendimentos/{id}/planos-cuidado", response_model=PlanoOut, status_code=201)
 async def plano(
     id: uuid.UUID,
     c: PlanoCreate,
@@ -318,20 +283,11 @@ async def plano(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
-    a = await _at(db, t, id)
-    _escopo(u, a, Permissao.PRONTUARIO_EDITAR)
-    _aberto(a)
-    x = PlanoCuidado(
-        tenant_id=t, atendimento_id=id, **c.model_dump(), criado_por_id=u.id, atualizado_por_id=u.id
-    )
-    db.add(x)
-    await db.flush()
-    await _audit(db, r, u, t, "CRIAR", "plano_cuidado", x.id)
-    await db.commit()
-    return {"id": str(x.id)}
+    """B.6-017 — plano de cuidados."""
+    return await svc.registrar_plano(db, t, id, c, u, dados_do_cliente(r))
 
 
-@router.post("/atendimentos/{id}/prescricoes", status_code=201)
+@router.post("/atendimentos/{id}/prescricoes", response_model=PrescricaoOut, status_code=201)
 async def prescrever(
     id: uuid.UUID,
     c: PrescricaoCreate,
@@ -340,23 +296,61 @@ async def prescrever(
     u: Usuario = Depends(exigir(Permissao.PRESCRICAO_CRIAR)),
     db: AsyncSession = Depends(get_db),
 ):
-    a = await _at(db, t, id)
-    _escopo(u, a, Permissao.PRESCRICAO_CRIAR)
-    _aberto(a)
-    x = Prescricao(
-        tenant_id=t,
-        atendimento_id=id,
-        cidadao_id=a.cidadao_id,
-        itens=c.itens,
-        alertas={"status": "NAO_AVALIADO", "motivo": "base_farmacologica_validada_indisponivel"},
-        criado_por_id=u.id,
-        atualizado_por_id=u.id,
-    )
-    db.add(x)
-    await db.flush()
-    await _audit(db, r, u, t, "CRIAR", "prescricao", x.id)
-    await db.commit()
-    return {"id": str(x.id), "alertas": x.alertas}
+    """B.6-019, B.6-033 — prescrição com alertas (alergia/duplicidade) e receituários separados."""
+    return _prescricao(await svc.prescrever(db, t, id, c, u, dados_do_cliente(r)))
+
+
+@router.post("/atendimentos/{id}/prescricoes/copiar", response_model=PrescricaoOut, status_code=201)
+async def copiar(
+    id: uuid.UUID,
+    c: PrescricaoCopiar,
+    r: Request,
+    t: uuid.UUID = Depends(get_tenant_id),
+    u: Usuario = Depends(exigir(Permissao.PRESCRICAO_CRIAR)),
+    db: AsyncSession = Depends(get_db),
+):
+    """B.6-019 — cópia assistida de prescrição anterior do mesmo cidadão."""
+    return _prescricao(await svc.copiar_prescricao(db, t, id, c, u, dados_do_cliente(r)))
+
+
+@router.get("/cidadaos/{cidadao_id}/prescricoes", response_model=list[PrescricaoOut])
+async def listar_prescricoes(
+    cidadao_id: uuid.UUID,
+    r: Request,
+    t: uuid.UUID = Depends(get_tenant_id),
+    u: Usuario = Depends(exigir(Permissao.PRONTUARIO_LER)),
+    db: AsyncSession = Depends(get_db),
+):
+    """B.6-019."""
+    return [
+        _prescricao(p)
+        for p in await svc.listar_prescricoes(db, t, cidadao_id, u, dados_do_cliente(r))
+    ]
+
+
+@router.post("/prescricoes/{id}/assinar", response_model=PrescricaoOut)
+async def assinar_prescricao(
+    id: uuid.UUID,
+    r: Request,
+    t: uuid.UUID = Depends(get_tenant_id),
+    u: Usuario = Depends(exigir(Permissao.PRONTUARIO_ASSINAR)),
+    db: AsyncSession = Depends(get_db),
+):
+    """B.6-019, B.6-034."""
+    return _prescricao(await svc.assinar_prescricao(db, t, id, u, dados_do_cliente(r)))
+
+
+# ── Validade e linha do tempo ───────────────────────────────────────────────
+@router.get("/cidadaos/{cidadao_id}/validade-consulta", response_model=ValidadeConsultaOut)
+async def validade(
+    cidadao_id: uuid.UUID,
+    tipo: str,
+    t: uuid.UUID = Depends(get_tenant_id),
+    u: Usuario = Depends(exigir(Permissao.PRONTUARIO_LER)),
+    db: AsyncSession = Depends(get_db),
+):
+    """B.6-041 — validade de consulta/reconsulta configurada por tipo."""
+    return await svc.validade_consulta(db, t, cidadao_id, tipo)
 
 
 @router.get("/cidadaos/{cidadao_id}/linha-do-tempo")
@@ -367,48 +361,11 @@ async def linha_do_tempo(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
-    if not await db.scalar(
-        select(Cidadao.id).where(Cidadao.id == cidadao_id, Cidadao.tenant_id == t)
-    ):
-        raise NotFound("Cidadão não encontrado.")
-    rows = (
-        await db.scalars(
-            select(Atendimento)
-            .where(Atendimento.tenant_id == t, Atendimento.cidadao_id == cidadao_id)
-            .order_by(Atendimento.iniciado_em.desc())
-        )
-    ).all()
-    out = []
-    for a in rows:
-        if escopo_permite(u, Permissao.PRONTUARIO_LER, estabelecimento_id=a.estabelecimento_id):
-            out.append(
-                velar(
-                    {
-                        "id": str(a.id),
-                        "data_atendimento": a.iniciado_em,
-                        "estabelecimento_id": str(a.estabelecimento_id)
-                        if a.estabelecimento_id
-                        else None,
-                        "status": a.status,
-                        "sigiloso": a.sigiloso,
-                        "tipo": "ATENDIMENTO",
-                    },
-                    u,
-                    nivel_sigilo="SIGILOSO" if a.sigiloso else "NORMAL",
-                )
-            )
-    await registrar_leitura_sensivel(
-        db,
-        usuario=u,
-        recurso="linha_tempo_prontuario",
-        recurso_id=cidadao_id,
-        finalidade="consulta_linha_tempo",
-        cliente=dados_do_cliente(r),
-    )
-    await db.commit()
-    return out
+    """B.6-048, B.6-049 — atendimentos e registros; sigilosos velados."""
+    return await svc.linha_do_tempo(db, t, cidadao_id, u, dados_do_cliente(r))
 
 
+# ── Registros assistenciais configuráveis ───────────────────────────────────
 @router.post("/registros", response_model=RegistroAssistencialOut, status_code=201)
 async def criar_registro(
     c: RegistroAssistencialCreate,
@@ -417,35 +374,12 @@ async def criar_registro(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
-    """Registra exame, encaminhamento, documento, ficha, atividade ou cuidado domiciliar.
+    """B.6-013, B.6-018, B.6-023, B.6-025, B.6-032, B.6-037…039 — exame, encaminhamento,
+    documento, notificação, ficha, escala, atenção domiciliar/psicossocial, atividade coletiva.
 
-    ``tipo`` é configurável para não codificar protocolos municipais no produto.
+    ``tipo`` e o formulário de validação vêm de ``prontuario.tipos_registro``.
     """
-    if not await db.scalar(
-        select(Cidadao.id).where(Cidadao.id == c.cidadao_id, Cidadao.tenant_id == t)
-    ):
-        raise NotFound("Cidadão não encontrado.")
-    estabelecimento_id = None
-    if c.atendimento_id:
-        atendimento = await _at(db, t, c.atendimento_id)
-        _escopo(u, atendimento, Permissao.PRONTUARIO_EDITAR)
-        _aberto(atendimento)
-        if atendimento.cidadao_id != c.cidadao_id:
-            raise Conflict("O atendimento não pertence ao cidadão informado.")
-        estabelecimento_id = atendimento.estabelecimento_id
-    x = RegistroAssistencial(
-        tenant_id=t,
-        estabelecimento_id=estabelecimento_id,
-        **c.model_dump(),
-        criado_por_id=u.id,
-        atualizado_por_id=u.id,
-    )
-    db.add(x)
-    await db.flush()
-    await _audit(db, r, u, t, "CRIAR", "registro_assistencial", x.id, {"tipo": x.tipo})
-    await db.commit()
-    await db.refresh(x)
-    return x
+    return await svc.criar_registro(db, t, c, u, dados_do_cliente(r))
 
 
 @router.get("/cidadaos/{cidadao_id}/registros", response_model=list[RegistroAssistencialOut])
@@ -457,24 +391,30 @@ async def listar_registros(
     u: Usuario = Depends(exigir(Permissao.PRONTUARIO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
-    stmt = select(RegistroAssistencial).where(
-        RegistroAssistencial.tenant_id == t, RegistroAssistencial.cidadao_id == cidadao_id
-    )
-    if tipo:
-        stmt = stmt.where(RegistroAssistencial.tipo == tipo)
-    rows = (await db.scalars(stmt.order_by(RegistroAssistencial.created_at.desc()))).all()
-    visiveis = [
-        x
-        for x in rows
-        if escopo_permite(u, Permissao.PRONTUARIO_LER, estabelecimento_id=x.estabelecimento_id)
-    ]
-    await registrar_leitura_sensivel(
-        db,
-        usuario=u,
-        recurso="registro_assistencial",
-        recurso_id=cidadao_id,
-        finalidade="consulta_prontuario",
-        cliente=dados_do_cliente(r),
-    )
-    await db.commit()
-    return visiveis
+    """B.6-048 — registros visíveis no escopo e no nível de sigilo do usuário."""
+    return await svc.listar_registros(db, t, cidadao_id, tipo, u, dados_do_cliente(r))
+
+
+@router.post("/registros/{id}/assinar", response_model=RegistroAssistencialOut)
+async def assinar_registro(
+    id: uuid.UUID,
+    r: Request,
+    t: uuid.UUID = Depends(get_tenant_id),
+    u: Usuario = Depends(exigir(Permissao.PRONTUARIO_ASSINAR)),
+    db: AsyncSession = Depends(get_db),
+):
+    """B.6-032, B.6-034 — documento clínico assinado."""
+    return await svc.assinar_registro(db, t, id, u, dados_do_cliente(r))
+
+
+@router.post("/registros/{id}/retificar", response_model=RegistroAssistencialOut, status_code=201)
+async def retificar_registro(
+    id: uuid.UUID,
+    c: RetificacaoRegistroCreate,
+    r: Request,
+    t: uuid.UUID = Depends(get_tenant_id),
+    u: Usuario = Depends(exigir(Permissao.PRONTUARIO_RETIFICAR)),
+    db: AsyncSession = Depends(get_db),
+):
+    """B.6-057 — retificação com versão e justificativa."""
+    return await svc.retificar_registro(db, t, id, c, u, dados_do_cliente(r))

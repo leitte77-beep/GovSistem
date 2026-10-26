@@ -158,15 +158,29 @@ domicílio ou trajetos.
 
 ## Fase 5 — prontuário (PEC) ambulatorial
 
-| Requisito | O que foi entregue | Endpoints | Status |
-|---|---|---|---|
-| B.6-004, B.6-006 | Atendimento, evolução SOAP, sinais vitais, problemas, plano de cuidados e prescrição estruturada | `/prontuarios/atendimentos`, SOAP, sinais, problemas, planos e prescrições | IMPLEMENTADO (núcleo PEC) |
-| B.6-009…044 | Assinatura, encerramento, retificação encadeada e linha do tempo auditada; escrita bloqueada após encerramento | `.../encerrar`, `/evolucoes/{id}/assinar`, `.../retificar`, `.../linha-do-tempo` | IMPLEMENTADO (núcleo PEC) |
-| B.12-013, B.12-021…025 | Isolamento de tenant, escopo de estabelecimento, sigilo e auditoria de leitura/escrita | todas as rotas do PEC | IMPLEMENTADO (núcleo PEC) |
+IDs da seção 12 e do item 5 da seção de modelo de dados do
+`PROMPT-BACKEND-GOVSAUDE.md`; a associação por funcionalidade é **inferida**
+(validar no catálogo do Lote 02). Regras em `app/services/prontuario.py`,
+rotas em `app/api/v1/prontuarios.py`, migração `0009`. Testes em
+`tests/test_fase5_prontuario.py` (8).
 
-Alertas de alergia/interação, disponibilidade em estoque, regras de exame,
-notificações compulsórias e integrações dependem de bases oficiais ou das fases
-de estoque/regulação; não foram inferidos pelo sistema.
+| Requisito | O que foi entregue | Endpoints | Testes | Status |
+|---|---|---|---|---|
+| B.6-004 | Atendimento com etapas configuráveis (`prontuario.etapas`), avanço só para frente; SOAP cifrado em repouso | `POST /prontuarios/atendimentos`, `GET .../{id}`, `.../{id}/etapa`, `.../{id}/soap` (POST/GET) | `test_b6_004_006_etapas_e_campos_obrigatorios_configuraveis`, `test_b6_057_soap_cifrado_assinatura_e_retificacao` | IMPLEMENTADO |
+| B.6-006 | Campos obrigatórios por tipo/unidade/sexo/idade (`prontuario.campos_obrigatorios`), checados no encerramento | `.../{id}/pendencias`, `.../{id}/encerrar` | `test_b6_004_006_...` | IMPLEMENTADO |
+| B.6-010…012 | Sinais vitais, IMC calculado (peso/altura²) e classificação **só** por tabela versionada do tenant; série histórica com escopo/sigilo | `.../{id}/sinais-vitais`, `/cidadaos/{id}/sinais-vitais` | `test_b6_010_012_imc_classificado_apenas_por_tabela_do_tenant` | IMPLEMENTADO (tabelas oficiais pendentes) |
+| B.6-013, B.6-018, B.6-023, B.6-025, B.6-032, B.6-037…039 | Registros assistenciais por tipo configurável (`prontuario.tipos_registro`), validados por formulário dinâmico versionado; herdam sigilo do atendimento | `POST /prontuarios/registros`, `GET /cidadaos/{id}/registros` | `test_b6_025_057_registros_configuraveis_formulario_assinatura_retificacao` | PARCIAL (estrutura; regras de exame, referência/contrarreferência e notificação SINAN pendentes) |
+| B.6-015 | Alergias com baixa lógica; alimentam alerta de prescrição por código | `/cidadaos/{id}/alergias`, `/alergias/{id}/encerrar` | `test_b6_015_016_problemas_e_alergias_com_baixa_logica` | IMPLEMENTADO |
+| B.6-016 | Problemas CID-10/CIAP-2/CIPE; conferidos na base importada quando existe (`validado_referencia`); duplicado ativo recusado; encerramento com motivo | `/cidadaos/{id}/problemas`, `/problemas/{id}/encerrar` | idem | IMPLEMENTADO |
+| B.6-017 | Plano de cuidados | `.../{id}/planos-cuidado` | — (coberto indiretamente) | IMPLEMENTADO |
+| B.6-019, B.6-033 | Prescrição estruturada (via, posologia, uso contínuo, receituário), separação de receituários, alertas de alergia e duplicidade (na prescrição e uso contínuo ativo), cópia assistida do mesmo cidadão, assinatura; código conferido em `referencia.medicamentos` se importada | `.../{id}/prescricoes`, `.../prescricoes/copiar`, `/cidadaos/{id}/prescricoes`, `/prescricoes/{id}/assinar` | `test_b6_019_033_prescricao_alertas_receituarios_e_copia` | IMPLEMENTADO; interação, MPP e estoque `NAO_AVALIADO` (sem base / Fase 8) |
+| B.6-034 | Assinatura de evolução, prescrição e documento clínico (assinatura eletrônica interna) | `/evolucoes/{id}/assinar`, `/prescricoes/{id}/assinar`, `/registros/{id}/assinar` | `test_b6_057_...`, `test_b6_025_057_...` | PARCIAL (assinatura ICP-Brasil/gov.br e modelos de documento pendentes) |
+| B.6-041 | Validade de consulta/reconsulta por tipo (`prontuario.validade_consulta_dias`) | `/cidadaos/{id}/validade-consulta` | `test_b6_056_retroativo_em_contingencia_e_b6_041_validade` | IMPLEMENTADO |
+| B.6-048, B.6-049 | Linha do tempo de atendimentos e registros; sigiloso velado | `/cidadaos/{id}/linha-do-tempo` | `test_b12_021_025_sigilo_escopo_e_linha_do_tempo` | IMPLEMENTADO |
+| B.6-056 | Digitação retroativa: contingência ligada pelo gestor, permissão de retificar, limite em dias, justificativa, auditoria; data antiga sem flag recusada | `POST /prontuarios/atendimentos` | `test_b6_056_...` | IMPLEMENTADO |
+| B.6-057 | Retificação de evolução e registro assinados gera nova versão encadeada; anterior preservada (`RETIFICADO`) | `/evolucoes/{id}/retificar`, `/registros/{id}/retificar` | `test_b6_057_...`, `test_b6_025_057_...` | IMPLEMENTADO |
+| B.12-013, B.12-021…025 | Tenant (404), escopo de estabelecimento (404), sigilo por `PRONTUARIO_LER_SIGILOSO`, RBAC (403), leitura auditada `READ_SENSIVEL` | todas as rotas do PEC | `test_b12_021_025_...` e negativos em todos os testes | IMPLEMENTADO |
+| B.6-009, B.6-024, B.6-028, B.6-043, B.6-044, B.6-055, B.6-058 | Protocolos estruturados, RAAS, observação/internação, produção programada × realizado, benefícios custeados | — | — | PENDENTE (o registro configurável cobre o dado clínico; regras e exportações entram com as fases de faturamento/regulação) |
 
 ## Fase 6 — ações programáticas e linhas de cuidado
 

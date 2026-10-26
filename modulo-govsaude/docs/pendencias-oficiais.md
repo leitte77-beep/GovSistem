@@ -53,6 +53,19 @@ depende de artefato oficial fica atrás de uma porta e recebe o estado
 | Regra de antecedência/tolerância | Definição municipal de antecedência mínima/máxima e tolerância de atraso por agenda | Gestor municipal | Campos configuráveis por agenda; os defaults (`0 h`, `365 dias`, `30 min`) são operacionais e precisam de validação |
 | Integração com painéis físicos | Protocolo do painel/TV ou API do fornecedor, se o município já possui telas | Fornecedor do painel | A API entrega SSE + histórico + texto de voz; a integração específica do hardware não foi antecipada |
 
+## Fase 5 — prontuário (PEC) ambulatorial
+
+| Item | Artefato necessário | Onde obter | Consequência |
+|---|---|---|---|
+| Classificação nutricional (IMC) por ciclo de vida | Pontos de corte vigentes por ciclo (adulto, idoso, gestante) e curvas de crescimento (escore-z por sexo/idade) para crianças e adolescentes | Ministério da Saúde/SISVAN (orientações de antropometria) e curvas OMS | `prontuario.tabelas_classificacao_nutricional` vazia: IMC é calculado e devolvido com `pendencia=TABELA_REFERENCIA_NAO_CONFIGURADA`. Escore-z exige importar as curvas; o motor atual só aplica faixas de IMC |
+| Base farmacológica validada | Base de interações e de medicamentos potencialmente perigosos, com fonte e versão | Fonte licenciada/validada pela assistência farmacêutica municipal | Alertas de interação e MPP retornam `NAO_AVALIADO` (o alerta não é exibido); alergia e duplicidade são alertadas por código |
+| Tabela de medicamentos (OBM/BR) | `referencia.medicamentos` importada | CATMAT/BR / RENAME | Sem base, o código do item não é validado |
+| CID-10, CIAP-2 e CIPE | Tabelas oficiais importadas (`referencia.cid10`, `referencia.ciap2`); CIPE sem tabela no modelo | DATASUS (CID-10), SBMFC/WONCA (CIAP-2), CIE/COFEN (CIPE) | Problema gravado com `validado_referencia=false`; com base importada, código inexistente é recusado |
+| Notificação compulsória | Lista nacional de agravos vigente e meio de envio ao SINAN | Ministério da Saúde/SINAN | Notificação é registro assistencial configurável; envio não habilitado |
+| Fichas e-SUS (consumo alimentar, atividade coletiva, atenção domiciliar etc.) | `.thrift` LEDI da versão vigente | Portal e-SUS APS | Coleta via formulário dinâmico do tenant; exportação na Fase 11 |
+| Etapas, campos obrigatórios e validade de consulta | Definição municipal | Secretaria municipal de saúde | Configurações `prontuario.*` nascem vazias; sem regra, nada é exigido |
+| Assinatura digital | ICP-Brasil / assinatura gov.br | ITI / gov.br | Assinatura atual é eletrônica interna (usuário + carimbo de tempo + auditoria) |
+
 ## Fase 6 — programas e linhas de cuidado
 
 | Item | Artefato necessário | Onde obter | Consequência |

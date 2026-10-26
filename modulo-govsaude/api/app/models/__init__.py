@@ -76,6 +76,7 @@ from app.models.programa import (
     ProgramaProgramacao,
 )
 from app.models.prontuario import (
+    Alergia,
     Atendimento,
     EvolucaoSOAP,
     PlanoCuidado,
@@ -124,6 +125,7 @@ __all__ = [
     "Prescricao",
     "PlanoCuidado",
     "EvolucaoSOAP",
+    "Alergia",
     "Atendimento",
     "RegistroAssistencial",
     "VisitaDomiciliar",

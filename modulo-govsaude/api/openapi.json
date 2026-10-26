@@ -1717,191 +1717,6 @@
         "title": "AgendamentoUpdate",
         "type": "object"
       },
-      "AlergiaCreate": {
-        "additionalProperties": false,
-        "properties": {
-          "data_inicio": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Data Inicio"
-          },
-          "gravidade": {
-            "anyOf": [
-              {
-                "maxLength": 40,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Gravidade"
-          },
-          "observacoes": {
-            "anyOf": [
-              {
-                "maxLength": 2000,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Observacoes"
-          },
-          "reacao": {
-            "anyOf": [
-              {
-                "maxLength": 2000,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reacao"
-          },
-          "substancia": {
-            "maxLength": 200,
-            "minLength": 2,
-            "title": "Substancia",
-            "type": "string"
-          },
-          "tipo": {
-            "anyOf": [
-              {
-                "maxLength": 60,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tipo"
-          }
-        },
-        "required": [
-          "substancia"
-        ],
-        "title": "AlergiaCreate",
-        "type": "object"
-      },
-      "AlergiaOut": {
-        "properties": {
-          "ativo": {
-            "title": "Ativo",
-            "type": "boolean"
-          },
-          "baixa_em": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Baixa Em"
-          },
-          "cidadao_id": {
-            "format": "uuid",
-            "title": "Cidadao Id",
-            "type": "string"
-          },
-          "data_inicio": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Data Inicio"
-          },
-          "gravidade": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Gravidade"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "observacoes": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Observacoes"
-          },
-          "reacao": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Reacao"
-          },
-          "substancia": {
-            "title": "Substancia",
-            "type": "string"
-          },
-          "tenant_id": {
-            "format": "uuid",
-            "title": "Tenant Id",
-            "type": "string"
-          },
-          "tipo": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Tipo"
-          },
-          "versao": {
-            "title": "Versao",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "id",
-          "tenant_id",
-          "cidadao_id",
-          "substancia",
-          "ativo",
-          "versao"
-        ],
-        "title": "AlergiaOut",
-        "type": "object"
-      },
       "AlertaOut": {
         "properties": {
           "bloqueante": {
@@ -5742,6 +5557,22 @@
         "title": "ElegibilidadeOut",
         "type": "object"
       },
+      "Encerramento": {
+        "additionalProperties": false,
+        "properties": {
+          "motivo": {
+            "maxLength": 2000,
+            "minLength": 5,
+            "title": "Motivo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "motivo"
+        ],
+        "title": "Encerramento",
+        "type": "object"
+      },
       "EnderecoCreate": {
         "additionalProperties": false,
         "properties": {
@@ -7014,6 +6845,22 @@
           }
         },
         "title": "EstabelecimentoUpdate",
+        "type": "object"
+      },
+      "EtapaAvancar": {
+        "additionalProperties": false,
+        "properties": {
+          "etapa": {
+            "maxLength": 40,
+            "minLength": 2,
+            "title": "Etapa",
+            "type": "string"
+          }
+        },
+        "required": [
+          "etapa"
+        ],
+        "title": "EtapaAvancar",
         "type": "object"
       },
       "ExportacaoLediOut": {
@@ -11463,6 +11310,8 @@
             "type": "object"
           },
           "objetivo": {
+            "maxLength": 4000,
+            "minLength": 2,
             "title": "Objetivo",
             "type": "string"
           }
@@ -11472,6 +11321,50 @@
           "acoes"
         ],
         "title": "PlanoCreate",
+        "type": "object"
+      },
+      "PlanoOut": {
+        "additionalProperties": false,
+        "properties": {
+          "acoes": {
+            "additionalProperties": true,
+            "title": "Acoes",
+            "type": "object"
+          },
+          "atendimento_id": {
+            "format": "uuid",
+            "title": "Atendimento Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "objetivo": {
+            "maxLength": 4000,
+            "minLength": 2,
+            "title": "Objetivo",
+            "type": "string"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "versao": {
+            "title": "Versao",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "objetivo",
+          "acoes",
+          "id",
+          "atendimento_id",
+          "status",
+          "versao"
+        ],
+        "title": "PlanoOut",
         "type": "object"
       },
       "PlanoSaudeCreate": {
@@ -11780,20 +11673,215 @@
         "title": "PlantaoCreate",
         "type": "object"
       },
+      "PrescricaoCopiar": {
+        "additionalProperties": false,
+        "description": "B.6-019 — cópia assistida: o profissional confirma quais itens repetir.",
+        "properties": {
+          "indices_itens": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "integer"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Indices Itens"
+          },
+          "prescricao_origem_id": {
+            "format": "uuid",
+            "title": "Prescricao Origem Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "prescricao_origem_id"
+        ],
+        "title": "PrescricaoCopiar",
+        "type": "object"
+      },
       "PrescricaoCreate": {
         "additionalProperties": false,
         "properties": {
           "itens": {
-            "additionalProperties": true,
-            "minProperties": 1,
+            "items": {
+              "$ref": "#/components/schemas/PrescricaoItem"
+            },
+            "maxItems": 50,
+            "minItems": 1,
             "title": "Itens",
-            "type": "object"
+            "type": "array"
           }
         },
         "required": [
           "itens"
         ],
         "title": "PrescricaoCreate",
+        "type": "object"
+      },
+      "PrescricaoItem": {
+        "additionalProperties": false,
+        "properties": {
+          "descricao": {
+            "maxLength": 300,
+            "minLength": 2,
+            "title": "Descricao",
+            "type": "string"
+          },
+          "medicamento_codigo": {
+            "anyOf": [
+              {
+                "maxLength": 30,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Medicamento Codigo"
+          },
+          "posologia": {
+            "maxLength": 1000,
+            "minLength": 2,
+            "title": "Posologia",
+            "type": "string"
+          },
+          "quantidade": {
+            "anyOf": [
+              {
+                "maxLength": 100,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Quantidade"
+          },
+          "tipo_receituario": {
+            "default": "COMUM",
+            "enum": [
+              "COMUM",
+              "ANTIMICROBIANO",
+              "CONTROLADO"
+            ],
+            "title": "Tipo Receituario",
+            "type": "string"
+          },
+          "uso_continuo": {
+            "default": false,
+            "title": "Uso Continuo",
+            "type": "boolean"
+          },
+          "via": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Via"
+          }
+        },
+        "required": [
+          "descricao",
+          "posologia"
+        ],
+        "title": "PrescricaoItem",
+        "type": "object"
+      },
+      "PrescricaoOut": {
+        "properties": {
+          "alertas": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alertas"
+          },
+          "assinada_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assinada Em"
+          },
+          "atendimento_id": {
+            "format": "uuid",
+            "title": "Atendimento Id",
+            "type": "string"
+          },
+          "cidadao_id": {
+            "format": "uuid",
+            "title": "Cidadao Id",
+            "type": "string"
+          },
+          "copiada_de_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Copiada De Id"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "itens": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Itens",
+            "type": "array"
+          },
+          "receituarios": {
+            "default": [],
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Receituarios",
+            "type": "array"
+          },
+          "versao": {
+            "title": "Versao",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "atendimento_id",
+          "cidadao_id",
+          "itens",
+          "alertas",
+          "copiada_de_id",
+          "assinada_em",
+          "versao"
+        ],
+        "title": "PrescricaoOut",
         "type": "object"
       },
       "PrioridadeCreate": {
@@ -12074,6 +12162,52 @@
         "additionalProperties": false,
         "properties": {
           "codigo": {
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Codigo",
+            "type": "string"
+          },
+          "descricao": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Descricao"
+          },
+          "sistema": {
+            "enum": [
+              "CID10",
+              "CIAP2",
+              "CIPE"
+            ],
+            "title": "Sistema",
+            "type": "string"
+          }
+        },
+        "required": [
+          "codigo",
+          "sistema"
+        ],
+        "title": "ProblemaCreate",
+        "type": "object"
+      },
+      "ProblemaOut": {
+        "properties": {
+          "ativo": {
+            "title": "Ativo",
+            "type": "boolean"
+          },
+          "cidadao_id": {
+            "format": "uuid",
+            "title": "Cidadao Id",
+            "type": "string"
+          },
+          "codigo": {
             "title": "Codigo",
             "type": "string"
           },
@@ -12088,16 +12222,55 @@
             ],
             "title": "Descricao"
           },
+          "encerrado_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encerrado Em"
+          },
+          "encerrado_motivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encerrado Motivo"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
           "sistema": {
             "title": "Sistema",
             "type": "string"
+          },
+          "validado_referencia": {
+            "title": "Validado Referencia",
+            "type": "boolean"
           }
         },
         "required": [
+          "id",
+          "cidadao_id",
           "codigo",
-          "sistema"
+          "sistema",
+          "descricao",
+          "ativo",
+          "validado_referencia",
+          "encerrado_em",
+          "encerrado_motivo"
         ],
-        "title": "ProblemaCreate",
+        "title": "ProblemaOut",
         "type": "object"
       },
       "ProcedimentoAutorizadoCreate": {
@@ -15041,6 +15214,11 @@
             "title": "Dados",
             "type": "object"
           },
+          "sigiloso": {
+            "default": false,
+            "title": "Sigiloso",
+            "type": "boolean"
+          },
           "tipo": {
             "maxLength": 50,
             "minLength": 2,
@@ -15109,6 +15287,10 @@
             ],
             "title": "Retifica De Id"
           },
+          "sigiloso": {
+            "title": "Sigiloso",
+            "type": "boolean"
+          },
           "status": {
             "title": "Status",
             "type": "string"
@@ -15120,6 +15302,17 @@
           "versao": {
             "title": "Versao",
             "type": "integer"
+          },
+          "versao_formulario": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Versao Formulario"
           }
         },
         "required": [
@@ -15129,6 +15322,8 @@
           "tipo",
           "status",
           "dados",
+          "sigiloso",
+          "versao_formulario",
           "assinado_em",
           "retifica_de_id",
           "versao"
@@ -15709,6 +15904,29 @@
         "title": "ResumoProgramaOut",
         "type": "object"
       },
+      "RetificacaoRegistroCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "dados": {
+            "additionalProperties": true,
+            "minProperties": 1,
+            "title": "Dados",
+            "type": "object"
+          },
+          "justificativa": {
+            "maxLength": 2000,
+            "minLength": 20,
+            "title": "Justificativa",
+            "type": "string"
+          }
+        },
+        "required": [
+          "dados",
+          "justificativa"
+        ],
+        "title": "RetificacaoRegistroCreate",
+        "type": "object"
+      },
       "RetificacaoSOAPCreate": {
         "additionalProperties": false,
         "description": "Uma retificação nunca substitui a evolução assinada.",
@@ -15716,6 +15934,7 @@
           "avaliacao": {
             "anyOf": [
               {
+                "maxLength": 20000,
                 "type": "string"
               },
               {
@@ -15733,6 +15952,7 @@
           "objetivo": {
             "anyOf": [
               {
+                "maxLength": 20000,
                 "type": "string"
               },
               {
@@ -15744,6 +15964,7 @@
           "plano": {
             "anyOf": [
               {
+                "maxLength": 20000,
                 "type": "string"
               },
               {
@@ -15755,6 +15976,7 @@
           "subjetivo": {
             "anyOf": [
               {
+                "maxLength": 20000,
                 "type": "string"
               },
               {
@@ -15792,6 +16014,7 @@
           "avaliacao": {
             "anyOf": [
               {
+                "maxLength": 20000,
                 "type": "string"
               },
               {
@@ -15803,6 +16026,7 @@
           "objetivo": {
             "anyOf": [
               {
+                "maxLength": 20000,
                 "type": "string"
               },
               {
@@ -15814,6 +16038,7 @@
           "plano": {
             "anyOf": [
               {
+                "maxLength": 20000,
                 "type": "string"
               },
               {
@@ -15825,6 +16050,7 @@
           "subjetivo": {
             "anyOf": [
               {
+                "maxLength": 20000,
                 "type": "string"
               },
               {
@@ -15860,6 +16086,7 @@
           "avaliacao": {
             "anyOf": [
               {
+                "maxLength": 20000,
                 "type": "string"
               },
               {
@@ -15876,6 +16103,7 @@
           "objetivo": {
             "anyOf": [
               {
+                "maxLength": 20000,
                 "type": "string"
               },
               {
@@ -15887,6 +16115,7 @@
           "plano": {
             "anyOf": [
               {
+                "maxLength": 20000,
                 "type": "string"
               },
               {
@@ -15910,6 +16139,7 @@
           "subjetivo": {
             "anyOf": [
               {
+                "maxLength": 20000,
                 "type": "string"
               },
               {
@@ -16218,18 +16448,83 @@
       },
       "SinalVitalCreate": {
         "additionalProperties": false,
+        "description": "B.6-010/011 — peso em kg e altura em cm são opcionais; o IMC sai deles.",
         "properties": {
+          "altura_cm": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 20.0,
+                "maximum": 280.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Altura Cm"
+          },
           "dados": {
             "additionalProperties": true,
             "minProperties": 1,
             "title": "Dados",
             "type": "object"
+          },
+          "peso_kg": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 700.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Peso Kg"
           }
         },
         "required": [
           "dados"
         ],
         "title": "SinalVitalCreate",
+        "type": "object"
+      },
+      "SinalVitalOut": {
+        "properties": {
+          "atendimento_id": {
+            "format": "uuid",
+            "title": "Atendimento Id",
+            "type": "string"
+          },
+          "cidadao_id": {
+            "format": "uuid",
+            "title": "Cidadao Id",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dados": {
+            "additionalProperties": true,
+            "title": "Dados",
+            "type": "object"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "atendimento_id",
+          "cidadao_id",
+          "dados",
+          "created_at"
+        ],
+        "title": "SinalVitalOut",
         "type": "object"
       },
       "SyncOrganizacaoRequest": {
@@ -17544,6 +17839,71 @@
         "title": "UsuarioUpdate",
         "type": "object"
       },
+      "ValidadeConsultaOut": {
+        "properties": {
+          "cidadao_id": {
+            "format": "uuid",
+            "title": "Cidadao Id",
+            "type": "string"
+          },
+          "dias_validade": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dias Validade"
+          },
+          "situacao": {
+            "enum": [
+              "NAO_CONFIGURADO",
+              "SEM_ATENDIMENTO",
+              "VIGENTE",
+              "VENCIDA"
+            ],
+            "title": "Situacao",
+            "type": "string"
+          },
+          "tipo": {
+            "title": "Tipo",
+            "type": "string"
+          },
+          "ultimo_atendimento_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ultimo Atendimento Em"
+          },
+          "valida_ate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valida Ate"
+          }
+        },
+        "required": [
+          "cidadao_id",
+          "tipo",
+          "situacao"
+        ],
+        "title": "ValidadeConsultaOut",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "ctx": {
@@ -18276,6 +18636,191 @@
           "versao"
         ],
         "title": "VisitaOut",
+        "type": "object"
+      },
+      "app__schemas__cidadao__AlergiaCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "data_inicio": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Inicio"
+          },
+          "gravidade": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gravidade"
+          },
+          "observacoes": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observacoes"
+          },
+          "reacao": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reacao"
+          },
+          "substancia": {
+            "maxLength": 200,
+            "minLength": 2,
+            "title": "Substancia",
+            "type": "string"
+          },
+          "tipo": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tipo"
+          }
+        },
+        "required": [
+          "substancia"
+        ],
+        "title": "AlergiaCreate",
+        "type": "object"
+      },
+      "app__schemas__cidadao__AlergiaOut": {
+        "properties": {
+          "ativo": {
+            "title": "Ativo",
+            "type": "boolean"
+          },
+          "baixa_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Baixa Em"
+          },
+          "cidadao_id": {
+            "format": "uuid",
+            "title": "Cidadao Id",
+            "type": "string"
+          },
+          "data_inicio": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Data Inicio"
+          },
+          "gravidade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Gravidade"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "observacoes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observacoes"
+          },
+          "reacao": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reacao"
+          },
+          "substancia": {
+            "title": "Substancia",
+            "type": "string"
+          },
+          "tenant_id": {
+            "format": "uuid",
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "tipo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tipo"
+          },
+          "versao": {
+            "title": "Versao",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "tenant_id",
+          "cidadao_id",
+          "substancia",
+          "ativo",
+          "versao"
+        ],
+        "title": "AlergiaOut",
         "type": "object"
       },
       "app__schemas__cidadao__CondicaoCreate": {
@@ -19276,6 +19821,174 @@
         "title": "DocumentoOut",
         "type": "object"
       },
+      "app__schemas__prontuario__AlergiaCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "agente_codigo": {
+            "anyOf": [
+              {
+                "maxLength": 30,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agente Codigo"
+          },
+          "agente_descricao": {
+            "maxLength": 300,
+            "minLength": 2,
+            "title": "Agente Descricao",
+            "type": "string"
+          },
+          "categoria": {
+            "enum": [
+              "MEDICAMENTO",
+              "ALIMENTO",
+              "AMBIENTAL",
+              "OUTRA"
+            ],
+            "title": "Categoria",
+            "type": "string"
+          },
+          "criticidade": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Criticidade"
+          },
+          "reacao": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reacao"
+          }
+        },
+        "required": [
+          "categoria",
+          "agente_descricao"
+        ],
+        "title": "AlergiaCreate",
+        "type": "object"
+      },
+      "app__schemas__prontuario__AlergiaOut": {
+        "additionalProperties": false,
+        "properties": {
+          "agente_codigo": {
+            "anyOf": [
+              {
+                "maxLength": 30,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agente Codigo"
+          },
+          "agente_descricao": {
+            "maxLength": 300,
+            "minLength": 2,
+            "title": "Agente Descricao",
+            "type": "string"
+          },
+          "ativo": {
+            "title": "Ativo",
+            "type": "boolean"
+          },
+          "categoria": {
+            "enum": [
+              "MEDICAMENTO",
+              "ALIMENTO",
+              "AMBIENTAL",
+              "OUTRA"
+            ],
+            "title": "Categoria",
+            "type": "string"
+          },
+          "cidadao_id": {
+            "format": "uuid",
+            "title": "Cidadao Id",
+            "type": "string"
+          },
+          "criticidade": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Criticidade"
+          },
+          "encerrado_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encerrado Em"
+          },
+          "encerrado_motivo": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encerrado Motivo"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "reacao": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reacao"
+          }
+        },
+        "required": [
+          "categoria",
+          "agente_descricao",
+          "id",
+          "cidadao_id",
+          "ativo",
+          "encerrado_em",
+          "encerrado_motivo"
+        ],
+        "title": "AlergiaOut",
+        "type": "object"
+      },
       "app__schemas__prontuario__AtendimentoCreate": {
         "additionalProperties": false,
         "properties": {
@@ -19406,6 +20119,17 @@
             ],
             "title": "Estabelecimento Id"
           },
+          "etapa": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Etapa"
+          },
           "finalizado_em": {
             "anyOf": [
               {
@@ -19484,6 +20208,7 @@
           "id",
           "profissional_id",
           "status",
+          "etapa",
           "finalizado_em",
           "versao"
         ],
@@ -22326,7 +23051,7 @@
               "application/json": {
                 "schema": {
                   "items": {
-                    "$ref": "#/components/schemas/AlergiaOut"
+                    "$ref": "#/components/schemas/app__schemas__cidadao__AlergiaOut"
                   },
                   "title": "Response Listar Alergias Api Govsaude V1 Cidadaos  Cidadao Id  Alergias Get",
                   "type": "array"
@@ -22374,7 +23099,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/AlergiaCreate"
+                "$ref": "#/components/schemas/app__schemas__cidadao__AlergiaCreate"
               }
             }
           },
@@ -22385,7 +23110,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AlergiaOut"
+                  "$ref": "#/components/schemas/app__schemas__cidadao__AlergiaOut"
                 }
               }
             },
@@ -22453,7 +23178,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AlergiaOut"
+                  "$ref": "#/components/schemas/app__schemas__cidadao__AlergiaOut"
                 }
               }
             },
@@ -32867,8 +33592,68 @@
         ]
       }
     },
+    "/api/govsaude/v1/prontuarios/alergias/{id}/encerrar": {
+      "post": {
+        "description": "B.6-015 — baixa lógica com motivo.",
+        "operationId": "encerrar_alergia_api_govsaude_v1_prontuarios_alergias__id__encerrar_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Encerramento"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__schemas__prontuario__AlergiaOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Encerrar Alergia",
+        "tags": [
+          "Prontuário eletrônico"
+        ]
+      }
+    },
     "/api/govsaude/v1/prontuarios/atendimentos": {
       "post": {
+        "description": "B.6-004, B.6-056 — abre atendimento; retroativo só em contingência autorizada.",
         "operationId": "abrir_api_govsaude_v1_prontuarios_atendimentos_post",
         "requestBody": {
           "content": {
@@ -32915,6 +33700,7 @@
     },
     "/api/govsaude/v1/prontuarios/atendimentos/{id}": {
       "get": {
+        "description": "B.6-004, B.12-021 — leitura auditada (READ_SENSIVEL).",
         "operationId": "obter_api_govsaude_v1_prontuarios_atendimentos__id__get",
         "parameters": [
           {
@@ -32963,6 +33749,7 @@
     },
     "/api/govsaude/v1/prontuarios/atendimentos/{id}/encerrar": {
       "post": {
+        "description": "B.6-006 — encerra só com os campos obrigatórios do tenant preenchidos.",
         "operationId": "encerrar_api_govsaude_v1_prontuarios_atendimentos__id__encerrar_post",
         "parameters": [
           {
@@ -33019,8 +33806,115 @@
         ]
       }
     },
+    "/api/govsaude/v1/prontuarios/atendimentos/{id}/etapa": {
+      "post": {
+        "description": "B.6-004 — avança nas etapas configuradas (`prontuario.etapas`).",
+        "operationId": "etapa_api_govsaude_v1_prontuarios_atendimentos__id__etapa_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EtapaAvancar"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__schemas__prontuario__AtendimentoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Etapa",
+        "tags": [
+          "Prontuário eletrônico"
+        ]
+      }
+    },
+    "/api/govsaude/v1/prontuarios/atendimentos/{id}/pendencias": {
+      "get": {
+        "description": "B.6-006 — campos obrigatórios ainda não preenchidos.",
+        "operationId": "pendencias_api_govsaude_v1_prontuarios_atendimentos__id__pendencias_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Pendencias",
+        "tags": [
+          "Prontuário eletrônico"
+        ]
+      }
+    },
     "/api/govsaude/v1/prontuarios/atendimentos/{id}/planos-cuidado": {
       "post": {
+        "description": "B.6-017 — plano de cuidados.",
         "operationId": "plano_api_govsaude_v1_prontuarios_atendimentos__id__planos_cuidado_post",
         "parameters": [
           {
@@ -33048,7 +33942,9 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PlanoOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -33077,6 +33973,7 @@
     },
     "/api/govsaude/v1/prontuarios/atendimentos/{id}/prescricoes": {
       "post": {
+        "description": "B.6-019, B.6-033 — prescrição com alertas (alergia/duplicidade) e receituários separados.",
         "operationId": "prescrever_api_govsaude_v1_prontuarios_atendimentos__id__prescricoes_post",
         "parameters": [
           {
@@ -33104,7 +34001,9 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/PrescricaoOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -33131,8 +34030,68 @@
         ]
       }
     },
+    "/api/govsaude/v1/prontuarios/atendimentos/{id}/prescricoes/copiar": {
+      "post": {
+        "description": "B.6-019 — cópia assistida de prescrição anterior do mesmo cidadão.",
+        "operationId": "copiar_api_govsaude_v1_prontuarios_atendimentos__id__prescricoes_copiar_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrescricaoCopiar"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrescricaoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Copiar",
+        "tags": [
+          "Prontuário eletrônico"
+        ]
+      }
+    },
     "/api/govsaude/v1/prontuarios/atendimentos/{id}/sinais-vitais": {
       "post": {
+        "description": "B.6-010, B.6-011 — sinais e antropometria; IMC classificado pela tabela do tenant.",
         "operationId": "sinais_api_govsaude_v1_prontuarios_atendimentos__id__sinais_vitais_post",
         "parameters": [
           {
@@ -33160,7 +34119,9 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/SinalVitalOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -33188,7 +34149,59 @@
       }
     },
     "/api/govsaude/v1/prontuarios/atendimentos/{id}/soap": {
+      "get": {
+        "description": "B.6-004, B.6-057 — evoluções do atendimento, inclusive retificações.",
+        "operationId": "listar_soap_api_govsaude_v1_prontuarios_atendimentos__id__soap_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SOAPOut"
+                  },
+                  "title": "Response Listar Soap Api Govsaude V1 Prontuarios Atendimentos  Id  Soap Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Listar Soap",
+        "tags": [
+          "Prontuário eletrônico"
+        ]
+      },
       "post": {
+        "description": "B.6-004 — evolução SOAP cifrada em repouso.",
         "operationId": "soap_api_govsaude_v1_prontuarios_atendimentos__id__soap_post",
         "parameters": [
           {
@@ -33245,8 +34258,119 @@
         ]
       }
     },
+    "/api/govsaude/v1/prontuarios/cidadaos/{cidadao_id}/alergias": {
+      "get": {
+        "description": "B.6-015.",
+        "operationId": "listar_alergias_api_govsaude_v1_prontuarios_cidadaos__cidadao_id__alergias_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cidadao_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Cidadao Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/app__schemas__prontuario__AlergiaOut"
+                  },
+                  "title": "Response Listar Alergias Api Govsaude V1 Prontuarios Cidadaos  Cidadao Id  Alergias Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Listar Alergias",
+        "tags": [
+          "Prontuário eletrônico"
+        ]
+      },
+      "post": {
+        "description": "B.6-015 — alergia que alimenta o alerta da prescrição.",
+        "operationId": "alergia_api_govsaude_v1_prontuarios_cidadaos__cidadao_id__alergias_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cidadao_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Cidadao Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__schemas__prontuario__AlergiaCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__schemas__prontuario__AlergiaOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Alergia",
+        "tags": [
+          "Prontuário eletrônico"
+        ]
+      }
+    },
     "/api/govsaude/v1/prontuarios/cidadaos/{cidadao_id}/linha-do-tempo": {
       "get": {
+        "description": "B.6-048, B.6-049 — atendimentos e registros; sigilosos velados.",
         "operationId": "linha_do_tempo_api_govsaude_v1_prontuarios_cidadaos__cidadao_id__linha_do_tempo_get",
         "parameters": [
           {
@@ -33291,8 +34415,113 @@
         ]
       }
     },
+    "/api/govsaude/v1/prontuarios/cidadaos/{cidadao_id}/prescricoes": {
+      "get": {
+        "description": "B.6-019.",
+        "operationId": "listar_prescricoes_api_govsaude_v1_prontuarios_cidadaos__cidadao_id__prescricoes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cidadao_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Cidadao Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PrescricaoOut"
+                  },
+                  "title": "Response Listar Prescricoes Api Govsaude V1 Prontuarios Cidadaos  Cidadao Id  Prescricoes Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Listar Prescricoes",
+        "tags": [
+          "Prontuário eletrônico"
+        ]
+      }
+    },
     "/api/govsaude/v1/prontuarios/cidadaos/{cidadao_id}/problemas": {
+      "get": {
+        "description": "B.6-016 — lista de problemas ativos e encerrados.",
+        "operationId": "listar_problemas_api_govsaude_v1_prontuarios_cidadaos__cidadao_id__problemas_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cidadao_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Cidadao Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ProblemaOut"
+                  },
+                  "title": "Response Listar Problemas Api Govsaude V1 Prontuarios Cidadaos  Cidadao Id  Problemas Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Listar Problemas",
+        "tags": [
+          "Prontuário eletrônico"
+        ]
+      },
       "post": {
+        "description": "B.6-016 — problema CID-10/CIAP-2/CIPE, conferido na base importada.",
         "operationId": "problema_api_govsaude_v1_prontuarios_cidadaos__cidadao_id__problemas_post",
         "parameters": [
           {
@@ -33320,7 +34549,9 @@
           "201": {
             "content": {
               "application/json": {
-                "schema": {}
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemaOut"
+                }
               }
             },
             "description": "Successful Response"
@@ -33349,6 +34580,7 @@
     },
     "/api/govsaude/v1/prontuarios/cidadaos/{cidadao_id}/registros": {
       "get": {
+        "description": "B.6-048 — registros visíveis no escopo e no nível de sigilo do usuário.",
         "operationId": "listar_registros_api_govsaude_v1_prontuarios_cidadaos__cidadao_id__registros_get",
         "parameters": [
           {
@@ -33415,8 +34647,120 @@
         ]
       }
     },
+    "/api/govsaude/v1/prontuarios/cidadaos/{cidadao_id}/sinais-vitais": {
+      "get": {
+        "description": "B.6-012 — série histórica.",
+        "operationId": "serie_sinais_api_govsaude_v1_prontuarios_cidadaos__cidadao_id__sinais_vitais_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cidadao_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Cidadao Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SinalVitalOut"
+                  },
+                  "title": "Response Serie Sinais Api Govsaude V1 Prontuarios Cidadaos  Cidadao Id  Sinais Vitais Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Serie Sinais",
+        "tags": [
+          "Prontuário eletrônico"
+        ]
+      }
+    },
+    "/api/govsaude/v1/prontuarios/cidadaos/{cidadao_id}/validade-consulta": {
+      "get": {
+        "description": "B.6-041 — validade de consulta/reconsulta configurada por tipo.",
+        "operationId": "validade_api_govsaude_v1_prontuarios_cidadaos__cidadao_id__validade_consulta_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cidadao_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Cidadao Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tipo",
+            "required": true,
+            "schema": {
+              "title": "Tipo",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ValidadeConsultaOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Validade",
+        "tags": [
+          "Prontuário eletrônico"
+        ]
+      }
+    },
     "/api/govsaude/v1/prontuarios/evolucoes/{id}/assinar": {
       "post": {
+        "description": "B.6-034 — assinatura da evolução.",
         "operationId": "assinar_api_govsaude_v1_prontuarios_evolucoes__id__assinar_post",
         "parameters": [
           {
@@ -33465,6 +34809,7 @@
     },
     "/api/govsaude/v1/prontuarios/evolucoes/{id}/retificar": {
       "post": {
+        "description": "B.6-057 — retificação com nova versão e justificativa.",
         "operationId": "retificar_api_govsaude_v1_prontuarios_evolucoes__id__retificar_post",
         "parameters": [
           {
@@ -33521,9 +34866,117 @@
         ]
       }
     },
+    "/api/govsaude/v1/prontuarios/prescricoes/{id}/assinar": {
+      "post": {
+        "description": "B.6-019, B.6-034.",
+        "operationId": "assinar_prescricao_api_govsaude_v1_prontuarios_prescricoes__id__assinar_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrescricaoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Assinar Prescricao",
+        "tags": [
+          "Prontuário eletrônico"
+        ]
+      }
+    },
+    "/api/govsaude/v1/prontuarios/problemas/{id}/encerrar": {
+      "post": {
+        "description": "B.6-016 — baixa lógica com motivo.",
+        "operationId": "encerrar_problema_api_govsaude_v1_prontuarios_problemas__id__encerrar_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Encerramento"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemaOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Encerrar Problema",
+        "tags": [
+          "Prontuário eletrônico"
+        ]
+      }
+    },
     "/api/govsaude/v1/prontuarios/registros": {
       "post": {
-        "description": "Registra exame, encaminhamento, documento, ficha, atividade ou cuidado domiciliar.\n\n``tipo`` é configurável para não codificar protocolos municipais no produto.",
+        "description": "B.6-013, B.6-018, B.6-023, B.6-025, B.6-032, B.6-037…039 — exame, encaminhamento,\ndocumento, notificação, ficha, escala, atenção domiciliar/psicossocial, atividade coletiva.\n\n``tipo`` e o formulário de validação vêm de ``prontuario.tipos_registro``.",
         "operationId": "criar_registro_api_govsaude_v1_prontuarios_registros_post",
         "requestBody": {
           "content": {
@@ -33563,6 +35016,114 @@
           }
         ],
         "summary": "Criar Registro",
+        "tags": [
+          "Prontuário eletrônico"
+        ]
+      }
+    },
+    "/api/govsaude/v1/prontuarios/registros/{id}/assinar": {
+      "post": {
+        "description": "B.6-032, B.6-034 — documento clínico assinado.",
+        "operationId": "assinar_registro_api_govsaude_v1_prontuarios_registros__id__assinar_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistroAssistencialOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Assinar Registro",
+        "tags": [
+          "Prontuário eletrônico"
+        ]
+      }
+    },
+    "/api/govsaude/v1/prontuarios/registros/{id}/retificar": {
+      "post": {
+        "description": "B.6-057 — retificação com versão e justificativa.",
+        "operationId": "retificar_registro_api_govsaude_v1_prontuarios_registros__id__retificar_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetificacaoRegistroCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegistroAssistencialOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retificar Registro",
         "tags": [
           "Prontuário eletrônico"
         ]

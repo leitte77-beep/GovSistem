@@ -101,6 +101,41 @@ CONFIGURACOES_PADRAO: dict[str, dict] = {
         "tipo": "json",
         "descricao": "Classificações de risco odontológico aceitas (B.3-004). Vazio = sem validação; preencher com o protocolo municipal.",
     },
+    "prontuario.etapas": {
+        "valor": {"valor": []},
+        "tipo": "json",
+        "descricao": "Etapas ordenadas do atendimento (B.6-004), ex.: RECEPCAO, ACOLHIMENTO, TRIAGEM, CONSULTA. Vazio = sem fluxo de etapas.",
+    },
+    "prontuario.campos_obrigatorios": {
+        "valor": {"valor": []},
+        "tipo": "json",
+        "descricao": "Regras de campos obrigatórios no encerramento (B.6-006): lista de {tipo_atendimento, estabelecimento_id, sexo, idade_min_anos, idade_max_anos, campos}.",
+    },
+    "prontuario.retroativo_contingencia_ativa": {
+        "valor": {"valor": False},
+        "tipo": "booleano",
+        "descricao": "Liga a digitação retroativa em contingência (B.6-056). Desligada = retroativo recusado.",
+    },
+    "prontuario.retroativo_dias_maximos": {
+        "valor": {"valor": 30},
+        "tipo": "numero",
+        "descricao": "Período máximo, em dias, da digitação retroativa do PEC (B.6-056).",
+    },
+    "prontuario.tipos_registro": {
+        "valor": {"valor": {}},
+        "tipo": "json",
+        "descricao": "Tipos de registro assistencial aceitos ({tipo: {formulario_codigo}}); formulário valida escalas/fichas (B.6-025). Vazio = tipo livre.",
+    },
+    "prontuario.tabelas_classificacao_nutricional": {
+        "valor": {"valor": []},
+        "tipo": "json",
+        "descricao": "Tabelas versionadas de classificação do IMC por ciclo de vida (B.6-010). Vazio = IMC sem classificação; preencher com a referência oficial vigente.",
+    },
+    "prontuario.validade_consulta_dias": {
+        "valor": {"valor": {}},
+        "tipo": "json",
+        "descricao": "Validade de consulta para reconsulta por tipo de atendimento, em dias (B.6-041). Vazio = não controlado.",
+    },
     "geral.fuso_horario": {
         "valor": {"valor": "America/Sao_Paulo"},
         "tipo": "texto",
