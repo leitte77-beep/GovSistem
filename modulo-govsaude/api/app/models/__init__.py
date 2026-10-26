@@ -12,6 +12,7 @@ from app.models.agenda import (
     PainelChamada,
     ProtocoloClassificacaoRisco,
 )
+from app.models.anexo import AnexoClinico
 from app.models.auditoria import AuditTrail
 from app.models.base import Base
 from app.models.cidadao import (
@@ -26,6 +27,18 @@ from app.models.cidadao import (
     CidadaoFoto,
     CidadaoUnificacao,
     PlanoSaudeVinculo,
+)
+from app.models.estoque import (
+    CompetenciaEstoque,
+    Dispensacao,
+    Inventario,
+    LocalEstoque,
+    Lote,
+    Movimentacao,
+    ParametroEstoque,
+    Produto,
+    RegistroTemperatura,
+    Requisicao,
 )
 from app.models.integracoes import (
     IntegracaoConfiguracao,
@@ -75,18 +88,6 @@ from app.models.programa import (
     ProgramaItem,
     ProgramaProgramacao,
 )
-from app.models.estoque import (
-    CompetenciaEstoque,
-    Dispensacao,
-    Inventario,
-    LocalEstoque,
-    Lote,
-    Movimentacao,
-    ParametroEstoque,
-    Produto,
-    RegistroTemperatura,
-    Requisicao,
-)
 from app.models.prontuario import (
     Atendimento,
     EvolucaoSOAP,
@@ -130,6 +131,7 @@ from app.models.territorio import (
 )
 
 __all__ = [
+    "AnexoClinico",
     "CompetenciaEstoque",
     "Dispensacao",
     "Inventario",

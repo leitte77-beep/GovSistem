@@ -51,6 +51,7 @@ async def listar(
     _usuario: Usuario = Depends(exigir(Permissao.AUDITORIA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-048 — logs com usuário, IP, ação e antes/depois."""
     condicoes = [AuditTrail.tenant_id == tenant_id]
     if acao:
         condicoes.append(AuditTrail.acao == acao.upper())
@@ -98,6 +99,7 @@ async def detalhar(
     _usuario: Usuario = Depends(exigir(Permissao.AUDITORIA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-048 — logs com usuário, IP, ação e antes/depois."""
     from app.services.auditoria import ler_evento
 
     evento = await ler_evento(db, tenant_id, evento_id)

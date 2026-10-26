@@ -50,6 +50,7 @@ async def listar_agendas(
     usuario: Usuario = Depends(exigir(Permissao.AGENDA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-001, B.3-008 — agenda e disponibilidade."""
     itens, proximo, total = await agendas.listar_agendas(
         db,
         tenant_id,
@@ -78,6 +79,7 @@ async def criar_agenda(
     ator: Usuario = Depends(exigir(Permissao.AGENDA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-001, B.3-008 — agenda e disponibilidade."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -108,6 +110,7 @@ async def detalhar_agenda(
     usuario: Usuario = Depends(exigir(Permissao.AGENDA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-001, B.3-008 — agenda e disponibilidade."""
     registro = await agendas.obter_agenda_com_escopo(db, tenant_id, usuario, agenda_id)
     response.headers["ETag"] = f'"{registro.versao}"'
     return AgendaOut.model_validate(registro)
@@ -124,6 +127,7 @@ async def atualizar_agenda(
     ator: Usuario = Depends(exigir(Permissao.AGENDA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-001, B.3-008 — agenda e disponibilidade."""
     registro = await agendas.atualizar_agenda(
         db,
         tenant_id=tenant_id,
@@ -147,6 +151,7 @@ async def baixar_agenda(
     ator: Usuario = Depends(exigir(Permissao.AGENDA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-001, B.3-008 — agenda e disponibilidade."""
     registro = await agendas.baixar_agenda(
         db,
         tenant_id=tenant_id,
@@ -168,6 +173,7 @@ async def disponibilidade(
     usuario: Usuario = Depends(exigir(Permissao.AGENDA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-001, B.3-008 — agenda e disponibilidade."""
     return await agendas.disponibilidade(
         db,
         tenant_id,
@@ -185,6 +191,7 @@ async def listar_bloqueios(
     usuario: Usuario = Depends(exigir(Permissao.AGENDA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-001, B.3-008 — agenda e disponibilidade."""
     return [
         AgendaBloqueioOut.model_validate(item)
         for item in await agendas.listar_bloqueios(db, tenant_id, usuario, agenda_id)
@@ -200,6 +207,7 @@ async def criar_bloqueio(
     ator: Usuario = Depends(exigir(Permissao.AGENDA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-001, B.3-008 — agenda e disponibilidade."""
     registro = await agendas.criar_bloqueio(
         db,
         tenant_id=tenant_id,
@@ -225,6 +233,7 @@ async def cancelar_bloqueio(
     ator: Usuario = Depends(exigir(Permissao.AGENDA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-001, B.3-008 — agenda e disponibilidade."""
     registro = await agendas.cancelar_bloqueio(
         db,
         tenant_id=tenant_id,

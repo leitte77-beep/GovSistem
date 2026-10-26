@@ -1027,3 +1027,161 @@ async def exportacao_ledi(
         "situacao": situacao,
         "pendencias": pendencias,
     }
+
+
+# ── Ficha completa (B.3-017) ─────────────────────────────────────────────────
+async def ficha_atendimento(
+    db: AsyncSession, tenant_id: uuid.UUID, atendimento_id: uuid.UUID, ator: Usuario, cliente: dict
+) -> dict:
+    """Atendimento, odontograma vigente, procedimentos e documentos numa só ficha."""
+    atendimento = await _um(
+        db, OdontoAtendimento, tenant_id, atendimento_id, "Atendimento odontológico não encontrado."
+    )
+    await exigir_acesso_estabelecimento(
+        db, ator, Permissao.ODONTOLOGIA_LER, atendimento.estabelecimento_id
+    )
+    cidadao = await _cidadao(db, tenant_id, atendimento.cidadao_id)
+    condicoes = {
+        c.id: c
+        for c in (
+            await db.scalars(select(OdontoCondicao).where(OdontoCondicao.tenant_id == tenant_id))
+        ).all()
+    }
+
+    def _nome(condicao_id) -> str:
+        item = condicoes.get(uuid.UUID(str(condicao_id))) if condicao_id else None
+        return item.nome if item else str(condicao_id)
+
+    odontograma = await odontograma_atual(db, tenant_id, cidadao.id)
+    procedimentos = (
+        await db.scalars(
+            select(OdontoProcedimento)
+            .where(
+                OdontoProcedimento.tenant_id == tenant_id,
+                OdontoProcedimento.atendimento_id == atendimento.id,
+            )
+            .order_by(OdontoProcedimento.created_at)
+        )
+    ).all()
+    documentos = (
+        await db.scalars(
+            select(OdontoDocumento)
+            .where(
+                OdontoDocumento.tenant_id == tenant_id,
+                OdontoDocumento.atendimento_id == atendimento.id,
+            )
+            .order_by(OdontoDocumento.created_at)
+        )
+    ).all()
+    await registrar(
+        db,
+        acao=AcaoAuditoria.IMPRIMIR,
+        usuario=ator,
+        tenant_id=tenant_id,
+        recurso="odonto_atendimento",
+        recurso_id=atendimento.id,
+        finalidade="ficha_completa",
+        cliente=cliente,
+    )
+    await db.commit()
+    return {
+        "atendimento": {
+            "id": atendimento.id,
+            "tipo": atendimento.tipo,
+            "situacao": atendimento.situacao,
+            "iniciado_em": atendimento.iniciado_em,
+            "finalizado_em": atendimento.finalizado_em,
+            "classificacao_risco": atendimento.classificacao_risco,
+            "triagem": atendimento.triagem,
+            "anamnese": atendimento.anamnese,
+            "evolucao": atendimento.evolucao,
+            "retroativo": atendimento.retroativo,
+        },
+        "cidadao": {
+            "nome": cidadao.nome_social or cidadao.nome,
+            "data_nascimento": cidadao.data_nascimento,
+        },
+        "odontograma": {
+            "versao": odontograma.numero_versao if odontograma else None,
+            "marcacoes": [
+                {**m, "condicao": _nome(m.get("condicao_id"))}
+                for m in (odontograma.marcacoes if odontograma else [])
+            ],
+        },
+        "procedimentos": [
+            {
+                "condicao": _nome(p.condicao_id),
+                "dente": p.dente,
+                "faces": p.faces,
+                "regiao": p.regiao,
+                "quantidade": p.quantidade,
+                "situacao": p.situacao,
+            }
+            for p in procedimentos
+        ],
+        "documentos": [
+            {"tipo": d.tipo, "titulo": d.titulo, "conteudo": d.conteudo, "emitido_em": d.created_at}
+            for d in documentos
+        ],
+    }
+
+
+def ficha_html(ficha: dict) -> str:
+    """HTML da ficha para o PDF (B.3-017)."""
+    from app.services.exportacao import html_tabela
+
+    a, c = ficha["atendimento"], ficha["cidadao"]
+    partes = [
+        html_tabela(
+            "Ficha de atendimento odontológico",
+            [("campo", "Campo"), ("valor", "Valor")],
+            [
+                {"campo": "Paciente", "valor": c["nome"]},
+                {"campo": "Nascimento", "valor": c["data_nascimento"]},
+                {"campo": "Tipo", "valor": a["tipo"]},
+                {"campo": "Início", "valor": a["iniciado_em"]},
+                {"campo": "Situação", "valor": a["situacao"]},
+                {"campo": "Risco", "valor": a["classificacao_risco"]},
+                {"campo": "Triagem", "valor": a["triagem"]},
+                {"campo": "Anamnese", "valor": a["anamnese"]},
+                {"campo": "Evolução", "valor": a["evolucao"]},
+            ],
+        ),
+        html_tabela(
+            f"Odontograma (versão {ficha['odontograma']['versao'] or '—'})",
+            [
+                ("dente", "Dente"),
+                ("faces", "Faces"),
+                ("regiao", "Região"),
+                ("condicao", "Condição"),
+                ("situacao", "Situação"),
+            ],
+            ficha["odontograma"]["marcacoes"],
+        ),
+        html_tabela(
+            "Procedimentos",
+            [
+                ("dente", "Dente"),
+                ("faces", "Faces"),
+                ("regiao", "Região"),
+                ("condicao", "Procedimento"),
+                ("quantidade", "Qtd."),
+                ("situacao", "Situação"),
+            ],
+            ficha["procedimentos"],
+        ),
+        html_tabela(
+            "Documentos, receitas e encaminhamentos",
+            [
+                ("tipo", "Tipo"),
+                ("titulo", "Título"),
+                ("conteudo", "Conteúdo"),
+                ("emitido_em", "Emissão"),
+            ],
+            ficha["documentos"],
+        ),
+    ]
+    return "".join(
+        p.replace("<h1>", "<h2>").replace("</h1>", "</h2>") if i else p
+        for i, p in enumerate(partes)
+    )

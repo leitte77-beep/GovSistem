@@ -366,6 +366,34 @@ async def comprovante(
     return await svc.comprovante_dispensacao(db, t, id, u, dados_do_cliente(r))
 
 
+@router.get("/lotes/{id}/rastreabilidade")
+async def rastreabilidade(
+    id: uuid.UUID,
+    r: Request,
+    t: uuid.UUID = Depends(get_tenant_id),
+    u: Usuario = Depends(exigir(Permissao.ESTOQUE_LER)),
+    db: AsyncSession = Depends(get_db),
+):
+    """B.4-036 — trajetória do lote da aquisição à dispensação ou perda."""
+    return await svc.rastreabilidade_lote(db, t, id, u, dados_do_cliente(r))
+
+
+@router.get("/cidadaos/{cidadao_id}/prescricoes")
+async def prescricoes(
+    cidadao_id: uuid.UUID,
+    local_id: uuid.UUID,
+    r: Request,
+    t: uuid.UUID = Depends(get_tenant_id),
+    u: Usuario = Depends(exigir(Permissao.DISPENSACAO_CRIAR)),
+    db: AsyncSession = Depends(get_db),
+):
+    """B.4-019 — prescrições do cidadão para a farmácia, com saldo no local e o já
+    dispensado; sem dados clínicos além dos itens."""
+    return await svc.prescricoes_para_dispensacao(
+        db, t, cidadao_id, local_id, u, dados_do_cliente(r)
+    )
+
+
 @router.get("/cidadaos/{cidadao_id}/dispensacoes", response_model=list[DispensacaoOut])
 async def historico(
     cidadao_id: uuid.UUID,

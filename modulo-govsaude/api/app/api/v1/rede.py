@@ -101,6 +101,7 @@ async def listar_estabelecimentos(
     usuario: Usuario = Depends(exigir(Permissao.ESTABELECIMENTO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — rede de atenção."""
     itens, proximo, total = await estabelecimentos.listar(
         db,
         tenant_id,
@@ -130,6 +131,7 @@ async def criar_estabelecimento(
     ator: Usuario = Depends(exigir(Permissao.ESTABELECIMENTO_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — rede de atenção."""
     if escopos_estabelecimento(ator, Permissao.ESTABELECIMENTO_GERENCIAR) is not None:
         raise PermissionDenied(
             "Somente perfis com escopo municipal podem criar estabelecimentos."
@@ -163,6 +165,7 @@ async def detalhar_estabelecimento(
     usuario: Usuario = Depends(exigir(Permissao.ESTABELECIMENTO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — rede de atenção."""
     registro = await estabelecimentos.obter_com_escopo(
         db, tenant_id, usuario, estabelecimento_id
     )
@@ -183,6 +186,7 @@ async def atualizar_estabelecimento(
     ator: Usuario = Depends(exigir(Permissao.ESTABELECIMENTO_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — rede de atenção."""
     from app.services.rede_comum import exigir_versao
 
     versao = exigir_versao(if_match)
@@ -214,6 +218,7 @@ async def baixar_estabelecimento(
     ator: Usuario = Depends(exigir(Permissao.ESTABELECIMENTO_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — rede de atenção."""
     registro = await estabelecimentos.baixar(
         db,
         tenant_id=tenant_id,
@@ -242,6 +247,7 @@ async def listar_setores(
     usuario: Usuario = Depends(exigir(Permissao.ESTABELECIMENTO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — rede de atenção."""
     itens, proximo, total = await estabelecimentos.listar_setores(
         db, tenant_id, usuario, estabelecimento_id, limite=limite, cursor=cursor
     )
@@ -266,6 +272,7 @@ async def criar_setor(
     ator: Usuario = Depends(exigir(Permissao.ESTABELECIMENTO_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — rede de atenção."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -304,6 +311,7 @@ async def atualizar_setor(
     ator: Usuario = Depends(exigir(Permissao.ESTABELECIMENTO_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — rede de atenção."""
     from app.services.rede_comum import exigir_versao
 
     registro = await estabelecimentos.atualizar_setor(
@@ -338,6 +346,7 @@ async def listar_servicos(
     usuario: Usuario = Depends(exigir(Permissao.ESTABELECIMENTO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — rede de atenção."""
     itens, proximo, total = await cadastros_rede.listar_servicos(
         db,
         tenant_id,
@@ -369,6 +378,7 @@ async def criar_servico(
     ator: Usuario = Depends(exigir(Permissao.ESTABELECIMENTO_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — rede de atenção."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -407,6 +417,7 @@ async def atualizar_servico(
     ator: Usuario = Depends(exigir(Permissao.ESTABELECIMENTO_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — rede de atenção."""
     from app.services.rede_comum import exigir_versao
 
     registro = await cadastros_rede.atualizar_servico(
@@ -437,6 +448,7 @@ async def baixar_servico(
     ator: Usuario = Depends(exigir(Permissao.ESTABELECIMENTO_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — rede de atenção."""
     registro = await cadastros_rede.baixar_servico(
         db,
         tenant_id=tenant_id,
@@ -466,6 +478,7 @@ async def listar_horarios(
     usuario: Usuario = Depends(exigir(Permissao.ESTABELECIMENTO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — rede de atenção."""
     itens, proximo, total = await cadastros_rede.listar_horarios(
         db,
         tenant_id,
@@ -496,6 +509,7 @@ async def criar_horario(
     ator: Usuario = Depends(exigir(Permissao.ESTABELECIMENTO_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — rede de atenção."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -534,6 +548,7 @@ async def atualizar_horario(
     ator: Usuario = Depends(exigir(Permissao.ESTABELECIMENTO_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — rede de atenção."""
     from app.services.rede_comum import exigir_versao
 
     registro = await cadastros_rede.atualizar_horario(
@@ -564,6 +579,7 @@ async def baixar_horario(
     ator: Usuario = Depends(exigir(Permissao.ESTABELECIMENTO_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — rede de atenção."""
     registro = await cadastros_rede.baixar_horario(
         db,
         tenant_id=tenant_id,
@@ -591,6 +607,7 @@ async def listar_equipes_da_unidade(
     usuario: Usuario = Depends(exigir(Permissao.EQUIPE_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006, B.1-010 — equipes."""
     itens, proximo, total = await estabelecimentos.listar_equipes_da_unidade(
         db, tenant_id, usuario, estabelecimento_id, limite=limite, cursor=cursor
     )
@@ -612,6 +629,7 @@ async def listar_equipes(
     usuario: Usuario = Depends(exigir(Permissao.EQUIPE_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006, B.1-010 — equipes."""
     itens, proximo, total = await equipes.listar(
         db,
         tenant_id,
@@ -638,6 +656,7 @@ async def criar_equipe(
     ator: Usuario = Depends(exigir(Permissao.EQUIPE_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006, B.1-010 — equipes."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -668,6 +687,7 @@ async def detalhar_equipe(
     usuario: Usuario = Depends(exigir(Permissao.EQUIPE_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006, B.1-010 — equipes."""
     registro = await equipes.obter_com_escopo(db, tenant_id, usuario, equipe_id)
     response.headers["ETag"] = f'"{registro.versao}"'
     return EquipeOut.model_validate(registro)
@@ -684,6 +704,7 @@ async def atualizar_equipe(
     ator: Usuario = Depends(exigir(Permissao.EQUIPE_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006, B.1-010 — equipes."""
     from app.services.rede_comum import exigir_versao
 
     registro = await equipes.atualizar(
@@ -709,6 +730,7 @@ async def baixar_equipe(
     ator: Usuario = Depends(exigir(Permissao.EQUIPE_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006, B.1-010 — equipes."""
     registro = await equipes.baixar(
         db,
         tenant_id=tenant_id,
@@ -733,6 +755,7 @@ async def listar_profissionais_da_equipe(
     usuario: Usuario = Depends(exigir(Permissao.EQUIPE_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006, B.1-010 — equipes."""
     itens, proximo, total = await profissionais.listar_vinculos_por_equipe(
         db, tenant_id, usuario, equipe_id, limite=limite, cursor=cursor
     )
@@ -757,6 +780,7 @@ async def adicionar_profissional_equipe(
     ator: Usuario = Depends(exigir(Permissao.PROFISSIONAL_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006, B.1-010 — equipes."""
     from app.schemas.rede import VinculoProfissionalCreate
 
     equipe = await equipes.obter_com_escopo(
@@ -823,6 +847,7 @@ async def listar_profissionais(
     usuario: Usuario = Depends(exigir(Permissao.PROFISSIONAL_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — rede de atenção."""
     itens, proximo, total = await profissionais.listar(
         db,
         tenant_id,
@@ -852,6 +877,7 @@ async def buscar_profissionais(
     usuario: Usuario = Depends(exigir(Permissao.PROFISSIONAL_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — rede de atenção."""
     itens, proximo, total = await profissionais.listar(
         db,
         tenant_id,
@@ -879,6 +905,7 @@ async def criar_profissional(
     ator: Usuario = Depends(exigir(Permissao.PROFISSIONAL_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — rede de atenção."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -909,6 +936,7 @@ async def detalhar_profissional(
     usuario: Usuario = Depends(exigir(Permissao.PROFISSIONAL_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — rede de atenção."""
     registro = await profissionais.obter_com_escopo(
         db, tenant_id, usuario, profissional_id
     )
@@ -928,6 +956,7 @@ async def atualizar_profissional(
     ator: Usuario = Depends(exigir(Permissao.PROFISSIONAL_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — rede de atenção."""
     from app.services.rede_comum import exigir_versao
 
     registro = await profissionais.atualizar(
@@ -953,6 +982,7 @@ async def baixar_profissional(
     ator: Usuario = Depends(exigir(Permissao.PROFISSIONAL_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — rede de atenção."""
     registro = await profissionais.baixar(
         db,
         tenant_id=tenant_id,
@@ -978,6 +1008,7 @@ async def listar_vinculos(
     usuario: Usuario = Depends(exigir(Permissao.PROFISSIONAL_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-011 — vínculos com vigência."""
     itens, proximo, total = await profissionais.listar_vinculos(
         db,
         tenant_id,
@@ -1008,6 +1039,7 @@ async def criar_vinculo(
     ator: Usuario = Depends(exigir(Permissao.PROFISSIONAL_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-011 — vínculos com vigência."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -1041,6 +1073,7 @@ async def listar_especialidades_profissional(
     usuario: Usuario = Depends(exigir(Permissao.PROFISSIONAL_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — rede de atenção."""
     itens = await profissionais.listar_especialidades(
         db, tenant_id, usuario, profissional_id
     )
@@ -1061,6 +1094,7 @@ async def adicionar_especialidade_profissional(
     ator: Usuario = Depends(exigir(Permissao.PROFISSIONAL_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — rede de atenção."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -1136,6 +1170,7 @@ async def listar_escalas(
     usuario: Usuario = Depends(exigir(Permissao.AGENDA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-012 — escalas e plantões."""
     return await _listar_turnos(
         Escala,
         request,
@@ -1161,6 +1196,7 @@ async def criar_escala(
     ator: Usuario = Depends(exigir(Permissao.AGENDA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-012 — escalas e plantões."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -1195,6 +1231,7 @@ async def atualizar_escala(
     ator: Usuario = Depends(exigir(Permissao.AGENDA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-012 — escalas e plantões."""
     from app.services.rede_comum import exigir_versao
 
     registro = await turnos.atualizar(
@@ -1221,6 +1258,7 @@ async def cancelar_escala(
     ator: Usuario = Depends(exigir(Permissao.AGENDA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-012 — escalas e plantões."""
     registro = await turnos.cancelar(
         db,
         modelo=Escala,
@@ -1248,6 +1286,7 @@ async def listar_plantoes(
     usuario: Usuario = Depends(exigir(Permissao.AGENDA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — rede de atenção."""
     return await _listar_turnos(
         Plantao,
         request,
@@ -1273,6 +1312,7 @@ async def criar_plantao(
     ator: Usuario = Depends(exigir(Permissao.AGENDA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-012 — escalas e plantões."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -1307,6 +1347,7 @@ async def atualizar_plantao(
     ator: Usuario = Depends(exigir(Permissao.AGENDA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-012 — escalas e plantões."""
     from app.services.rede_comum import exigir_versao
 
     registro = await turnos.atualizar(
@@ -1333,6 +1374,7 @@ async def cancelar_plantao(
     ator: Usuario = Depends(exigir(Permissao.AGENDA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-012 — escalas e plantões."""
     registro = await turnos.cancelar(
         db,
         modelo=Plantao,
@@ -1363,6 +1405,7 @@ async def listar_procedimentos(
     usuario: Usuario = Depends(exigir(Permissao.PROFISSIONAL_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-007, B.12-015 — procedimentos autorizados."""
     itens, proximo, total = await cadastros_rede.listar_procedimentos(
         db,
         tenant_id,
@@ -1394,6 +1437,7 @@ async def criar_procedimento(
     ator: Usuario = Depends(exigir(Permissao.PROFISSIONAL_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-007, B.12-015 — procedimentos autorizados."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -1430,6 +1474,7 @@ async def atualizar_procedimento(
     ator: Usuario = Depends(exigir(Permissao.PROFISSIONAL_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-007, B.12-015 — procedimentos autorizados."""
     from app.services.rede_comum import exigir_versao
 
     registro = await cadastros_rede.atualizar_procedimento(
@@ -1458,6 +1503,7 @@ async def baixar_procedimento(
     ator: Usuario = Depends(exigir(Permissao.PROFISSIONAL_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-007, B.12-015 — procedimentos autorizados."""
     registro = await cadastros_rede.baixar_procedimento(
         db,
         tenant_id=tenant_id,
@@ -1483,6 +1529,7 @@ async def listar_prioridades(
     _usuario: Usuario = Depends(exigir(Permissao.CONFIGURACAO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-016 — prioridades legal/clínica."""
     itens, proximo, total = await prioridades.listar(
         db,
         tenant_id,
@@ -1507,6 +1554,7 @@ async def criar_prioridade(
     ator: Usuario = Depends(exigir(Permissao.CONFIGURACAO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-016 — prioridades legal/clínica."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -1539,6 +1587,7 @@ async def atualizar_prioridade(
     ator: Usuario = Depends(exigir(Permissao.CONFIGURACAO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-016 — prioridades legal/clínica."""
     from app.services.rede_comum import exigir_versao
 
     registro = await prioridades.atualizar(
@@ -1563,6 +1612,7 @@ async def baixar_prioridade(
     ator: Usuario = Depends(exigir(Permissao.CONFIGURACAO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-016 — prioridades legal/clínica."""
     registro = await prioridades.baixar(
         db,
         tenant_id=tenant_id,
@@ -1587,6 +1637,7 @@ async def listar_entes(
     _usuario: Usuario = Depends(exigir(Permissao.ESTABELECIMENTO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — entes do consórcio."""
     itens, proximo, total = await entes.listar(
         db,
         tenant_id,
@@ -1611,6 +1662,7 @@ async def criar_ente(
     ator: Usuario = Depends(exigir(Permissao.ESTABELECIMENTO_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — entes do consórcio."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -1640,6 +1692,7 @@ async def detalhar_ente(
     _usuario: Usuario = Depends(exigir(Permissao.ESTABELECIMENTO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — entes do consórcio."""
     registro = await entes.obter(db, tenant_id, ente_id)
     response.headers["ETag"] = f'"{registro.versao}"'
     return EnteConsorciadoOut(**entes.serializar_ente(registro))
@@ -1656,6 +1709,7 @@ async def atualizar_ente(
     ator: Usuario = Depends(exigir(Permissao.ESTABELECIMENTO_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — entes do consórcio."""
     from app.services.rede_comum import exigir_versao
 
     registro = await entes.atualizar(
@@ -1680,6 +1734,7 @@ async def encerrar_ente(
     ator: Usuario = Depends(exigir(Permissao.ESTABELECIMENTO_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — entes do consórcio."""
     registro = await entes.encerrar(
         db,
         tenant_id=tenant_id,
@@ -1704,6 +1759,7 @@ async def listar_restricoes(
     _usuario: Usuario = Depends(exigir(Permissao.USUARIO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-012, B.12-049 — restrição de horário."""
     itens, proximo, total = await restricoes.listar(
         db,
         tenant_id,
@@ -1730,6 +1786,7 @@ async def criar_restricao(
     ator: Usuario = Depends(exigir(Permissao.USUARIO_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-012, B.12-049 — restrição de horário."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -1764,6 +1821,7 @@ async def atualizar_restricao(
     ator: Usuario = Depends(exigir(Permissao.USUARIO_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-012, B.12-049 — restrição de horário."""
     from app.services.rede_comum import exigir_versao
 
     registro = await restricoes.atualizar(
@@ -1791,6 +1849,7 @@ async def baixar_restricao(
     ator: Usuario = Depends(exigir(Permissao.USUARIO_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-012, B.12-049 — restrição de horário."""
     registro = await restricoes.baixar(
         db,
         tenant_id=tenant_id,

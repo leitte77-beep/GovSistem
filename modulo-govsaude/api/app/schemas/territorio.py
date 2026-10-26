@@ -1,4 +1,5 @@
 """Contratos da Fase 3: território, domicílio e composição familiar."""
+
 from __future__ import annotations
 
 import uuid
@@ -95,6 +96,23 @@ class VinculoFim(BaseModel):
         return self
 
 
+class MedicoesVisita(BaseModel):
+    """B.1-019 — antropometria, sinais vitais e glicemia aferidos na visita."""
+
+    model_config = ConfigDict(extra="forbid")
+    peso_kg: float | None = Field(default=None, gt=0, le=700)
+    altura_cm: float | None = Field(default=None, gt=20, le=280)
+    pressao_sistolica: int | None = Field(default=None, ge=40, le=300)
+    pressao_diastolica: int | None = Field(default=None, ge=20, le=200)
+    frequencia_cardiaca: int | None = Field(default=None, ge=20, le=300)
+    saturacao_o2: int | None = Field(default=None, ge=50, le=100)
+    temperatura_c: float | None = Field(default=None, ge=30, le=45)
+    glicemia_capilar_mg_dl: int | None = Field(default=None, ge=10, le=1000)
+    glicemia_momento: (
+        Literal["JEJUM", "PRE_PRANDIAL", "POS_PRANDIAL", "NAO_ESPECIFICADO"] | None
+    ) = None
+
+
 class VisitaCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     domicilio_id: uuid.UUID
@@ -109,6 +127,12 @@ class VisitaCreate(BaseModel):
     resultado: str | None = Field(default=None, max_length=80)
     observacoes: str | None = Field(default=None, max_length=4000)
     assinatura_nome: str | None = Field(default=None, max_length=200)
+    motivos: list[str] = Field(default_factory=list, max_length=20)
+    busca_ativa: bool = False
+    acompanhamento: list[str] = Field(default_factory=list, max_length=30)
+    controle_ambiental: dict | None = None
+    medicoes: MedicoesVisita | None = None
+    desfecho: str | None = Field(default=None, max_length=60)
 
     @model_validator(mode="after")
     def gps_completo(self):
@@ -120,6 +144,9 @@ class VisitaCreate(BaseModel):
 class VisitaOut(VisitaCreate):
     model_config = ConfigDict(from_attributes=True)
     id: uuid.UUID
+    medicoes: dict | None = None
+    motivos: list[str] | None = None
+    acompanhamento: list[str] | None = None
     profissional_id: uuid.UUID | None
     competencia: date
     assinatura_em: datetime | None

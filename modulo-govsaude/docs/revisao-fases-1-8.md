@@ -44,22 +44,17 @@ Se algum ambiente de teste rodou a branch, as tabelas órfãs `alergias` e
 
 ## Lacunas abertas, por prioridade
 
-### Afetam cenários críticos da PoC (Anexo H)
+### Afetavam cenários críticos da PoC — fechadas
 
-1. **Anexos genéricos** (B.12-054, B.6-029, B.3-012, B.8-018): não há upload de
-   documento/imagem com classificação, autoria e sigilo fora da foto do
-   cidadão.
-2. **Impressão/relatórios** (B.12-055, B.6-048/049, B.3-017, B.3-019,
-   B.4-028): não há relatórios em PDF/CSV/XLSX nem a ficha odontológica
-   impressa (PoC cenário 6).
-3. **Rastreabilidade por lote** (B.4-036, PoC cenário 4): o ledger guarda as
-   referências, mas não há consulta “do lote à dispensação”.
-4. **Prescrição para a farmácia** (B.4-019): o farmacêutico não tem
-   `prontuario:ler` e não vê a prescrição. Falta uma fila de prescrições com só
-   os dados de dispensação.
-5. **Visita do ACS** (B.1-019, PoC cenário 2): faltam motivo, antropometria,
-   sinais vitais, glicemia e desfecho estruturados. Offline/sincronização é da
-   Fase 15.
+| Lacuna | Entrega | Teste |
+|---|---|---|
+| 1. Anexos genéricos (B.12-054, B.6-029, B.3-012) | `/anexos`: PDF/imagem validados (lista branca, magic number, antivírus), classificação, autoria, sigilo herdado do atendimento, listagem velada, download auditado, baixa lógica | `test_lacunas_revisao.py::test_b12_054_b6_029_*` |
+| 2. Impressão/relatórios (B.12-055, B.6-047/048/049, B.3-017/019/021, B.4-028) | `/relatorios/*` em JSON/CSV/XLSX/PDF com orientação e comparativo do período anterior; ficha odontológica em PDF | `test_b6_048_049_b12_055_*`, `test_b3_017_019_021_*`, `test_b6_047_*` |
+| 3. Rastreabilidade por lote (B.4-036) | `/estoque/lotes/{id}/rastreabilidade` | `test_b4_019_028_036_*` |
+| 4. Prescrição para a farmácia (B.4-019) | `/estoque/cidadaos/{id}/prescricoes` (só itens, saldo no local, já dispensado) | idem |
+| 5. Visita do ACS (B.1-019) | Motivos, busca ativa, acompanhamento, controle ambiental, medições (IMC calculado), desfecho, domínios configuráveis | `test_b1_019_*` |
+
+O aplicativo offline (B.1-031/032, B.11) continua para a Fase 15.
 
 ### Funcionais (não críticas na PoC)
 
@@ -83,19 +78,17 @@ Se algum ambiente de teste rodou a branch, as tabelas órfãs `alergias` e
 
 ### Qualidade e conformidade às regras do projeto
 
-- **Regra 1 (ID na rota):** as rotas das Fases 1–4 e 6 não citam o requisito
-  na docstring (as das Fases 5, 7 e 8 citam). A matriz cobre, mas a regra pede
-  as duas coisas.
-- **Lint:** `ruff check` aponta 117 erros pré-existentes, concentrados em
-  `services/territorios.py` e `api/v1/territorios.py` (várias instruções por
-  linha, linhas longas) e em `services/seeds.py`. O código das Fases 5, 7 e 8
-  passa.
+- **Regra 1 (ID na rota):** resolvido — todas as rotas de negócio citam o
+  requisito na docstring; só health, jobs, sync interno e configuração
+  (infraestrutura transversal, isenta pela regra) não citam.
+- **Lint:** resolvido em `app/` (`ruff check app alembic` limpo); os testes
+  antigos ainda têm linhas longas.
 - **Regra 3 (nada de DELETE físico):** `agendas.py` apaga os horários da
   grade ao editá-la. Não é dado clínico, mas perde o histórico da grade.
   Recomenda-se vigência por horário.
 - Especialidades não têm CRUD; hoje vêm de seed ou do banco.
 
-## Recomendação antes da Fase 9
+## Recomendação antes da Fase 9 (situação inicial)
 
 Atacar primeiro as lacunas 1–4 da PoC, que são transversais e baratas perto
 do peso delas no aceite (cenários 1, 3, 4 e 6 somam 44 dos 100 pontos), e

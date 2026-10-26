@@ -33,6 +33,7 @@ async def listar_formularios(
     _: Usuario = Depends(exigir(Permissao.PROGRAMA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-013, B.2-004 — formulários dinâmicos versionados."""
     return await formularios.listar(
         db,
         tenant_id,
@@ -50,6 +51,7 @@ async def criar_formulario(
     ator: Usuario = Depends(exigir(Permissao.PROGRAMA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-013, B.2-004 — formulários dinâmicos versionados."""
     registro = await formularios.criar(
         db,
         tenant_id=tenant_id,
@@ -71,6 +73,7 @@ async def listar_respostas(
     usuario: Usuario = Depends(exigir(Permissao.PROGRAMA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-013, B.2-004 — formulários dinâmicos versionados."""
     return await formularios.listar_respostas(
         db,
         tenant_id=tenant_id,
@@ -91,6 +94,7 @@ async def submeter_resposta(
     ator: Usuario = Depends(exigir(Permissao.PROGRAMA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-013, B.2-004 — formulários dinâmicos versionados."""
     registro = await formularios.submeter_resposta(
         db,
         tenant_id=tenant_id,
@@ -110,4 +114,5 @@ async def detalhar_formulario(
     _: Usuario = Depends(exigir(Permissao.PROGRAMA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-013, B.2-004 — formulários dinâmicos versionados."""
     return await formularios.obter_vigente(db, tenant_id, codigo)

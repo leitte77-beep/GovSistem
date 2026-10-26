@@ -1866,3 +1866,181 @@ async def disponibilidade(
             }
         )
     return {"situacao": "AVALIADO", "itens": itens}
+
+
+# ── Rastreabilidade por lote (B.4-036) ──────────────────────────────────────
+async def rastreabilidade_lote(db, tenant_id, lote_id, ator, cliente) -> dict:
+    """Da aquisição à dispensação/perda, nos locais do escopo do usuário.
+
+    O cidadão de cada dispensação só aparece para quem tem ``dispensacao:ler``.
+    """
+    lote = await db.scalar(select(Lote).where(Lote.id == lote_id, Lote.tenant_id == tenant_id))
+    if lote is None:
+        raise NotFound("Lote não encontrado.")
+    prod = await produto(db, tenant_id, lote.produto_id)
+    movimentos = (
+        await db.scalars(
+            select(Movimentacao)
+            .where(Movimentacao.tenant_id == tenant_id, Movimentacao.lote_id == lote.id)
+            .order_by(Movimentacao.ocorrido_em, Movimentacao.created_at)
+        )
+    ).all()
+    locais = {}
+    ve_cidadao = tem_permissao(ator, Permissao.DISPENSACAO_LER)
+    eventos, saldos, totais = [], defaultdict(float), defaultdict(float)
+    for m in movimentos:
+        if m.local_id not in locais:
+            locais[m.local_id] = await db.get(LocalEstoque, m.local_id)
+        loc = locais[m.local_id]
+        if not escopo_permite(
+            ator, Permissao.ESTOQUE_LER, estabelecimento_id=loc.estabelecimento_id
+        ):
+            continue
+        evento = {
+            "movimentacao_id": m.id,
+            "ocorrido_em": m.ocorrido_em,
+            "local_id": loc.id,
+            "local": loc.nome,
+            "tipo": m.tipo,
+            "quantidade": m.quantidade,
+            "custo_unitario": m.custo_unitario,
+            "documento": m.documento,
+            "motivo": m.motivo,
+            "referencia_tipo": m.referencia_tipo,
+            "referencia_id": m.referencia_id,
+        }
+        if m.referencia_tipo == "requisicao":
+            req = await db.get(Requisicao, m.referencia_id)
+            evento["requisicao_numero"] = req.numero if req else None
+        if m.referencia_tipo == "dispensacao" and ve_cidadao:
+            disp = await db.get(Dispensacao, m.referencia_id)
+            evento["cidadao_id"] = disp.cidadao_id if disp else None
+        eventos.append(evento)
+        saldos[str(loc.id)] = _q(saldos[str(loc.id)] + m.quantidade)
+        totais[m.tipo] = _q(totais[m.tipo] + abs(m.quantidade))
+    await _auditar(
+        db,
+        ator,
+        tenant_id,
+        "READ_SENSIVEL",
+        "lote_estoque",
+        lote.id,
+        cliente,
+        finalidade="rastreabilidade_lote",
+    )
+    await db.commit()
+    return {
+        "lote": {
+            "id": lote.id,
+            "numero": lote.numero,
+            "validade": lote.validade,
+            "fabricante": lote.fabricante,
+            "bloqueado": lote.bloqueado,
+        },
+        "produto": {"id": prod.id, "codigo": prod.codigo, "nome": prod.nome},
+        "totais_por_tipo": dict(totais),
+        "saldo_por_local": dict(saldos),
+        "eventos": eventos,
+    }
+
+
+# ── Prescrições para a farmácia (B.4-019, B.6-019) ──────────────────────────
+async def prescricoes_para_dispensacao(
+    db, tenant_id, cidadao_id, local_id, ator, cliente
+) -> list[dict]:
+    """Só os dados necessários à dispensação (sem SOAP nem diagnóstico): itens,
+    prescritor, assinatura, já dispensado e saldo no local da farmácia."""
+    loc = await local(db, tenant_id, local_id, ator, Permissao.DISPENSACAO_CRIAR)
+    if not await db.scalar(
+        select(Cidadao.id).where(Cidadao.id == cidadao_id, Cidadao.tenant_id == tenant_id)
+    ):
+        raise NotFound("Cidadão não encontrado.")
+    prescricoes = (
+        await db.scalars(
+            select(Prescricao)
+            .where(Prescricao.tenant_id == tenant_id, Prescricao.cidadao_id == cidadao_id)
+            .order_by(Prescricao.created_at.desc())
+            .limit(20)
+        )
+    ).all()
+    hoje = _agora().date()
+    saida = []
+    for p in prescricoes:
+        prescritor = await db.get(Usuario, p.criado_por_id) if p.criado_por_id else None
+        dispensado: dict[str, float] = defaultdict(float)
+        for d in (
+            await db.scalars(
+                select(Dispensacao).where(
+                    Dispensacao.tenant_id == tenant_id,
+                    Dispensacao.prescricao_id == p.id,
+                    Dispensacao.estornada_em.is_(None),
+                )
+            )
+        ).all():
+            for item in d.itens:
+                dispensado[item["produto_id"]] += item["quantidade"]
+        itens = []
+        for item in p.itens:
+            codigo = item.get("medicamento_codigo")
+            prod = None
+            if codigo:
+                prod = await db.scalar(
+                    select(Produto).where(
+                        Produto.tenant_id == tenant_id,
+                        Produto.codigo_obm == codigo,
+                        Produto.baixa_em.is_(None),
+                    )
+                )
+            disponivel = None
+            if prod:
+                disponivel = _q(
+                    float(
+                        await db.scalar(
+                            select(func.coalesce(func.sum(Movimentacao.quantidade), 0))
+                            .join(Lote, Lote.id == Movimentacao.lote_id)
+                            .where(
+                                Movimentacao.tenant_id == tenant_id,
+                                Movimentacao.produto_id == prod.id,
+                                Movimentacao.local_id == loc.id,
+                                Lote.bloqueado.is_(False),
+                                Lote.validade >= hoje,
+                            )
+                        )
+                        or 0
+                    )
+                )
+            itens.append(
+                {
+                    "descricao": item.get("descricao"),
+                    "medicamento_codigo": codigo,
+                    "posologia": item.get("posologia"),
+                    "quantidade": item.get("quantidade"),
+                    "uso_continuo": item.get("uso_continuo"),
+                    "tipo_receituario": item.get("tipo_receituario"),
+                    "produto_id": prod.id if prod else None,
+                    "controlado": prod.controlado if prod else None,
+                    "ja_dispensado": dispensado.get(str(prod.id), 0.0) if prod else 0.0,
+                    "saldo_no_local": disponivel,
+                }
+            )
+        saida.append(
+            {
+                "prescricao_id": p.id,
+                "emitida_em": p.created_at,
+                "assinada_em": p.assinada_em,
+                "prescritor": prescritor.nome if prescritor else None,
+                "itens": itens,
+            }
+        )
+    await _auditar(
+        db,
+        ator,
+        tenant_id,
+        "READ_SENSIVEL",
+        "prescricao",
+        cidadao_id,
+        cliente,
+        finalidade="dispensacao_farmacia",
+    )
+    await db.commit()
+    return saida

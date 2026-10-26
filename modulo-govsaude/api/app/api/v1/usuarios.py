@@ -51,6 +51,7 @@ async def listar_usuarios(
     _usuario: Usuario = Depends(exigir(Permissao.USUARIO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-050 — usuários, grupos e privilégios."""
     itens, proximo, total = await listar(
         db, tenant_id, limite=limite, cursor=cursor, busca=busca, ativo=ativo
     )
@@ -70,6 +71,7 @@ async def criar_usuario(
     ator: Usuario = Depends(exigir(Permissao.USUARIO_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-050 — usuários, grupos e privilégios."""
     chave = chave_do_header(request)
     endpoint = "/usuarios"
     request_hash = hash_requisicao(corpo.model_dump(mode="json"))
@@ -113,6 +115,7 @@ async def detalhar_usuario(
     _usuario: Usuario = Depends(exigir(Permissao.USUARIO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-050 — usuários, grupos e privilégios."""
     alvo = await obter(db, tenant_id, usuario_id)
     response.headers["ETag"] = f'"{alvo.versao}"'
     return UsuarioOut.model_validate(alvo)
@@ -129,6 +132,7 @@ async def atualizar_usuario(
     ator: Usuario = Depends(exigir(Permissao.USUARIO_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-050 — usuários, grupos e privilégios."""
     if if_match is None:
         raise AppError(
             "Envie o cabeçalho If-Match com a versão atual do usuário.",
@@ -163,6 +167,7 @@ async def grupos_do_usuario(
     _usuario: Usuario = Depends(exigir(Permissao.USUARIO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-050 — usuários, grupos e privilégios."""
     alvo = await obter(db, tenant_id, usuario_id)
     vinculos = (
         await db.execute(
@@ -189,6 +194,7 @@ async def adicionar_grupo(
     ator: Usuario = Depends(exigir(Permissao.USUARIO_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-050 — usuários, grupos e privilégios."""
     alvo = await obter(db, tenant_id, usuario_id)
     vinculo = await adicionar_vinculo(
         db,
@@ -221,6 +227,7 @@ async def remover_grupo(
     ator: Usuario = Depends(exigir(Permissao.USUARIO_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-050 — usuários, grupos e privilégios."""
     alvo = await obter(db, tenant_id, usuario_id)
     await revogar_vinculo(
         db,
@@ -240,6 +247,7 @@ async def revogar(
     ator: Usuario = Depends(exigir(Permissao.USUARIO_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-049, B.12-050 — revogação de sessões."""
     alvo = await obter(db, tenant_id, usuario_id)
     await revogar_sessoes(db, alvo, ator, dados_do_cliente(request))
     return {"mensagem": "Sessões revogadas."}
@@ -251,6 +259,7 @@ async def listar_grupos(
     _usuario: Usuario = Depends(exigir(Permissao.GRUPO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-050 — usuários, grupos e privilégios."""
     grupos = (
         await db.execute(
             select(Grupo).where(Grupo.tenant_id == tenant_id).order_by(Grupo.codigo)
@@ -263,6 +272,7 @@ async def listar_grupos(
 async def listar_permissoes(
     _usuario: Usuario = Depends(exigir(Permissao.GRUPO_LER)),
 ):
+    """B.12-050 — usuários, grupos e privilégios."""
     return [
         {"codigo": p.value, "descricao": p.name.replace("_", " ").title()}
         for p in sorted(ALL_PERMISSIONS, key=lambda item: item.value)

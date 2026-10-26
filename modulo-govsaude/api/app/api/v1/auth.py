@@ -85,6 +85,7 @@ async def login(
     request: Request,
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-049, B.12-052 — login por CPF, e-mail ou nome de acesso."""
     cliente = dados_do_cliente(request)
     usuario, _tenant, tokens = await autenticar_local(
         db,
@@ -104,6 +105,7 @@ async def login(
 
 @router.post("/refresh", response_model=TokenResponse, summary="Renovar token")
 async def refresh(corpo: RefreshRequest, db: AsyncSession = Depends(get_db)):
+    """B.12-049 — renovação de sessão."""
     return TokenResponse(**await renovar_token(db, corpo.refresh_token))
 
 
@@ -112,6 +114,7 @@ async def me(
     usuario: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-050 — perfil e escopos do usuário."""
     return await _montar_me(db, usuario)
 
 
@@ -121,6 +124,7 @@ async def logout(
     usuario: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-049 — encerramento de sessão."""
     usuario.token_version += 1
     await registrar(
         db,
@@ -139,6 +143,7 @@ async def mudar_senha(
     usuario: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-049, B.12-051 — troca de senha com política e hash forte."""
     await alterar_senha(
         db,
         usuario,
@@ -156,6 +161,7 @@ async def iniciar_mfa(
     usuario: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-049 — MFA."""
     segredo, uri = await ativar_mfa(db, usuario)
     await db.commit()
     return MfaAtivacaoResponse(
@@ -172,6 +178,7 @@ async def confirmar_mfa_endpoint(
     usuario: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-049 — MFA."""
     await confirmar_mfa(
         db, usuario, corpo.codigo, dados_do_cliente(request)
     )
@@ -183,6 +190,7 @@ async def termos(
     usuario: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-023 — termo de uso vigente."""
     termo = await termo_vigente(db, usuario.tenant_id)
     pendente = await termo_pendente(db, usuario)
     return {
@@ -198,6 +206,7 @@ async def aceitar_termo(
     usuario: Usuario = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-023 — aceite/recusa do termo."""
     cliente = dados_do_cliente(request)
     aceite = await registrar_aceite(
         db,
@@ -221,6 +230,7 @@ async def publicar_termo(
     usuario: Usuario = Depends(exigir(Permissao.TERMO_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-023 — nova versão do termo."""
     from app.models.nucleo import TermoUso
 
     termo = TermoUso(

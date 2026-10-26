@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import date
 
-from fastapi import APIRouter, Depends, Header, Query, Request
+from fastapi import APIRouter, Depends, Header, Query, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_tenant_id
@@ -35,6 +35,7 @@ from app.schemas.odontologia import (
 )
 from app.services import odontologia
 from app.services.auditoria import dados_do_cliente
+from app.services.exportacao import pdf
 from app.services.rede_comum import exigir_versao
 
 router = APIRouter(prefix="/odontologia", tags=["Odontologia"])
@@ -305,6 +306,32 @@ async def cancelar_procedimento(
     """B.3-011 — cancela programado, com motivo."""
     return await odontologia.cancelar_procedimento(
         db, tenant_id, procedimento_id, corpo.motivo, ator, dados_do_cliente(request)
+    )
+
+
+@router.get("/atendimentos/{atendimento_id}/ficha")
+async def ficha(
+    atendimento_id: uuid.UUID,
+    request: Request,
+    formato: str = Query(default="json", pattern="^(json|pdf)$"),
+    tenant_id: uuid.UUID = Tenant,
+    ator: Usuario = Ler,
+    db: AsyncSession = Db,
+):
+    """B.3-017 — ficha completa com odontograma, procedimentos, receitas, exames e
+    encaminhamentos; impressão auditada."""
+    dados = await odontologia.ficha_atendimento(
+        db, tenant_id, atendimento_id, ator, dados_do_cliente(request)
+    )
+    if formato == "json":
+        return dados
+    return Response(
+        content=pdf(odontologia.ficha_html(dados)),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": 'inline; filename="ficha-odontologica.pdf"',
+            "Cache-Control": "no-store",
+        },
     )
 
 

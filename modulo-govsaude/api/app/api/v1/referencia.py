@@ -32,6 +32,7 @@ async def municipios(
     _usuario: Usuario = Depends(exigir(Permissao.REFERENCIA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-008 — municípios IBGE."""
     consulta = select(MunicipioIBGE).order_by(MunicipioIBGE.nome).limit(limite)
     if q:
         consulta = consulta.where(func.lower(MunicipioIBGE.nome).like(f"%{q.lower()}%"))
@@ -50,6 +51,7 @@ async def cbo(
     _usuario: Usuario = Depends(exigir(Permissao.REFERENCIA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-006 — CBO."""
     consulta = select(Cbo).order_by(Cbo.codigo).limit(limite)
     if q:
         termo = f"%{q.lower()}%"
@@ -69,6 +71,7 @@ async def cid10(
     _usuario: Usuario = Depends(exigir(Permissao.REFERENCIA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-016 — CID-10."""
     consulta = select(Cid10).order_by(Cid10.codigo).limit(limite)
     if q:
         termo = f"%{q.lower()}%"
@@ -88,6 +91,7 @@ async def ciap2(
     _usuario: Usuario = Depends(exigir(Permissao.REFERENCIA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-016 — CIAP-2."""
     consulta = select(Ciap2).order_by(Ciap2.codigo).limit(limite)
     if q:
         termo = f"%{q.lower()}%"
@@ -107,6 +111,7 @@ async def cnae(
     _usuario: Usuario = Depends(exigir(Permissao.REFERENCIA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.9-001 — CNAE."""
     consulta = select(Cnae).order_by(Cnae.codigo).limit(limite)
     if q:
         termo = f"%{q.lower()}%"
@@ -127,6 +132,7 @@ async def sigtap(
     _usuario: Usuario = Depends(exigir(Permissao.REFERENCIA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-028 — SIGTAP."""
     consulta = select(SigtapProcedimento).order_by(SigtapProcedimento.codigo).limit(limite)
     if competencia:
         consulta = consulta.where(SigtapProcedimento.competencia == competencia)
@@ -156,6 +162,7 @@ async def imunobiologicos(
     _usuario: Usuario = Depends(exigir(Permissao.REFERENCIA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.7-001 — imunobiológicos."""
     consulta = select(Imunobiologico).order_by(Imunobiologico.nome).limit(limite)
     if q:
         consulta = consulta.where(func.lower(Imunobiologico.nome).like(f"%{q.lower()}%"))
@@ -172,6 +179,7 @@ async def medicamentos(
     _usuario: Usuario = Depends(exigir(Permissao.REFERENCIA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.4-038 — medicamentos."""
     consulta = select(Medicamento).order_by(Medicamento.nome).limit(limite)
     if q:
         termo = f"%{q.lower()}%"

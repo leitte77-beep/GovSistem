@@ -35,6 +35,7 @@ async def importar_cnes(
     usuario: Usuario = Depends(exigir(Permissao.INTEGRACAO_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-010, B.12-010, B.12-031 — importação CNES."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -70,6 +71,7 @@ async def listar_importacoes_cnes(
     _usuario: Usuario = Depends(exigir(Permissao.INTEGRACAO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-010, B.12-010, B.12-031 — importação CNES."""
     itens, proximo, total = await importacao_cnes.listar(
         db, tenant_id, limite=limite, cursor=cursor
     )
@@ -87,5 +89,6 @@ async def relatorio_importacao_cnes(
     _usuario: Usuario = Depends(exigir(Permissao.INTEGRACAO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-010, B.12-010, B.12-031 — importação CNES."""
     registro = await importacao_cnes.obter_por_job(db, tenant_id, job_id)
     return ImportacaoCNESOut.model_validate(registro)

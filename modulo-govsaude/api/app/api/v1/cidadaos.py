@@ -148,6 +148,7 @@ async def listar_cidadaos(
     usuario: Usuario = Depends(exigir(Permissao.CIDADAO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-001, B.1-004 — cadastro do cidadão."""
     itens, proximo, total = await cidadaos.listar(
         db,
         tenant_id,
@@ -173,6 +174,7 @@ async def criar_cidadao(
     ator: Usuario = Depends(exigir(Permissao.CIDADAO_CRIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-001, B.1-004 — cadastro do cidadão."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -198,6 +200,7 @@ async def buscar_cidadaos(
     usuario: Usuario = Depends(exigir(Permissao.CIDADAO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-004, B.12-005, B.12-009 — busca fonética e por CPF/CNS."""
     itens, proximo, total = await cidadaos.buscar(
         db,
         tenant_id,
@@ -227,6 +230,7 @@ async def consultar_cadsus(
     ator: Usuario = Depends(exigir(Permissao.CIDADAO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-004, B.12-010 — CADSUS por interface oficial."""
     return ConsultaCADSUSOut(
         **await consulta_cadsus.consultar(
             db,
@@ -246,6 +250,7 @@ async def consultar_cep(
     _usuario: Usuario = Depends(exigir(Permissao.CIDADAO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-003, B.12-008 — CEP por base oficial."""
     return ConsultaCepOut(**await consulta_cep.consultar(db, corpo.cep))
 
 
@@ -261,6 +266,7 @@ async def detalhar_cidadao(
     usuario: Usuario = Depends(exigir(Permissao.CIDADAO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-001, B.1-004 — cadastro do cidadão."""
     registro = await cidadaos.obter_cidadao(db, tenant_id, cidadao_id)
     await _auditar(db, request, usuario, recurso="cidadao", recurso_id=registro.id)
     response.headers["ETag"] = f'"{registro.versao}"'
@@ -278,6 +284,7 @@ async def atualizar_cidadao(
     ator: Usuario = Depends(exigir(Permissao.CIDADAO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-001, B.1-004 — cadastro do cidadão."""
     registro = await cidadaos.atualizar(
         db,
         tenant_id=tenant_id,
@@ -300,6 +307,7 @@ async def baixar_cidadao(
     ator: Usuario = Depends(exigir(Permissao.CIDADAO_BAIXAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-001 — baixa lógica com histórico."""
     return _out(
         await cidadaos.baixar(
             db,
@@ -321,6 +329,7 @@ async def reativar_cidadao(
     ator: Usuario = Depends(exigir(Permissao.CIDADAO_BAIXAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-001 — baixa lógica com histórico."""
     return _out(
         await cidadaos.reativar(
             db,
@@ -341,6 +350,7 @@ async def listar_baixas_cidadao(
     usuario: Usuario = Depends(exigir(Permissao.CIDADAO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-001 — baixa lógica com histórico."""
     registros = await cidadaos.listar_baixas(db, tenant_id, cidadao_id)
     await _auditar(db, request, usuario, recurso="cidadao_baixa", recurso_id=cidadao_id)
     return [CidadaoBaixaOut.model_validate(item) for item in registros]
@@ -356,6 +366,7 @@ async def criar_recem_nascido(
     ator: Usuario = Depends(exigir(Permissao.CIDADAO_CRIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-009 — recém-nascido a partir da mãe."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -390,6 +401,7 @@ async def listar_duplicidades(
     usuario: Usuario = Depends(exigir(Permissao.CIDADAO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-001 — possíveis duplicidades."""
     itens = await deduplicacao.listar_duplicidades(
         db, tenant_id, cidadao_id, incluir_decididas=incluir_decididas
     )
@@ -408,6 +420,7 @@ async def decidir_duplicidade(
     ator: Usuario = Depends(exigir(Permissao.CIDADAO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-001, B.12-002 — decisão humana."""
     registro = await deduplicacao.decidir_duplicidade(
         db,
         tenant_id=tenant_id,
@@ -429,6 +442,7 @@ async def unificar_cidadao(
     ator: Usuario = Depends(exigir(Permissao.CIDADAO_BAIXAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-007, B.12-002, B.12-003 — unificação com histórico."""
     registro = await deduplicacao.unificar(
         db,
         tenant_id=tenant_id,
@@ -450,6 +464,7 @@ async def listar_unificacoes(
     usuario: Usuario = Depends(exigir(Permissao.CIDADAO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-007 — histórico de unificações."""
     registros = await deduplicacao.listar_unificacoes(db, tenant_id, cidadao_id)
     await _auditar(db, request, usuario, recurso="cidadao_unificacao", recurso_id=cidadao_id)
     return [UnificacaoOut.model_validate(item) for item in registros]
@@ -464,6 +479,7 @@ async def reverter_unificacao(
     ator: Usuario = Depends(exigir(Permissao.CIDADAO_BAIXAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-003 — reversão sem perda."""
     registro = await deduplicacao.reverter_unificacao(
         db,
         tenant_id=tenant_id,
@@ -486,6 +502,7 @@ async def listar_documentos(
     usuario: Usuario = Depends(exigir(Permissao.CIDADAO_VER_DOCUMENTO)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-001, B.1-004 — cadastro do cidadão."""
     registros = await cidadao_detalhes.listar_documentos(db, tenant_id, cidadao_id)
     await _auditar(db, request, usuario, recurso="cidadao_documento", recurso_id=cidadao_id)
     return [_documento(item) for item in registros]
@@ -501,6 +518,7 @@ async def criar_documento(
     ator: Usuario = Depends(exigir(Permissao.CIDADAO_VER_DOCUMENTO)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-001, B.1-004 — cadastro do cidadão."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -529,6 +547,7 @@ async def baixar_documento(
     ator: Usuario = Depends(exigir(Permissao.CIDADAO_VER_DOCUMENTO)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-001 — baixa lógica com histórico."""
     return _documento(
         await cidadao_detalhes.baixar_documento(
             db, tenant_id=tenant_id, cidadao_id=cidadao_id,
@@ -549,6 +568,7 @@ async def listar_contatos(
     usuario: Usuario = Depends(exigir(Permissao.CIDADAO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-001, B.1-004 — cadastro do cidadão."""
     registros = await cidadao_detalhes.listar_contatos(db, tenant_id, cidadao_id)
     await _auditar(db, request, usuario, recurso="cidadao_contato", recurso_id=cidadao_id)
     return [_contato(item) for item in registros]
@@ -564,6 +584,7 @@ async def criar_contato(
     ator: Usuario = Depends(exigir(Permissao.CIDADAO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-001, B.1-004 — cadastro do cidadão."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -592,6 +613,7 @@ async def baixar_contato(
     ator: Usuario = Depends(exigir(Permissao.CIDADAO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-001 — baixa lógica com histórico."""
     return _contato(
         await cidadao_detalhes.baixar_contato(
             db, tenant_id=tenant_id, cidadao_id=cidadao_id,
@@ -612,6 +634,7 @@ async def listar_enderecos(
     usuario: Usuario = Depends(exigir(Permissao.CIDADAO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-001, B.1-004 — cadastro do cidadão."""
     registros = await cidadao_detalhes.listar_enderecos(db, tenant_id, cidadao_id)
     await _auditar(db, request, usuario, recurso="cidadao_endereco", recurso_id=cidadao_id)
     return [EnderecoOut.model_validate(item) for item in registros]
@@ -627,6 +650,7 @@ async def criar_endereco(
     ator: Usuario = Depends(exigir(Permissao.CIDADAO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-001, B.1-004 — cadastro do cidadão."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -655,6 +679,7 @@ async def baixar_endereco(
     ator: Usuario = Depends(exigir(Permissao.CIDADAO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-001 — baixa lógica com histórico."""
     return EnderecoOut.model_validate(
         await cidadao_detalhes.baixar_endereco(
             db, tenant_id=tenant_id, cidadao_id=cidadao_id,
@@ -675,6 +700,7 @@ async def listar_planos(
     usuario: Usuario = Depends(exigir(Permissao.CIDADAO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-008 — planos e vínculos assistenciais."""
     registros = await cidadao_detalhes.listar_planos(db, tenant_id, cidadao_id)
     await _auditar(db, request, usuario, recurso="plano_saude_vinculo", recurso_id=cidadao_id)
     return [_plano(item) for item in registros]
@@ -690,6 +716,7 @@ async def criar_plano(
     ator: Usuario = Depends(exigir(Permissao.CIDADAO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-001, B.1-004 — cadastro do cidadão."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -718,6 +745,7 @@ async def baixar_plano(
     ator: Usuario = Depends(exigir(Permissao.CIDADAO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-001 — baixa lógica com histórico."""
     return _plano(
         await cidadao_detalhes.baixar_plano(
             db, tenant_id=tenant_id, cidadao_id=cidadao_id,
@@ -738,6 +766,7 @@ async def listar_alergias(
     usuario: Usuario = Depends(exigir(Permissao.CIDADAO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-006, B.6-015 — alergias."""
     registros = await cidadao_detalhes.listar_alergias(db, tenant_id, cidadao_id)
     await _auditar(db, request, usuario, recurso="cidadao_alergia", recurso_id=cidadao_id)
     return [AlergiaOut.model_validate(item) for item in registros]
@@ -753,6 +782,7 @@ async def criar_alergia(
     ator: Usuario = Depends(exigir_alguma(Permissao.CIDADAO_EDITAR, Permissao.PRONTUARIO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-006, B.6-015 — alergias."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -781,6 +811,7 @@ async def baixar_alergia(
     ator: Usuario = Depends(exigir_alguma(Permissao.CIDADAO_EDITAR, Permissao.PRONTUARIO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-006, B.6-015 — alergias."""
     return AlergiaOut.model_validate(
         await cidadao_detalhes.baixar_alergia(
             db, tenant_id=tenant_id, cidadao_id=cidadao_id,
@@ -798,6 +829,7 @@ async def listar_condicoes(
     usuario: Usuario = Depends(exigir(Permissao.CIDADAO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-006, B.6-016 — condições/problemas."""
     registros = await cidadao_detalhes.listar_condicoes(db, tenant_id, cidadao_id)
     await _auditar(db, request, usuario, recurso="cidadao_condicao", recurso_id=cidadao_id)
     return [CondicaoOut.model_validate(item) for item in registros]
@@ -813,6 +845,7 @@ async def criar_condicao(
     ator: Usuario = Depends(exigir_alguma(Permissao.CIDADAO_EDITAR, Permissao.PRONTUARIO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-006, B.6-016 — condições/problemas."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -841,6 +874,7 @@ async def baixar_condicao(
     ator: Usuario = Depends(exigir_alguma(Permissao.CIDADAO_EDITAR, Permissao.PRONTUARIO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-006, B.6-016 — condições/problemas."""
     return CondicaoOut.model_validate(
         await cidadao_detalhes.baixar_condicao(
             db, tenant_id=tenant_id, cidadao_id=cidadao_id,
@@ -861,6 +895,7 @@ async def listar_fotos(
     usuario: Usuario = Depends(exigir(Permissao.CIDADAO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-002, B.12-011 — foto do cidadão."""
     registros = await cidadao_fotos.listar_fotos(db, tenant_id, cidadao_id)
     await _auditar(db, request, usuario, recurso="cidadao_foto", recurso_id=cidadao_id)
     return [await _foto(item) for item in registros]
@@ -877,6 +912,7 @@ async def enviar_foto(
     ator: Usuario = Depends(exigir(Permissao.CIDADAO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-002, B.12-011 — foto do cidadão."""
     conteudo = await arquivo.read()
     hash_conteudo = hash_bytes(conteudo)
     chave, request_hash, cache = await cache_idempotencia(
@@ -920,6 +956,7 @@ async def definir_foto_principal(
     ator: Usuario = Depends(exigir(Permissao.CIDADAO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-002, B.12-011 — foto do cidadão."""
     registro = await cidadao_fotos.definir_principal(
         db, tenant_id=tenant_id, cidadao_id=cidadao_id, foto_id=foto_id,
         ator=ator, cliente=dados_do_cliente(request),
@@ -937,6 +974,7 @@ async def baixar_foto(
     ator: Usuario = Depends(exigir(Permissao.CIDADAO_EDITAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-002, B.12-011 — foto do cidadão."""
     registro = await cidadao_fotos.baixar_foto(
         db, tenant_id=tenant_id, cidadao_id=cidadao_id, foto_id=foto_id,
         motivo=corpo.motivo, data=corpo.data, ator=ator,
@@ -954,6 +992,7 @@ async def baixar_conteudo_foto(
     ator: Usuario = Depends(exigir(Permissao.CIDADAO_VER_DOCUMENTO)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.1-002, B.12-011 — foto do cidadão."""
     conteudo, mime = await cidadao_fotos.obter_conteudo(
         db, tenant_id=tenant_id, cidadao_id=cidadao_id, foto_id=foto_id,
         ator=ator, cliente=dados_do_cliente(request),

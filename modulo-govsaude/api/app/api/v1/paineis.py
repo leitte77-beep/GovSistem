@@ -43,6 +43,7 @@ async def listar_paineis(
     usuario: Usuario = Depends(exigir(Permissao.FILA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-045, B.6-046 — painel de chamada."""
     itens, proximo, total = await paineis.listar(
         db,
         tenant_id,
@@ -69,6 +70,7 @@ async def criar_painel(
     ator: Usuario = Depends(exigir(Permissao.FILA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-045, B.6-046 — painel de chamada."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -99,6 +101,7 @@ async def detalhar_painel(
     usuario: Usuario = Depends(exigir(Permissao.FILA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-045, B.6-046 — painel de chamada."""
     registro = await paineis.obter(db, tenant_id, usuario, painel_id)
     response.headers["ETag"] = f'"{registro.versao}"'
     return PainelChamadaOut.model_validate(registro)
@@ -115,6 +118,7 @@ async def atualizar_painel(
     ator: Usuario = Depends(exigir(Permissao.FILA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-045, B.6-046 — painel de chamada."""
     registro = await paineis.atualizar(
         db,
         tenant_id=tenant_id,
@@ -136,4 +140,5 @@ async def estado_painel(
     usuario: Usuario = Depends(exigir(Permissao.FILA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-045, B.6-046 — painel de chamada."""
     return await paineis.estado(db, tenant_id, usuario, painel_id)

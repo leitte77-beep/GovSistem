@@ -1968,6 +1968,99 @@
         "title": "AlterarSenhaRequest",
         "type": "object"
       },
+      "AnexoOut": {
+        "properties": {
+          "cidadao_id": {
+            "format": "uuid",
+            "title": "Cidadao Id",
+            "type": "string"
+          },
+          "classificacao": {
+            "title": "Classificacao",
+            "type": "string"
+          },
+          "contexto": {
+            "title": "Contexto",
+            "type": "string"
+          },
+          "contexto_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contexto Id"
+          },
+          "criado_por_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Criado Por Id"
+          },
+          "descricao": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Descricao"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "mime": {
+            "title": "Mime",
+            "type": "string"
+          },
+          "nivel_sigilo": {
+            "title": "Nivel Sigilo",
+            "type": "string"
+          },
+          "nome_arquivo": {
+            "title": "Nome Arquivo",
+            "type": "string"
+          },
+          "status_antivirus": {
+            "title": "Status Antivirus",
+            "type": "string"
+          },
+          "tamanho_bytes": {
+            "title": "Tamanho Bytes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "cidadao_id",
+          "contexto",
+          "contexto_id",
+          "classificacao",
+          "descricao",
+          "nome_arquivo",
+          "mime",
+          "tamanho_bytes",
+          "nivel_sigilo",
+          "status_antivirus",
+          "criado_por_id"
+        ],
+        "title": "AnexoOut",
+        "type": "object"
+      },
       "AnimalCreate": {
         "additionalProperties": false,
         "properties": {
@@ -2295,6 +2388,22 @@
         "title": "AuditoriaOut",
         "type": "object"
       },
+      "Baixa": {
+        "additionalProperties": false,
+        "properties": {
+          "motivo": {
+            "maxLength": 400,
+            "minLength": 10,
+            "title": "Motivo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "motivo"
+        ],
+        "title": "Baixa",
+        "type": "object"
+      },
       "BaixaCidadaoRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2377,6 +2486,72 @@
           "motivo"
         ],
         "title": "BloqueioCancelamento",
+        "type": "object"
+      },
+      "Body_anexar_api_govsaude_v1_anexos_post": {
+        "properties": {
+          "arquivo": {
+            "contentMediaType": "application/octet-stream",
+            "title": "Arquivo",
+            "type": "string"
+          },
+          "cidadao_id": {
+            "format": "uuid",
+            "title": "Cidadao Id",
+            "type": "string"
+          },
+          "classificacao": {
+            "maxLength": 60,
+            "minLength": 2,
+            "title": "Classificacao",
+            "type": "string"
+          },
+          "contexto": {
+            "enum": [
+              "CIDADAO",
+              "PRONTUARIO",
+              "ODONTOLOGIA"
+            ],
+            "title": "Contexto",
+            "type": "string"
+          },
+          "contexto_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Contexto Id"
+          },
+          "descricao": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Descricao"
+          },
+          "sigiloso": {
+            "default": false,
+            "title": "Sigiloso",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "arquivo",
+          "cidadao_id",
+          "contexto",
+          "classificacao"
+        ],
+        "title": "Body_anexar_api_govsaude_v1_anexos_post",
         "type": "object"
       },
       "Body_enviar_foto_api_govsaude_v1_cidadaos__cidadao_id__fotos_post": {
@@ -10372,6 +10547,135 @@
           "condicao_id"
         ],
         "title": "Marcacao",
+        "type": "object"
+      },
+      "MedicoesVisita": {
+        "additionalProperties": false,
+        "description": "B.1-019 — antropometria, sinais vitais e glicemia aferidos na visita.",
+        "properties": {
+          "altura_cm": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 20.0,
+                "maximum": 280.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Altura Cm"
+          },
+          "frequencia_cardiaca": {
+            "anyOf": [
+              {
+                "maximum": 300.0,
+                "minimum": 20.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frequencia Cardiaca"
+          },
+          "glicemia_capilar_mg_dl": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 10.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Glicemia Capilar Mg Dl"
+          },
+          "glicemia_momento": {
+            "anyOf": [
+              {
+                "enum": [
+                  "JEJUM",
+                  "PRE_PRANDIAL",
+                  "POS_PRANDIAL",
+                  "NAO_ESPECIFICADO"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Glicemia Momento"
+          },
+          "peso_kg": {
+            "anyOf": [
+              {
+                "exclusiveMinimum": 0.0,
+                "maximum": 700.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Peso Kg"
+          },
+          "pressao_diastolica": {
+            "anyOf": [
+              {
+                "maximum": 200.0,
+                "minimum": 20.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pressao Diastolica"
+          },
+          "pressao_sistolica": {
+            "anyOf": [
+              {
+                "maximum": 300.0,
+                "minimum": 40.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pressao Sistolica"
+          },
+          "saturacao_o2": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 50.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Saturacao O2"
+          },
+          "temperatura_c": {
+            "anyOf": [
+              {
+                "maximum": 45.0,
+                "minimum": 30.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Temperatura C"
+          }
+        },
+        "title": "MedicoesVisita",
         "type": "object"
       },
       "MetaTerritorialOut": {
@@ -20092,6 +20396,14 @@
       "VisitaCreate": {
         "additionalProperties": false,
         "properties": {
+          "acompanhamento": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 30,
+            "title": "Acompanhamento",
+            "type": "array"
+          },
           "assinatura_nome": {
             "anyOf": [
               {
@@ -20104,6 +20416,11 @@
             ],
             "title": "Assinatura Nome"
           },
+          "busca_ativa": {
+            "default": false,
+            "title": "Busca Ativa",
+            "type": "boolean"
+          },
           "cidadao_id": {
             "anyOf": [
               {
@@ -20115,6 +20432,30 @@
               }
             ],
             "title": "Cidadao Id"
+          },
+          "controle_ambiental": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Controle Ambiental"
+          },
+          "desfecho": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Desfecho"
           },
           "domicilio_id": {
             "format": "uuid",
@@ -20170,6 +20511,24 @@
               }
             ],
             "title": "Longitude"
+          },
+          "medicoes": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MedicoesVisita"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "motivos": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Motivos",
+            "type": "array"
           },
           "observacoes": {
             "anyOf": [
@@ -20233,6 +20592,20 @@
       "VisitaOut": {
         "additionalProperties": false,
         "properties": {
+          "acompanhamento": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Acompanhamento"
+          },
           "assinatura_em": {
             "anyOf": [
               {
@@ -20257,6 +20630,11 @@
             ],
             "title": "Assinatura Nome"
           },
+          "busca_ativa": {
+            "default": false,
+            "title": "Busca Ativa",
+            "type": "boolean"
+          },
           "cidadao_id": {
             "anyOf": [
               {
@@ -20273,6 +20651,30 @@
             "format": "date",
             "title": "Competencia",
             "type": "string"
+          },
+          "controle_ambiental": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Controle Ambiental"
+          },
+          "desfecho": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Desfecho"
           },
           "domicilio_id": {
             "format": "uuid",
@@ -20333,6 +20735,32 @@
               }
             ],
             "title": "Longitude"
+          },
+          "medicoes": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Medicoes"
+          },
+          "motivos": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivos"
           },
           "observacoes": {
             "anyOf": [
@@ -21797,6 +22225,7 @@
     },
     "/api/govsaude/v1/agendamentos": {
       "get": {
+        "description": "B.6-001, B.6-005 — agendamento.",
         "operationId": "listar_agendamentos_api_govsaude_v1_agendamentos_get",
         "parameters": [
           {
@@ -21979,6 +22408,7 @@
         ]
       },
       "post": {
+        "description": "B.6-001, B.6-005 — agendamento.",
         "operationId": "criar_agendamento_api_govsaude_v1_agendamentos_post",
         "requestBody": {
           "content": {
@@ -22025,6 +22455,7 @@
     },
     "/api/govsaude/v1/agendamentos/{agendamento_id}": {
       "get": {
+        "description": "B.6-001, B.6-005 — agendamento.",
         "operationId": "detalhar_agendamento_api_govsaude_v1_agendamentos__agendamento_id__get",
         "parameters": [
           {
@@ -22071,6 +22502,7 @@
         ]
       },
       "patch": {
+        "description": "B.6-001, B.6-005 — agendamento.",
         "operationId": "atualizar_agendamento_api_govsaude_v1_agendamentos__agendamento_id__patch",
         "parameters": [
           {
@@ -22145,6 +22577,7 @@
     },
     "/api/govsaude/v1/agendamentos/{agendamento_id}/cancelar": {
       "post": {
+        "description": "B.6-001, B.6-005 — agendamento.",
         "operationId": "cancelar_agendamento_api_govsaude_v1_agendamentos__agendamento_id__cancelar_post",
         "parameters": [
           {
@@ -22203,6 +22636,7 @@
     },
     "/api/govsaude/v1/agendamentos/{agendamento_id}/comprovante": {
       "post": {
+        "description": "B.6-001, B.6-003 — comprovante com código de barras/QR.",
         "operationId": "emitir_comprovante_api_govsaude_v1_agendamentos__agendamento_id__comprovante_post",
         "parameters": [
           {
@@ -22251,6 +22685,7 @@
     },
     "/api/govsaude/v1/agendamentos/{agendamento_id}/confirmar": {
       "post": {
+        "description": "B.6-001, B.6-005 — agendamento.",
         "operationId": "confirmar_agendamento_api_govsaude_v1_agendamentos__agendamento_id__confirmar_post",
         "parameters": [
           {
@@ -22299,6 +22734,7 @@
     },
     "/api/govsaude/v1/agendamentos/{agendamento_id}/falta": {
       "post": {
+        "description": "B.12-018 — falta com prazo configurado.",
         "operationId": "marcar_falta_api_govsaude_v1_agendamentos__agendamento_id__falta_post",
         "parameters": [
           {
@@ -22357,6 +22793,7 @@
     },
     "/api/govsaude/v1/agendamentos/{agendamento_id}/reagendar": {
       "post": {
+        "description": "B.6-001, B.6-005 — agendamento.",
         "operationId": "reagendar_agendamento_api_govsaude_v1_agendamentos__agendamento_id__reagendar_post",
         "parameters": [
           {
@@ -22415,6 +22852,7 @@
     },
     "/api/govsaude/v1/agendamentos/{agendamento_id}/reverter-falta": {
       "post": {
+        "description": "B.12-018 — reversão auditada da falta.",
         "operationId": "reverter_falta_api_govsaude_v1_agendamentos__agendamento_id__reverter_falta_post",
         "parameters": [
           {
@@ -22473,6 +22911,7 @@
     },
     "/api/govsaude/v1/agendas": {
       "get": {
+        "description": "B.6-001, B.3-008 — agenda e disponibilidade.",
         "operationId": "listar_agendas_api_govsaude_v1_agendas_get",
         "parameters": [
           {
@@ -22620,6 +23059,7 @@
         ]
       },
       "post": {
+        "description": "B.6-001, B.3-008 — agenda e disponibilidade.",
         "operationId": "criar_agenda_api_govsaude_v1_agendas_post",
         "requestBody": {
           "content": {
@@ -22666,6 +23106,7 @@
     },
     "/api/govsaude/v1/agendas/{agenda_id}": {
       "get": {
+        "description": "B.6-001, B.3-008 — agenda e disponibilidade.",
         "operationId": "detalhar_agenda_api_govsaude_v1_agendas__agenda_id__get",
         "parameters": [
           {
@@ -22712,6 +23153,7 @@
         ]
       },
       "patch": {
+        "description": "B.6-001, B.3-008 — agenda e disponibilidade.",
         "operationId": "atualizar_agenda_api_govsaude_v1_agendas__agenda_id__patch",
         "parameters": [
           {
@@ -22786,6 +23228,7 @@
     },
     "/api/govsaude/v1/agendas/{agenda_id}/baixar": {
       "post": {
+        "description": "B.6-001, B.3-008 — agenda e disponibilidade.",
         "operationId": "baixar_agenda_api_govsaude_v1_agendas__agenda_id__baixar_post",
         "parameters": [
           {
@@ -22844,6 +23287,7 @@
     },
     "/api/govsaude/v1/agendas/{agenda_id}/bloqueios": {
       "get": {
+        "description": "B.6-001, B.3-008 — agenda e disponibilidade.",
         "operationId": "listar_bloqueios_api_govsaude_v1_agendas__agenda_id__bloqueios_get",
         "parameters": [
           {
@@ -22894,6 +23338,7 @@
         ]
       },
       "post": {
+        "description": "B.6-001, B.3-008 — agenda e disponibilidade.",
         "operationId": "criar_bloqueio_api_govsaude_v1_agendas__agenda_id__bloqueios_post",
         "parameters": [
           {
@@ -22952,6 +23397,7 @@
     },
     "/api/govsaude/v1/agendas/{agenda_id}/bloqueios/{bloqueio_id}/cancelar": {
       "post": {
+        "description": "B.6-001, B.3-008 — agenda e disponibilidade.",
         "operationId": "cancelar_bloqueio_api_govsaude_v1_agendas__agenda_id__bloqueios__bloqueio_id__cancelar_post",
         "parameters": [
           {
@@ -23020,6 +23466,7 @@
     },
     "/api/govsaude/v1/agendas/{agenda_id}/disponibilidade": {
       "get": {
+        "description": "B.6-001, B.3-008 — agenda e disponibilidade.",
         "operationId": "disponibilidade_api_govsaude_v1_agendas__agenda_id__disponibilidade_get",
         "parameters": [
           {
@@ -23086,8 +23533,209 @@
         ]
       }
     },
+    "/api/govsaude/v1/anexos": {
+      "post": {
+        "description": "B.12-054, B.6-029, B.3-012 — anexa imagem/PDF com validação e antivírus.",
+        "operationId": "anexar_api_govsaude_v1_anexos_post",
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/Body_anexar_api_govsaude_v1_anexos_post"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnexoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Anexar",
+        "tags": [
+          "Anexos clínicos"
+        ]
+      }
+    },
+    "/api/govsaude/v1/anexos/cidadaos/{cidadao_id}": {
+      "get": {
+        "description": "B.6-029, B.3-012 — anexos do cidadão; sigilosos aparecem velados.",
+        "operationId": "listar_api_govsaude_v1_anexos_cidadaos__cidadao_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cidadao_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Cidadao Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Listar",
+        "tags": [
+          "Anexos clínicos"
+        ]
+      }
+    },
+    "/api/govsaude/v1/anexos/{id}/baixar": {
+      "post": {
+        "description": "B.6-029 — baixa lógica com motivo.",
+        "operationId": "baixar_api_govsaude_v1_anexos__id__baixar_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Baixa"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnexoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Baixar",
+        "tags": [
+          "Anexos clínicos"
+        ]
+      }
+    },
+    "/api/govsaude/v1/anexos/{id}/conteudo": {
+      "get": {
+        "description": "B.6-029, B.6-056 — download auditado.",
+        "operationId": "conteudo_api_govsaude_v1_anexos__id__conteudo_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Conteudo",
+        "tags": [
+          "Anexos clínicos"
+        ]
+      }
+    },
     "/api/govsaude/v1/auditoria": {
       "get": {
+        "description": "B.12-048 — logs com usuário, IP, ação e antes/depois.",
         "operationId": "listar_api_govsaude_v1_auditoria_get",
         "parameters": [
           {
@@ -23237,6 +23885,7 @@
     },
     "/api/govsaude/v1/auditoria/{evento_id}": {
       "get": {
+        "description": "B.12-048 — logs com usuário, IP, ação e antes/depois.",
         "operationId": "detalhar_api_govsaude_v1_auditoria__evento_id__get",
         "parameters": [
           {
@@ -23285,6 +23934,7 @@
     },
     "/api/govsaude/v1/auth/alterar-senha": {
       "post": {
+        "description": "B.12-049, B.12-051 — troca de senha com política e hash forte.",
         "operationId": "mudar_senha_api_govsaude_v1_auth_alterar_senha_post",
         "requestBody": {
           "content": {
@@ -23331,6 +23981,7 @@
     },
     "/api/govsaude/v1/auth/login": {
       "post": {
+        "description": "B.12-049, B.12-052 — login por CPF, e-mail ou nome de acesso.",
         "operationId": "login_api_govsaude_v1_auth_login_post",
         "requestBody": {
           "content": {
@@ -23372,6 +24023,7 @@
     },
     "/api/govsaude/v1/auth/logout": {
       "post": {
+        "description": "B.12-049 — encerramento de sessão.",
         "operationId": "logout_api_govsaude_v1_auth_logout_post",
         "responses": {
           "200": {
@@ -23396,6 +24048,7 @@
     },
     "/api/govsaude/v1/auth/me": {
       "get": {
+        "description": "B.12-050 — perfil e escopos do usuário.",
         "operationId": "me_api_govsaude_v1_auth_me_get",
         "responses": {
           "200": {
@@ -23422,6 +24075,7 @@
     },
     "/api/govsaude/v1/auth/mfa/ativar": {
       "post": {
+        "description": "B.12-049 — MFA.",
         "operationId": "iniciar_mfa_api_govsaude_v1_auth_mfa_ativar_post",
         "responses": {
           "200": {
@@ -23448,6 +24102,7 @@
     },
     "/api/govsaude/v1/auth/mfa/confirmar": {
       "post": {
+        "description": "B.12-049 — MFA.",
         "operationId": "confirmar_mfa_endpoint_api_govsaude_v1_auth_mfa_confirmar_post",
         "requestBody": {
           "content": {
@@ -23492,6 +24147,7 @@
     },
     "/api/govsaude/v1/auth/refresh": {
       "post": {
+        "description": "B.12-049 — renovação de sessão.",
         "operationId": "refresh_api_govsaude_v1_auth_refresh_post",
         "requestBody": {
           "content": {
@@ -23533,6 +24189,7 @@
     },
     "/api/govsaude/v1/auth/termos": {
       "get": {
+        "description": "B.12-023 — termo de uso vigente.",
         "operationId": "termos_api_govsaude_v1_auth_termos_get",
         "responses": {
           "200": {
@@ -23555,6 +24212,7 @@
         ]
       },
       "post": {
+        "description": "B.12-023 — nova versão do termo.",
         "operationId": "publicar_termo_api_govsaude_v1_auth_termos_post",
         "requestBody": {
           "content": {
@@ -23601,6 +24259,7 @@
     },
     "/api/govsaude/v1/auth/termos/aceitar": {
       "post": {
+        "description": "B.12-023 — aceite/recusa do termo.",
         "operationId": "aceitar_termo_api_govsaude_v1_auth_termos_aceitar_post",
         "requestBody": {
           "content": {
@@ -23645,6 +24304,7 @@
     },
     "/api/govsaude/v1/buscas-ativas": {
       "get": {
+        "description": "B.2-011 — busca ativa.",
         "operationId": "listar_buscas_api_govsaude_v1_buscas_ativas_get",
         "parameters": [
           {
@@ -23760,6 +24420,7 @@
         ]
       },
       "post": {
+        "description": "B.2-011 — busca ativa.",
         "operationId": "criar_busca_api_govsaude_v1_buscas_ativas_post",
         "requestBody": {
           "content": {
@@ -23806,6 +24467,7 @@
     },
     "/api/govsaude/v1/buscas-ativas/pendencias": {
       "get": {
+        "description": "B.2-011 — busca ativa.",
         "operationId": "pendencias_busca_ativa_api_govsaude_v1_buscas_ativas_pendencias_get",
         "parameters": [
           {
@@ -23906,6 +24568,7 @@
     },
     "/api/govsaude/v1/buscas-ativas/{busca_id}": {
       "get": {
+        "description": "B.2-011 — busca ativa.",
         "operationId": "detalhar_busca_api_govsaude_v1_buscas_ativas__busca_id__get",
         "parameters": [
           {
@@ -23952,6 +24615,7 @@
         ]
       },
       "patch": {
+        "description": "B.2-011 — busca ativa.",
         "operationId": "atualizar_busca_api_govsaude_v1_buscas_ativas__busca_id__patch",
         "parameters": [
           {
@@ -24026,6 +24690,7 @@
     },
     "/api/govsaude/v1/cidadaos": {
       "get": {
+        "description": "B.1-001, B.1-004 — cadastro do cidadão.",
         "operationId": "listar_cidadaos_api_govsaude_v1_cidadaos_get",
         "parameters": [
           {
@@ -24116,6 +24781,7 @@
         ]
       },
       "post": {
+        "description": "B.1-001, B.1-004 — cadastro do cidadão.",
         "operationId": "criar_cidadao_api_govsaude_v1_cidadaos_post",
         "requestBody": {
           "content": {
@@ -24162,6 +24828,7 @@
     },
     "/api/govsaude/v1/cidadaos/busca": {
       "post": {
+        "description": "B.12-004, B.12-005, B.12-009 — busca fonética e por CPF/CNS.",
         "operationId": "buscar_cidadaos_api_govsaude_v1_cidadaos_busca_post",
         "requestBody": {
           "content": {
@@ -24208,6 +24875,7 @@
     },
     "/api/govsaude/v1/cidadaos/consulta-cadsus": {
       "post": {
+        "description": "B.12-004, B.12-010 — CADSUS por interface oficial.",
         "operationId": "consultar_cadsus_api_govsaude_v1_cidadaos_consulta_cadsus_post",
         "requestBody": {
           "content": {
@@ -24254,6 +24922,7 @@
     },
     "/api/govsaude/v1/cidadaos/consulta-cep": {
       "post": {
+        "description": "B.1-003, B.12-008 — CEP por base oficial.",
         "operationId": "consultar_cep_api_govsaude_v1_cidadaos_consulta_cep_post",
         "requestBody": {
           "content": {
@@ -24300,6 +24969,7 @@
     },
     "/api/govsaude/v1/cidadaos/duplicidades/{duplicidade_id}/decidir": {
       "post": {
+        "description": "B.12-001, B.12-002 — decisão humana.",
         "operationId": "decidir_duplicidade_api_govsaude_v1_cidadaos_duplicidades__duplicidade_id__decidir_post",
         "parameters": [
           {
@@ -24358,6 +25028,7 @@
     },
     "/api/govsaude/v1/cidadaos/unificacoes/{unificacao_id}/reverter": {
       "post": {
+        "description": "B.12-003 — reversão sem perda.",
         "operationId": "reverter_unificacao_api_govsaude_v1_cidadaos_unificacoes__unificacao_id__reverter_post",
         "parameters": [
           {
@@ -24416,6 +25087,7 @@
     },
     "/api/govsaude/v1/cidadaos/{cidadao_id}": {
       "get": {
+        "description": "B.1-001, B.1-004 — cadastro do cidadão.",
         "operationId": "detalhar_cidadao_api_govsaude_v1_cidadaos__cidadao_id__get",
         "parameters": [
           {
@@ -24462,6 +25134,7 @@
         ]
       },
       "patch": {
+        "description": "B.1-001, B.1-004 — cadastro do cidadão.",
         "operationId": "atualizar_cidadao_api_govsaude_v1_cidadaos__cidadao_id__patch",
         "parameters": [
           {
@@ -24536,6 +25209,7 @@
     },
     "/api/govsaude/v1/cidadaos/{cidadao_id}/alergias": {
       "get": {
+        "description": "B.1-006, B.6-015 — alergias.",
         "operationId": "listar_alergias_api_govsaude_v1_cidadaos__cidadao_id__alergias_get",
         "parameters": [
           {
@@ -24586,6 +25260,7 @@
         ]
       },
       "post": {
+        "description": "B.1-006, B.6-015 — alergias.",
         "operationId": "criar_alergia_api_govsaude_v1_cidadaos__cidadao_id__alergias_post",
         "parameters": [
           {
@@ -24644,6 +25319,7 @@
     },
     "/api/govsaude/v1/cidadaos/{cidadao_id}/alergias/{alergia_id}/baixar": {
       "post": {
+        "description": "B.1-006, B.6-015 — alergias.",
         "operationId": "baixar_alergia_api_govsaude_v1_cidadaos__cidadao_id__alergias__alergia_id__baixar_post",
         "parameters": [
           {
@@ -24712,6 +25388,7 @@
     },
     "/api/govsaude/v1/cidadaos/{cidadao_id}/baixar": {
       "post": {
+        "description": "B.1-001 — baixa lógica com histórico.",
         "operationId": "baixar_cidadao_api_govsaude_v1_cidadaos__cidadao_id__baixar_post",
         "parameters": [
           {
@@ -24770,6 +25447,7 @@
     },
     "/api/govsaude/v1/cidadaos/{cidadao_id}/baixas": {
       "get": {
+        "description": "B.1-001 — baixa lógica com histórico.",
         "operationId": "listar_baixas_cidadao_api_govsaude_v1_cidadaos__cidadao_id__baixas_get",
         "parameters": [
           {
@@ -24822,6 +25500,7 @@
     },
     "/api/govsaude/v1/cidadaos/{cidadao_id}/condicoes": {
       "get": {
+        "description": "B.1-006, B.6-016 — condições/problemas.",
         "operationId": "listar_condicoes_api_govsaude_v1_cidadaos__cidadao_id__condicoes_get",
         "parameters": [
           {
@@ -24872,6 +25551,7 @@
         ]
       },
       "post": {
+        "description": "B.1-006, B.6-016 — condições/problemas.",
         "operationId": "criar_condicao_api_govsaude_v1_cidadaos__cidadao_id__condicoes_post",
         "parameters": [
           {
@@ -24930,6 +25610,7 @@
     },
     "/api/govsaude/v1/cidadaos/{cidadao_id}/condicoes/{condicao_id}/baixar": {
       "post": {
+        "description": "B.1-006, B.6-016 — condições/problemas.",
         "operationId": "baixar_condicao_api_govsaude_v1_cidadaos__cidadao_id__condicoes__condicao_id__baixar_post",
         "parameters": [
           {
@@ -24998,6 +25679,7 @@
     },
     "/api/govsaude/v1/cidadaos/{cidadao_id}/contatos": {
       "get": {
+        "description": "B.1-001, B.1-004 — cadastro do cidadão.",
         "operationId": "listar_contatos_api_govsaude_v1_cidadaos__cidadao_id__contatos_get",
         "parameters": [
           {
@@ -25048,6 +25730,7 @@
         ]
       },
       "post": {
+        "description": "B.1-001, B.1-004 — cadastro do cidadão.",
         "operationId": "criar_contato_api_govsaude_v1_cidadaos__cidadao_id__contatos_post",
         "parameters": [
           {
@@ -25106,6 +25789,7 @@
     },
     "/api/govsaude/v1/cidadaos/{cidadao_id}/contatos/{contato_id}/baixar": {
       "post": {
+        "description": "B.1-001 — baixa lógica com histórico.",
         "operationId": "baixar_contato_api_govsaude_v1_cidadaos__cidadao_id__contatos__contato_id__baixar_post",
         "parameters": [
           {
@@ -25174,6 +25858,7 @@
     },
     "/api/govsaude/v1/cidadaos/{cidadao_id}/documentos": {
       "get": {
+        "description": "B.1-001, B.1-004 — cadastro do cidadão.",
         "operationId": "listar_documentos_api_govsaude_v1_cidadaos__cidadao_id__documentos_get",
         "parameters": [
           {
@@ -25224,6 +25909,7 @@
         ]
       },
       "post": {
+        "description": "B.1-001, B.1-004 — cadastro do cidadão.",
         "operationId": "criar_documento_api_govsaude_v1_cidadaos__cidadao_id__documentos_post",
         "parameters": [
           {
@@ -25282,6 +25968,7 @@
     },
     "/api/govsaude/v1/cidadaos/{cidadao_id}/documentos/{documento_id}/baixar": {
       "post": {
+        "description": "B.1-001 — baixa lógica com histórico.",
         "operationId": "baixar_documento_api_govsaude_v1_cidadaos__cidadao_id__documentos__documento_id__baixar_post",
         "parameters": [
           {
@@ -25350,6 +26037,7 @@
     },
     "/api/govsaude/v1/cidadaos/{cidadao_id}/duplicidades": {
       "get": {
+        "description": "B.12-001 — possíveis duplicidades.",
         "operationId": "listar_duplicidades_api_govsaude_v1_cidadaos__cidadao_id__duplicidades_get",
         "parameters": [
           {
@@ -25412,6 +26100,7 @@
     },
     "/api/govsaude/v1/cidadaos/{cidadao_id}/enderecos": {
       "get": {
+        "description": "B.1-001, B.1-004 — cadastro do cidadão.",
         "operationId": "listar_enderecos_api_govsaude_v1_cidadaos__cidadao_id__enderecos_get",
         "parameters": [
           {
@@ -25462,6 +26151,7 @@
         ]
       },
       "post": {
+        "description": "B.1-001, B.1-004 — cadastro do cidadão.",
         "operationId": "criar_endereco_api_govsaude_v1_cidadaos__cidadao_id__enderecos_post",
         "parameters": [
           {
@@ -25520,6 +26210,7 @@
     },
     "/api/govsaude/v1/cidadaos/{cidadao_id}/enderecos/{endereco_id}/baixar": {
       "post": {
+        "description": "B.1-001 — baixa lógica com histórico.",
         "operationId": "baixar_endereco_api_govsaude_v1_cidadaos__cidadao_id__enderecos__endereco_id__baixar_post",
         "parameters": [
           {
@@ -25588,6 +26279,7 @@
     },
     "/api/govsaude/v1/cidadaos/{cidadao_id}/fotos": {
       "get": {
+        "description": "B.1-002, B.12-011 — foto do cidadão.",
         "operationId": "listar_fotos_api_govsaude_v1_cidadaos__cidadao_id__fotos_get",
         "parameters": [
           {
@@ -25638,6 +26330,7 @@
         ]
       },
       "post": {
+        "description": "B.1-002, B.12-011 — foto do cidadão.",
         "operationId": "enviar_foto_api_govsaude_v1_cidadaos__cidadao_id__fotos_post",
         "parameters": [
           {
@@ -25696,6 +26389,7 @@
     },
     "/api/govsaude/v1/cidadaos/{cidadao_id}/fotos/{foto_id}/baixar": {
       "post": {
+        "description": "B.1-002, B.12-011 — foto do cidadão.",
         "operationId": "baixar_foto_api_govsaude_v1_cidadaos__cidadao_id__fotos__foto_id__baixar_post",
         "parameters": [
           {
@@ -25764,6 +26458,7 @@
     },
     "/api/govsaude/v1/cidadaos/{cidadao_id}/fotos/{foto_id}/conteudo": {
       "get": {
+        "description": "B.1-002, B.12-011 — foto do cidadão.",
         "operationId": "baixar_conteudo_foto_api_govsaude_v1_cidadaos__cidadao_id__fotos__foto_id__conteudo_get",
         "parameters": [
           {
@@ -25820,6 +26515,7 @@
     },
     "/api/govsaude/v1/cidadaos/{cidadao_id}/fotos/{foto_id}/principal": {
       "post": {
+        "description": "B.1-002, B.12-011 — foto do cidadão.",
         "operationId": "definir_foto_principal_api_govsaude_v1_cidadaos__cidadao_id__fotos__foto_id__principal_post",
         "parameters": [
           {
@@ -25878,6 +26574,7 @@
     },
     "/api/govsaude/v1/cidadaos/{cidadao_id}/planos": {
       "get": {
+        "description": "B.1-008 — planos e vínculos assistenciais.",
         "operationId": "listar_planos_api_govsaude_v1_cidadaos__cidadao_id__planos_get",
         "parameters": [
           {
@@ -25928,6 +26625,7 @@
         ]
       },
       "post": {
+        "description": "B.1-001, B.1-004 — cadastro do cidadão.",
         "operationId": "criar_plano_api_govsaude_v1_cidadaos__cidadao_id__planos_post",
         "parameters": [
           {
@@ -25986,6 +26684,7 @@
     },
     "/api/govsaude/v1/cidadaos/{cidadao_id}/planos/{plano_id}/baixar": {
       "post": {
+        "description": "B.1-001 — baixa lógica com histórico.",
         "operationId": "baixar_plano_api_govsaude_v1_cidadaos__cidadao_id__planos__plano_id__baixar_post",
         "parameters": [
           {
@@ -26054,6 +26753,7 @@
     },
     "/api/govsaude/v1/cidadaos/{cidadao_id}/reativar": {
       "post": {
+        "description": "B.1-001 — baixa lógica com histórico.",
         "operationId": "reativar_cidadao_api_govsaude_v1_cidadaos__cidadao_id__reativar_post",
         "parameters": [
           {
@@ -26112,6 +26812,7 @@
     },
     "/api/govsaude/v1/cidadaos/{cidadao_id}/recem-nascido": {
       "post": {
+        "description": "B.1-009 — recém-nascido a partir da mãe.",
         "operationId": "criar_recem_nascido_api_govsaude_v1_cidadaos__cidadao_id__recem_nascido_post",
         "parameters": [
           {
@@ -26170,6 +26871,7 @@
     },
     "/api/govsaude/v1/cidadaos/{cidadao_id}/unificacoes": {
       "get": {
+        "description": "B.1-007 — histórico de unificações.",
         "operationId": "listar_unificacoes_api_govsaude_v1_cidadaos__cidadao_id__unificacoes_get",
         "parameters": [
           {
@@ -26222,6 +26924,7 @@
     },
     "/api/govsaude/v1/cidadaos/{cidadao_id}/unificar": {
       "post": {
+        "description": "B.1-007, B.12-002, B.12-003 — unificação com histórico.",
         "operationId": "unificar_cidadao_api_govsaude_v1_cidadaos__cidadao_id__unificar_post",
         "parameters": [
           {
@@ -26428,6 +27131,7 @@
     },
     "/api/govsaude/v1/consorcios/entes": {
       "get": {
+        "description": "B.12-006 — entes do consórcio.",
         "operationId": "listar_entes_api_govsaude_v1_consorcios_entes_get",
         "parameters": [
           {
@@ -26524,6 +27228,7 @@
         ]
       },
       "post": {
+        "description": "B.12-006 — entes do consórcio.",
         "operationId": "criar_ente_api_govsaude_v1_consorcios_entes_post",
         "requestBody": {
           "content": {
@@ -26570,6 +27275,7 @@
     },
     "/api/govsaude/v1/consorcios/entes/{ente_id}": {
       "get": {
+        "description": "B.12-006 — entes do consórcio.",
         "operationId": "detalhar_ente_api_govsaude_v1_consorcios_entes__ente_id__get",
         "parameters": [
           {
@@ -26616,6 +27322,7 @@
         ]
       },
       "patch": {
+        "description": "B.12-006 — entes do consórcio.",
         "operationId": "atualizar_ente_api_govsaude_v1_consorcios_entes__ente_id__patch",
         "parameters": [
           {
@@ -26690,6 +27397,7 @@
     },
     "/api/govsaude/v1/consorcios/entes/{ente_id}/encerrar": {
       "post": {
+        "description": "B.12-006 — entes do consórcio.",
         "operationId": "encerrar_ente_api_govsaude_v1_consorcios_entes__ente_id__encerrar_post",
         "parameters": [
           {
@@ -26748,6 +27456,7 @@
     },
     "/api/govsaude/v1/equipes": {
       "get": {
+        "description": "B.12-006, B.1-010 — equipes.",
         "operationId": "listar_equipes_api_govsaude_v1_equipes_get",
         "parameters": [
           {
@@ -26861,6 +27570,7 @@
         ]
       },
       "post": {
+        "description": "B.12-006, B.1-010 — equipes.",
         "operationId": "criar_equipe_api_govsaude_v1_equipes_post",
         "requestBody": {
           "content": {
@@ -26907,6 +27617,7 @@
     },
     "/api/govsaude/v1/equipes/{equipe_id}": {
       "get": {
+        "description": "B.12-006, B.1-010 — equipes.",
         "operationId": "detalhar_equipe_api_govsaude_v1_equipes__equipe_id__get",
         "parameters": [
           {
@@ -26953,6 +27664,7 @@
         ]
       },
       "patch": {
+        "description": "B.12-006, B.1-010 — equipes.",
         "operationId": "atualizar_equipe_api_govsaude_v1_equipes__equipe_id__patch",
         "parameters": [
           {
@@ -27027,6 +27739,7 @@
     },
     "/api/govsaude/v1/equipes/{equipe_id}/baixar": {
       "post": {
+        "description": "B.12-006, B.1-010 — equipes.",
         "operationId": "baixar_equipe_api_govsaude_v1_equipes__equipe_id__baixar_post",
         "parameters": [
           {
@@ -27085,6 +27798,7 @@
     },
     "/api/govsaude/v1/equipes/{equipe_id}/profissionais": {
       "get": {
+        "description": "B.12-006, B.1-010 — equipes.",
         "operationId": "listar_profissionais_da_equipe_api_govsaude_v1_equipes__equipe_id__profissionais_get",
         "parameters": [
           {
@@ -27159,6 +27873,7 @@
         ]
       },
       "post": {
+        "description": "B.12-006, B.1-010 — equipes.",
         "operationId": "adicionar_profissional_equipe_api_govsaude_v1_equipes__equipe_id__profissionais_post",
         "parameters": [
           {
@@ -27217,6 +27932,7 @@
     },
     "/api/govsaude/v1/escalas": {
       "get": {
+        "description": "B.12-012 — escalas e plantões.",
         "operationId": "listar_escalas_api_govsaude_v1_escalas_get",
         "parameters": [
           {
@@ -27366,6 +28082,7 @@
         ]
       },
       "post": {
+        "description": "B.12-012 — escalas e plantões.",
         "operationId": "criar_escala_api_govsaude_v1_escalas_post",
         "requestBody": {
           "content": {
@@ -27412,6 +28129,7 @@
     },
     "/api/govsaude/v1/escalas/{escala_id}": {
       "patch": {
+        "description": "B.12-012 — escalas e plantões.",
         "operationId": "atualizar_escala_api_govsaude_v1_escalas__escala_id__patch",
         "parameters": [
           {
@@ -27486,6 +28204,7 @@
     },
     "/api/govsaude/v1/escalas/{escala_id}/cancelar": {
       "post": {
+        "description": "B.12-012 — escalas e plantões.",
         "operationId": "cancelar_escala_api_govsaude_v1_escalas__escala_id__cancelar_post",
         "parameters": [
           {
@@ -27544,6 +28263,7 @@
     },
     "/api/govsaude/v1/estabelecimentos": {
       "get": {
+        "description": "B.12-006 — rede de atenção.",
         "operationId": "listar_estabelecimentos_api_govsaude_v1_estabelecimentos_get",
         "parameters": [
           {
@@ -27656,6 +28376,7 @@
         ]
       },
       "post": {
+        "description": "B.12-006 — rede de atenção.",
         "operationId": "criar_estabelecimento_api_govsaude_v1_estabelecimentos_post",
         "requestBody": {
           "content": {
@@ -27702,6 +28423,7 @@
     },
     "/api/govsaude/v1/estabelecimentos/{estabelecimento_id}": {
       "get": {
+        "description": "B.12-006 — rede de atenção.",
         "operationId": "detalhar_estabelecimento_api_govsaude_v1_estabelecimentos__estabelecimento_id__get",
         "parameters": [
           {
@@ -27748,6 +28470,7 @@
         ]
       },
       "patch": {
+        "description": "B.12-006 — rede de atenção.",
         "operationId": "atualizar_estabelecimento_api_govsaude_v1_estabelecimentos__estabelecimento_id__patch",
         "parameters": [
           {
@@ -27822,6 +28545,7 @@
     },
     "/api/govsaude/v1/estabelecimentos/{estabelecimento_id}/baixar": {
       "post": {
+        "description": "B.12-006 — rede de atenção.",
         "operationId": "baixar_estabelecimento_api_govsaude_v1_estabelecimentos__estabelecimento_id__baixar_post",
         "parameters": [
           {
@@ -27880,6 +28604,7 @@
     },
     "/api/govsaude/v1/estabelecimentos/{estabelecimento_id}/equipes": {
       "get": {
+        "description": "B.12-006, B.1-010 — equipes.",
         "operationId": "listar_equipes_da_unidade_api_govsaude_v1_estabelecimentos__estabelecimento_id__equipes_get",
         "parameters": [
           {
@@ -27956,6 +28681,7 @@
     },
     "/api/govsaude/v1/estabelecimentos/{estabelecimento_id}/horarios": {
       "get": {
+        "description": "B.12-006 — rede de atenção.",
         "operationId": "listar_horarios_api_govsaude_v1_estabelecimentos__estabelecimento_id__horarios_get",
         "parameters": [
           {
@@ -28047,6 +28773,7 @@
         ]
       },
       "post": {
+        "description": "B.12-006 — rede de atenção.",
         "operationId": "criar_horario_api_govsaude_v1_estabelecimentos__estabelecimento_id__horarios_post",
         "parameters": [
           {
@@ -28105,6 +28832,7 @@
     },
     "/api/govsaude/v1/estabelecimentos/{estabelecimento_id}/horarios/{horario_id}": {
       "patch": {
+        "description": "B.12-006 — rede de atenção.",
         "operationId": "atualizar_horario_api_govsaude_v1_estabelecimentos__estabelecimento_id__horarios__horario_id__patch",
         "parameters": [
           {
@@ -28189,6 +28917,7 @@
     },
     "/api/govsaude/v1/estabelecimentos/{estabelecimento_id}/horarios/{horario_id}/baixar": {
       "post": {
+        "description": "B.12-006 — rede de atenção.",
         "operationId": "baixar_horario_api_govsaude_v1_estabelecimentos__estabelecimento_id__horarios__horario_id__baixar_post",
         "parameters": [
           {
@@ -28257,6 +28986,7 @@
     },
     "/api/govsaude/v1/estabelecimentos/{estabelecimento_id}/servicos": {
       "get": {
+        "description": "B.12-006 — rede de atenção.",
         "operationId": "listar_servicos_api_govsaude_v1_estabelecimentos__estabelecimento_id__servicos_get",
         "parameters": [
           {
@@ -28363,6 +29093,7 @@
         ]
       },
       "post": {
+        "description": "B.12-006 — rede de atenção.",
         "operationId": "criar_servico_api_govsaude_v1_estabelecimentos__estabelecimento_id__servicos_post",
         "parameters": [
           {
@@ -28421,6 +29152,7 @@
     },
     "/api/govsaude/v1/estabelecimentos/{estabelecimento_id}/servicos/{servico_id}": {
       "patch": {
+        "description": "B.12-006 — rede de atenção.",
         "operationId": "atualizar_servico_api_govsaude_v1_estabelecimentos__estabelecimento_id__servicos__servico_id__patch",
         "parameters": [
           {
@@ -28505,6 +29237,7 @@
     },
     "/api/govsaude/v1/estabelecimentos/{estabelecimento_id}/servicos/{servico_id}/baixar": {
       "post": {
+        "description": "B.12-006 — rede de atenção.",
         "operationId": "baixar_servico_api_govsaude_v1_estabelecimentos__estabelecimento_id__servicos__servico_id__baixar_post",
         "parameters": [
           {
@@ -28573,6 +29306,7 @@
     },
     "/api/govsaude/v1/estabelecimentos/{estabelecimento_id}/setores": {
       "get": {
+        "description": "B.12-006 — rede de atenção.",
         "operationId": "listar_setores_api_govsaude_v1_estabelecimentos__estabelecimento_id__setores_get",
         "parameters": [
           {
@@ -28647,6 +29381,7 @@
         ]
       },
       "post": {
+        "description": "B.12-006 — rede de atenção.",
         "operationId": "criar_setor_api_govsaude_v1_estabelecimentos__estabelecimento_id__setores_post",
         "parameters": [
           {
@@ -28705,6 +29440,7 @@
     },
     "/api/govsaude/v1/estabelecimentos/{estabelecimento_id}/setores/{setor_id}": {
       "patch": {
+        "description": "B.12-006 — rede de atenção.",
         "operationId": "atualizar_setor_api_govsaude_v1_estabelecimentos__estabelecimento_id__setores__setor_id__patch",
         "parameters": [
           {
@@ -28835,6 +29571,63 @@
           }
         ],
         "summary": "Historico",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
+    "/api/govsaude/v1/estoque/cidadaos/{cidadao_id}/prescricoes": {
+      "get": {
+        "description": "B.4-019 — prescrições do cidadão para a farmácia, com saldo no local e o já\ndispensado; sem dados clínicos além dos itens.",
+        "operationId": "prescricoes_api_govsaude_v1_estoque_cidadaos__cidadao_id__prescricoes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cidadao_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Cidadao Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "local_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Local Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Prescricoes",
         "tags": [
           "Estoque e assistência farmacêutica"
         ]
@@ -29908,6 +30701,53 @@
         ]
       }
     },
+    "/api/govsaude/v1/estoque/lotes/{id}/rastreabilidade": {
+      "get": {
+        "description": "B.4-036 — trajetória do lote da aquisição à dispensação ou perda.",
+        "operationId": "rastreabilidade_api_govsaude_v1_estoque_lotes__id__rastreabilidade_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Rastreabilidade",
+        "tags": [
+          "Estoque e assistência farmacêutica"
+        ]
+      }
+    },
     "/api/govsaude/v1/estoque/movimentacoes": {
       "post": {
         "description": "B.4-007, B.4-009, B.4-012, B.4-035 — lançamento no ledger imutável; FEFO sem lote.",
@@ -30516,6 +31356,7 @@
     },
     "/api/govsaude/v1/filas": {
       "get": {
+        "description": "B.6-008, B.6-012 — fila de atendimento.",
         "operationId": "listar_fila_api_govsaude_v1_filas_get",
         "parameters": [
           {
@@ -30591,6 +31432,7 @@
         ]
       },
       "post": {
+        "description": "B.6-008, B.6-012 — fila de atendimento.",
         "operationId": "entrar_na_fila_api_govsaude_v1_filas_post",
         "requestBody": {
           "content": {
@@ -30637,6 +31479,7 @@
     },
     "/api/govsaude/v1/filas/{fila_id}": {
       "get": {
+        "description": "B.6-008, B.6-012 — fila de atendimento.",
         "operationId": "detalhar_fila_api_govsaude_v1_filas__fila_id__get",
         "parameters": [
           {
@@ -30685,6 +31528,7 @@
     },
     "/api/govsaude/v1/filas/{fila_id}/cancelar": {
       "post": {
+        "description": "B.6-008, B.6-012 — fila de atendimento.",
         "operationId": "cancelar_api_govsaude_v1_filas__fila_id__cancelar_post",
         "parameters": [
           {
@@ -30743,6 +31587,7 @@
     },
     "/api/govsaude/v1/filas/{fila_id}/chamar": {
       "post": {
+        "description": "B.6-012, B.6-045 — chamada no painel.",
         "operationId": "chamar_api_govsaude_v1_filas__fila_id__chamar_post",
         "parameters": [
           {
@@ -30801,6 +31646,7 @@
     },
     "/api/govsaude/v1/filas/{fila_id}/classificacao": {
       "post": {
+        "description": "B.6-007, B.6-012 — classificação de risco.",
         "operationId": "classificar_fila_api_govsaude_v1_filas__fila_id__classificacao_post",
         "parameters": [
           {
@@ -30859,6 +31705,7 @@
     },
     "/api/govsaude/v1/filas/{fila_id}/evadir": {
       "post": {
+        "description": "B.6-008, B.6-012 — fila de atendimento.",
         "operationId": "evadir_api_govsaude_v1_filas__fila_id__evadir_post",
         "parameters": [
           {
@@ -30907,6 +31754,7 @@
     },
     "/api/govsaude/v1/filas/{fila_id}/eventos": {
       "get": {
+        "description": "B.6-047 — eventos e tempos.",
         "operationId": "eventos_fila_api_govsaude_v1_filas__fila_id__eventos_get",
         "parameters": [
           {
@@ -30959,6 +31807,7 @@
     },
     "/api/govsaude/v1/filas/{fila_id}/finalizar": {
       "post": {
+        "description": "B.6-008, B.6-012 — fila de atendimento.",
         "operationId": "finalizar_api_govsaude_v1_filas__fila_id__finalizar_post",
         "parameters": [
           {
@@ -31024,6 +31873,7 @@
     },
     "/api/govsaude/v1/filas/{fila_id}/finalizar-triagem": {
       "post": {
+        "description": "B.6-008, B.6-012 — fila de atendimento.",
         "operationId": "finalizar_triagem_api_govsaude_v1_filas__fila_id__finalizar_triagem_post",
         "parameters": [
           {
@@ -31072,6 +31922,7 @@
     },
     "/api/govsaude/v1/filas/{fila_id}/iniciar-atendimento": {
       "post": {
+        "description": "B.6-008, B.6-012 — fila de atendimento.",
         "operationId": "iniciar_atendimento_api_govsaude_v1_filas__fila_id__iniciar_atendimento_post",
         "parameters": [
           {
@@ -31120,6 +31971,7 @@
     },
     "/api/govsaude/v1/filas/{fila_id}/iniciar-triagem": {
       "post": {
+        "description": "B.6-008, B.6-012 — fila de atendimento.",
         "operationId": "iniciar_triagem_api_govsaude_v1_filas__fila_id__iniciar_triagem_post",
         "parameters": [
           {
@@ -31168,6 +32020,7 @@
     },
     "/api/govsaude/v1/filas/{fila_id}/rechamar": {
       "post": {
+        "description": "B.6-012, B.6-045 — rechamada.",
         "operationId": "rechamar_api_govsaude_v1_filas__fila_id__rechamar_post",
         "parameters": [
           {
@@ -31226,6 +32079,7 @@
     },
     "/api/govsaude/v1/formularios": {
       "get": {
+        "description": "B.12-013, B.2-004 — formulários dinâmicos versionados.",
         "operationId": "listar_formularios_api_govsaude_v1_formularios_get",
         "parameters": [
           {
@@ -31308,6 +32162,7 @@
         ]
       },
       "post": {
+        "description": "B.12-013, B.2-004 — formulários dinâmicos versionados.",
         "operationId": "criar_formulario_api_govsaude_v1_formularios_post",
         "requestBody": {
           "content": {
@@ -31354,6 +32209,7 @@
     },
     "/api/govsaude/v1/formularios/{codigo}": {
       "get": {
+        "description": "B.12-013, B.2-004 — formulários dinâmicos versionados.",
         "operationId": "detalhar_formulario_api_govsaude_v1_formularios__codigo__get",
         "parameters": [
           {
@@ -31401,6 +32257,7 @@
     },
     "/api/govsaude/v1/formularios/{codigo}/respostas": {
       "get": {
+        "description": "B.12-013, B.2-004 — formulários dinâmicos versionados.",
         "operationId": "listar_respostas_api_govsaude_v1_formularios__codigo__respostas_get",
         "parameters": [
           {
@@ -31471,6 +32328,7 @@
         ]
       },
       "post": {
+        "description": "B.12-013, B.2-004 — formulários dinâmicos versionados.",
         "operationId": "submeter_resposta_api_govsaude_v1_formularios__codigo__respostas_post",
         "parameters": [
           {
@@ -31528,6 +32386,7 @@
     },
     "/api/govsaude/v1/grupos": {
       "get": {
+        "description": "B.12-050 — usuários, grupos e privilégios.",
         "operationId": "listar_grupos_api_govsaude_v1_grupos_get",
         "responses": {
           "200": {
@@ -31558,6 +32417,7 @@
     },
     "/api/govsaude/v1/importacoes/cnes": {
       "get": {
+        "description": "B.1-010, B.12-010, B.12-031 — importação CNES.",
         "operationId": "listar_importacoes_cnes_api_govsaude_v1_importacoes_cnes_get",
         "parameters": [
           {
@@ -31622,6 +32482,7 @@
         ]
       },
       "post": {
+        "description": "B.1-010, B.12-010, B.12-031 — importação CNES.",
         "operationId": "importar_cnes_api_govsaude_v1_importacoes_cnes_post",
         "requestBody": {
           "content": {
@@ -31668,6 +32529,7 @@
     },
     "/api/govsaude/v1/importacoes/cnes/{job_id}": {
       "get": {
+        "description": "B.1-010, B.12-010, B.12-031 — importação CNES.",
         "operationId": "relatorio_importacao_cnes_api_govsaude_v1_importacoes_cnes__job_id__get",
         "parameters": [
           {
@@ -31716,6 +32578,7 @@
     },
     "/api/govsaude/v1/inscricoes-programa": {
       "get": {
+        "description": "B.2-003 — inscrição no programa.",
         "operationId": "listar_inscricoes_api_govsaude_v1_inscricoes_programa_get",
         "parameters": [
           {
@@ -31848,6 +32711,7 @@
         ]
       },
       "post": {
+        "description": "B.2-003 — inscrição no programa.",
         "operationId": "criar_inscricao_api_govsaude_v1_inscricoes_programa_post",
         "requestBody": {
           "content": {
@@ -31894,6 +32758,7 @@
     },
     "/api/govsaude/v1/inscricoes-programa/{inscricao_id}": {
       "get": {
+        "description": "B.2-003 — inscrição no programa.",
         "operationId": "detalhar_inscricao_api_govsaude_v1_inscricoes_programa__inscricao_id__get",
         "parameters": [
           {
@@ -31940,6 +32805,7 @@
         ]
       },
       "patch": {
+        "description": "B.2-003 — inscrição no programa.",
         "operationId": "atualizar_inscricao_api_govsaude_v1_inscricoes_programa__inscricao_id__patch",
         "parameters": [
           {
@@ -32014,6 +32880,7 @@
     },
     "/api/govsaude/v1/inscricoes-programa/{inscricao_id}/encerrar": {
       "post": {
+        "description": "B.2-003 — inscrição no programa.",
         "operationId": "encerrar_inscricao_api_govsaude_v1_inscricoes_programa__inscricao_id__encerrar_post",
         "parameters": [
           {
@@ -32088,6 +32955,7 @@
     },
     "/api/govsaude/v1/inscricoes-programa/{inscricao_id}/gerar-programacoes": {
       "post": {
+        "description": "B.2-002 — programação do acompanhamento.",
         "operationId": "gerar_programacoes_api_govsaude_v1_inscricoes_programa__inscricao_id__gerar_programacoes_post",
         "parameters": [
           {
@@ -32895,6 +33763,64 @@
         ]
       }
     },
+    "/api/govsaude/v1/odontologia/atendimentos/{atendimento_id}/ficha": {
+      "get": {
+        "description": "B.3-017 — ficha completa com odontograma, procedimentos, receitas, exames e\nencaminhamentos; impressão auditada.",
+        "operationId": "ficha_api_govsaude_v1_odontologia_atendimentos__atendimento_id__ficha_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "atendimento_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Atendimento Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "formato",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "pattern": "^(json|pdf)$",
+              "title": "Formato",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ficha",
+        "tags": [
+          "Odontologia"
+        ]
+      }
+    },
     "/api/govsaude/v1/odontologia/atendimentos/{atendimento_id}/finalizar": {
       "post": {
         "description": "B.3-009 — finaliza e bloqueia alteração.",
@@ -33624,6 +34550,7 @@
     },
     "/api/govsaude/v1/paineis-chamada": {
       "get": {
+        "description": "B.6-045, B.6-046 — painel de chamada.",
         "operationId": "listar_paineis_api_govsaude_v1_paineis_chamada_get",
         "parameters": [
           {
@@ -33738,6 +34665,7 @@
         ]
       },
       "post": {
+        "description": "B.6-045, B.6-046 — painel de chamada.",
         "operationId": "criar_painel_api_govsaude_v1_paineis_chamada_post",
         "requestBody": {
           "content": {
@@ -33784,6 +34712,7 @@
     },
     "/api/govsaude/v1/paineis-chamada/{painel_id}": {
       "get": {
+        "description": "B.6-045, B.6-046 — painel de chamada.",
         "operationId": "detalhar_painel_api_govsaude_v1_paineis_chamada__painel_id__get",
         "parameters": [
           {
@@ -33830,6 +34759,7 @@
         ]
       },
       "patch": {
+        "description": "B.6-045, B.6-046 — painel de chamada.",
         "operationId": "atualizar_painel_api_govsaude_v1_paineis_chamada__painel_id__patch",
         "parameters": [
           {
@@ -33904,6 +34834,7 @@
     },
     "/api/govsaude/v1/paineis-chamada/{painel_id}/estado": {
       "get": {
+        "description": "B.6-045, B.6-046 — painel de chamada.",
         "operationId": "estado_painel_api_govsaude_v1_paineis_chamada__painel_id__estado_get",
         "parameters": [
           {
@@ -33952,6 +34883,7 @@
     },
     "/api/govsaude/v1/permissoes": {
       "get": {
+        "description": "B.12-050 — usuários, grupos e privilégios.",
         "operationId": "listar_permissoes_api_govsaude_v1_permissoes_get",
         "responses": {
           "200": {
@@ -33976,6 +34908,7 @@
     },
     "/api/govsaude/v1/plantoes": {
       "get": {
+        "description": "B.12-006 — rede de atenção.",
         "operationId": "listar_plantoes_api_govsaude_v1_plantoes_get",
         "parameters": [
           {
@@ -34125,6 +35058,7 @@
         ]
       },
       "post": {
+        "description": "B.12-012 — escalas e plantões.",
         "operationId": "criar_plantao_api_govsaude_v1_plantoes_post",
         "requestBody": {
           "content": {
@@ -34171,6 +35105,7 @@
     },
     "/api/govsaude/v1/plantoes/{plantao_id}": {
       "patch": {
+        "description": "B.12-012 — escalas e plantões.",
         "operationId": "atualizar_plantao_api_govsaude_v1_plantoes__plantao_id__patch",
         "parameters": [
           {
@@ -34245,6 +35180,7 @@
     },
     "/api/govsaude/v1/plantoes/{plantao_id}/cancelar": {
       "post": {
+        "description": "B.12-012 — escalas e plantões.",
         "operationId": "cancelar_plantao_api_govsaude_v1_plantoes__plantao_id__cancelar_post",
         "parameters": [
           {
@@ -34303,6 +35239,7 @@
     },
     "/api/govsaude/v1/prioridades": {
       "get": {
+        "description": "B.12-016 — prioridades legal/clínica.",
         "operationId": "listar_prioridades_api_govsaude_v1_prioridades_get",
         "parameters": [
           {
@@ -34399,6 +35336,7 @@
         ]
       },
       "post": {
+        "description": "B.12-016 — prioridades legal/clínica.",
         "operationId": "criar_prioridade_api_govsaude_v1_prioridades_post",
         "requestBody": {
           "content": {
@@ -34445,6 +35383,7 @@
     },
     "/api/govsaude/v1/prioridades/{prioridade_id}": {
       "patch": {
+        "description": "B.12-016 — prioridades legal/clínica.",
         "operationId": "atualizar_prioridade_api_govsaude_v1_prioridades__prioridade_id__patch",
         "parameters": [
           {
@@ -34519,6 +35458,7 @@
     },
     "/api/govsaude/v1/prioridades/{prioridade_id}/baixar": {
       "post": {
+        "description": "B.12-016 — prioridades legal/clínica.",
         "operationId": "baixar_prioridade_api_govsaude_v1_prioridades__prioridade_id__baixar_post",
         "parameters": [
           {
@@ -34577,6 +35517,7 @@
     },
     "/api/govsaude/v1/procedimentos-autorizados": {
       "get": {
+        "description": "B.12-007, B.12-015 — procedimentos autorizados.",
         "operationId": "listar_procedimentos_api_govsaude_v1_procedimentos_autorizados_get",
         "parameters": [
           {
@@ -34708,6 +35649,7 @@
         ]
       },
       "post": {
+        "description": "B.12-007, B.12-015 — procedimentos autorizados.",
         "operationId": "criar_procedimento_api_govsaude_v1_procedimentos_autorizados_post",
         "requestBody": {
           "content": {
@@ -34754,6 +35696,7 @@
     },
     "/api/govsaude/v1/procedimentos-autorizados/{procedimento_id}": {
       "patch": {
+        "description": "B.12-007, B.12-015 — procedimentos autorizados.",
         "operationId": "atualizar_procedimento_api_govsaude_v1_procedimentos_autorizados__procedimento_id__patch",
         "parameters": [
           {
@@ -34828,6 +35771,7 @@
     },
     "/api/govsaude/v1/procedimentos-autorizados/{procedimento_id}/baixar": {
       "post": {
+        "description": "B.12-007, B.12-015 — procedimentos autorizados.",
         "operationId": "baixar_procedimento_api_govsaude_v1_procedimentos_autorizados__procedimento_id__baixar_post",
         "parameters": [
           {
@@ -34886,6 +35830,7 @@
     },
     "/api/govsaude/v1/profissionais": {
       "get": {
+        "description": "B.12-006 — rede de atenção.",
         "operationId": "listar_profissionais_api_govsaude_v1_profissionais_get",
         "parameters": [
           {
@@ -34983,6 +35928,7 @@
         ]
       },
       "post": {
+        "description": "B.12-006 — rede de atenção.",
         "operationId": "criar_profissional_api_govsaude_v1_profissionais_post",
         "requestBody": {
           "content": {
@@ -35029,6 +35975,7 @@
     },
     "/api/govsaude/v1/profissionais/busca": {
       "post": {
+        "description": "B.12-006 — rede de atenção.",
         "operationId": "buscar_profissionais_api_govsaude_v1_profissionais_busca_post",
         "requestBody": {
           "content": {
@@ -35075,6 +36022,7 @@
     },
     "/api/govsaude/v1/profissionais/{profissional_id}": {
       "get": {
+        "description": "B.12-006 — rede de atenção.",
         "operationId": "detalhar_profissional_api_govsaude_v1_profissionais__profissional_id__get",
         "parameters": [
           {
@@ -35121,6 +36069,7 @@
         ]
       },
       "patch": {
+        "description": "B.12-006 — rede de atenção.",
         "operationId": "atualizar_profissional_api_govsaude_v1_profissionais__profissional_id__patch",
         "parameters": [
           {
@@ -35195,6 +36144,7 @@
     },
     "/api/govsaude/v1/profissionais/{profissional_id}/baixar": {
       "post": {
+        "description": "B.12-006 — rede de atenção.",
         "operationId": "baixar_profissional_api_govsaude_v1_profissionais__profissional_id__baixar_post",
         "parameters": [
           {
@@ -35253,6 +36203,7 @@
     },
     "/api/govsaude/v1/profissionais/{profissional_id}/especialidades": {
       "get": {
+        "description": "B.12-006 — rede de atenção.",
         "operationId": "listar_especialidades_profissional_api_govsaude_v1_profissionais__profissional_id__especialidades_get",
         "parameters": [
           {
@@ -35303,6 +36254,7 @@
         ]
       },
       "post": {
+        "description": "B.12-006 — rede de atenção.",
         "operationId": "adicionar_especialidade_profissional_api_govsaude_v1_profissionais__profissional_id__especialidades_post",
         "parameters": [
           {
@@ -35361,6 +36313,7 @@
     },
     "/api/govsaude/v1/profissionais/{profissional_id}/vinculos": {
       "get": {
+        "description": "B.1-011 — vínculos com vigência.",
         "operationId": "listar_vinculos_api_govsaude_v1_profissionais__profissional_id__vinculos_get",
         "parameters": [
           {
@@ -35445,6 +36398,7 @@
         ]
       },
       "post": {
+        "description": "B.1-011 — vínculos com vigência.",
         "operationId": "criar_vinculo_api_govsaude_v1_profissionais__profissional_id__vinculos_post",
         "parameters": [
           {
@@ -35503,6 +36457,7 @@
     },
     "/api/govsaude/v1/programacoes-programa": {
       "get": {
+        "description": "B.2-002 — acompanhamentos e fornecimentos programados.",
         "operationId": "listar_programacoes_api_govsaude_v1_programacoes_programa_get",
         "parameters": [
           {
@@ -35683,6 +36638,7 @@
         ]
       },
       "post": {
+        "description": "B.2-002 — acompanhamentos e fornecimentos programados.",
         "operationId": "criar_programacao_api_govsaude_v1_programacoes_programa_post",
         "requestBody": {
           "content": {
@@ -35729,6 +36685,7 @@
     },
     "/api/govsaude/v1/programacoes-programa/{programacao_id}": {
       "get": {
+        "description": "B.2-002 — acompanhamentos e fornecimentos programados.",
         "operationId": "detalhar_programacao_api_govsaude_v1_programacoes_programa__programacao_id__get",
         "parameters": [
           {
@@ -35777,6 +36734,7 @@
     },
     "/api/govsaude/v1/programacoes-programa/{programacao_id}/perder": {
       "post": {
+        "description": "B.2-002 — acompanhamentos e fornecimentos programados.",
         "operationId": "perder_programacao_api_govsaude_v1_programacoes_programa__programacao_id__perder_post",
         "parameters": [
           {
@@ -35835,6 +36793,7 @@
     },
     "/api/govsaude/v1/programacoes-programa/{programacao_id}/realizar": {
       "post": {
+        "description": "B.2-002 — acompanhamentos e fornecimentos programados.",
         "operationId": "realizar_programacao_api_govsaude_v1_programacoes_programa__programacao_id__realizar_post",
         "parameters": [
           {
@@ -35893,6 +36852,7 @@
     },
     "/api/govsaude/v1/programacoes-programa/{programacao_id}/remarcar": {
       "post": {
+        "description": "B.2-002 — acompanhamentos e fornecimentos programados.",
         "operationId": "remarcar_programacao_api_govsaude_v1_programacoes_programa__programacao_id__remarcar_post",
         "parameters": [
           {
@@ -35951,6 +36911,7 @@
     },
     "/api/govsaude/v1/programas": {
       "get": {
+        "description": "B.2-001, B.2-015 — programas parametrizáveis.",
         "operationId": "listar_programas_api_govsaude_v1_programas_get",
         "parameters": [
           {
@@ -36080,6 +37041,7 @@
         ]
       },
       "post": {
+        "description": "B.2-001, B.2-015 — programas parametrizáveis.",
         "operationId": "criar_programa_api_govsaude_v1_programas_post",
         "requestBody": {
           "content": {
@@ -36126,6 +37088,7 @@
     },
     "/api/govsaude/v1/programas/linhas-cuidado": {
       "get": {
+        "description": "B.2-001, B.2-015 — programas parametrizáveis.",
         "operationId": "listar_linhas_cuidado_api_govsaude_v1_programas_linhas_cuidado_get",
         "responses": {
           "200": {
@@ -36156,6 +37119,7 @@
     },
     "/api/govsaude/v1/programas/{programa_id}": {
       "get": {
+        "description": "B.2-001, B.2-015 — programas parametrizáveis.",
         "operationId": "detalhar_programa_api_govsaude_v1_programas__programa_id__get",
         "parameters": [
           {
@@ -36202,6 +37166,7 @@
         ]
       },
       "patch": {
+        "description": "B.2-001, B.2-015 — programas parametrizáveis.",
         "operationId": "atualizar_programa_api_govsaude_v1_programas__programa_id__patch",
         "parameters": [
           {
@@ -36276,6 +37241,7 @@
     },
     "/api/govsaude/v1/programas/{programa_id}/elegibilidade": {
       "get": {
+        "description": "B.2-003 — elegibilidade.",
         "operationId": "avaliar_elegibilidade_api_govsaude_v1_programas__programa_id__elegibilidade_get",
         "parameters": [
           {
@@ -36350,6 +37316,7 @@
     },
     "/api/govsaude/v1/programas/{programa_id}/estimativa-demanda": {
       "get": {
+        "description": "B.2-014 — demanda futura.",
         "operationId": "estimativa_demanda_api_govsaude_v1_programas__programa_id__estimativa_demanda_get",
         "parameters": [
           {
@@ -36427,6 +37394,7 @@
     },
     "/api/govsaude/v1/programas/{programa_id}/gerar-programacoes": {
       "post": {
+        "description": "B.2-002 — programação.",
         "operationId": "gerar_programacoes_api_govsaude_v1_programas__programa_id__gerar_programacoes_post",
         "parameters": [
           {
@@ -36485,6 +37453,7 @@
     },
     "/api/govsaude/v1/programas/{programa_id}/itens": {
       "get": {
+        "description": "B.2-001, B.2-015 — programas parametrizáveis.",
         "operationId": "listar_itens_api_govsaude_v1_programas__programa_id__itens_get",
         "parameters": [
           {
@@ -36535,6 +37504,7 @@
         ]
       },
       "post": {
+        "description": "B.2-001, B.2-015 — programas parametrizáveis.",
         "operationId": "criar_item_api_govsaude_v1_programas__programa_id__itens_post",
         "parameters": [
           {
@@ -36593,6 +37563,7 @@
     },
     "/api/govsaude/v1/programas/{programa_id}/itens/{item_id}": {
       "patch": {
+        "description": "B.2-001, B.2-015 — programas parametrizáveis.",
         "operationId": "atualizar_item_api_govsaude_v1_programas__programa_id__itens__item_id__patch",
         "parameters": [
           {
@@ -36661,6 +37632,7 @@
     },
     "/api/govsaude/v1/programas/{programa_id}/lista-nominal": {
       "get": {
+        "description": "B.2-011 — lista nominal para busca ativa.",
         "operationId": "lista_nominal_api_govsaude_v1_programas__programa_id__lista_nominal_get",
         "parameters": [
           {
@@ -36731,6 +37703,7 @@
     },
     "/api/govsaude/v1/programas/{programa_id}/nova-versao": {
       "post": {
+        "description": "B.2-001, B.2-015 — programas parametrizáveis.",
         "operationId": "nova_versao_programa_api_govsaude_v1_programas__programa_id__nova_versao_post",
         "parameters": [
           {
@@ -36789,6 +37762,7 @@
     },
     "/api/govsaude/v1/programas/{programa_id}/resumo": {
       "get": {
+        "description": "B.2-012 — resumo do programa.",
         "operationId": "resumo_programa_api_govsaude_v1_programas__programa_id__resumo_get",
         "parameters": [
           {
@@ -38036,6 +39010,7 @@
     },
     "/api/govsaude/v1/protocolos-classificacao-risco": {
       "get": {
+        "description": "B.6-007, B.3-003 — protocolos de classificação de risco.",
         "operationId": "listar_protocolos_api_govsaude_v1_protocolos_classificacao_risco_get",
         "parameters": [
           {
@@ -38133,6 +39108,7 @@
         ]
       },
       "post": {
+        "description": "B.6-007, B.3-003 — protocolos de classificação de risco.",
         "operationId": "criar_protocolo_api_govsaude_v1_protocolos_classificacao_risco_post",
         "requestBody": {
           "content": {
@@ -38179,6 +39155,7 @@
     },
     "/api/govsaude/v1/protocolos-classificacao-risco/{protocolo_id}": {
       "get": {
+        "description": "B.6-007, B.3-003 — protocolos de classificação de risco.",
         "operationId": "detalhar_protocolo_api_govsaude_v1_protocolos_classificacao_risco__protocolo_id__get",
         "parameters": [
           {
@@ -38225,6 +39202,7 @@
         ]
       },
       "patch": {
+        "description": "B.6-007, B.3-003 — protocolos de classificação de risco.",
         "operationId": "atualizar_protocolo_api_govsaude_v1_protocolos_classificacao_risco__protocolo_id__patch",
         "parameters": [
           {
@@ -38299,6 +39277,7 @@
     },
     "/api/govsaude/v1/recepcao/cartao": {
       "post": {
+        "description": "B.6-003 — cartão com código.",
         "operationId": "emitir_cartao_api_govsaude_v1_recepcao_cartao_post",
         "requestBody": {
           "content": {
@@ -38345,6 +39324,7 @@
     },
     "/api/govsaude/v1/recepcao/check-in": {
       "post": {
+        "description": "B.6-001, B.6-003, B.6-005, B.3-008 — recepção por código ou identificação.",
         "operationId": "check_in_api_govsaude_v1_recepcao_check_in_post",
         "requestBody": {
           "content": {
@@ -38391,6 +39371,7 @@
     },
     "/api/govsaude/v1/recepcao/demanda-espontanea": {
       "post": {
+        "description": "B.6-001 — demanda espontânea.",
         "operationId": "demanda_espontanea_api_govsaude_v1_recepcao_demanda_espontanea_post",
         "requestBody": {
           "content": {
@@ -38437,6 +39418,7 @@
     },
     "/api/govsaude/v1/referencia/cbo": {
       "get": {
+        "description": "B.12-006 — CBO.",
         "operationId": "cbo_api_govsaude_v1_referencia_cbo_get",
         "parameters": [
           {
@@ -38501,6 +39483,7 @@
     },
     "/api/govsaude/v1/referencia/ciap2": {
       "get": {
+        "description": "B.6-016 — CIAP-2.",
         "operationId": "ciap2_api_govsaude_v1_referencia_ciap2_get",
         "parameters": [
           {
@@ -38565,6 +39548,7 @@
     },
     "/api/govsaude/v1/referencia/cid10": {
       "get": {
+        "description": "B.6-016 — CID-10.",
         "operationId": "cid10_api_govsaude_v1_referencia_cid10_get",
         "parameters": [
           {
@@ -38629,6 +39613,7 @@
     },
     "/api/govsaude/v1/referencia/cnae": {
       "get": {
+        "description": "B.9-001 — CNAE.",
         "operationId": "cnae_api_govsaude_v1_referencia_cnae_get",
         "parameters": [
           {
@@ -38693,6 +39678,7 @@
     },
     "/api/govsaude/v1/referencia/imunobiologicos": {
       "get": {
+        "description": "B.7-001 — imunobiológicos.",
         "operationId": "imunobiologicos_api_govsaude_v1_referencia_imunobiologicos_get",
         "parameters": [
           {
@@ -38757,6 +39743,7 @@
     },
     "/api/govsaude/v1/referencia/medicamentos": {
       "get": {
+        "description": "B.4-038 — medicamentos.",
         "operationId": "medicamentos_api_govsaude_v1_referencia_medicamentos_get",
         "parameters": [
           {
@@ -38821,6 +39808,7 @@
     },
     "/api/govsaude/v1/referencia/municipios": {
       "get": {
+        "description": "B.12-008 — municípios IBGE.",
         "operationId": "municipios_api_govsaude_v1_referencia_municipios_get",
         "parameters": [
           {
@@ -38901,6 +39889,7 @@
     },
     "/api/govsaude/v1/referencia/sigtap": {
       "get": {
+        "description": "B.12-028 — SIGTAP.",
         "operationId": "sigtap_api_govsaude_v1_referencia_sigtap_get",
         "parameters": [
           {
@@ -38979,8 +39968,451 @@
         ]
       }
     },
+    "/api/govsaude/v1/relatorios/estoque/locais/{local_id}/movimentacoes": {
+      "get": {
+        "description": "B.4-026, B.4-028 — entradas, saídas, dispensações, transferências, perdas e\najustes (quantidade e valor), com comparativo.",
+        "operationId": "estoque_api_govsaude_v1_relatorios_estoque_locais__local_id__movimentacoes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "local_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Local Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "inicio",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Inicio",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fim",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Fim",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agrupar_por",
+            "required": false,
+            "schema": {
+              "default": "mes",
+              "pattern": "^(mes|tipo|produto)$",
+              "title": "Agrupar Por",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "comparar",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Comparar",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "formato",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "enum": [
+                "json",
+                "csv",
+                "xlsx",
+                "pdf"
+              ],
+              "title": "Formato",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "orientacao",
+            "required": false,
+            "schema": {
+              "default": "paisagem",
+              "enum": [
+                "retrato",
+                "paisagem"
+              ],
+              "title": "Orientacao",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Estoque",
+        "tags": [
+          "Relatórios"
+        ]
+      }
+    },
+    "/api/govsaude/v1/relatorios/filas/tempos": {
+      "get": {
+        "description": "B.6-047 — tempos médios de espera, triagem e consulta por unidade, setor ou mês.",
+        "operationId": "tempos_api_govsaude_v1_relatorios_filas_tempos_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "inicio",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Inicio",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fim",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Fim",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agrupar_por",
+            "required": false,
+            "schema": {
+              "default": "estabelecimento",
+              "pattern": "^(mes|estabelecimento|setor)$",
+              "title": "Agrupar Por",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "comparar",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Comparar",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "formato",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "enum": [
+                "json",
+                "csv",
+                "xlsx",
+                "pdf"
+              ],
+              "title": "Formato",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "orientacao",
+            "required": false,
+            "schema": {
+              "default": "retrato",
+              "enum": [
+                "retrato",
+                "paisagem"
+              ],
+              "title": "Orientacao",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Tempos",
+        "tags": [
+          "Relatórios"
+        ]
+      }
+    },
+    "/api/govsaude/v1/relatorios/odontologia/atendimentos": {
+      "get": {
+        "description": "B.3-019, B.3-021 — atendimentos e procedimentos odontológicos por profissional,\nunidade, tipo, faixa etária ou mês, com comparativo temporal.",
+        "operationId": "odonto_api_govsaude_v1_relatorios_odontologia_atendimentos_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "inicio",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Inicio",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fim",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Fim",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agrupar_por",
+            "required": false,
+            "schema": {
+              "default": "mes",
+              "pattern": "^(mes|estabelecimento|profissional|tipo|faixa_etaria)$",
+              "title": "Agrupar Por",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "comparar",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Comparar",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "formato",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "enum": [
+                "json",
+                "csv",
+                "xlsx",
+                "pdf"
+              ],
+              "title": "Formato",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "orientacao",
+            "required": false,
+            "schema": {
+              "default": "retrato",
+              "enum": [
+                "retrato",
+                "paisagem"
+              ],
+              "title": "Orientacao",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Odonto",
+        "tags": [
+          "Relatórios"
+        ]
+      }
+    },
+    "/api/govsaude/v1/relatorios/prontuario/atendimentos": {
+      "get": {
+        "description": "B.6-048, B.6-049 — atendimentos, diagnósticos, prescrições e registros (exames,\nencaminhamentos…) por período, unidade ou tipo, com comparativo temporal.",
+        "operationId": "pec_api_govsaude_v1_relatorios_prontuario_atendimentos_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "inicio",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Inicio",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fim",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Fim",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agrupar_por",
+            "required": false,
+            "schema": {
+              "default": "mes",
+              "pattern": "^(mes|estabelecimento|tipo|diagnostico)$",
+              "title": "Agrupar Por",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "comparar",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Comparar",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "formato",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "enum": [
+                "json",
+                "csv",
+                "xlsx",
+                "pdf"
+              ],
+              "title": "Formato",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "orientacao",
+            "required": false,
+            "schema": {
+              "default": "retrato",
+              "enum": [
+                "retrato",
+                "paisagem"
+              ],
+              "title": "Orientacao",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Pec",
+        "tags": [
+          "Relatórios"
+        ]
+      }
+    },
     "/api/govsaude/v1/restricoes-horario": {
       "get": {
+        "description": "B.12-012, B.12-049 — restrição de horário.",
         "operationId": "listar_restricoes_api_govsaude_v1_restricoes_horario_get",
         "parameters": [
           {
@@ -39079,6 +40511,7 @@
         ]
       },
       "post": {
+        "description": "B.12-012, B.12-049 — restrição de horário.",
         "operationId": "criar_restricao_api_govsaude_v1_restricoes_horario_post",
         "requestBody": {
           "content": {
@@ -39125,6 +40558,7 @@
     },
     "/api/govsaude/v1/restricoes-horario/{restricao_id}": {
       "patch": {
+        "description": "B.12-012, B.12-049 — restrição de horário.",
         "operationId": "atualizar_restricao_api_govsaude_v1_restricoes_horario__restricao_id__patch",
         "parameters": [
           {
@@ -39199,6 +40633,7 @@
     },
     "/api/govsaude/v1/restricoes-horario/{restricao_id}/baixar": {
       "post": {
+        "description": "B.12-012, B.12-049 — restrição de horário.",
         "operationId": "baixar_restricao_api_govsaude_v1_restricoes_horario__restricao_id__baixar_post",
         "parameters": [
           {
@@ -39281,6 +40716,7 @@
     },
     "/api/govsaude/v1/sistema/versao": {
       "get": {
+        "description": "B.12-057 — versão e notas de release.",
         "operationId": "versao_api_govsaude_v1_sistema_versao_get",
         "responses": {
           "200": {
@@ -39300,6 +40736,7 @@
     },
     "/api/govsaude/v1/tempo-real/filas": {
       "get": {
+        "description": "B.6-045 — eventos de fila/painel em tempo real.",
         "operationId": "filas_api_govsaude_v1_tempo_real_filas_get",
         "parameters": [
           {
@@ -39356,6 +40793,7 @@
     },
     "/api/govsaude/v1/territorios": {
       "get": {
+        "description": "B.1-010 — áreas e microáreas.",
         "operationId": "listar_api_govsaude_v1_territorios_get",
         "parameters": [
           {
@@ -39413,6 +40851,7 @@
         ]
       },
       "post": {
+        "description": "B.1-010 — áreas e microáreas.",
         "operationId": "criar_api_govsaude_v1_territorios_post",
         "requestBody": {
           "content": {
@@ -39459,6 +40898,7 @@
     },
     "/api/govsaude/v1/territorios/cobertura": {
       "get": {
+        "description": "B.1-018, B.1-024 — cobertura de visitas.",
         "operationId": "cobertura_api_govsaude_v1_territorios_cobertura_get",
         "parameters": [
           {
@@ -39507,6 +40947,7 @@
     },
     "/api/govsaude/v1/territorios/domicilios": {
       "get": {
+        "description": "B.1-013, B.1-016 — domicílios.",
         "operationId": "listar_domicilios_api_govsaude_v1_territorios_domicilios_get",
         "parameters": [
           {
@@ -39563,6 +41004,7 @@
         ]
       },
       "post": {
+        "description": "B.1-013, B.1-016 — domicílios.",
         "operationId": "criar_domicilio_api_govsaude_v1_territorios_domicilios_post",
         "requestBody": {
           "content": {
@@ -39609,6 +41051,7 @@
     },
     "/api/govsaude/v1/territorios/domicilios/nao-visitados": {
       "get": {
+        "description": "B.1-018 — domicílios não visitados.",
         "operationId": "domicilios_nao_visitados_api_govsaude_v1_territorios_domicilios_nao_visitados_get",
         "parameters": [
           {
@@ -39661,6 +41104,7 @@
     },
     "/api/govsaude/v1/territorios/domicilios/{domicilio_id}/animais": {
       "post": {
+        "description": "B.1-015 — animais do imóvel.",
         "operationId": "criar_animal_api_govsaude_v1_territorios_domicilios__domicilio_id__animais_post",
         "parameters": [
           {
@@ -39719,6 +41163,7 @@
     },
     "/api/govsaude/v1/territorios/familias": {
       "get": {
+        "description": "B.1-005, B.1-013 — famílias.",
         "operationId": "listar_familias_api_govsaude_v1_territorios_familias_get",
         "responses": {
           "200": {
@@ -39747,6 +41192,7 @@
         ]
       },
       "post": {
+        "description": "B.1-005, B.1-013 — famílias.",
         "operationId": "criar_familia_api_govsaude_v1_territorios_familias_post",
         "requestBody": {
           "content": {
@@ -39793,6 +41239,7 @@
     },
     "/api/govsaude/v1/territorios/familias/{familia_id}/extrato": {
       "get": {
+        "description": "B.12-024 — extrato da família.",
         "operationId": "extrato_familia_api_govsaude_v1_territorios_familias__familia_id__extrato_get",
         "parameters": [
           {
@@ -39839,6 +41286,7 @@
     },
     "/api/govsaude/v1/territorios/familias/{familia_id}/membros": {
       "post": {
+        "description": "B.1-005, B.1-014 — composição familiar.",
         "operationId": "adicionar_membro_api_govsaude_v1_territorios_familias__familia_id__membros_post",
         "parameters": [
           {
@@ -39897,6 +41345,7 @@
     },
     "/api/govsaude/v1/territorios/familias/{familia_id}/membros/{membro_id}/encerrar": {
       "post": {
+        "description": "B.1-005, B.1-014 — composição familiar.",
         "operationId": "encerrar_membro_api_govsaude_v1_territorios_familias__familia_id__membros__membro_id__encerrar_post",
         "parameters": [
           {
@@ -39965,6 +41414,7 @@
     },
     "/api/govsaude/v1/territorios/mapa.geojson": {
       "get": {
+        "description": "B.1-028, B.1-042 — GeoJSON sem dado pessoal.",
         "operationId": "mapa_api_govsaude_v1_territorios_mapa_geojson_get",
         "responses": {
           "200": {
@@ -39989,6 +41439,7 @@
     },
     "/api/govsaude/v1/territorios/metas": {
       "get": {
+        "description": "B.1-026 — metas.",
         "operationId": "metas_api_govsaude_v1_territorios_metas_get",
         "parameters": [
           {
@@ -40037,6 +41488,7 @@
     },
     "/api/govsaude/v1/territorios/visitas": {
       "get": {
+        "description": "B.1-019, B.1-020, B.1-022, B.1-023 — visita domiciliar.",
         "operationId": "listar_visitas_api_govsaude_v1_territorios_visitas_get",
         "parameters": [
           {
@@ -40094,6 +41546,7 @@
         ]
       },
       "post": {
+        "description": "B.1-019, B.1-020, B.1-022, B.1-023 — visita domiciliar.",
         "operationId": "criar_visita_api_govsaude_v1_territorios_visitas_post",
         "requestBody": {
           "content": {
@@ -40140,6 +41593,7 @@
     },
     "/api/govsaude/v1/usuarios": {
       "get": {
+        "description": "B.12-050 — usuários, grupos e privilégios.",
         "operationId": "listar_usuarios_api_govsaude_v1_usuarios_get",
         "parameters": [
           {
@@ -40236,6 +41690,7 @@
         ]
       },
       "post": {
+        "description": "B.12-050 — usuários, grupos e privilégios.",
         "operationId": "criar_usuario_api_govsaude_v1_usuarios_post",
         "requestBody": {
           "content": {
@@ -40282,6 +41737,7 @@
     },
     "/api/govsaude/v1/usuarios/{usuario_id}": {
       "get": {
+        "description": "B.12-050 — usuários, grupos e privilégios.",
         "operationId": "detalhar_usuario_api_govsaude_v1_usuarios__usuario_id__get",
         "parameters": [
           {
@@ -40328,6 +41784,7 @@
         ]
       },
       "patch": {
+        "description": "B.12-050 — usuários, grupos e privilégios.",
         "operationId": "atualizar_usuario_api_govsaude_v1_usuarios__usuario_id__patch",
         "parameters": [
           {
@@ -40402,6 +41859,7 @@
     },
     "/api/govsaude/v1/usuarios/{usuario_id}/grupos": {
       "get": {
+        "description": "B.12-050 — usuários, grupos e privilégios.",
         "operationId": "grupos_do_usuario_api_govsaude_v1_usuarios__usuario_id__grupos_get",
         "parameters": [
           {
@@ -40452,6 +41910,7 @@
         ]
       },
       "post": {
+        "description": "B.12-050 — usuários, grupos e privilégios.",
         "operationId": "adicionar_grupo_api_govsaude_v1_usuarios__usuario_id__grupos_post",
         "parameters": [
           {
@@ -40510,6 +41969,7 @@
     },
     "/api/govsaude/v1/usuarios/{usuario_id}/grupos/{vinculo_id}": {
       "delete": {
+        "description": "B.12-050 — usuários, grupos e privilégios.",
         "operationId": "remover_grupo_api_govsaude_v1_usuarios__usuario_id__grupos__vinculo_id__delete",
         "parameters": [
           {
@@ -40561,6 +42021,7 @@
     },
     "/api/govsaude/v1/usuarios/{usuario_id}/revogar-sessoes": {
       "post": {
+        "description": "B.12-049, B.12-050 — revogação de sessões.",
         "operationId": "revogar_api_govsaude_v1_usuarios__usuario_id__revogar_sessoes_post",
         "parameters": [
           {

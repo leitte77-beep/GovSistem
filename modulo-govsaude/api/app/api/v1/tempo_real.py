@@ -31,6 +31,7 @@ async def filas(
     usuario: Usuario = Depends(exigir(Permissao.FILA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-045 — eventos de fila/painel em tempo real."""
     if not escopo_permite(
         usuario, Permissao.FILA_LER, estabelecimento_id=estabelecimento_id
     ):

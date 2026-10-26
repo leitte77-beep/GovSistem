@@ -64,6 +64,7 @@ async def listar_programas(
     usuario: Usuario = Depends(exigir(Permissao.PROGRAMA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-001, B.2-015 — programas parametrizáveis."""
     itens, proximo, total = await programas.listar_programas(
         db,
         tenant_id,
@@ -91,6 +92,7 @@ async def criar_programa(
     ator: Usuario = Depends(exigir(Permissao.PROGRAMA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-001, B.2-015 — programas parametrizáveis."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -124,6 +126,7 @@ async def listar_linhas_cuidado(
     _: Usuario = Depends(exigir(Permissao.PROGRAMA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-001, B.2-015 — programas parametrizáveis."""
     agrupados = await programas.listar_linhas_cuidado(db, tenant_id)
     return [
         LinhaCuidadoOut(
@@ -142,6 +145,7 @@ async def detalhar_programa(
     _: Usuario = Depends(exigir(Permissao.PROGRAMA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-001, B.2-015 — programas parametrizáveis."""
     registro = await programas.obter_programa(db, tenant_id, programa_id)
     response.headers["ETag"] = f'"{registro.versao}"'
     return programa_out(registro)
@@ -158,6 +162,7 @@ async def atualizar_programa(
     ator: Usuario = Depends(exigir(Permissao.PROGRAMA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-001, B.2-015 — programas parametrizáveis."""
     registro = await programas.atualizar_programa(
         db,
         tenant_id=tenant_id,
@@ -181,6 +186,7 @@ async def nova_versao_programa(
     ator: Usuario = Depends(exigir(Permissao.PROGRAMA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-001, B.2-015 — programas parametrizáveis."""
     registro = await programas.nova_versao_programa(
         db,
         tenant_id=tenant_id,
@@ -200,6 +206,7 @@ async def listar_itens(
     _: Usuario = Depends(exigir(Permissao.PROGRAMA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-001, B.2-015 — programas parametrizáveis."""
     return await programas.listar_itens(db, tenant_id, programa_id)
 
 
@@ -212,6 +219,7 @@ async def criar_item(
     ator: Usuario = Depends(exigir(Permissao.PROGRAMA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-001, B.2-015 — programas parametrizáveis."""
     return await programas.criar_item(
         db,
         tenant_id=tenant_id,
@@ -232,6 +240,7 @@ async def atualizar_item(
     ator: Usuario = Depends(exigir(Permissao.PROGRAMA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-001, B.2-015 — programas parametrizáveis."""
     return await programas.atualizar_item(
         db,
         tenant_id=tenant_id,
@@ -252,6 +261,7 @@ async def avaliar_elegibilidade(
     _: Usuario = Depends(exigir(Permissao.PROGRAMA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-003 — elegibilidade."""
     programa = await programas.obter_programa(db, tenant_id, programa_id)
     cidadao = await db.scalar(
         select(Cidadao).where(
@@ -286,6 +296,7 @@ async def gerar_programacoes(
     ator: Usuario = Depends(exigir(Permissao.PROGRAMA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-002 — programação."""
     return await programas.gerar_programacoes_programa(
         db,
         tenant_id=tenant_id,
@@ -303,6 +314,7 @@ async def resumo_programa(
     _: Usuario = Depends(exigir(Permissao.PROGRAMA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-012 — resumo do programa."""
     return await programas.resumo_programa(db, tenant_id, programa_id)
 
 
@@ -315,6 +327,7 @@ async def lista_nominal(
     usuario: Usuario = Depends(exigir(Permissao.PROGRAMA_BUSCA_ATIVA)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-011 — lista nominal para busca ativa."""
     return await programas.lista_nominal(
         db,
         tenant_id,
@@ -334,6 +347,7 @@ async def estimativa_demanda(
     _: Usuario = Depends(exigir(Permissao.PROGRAMA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-014 — demanda futura."""
     return await programas.estimativa_demanda(
         db,
         tenant_id,

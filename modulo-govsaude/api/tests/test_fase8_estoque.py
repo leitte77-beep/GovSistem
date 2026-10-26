@@ -14,9 +14,8 @@ from datetime import date, datetime, timedelta, timezone
 import pytest
 from sqlalchemy import select
 
-from tests.conftest import _criar_usuario
-
 from app.models.auditoria import AuditTrail
+from tests.conftest import _criar_usuario
 
 API = "/api/govsaude/v1/estoque"
 

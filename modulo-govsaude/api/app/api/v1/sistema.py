@@ -14,6 +14,7 @@ router = APIRouter(prefix="/sistema", tags=["Sistema"])
 
 @router.get("/versao", summary="Versão e notas de release")
 async def versao():
+    """B.12-057 — versão e notas de release."""
     return {
         "modulo": "govsaude",
         "nome": settings.APP_NAME,

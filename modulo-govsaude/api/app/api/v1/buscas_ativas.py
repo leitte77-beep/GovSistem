@@ -47,6 +47,7 @@ async def listar_buscas(
     usuario: Usuario = Depends(exigir(Permissao.PROGRAMA_BUSCA_ATIVA)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-011 — busca ativa."""
     itens, proximo, total = await programas.listar_buscas(
         db,
         tenant_id,
@@ -74,6 +75,7 @@ async def pendencias_busca_ativa(
     usuario: Usuario = Depends(exigir(Permissao.PROGRAMA_BUSCA_ATIVA)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-011 — busca ativa."""
     return await programas.pendencias_busca_ativa(
         db,
         tenant_id,
@@ -94,6 +96,7 @@ async def criar_busca(
     ator: Usuario = Depends(exigir(Permissao.PROGRAMA_BUSCA_ATIVA)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-011 — busca ativa."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -129,6 +132,7 @@ async def detalhar_busca(
     usuario: Usuario = Depends(exigir(Permissao.PROGRAMA_BUSCA_ATIVA)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-011 — busca ativa."""
     registro = await programas.obter_busca(db, tenant_id, busca_id)
     await exigir_acesso_estabelecimento(
         db, usuario, Permissao.PROGRAMA_BUSCA_ATIVA, registro.inscricao.estabelecimento_id
@@ -148,6 +152,7 @@ async def atualizar_busca(
     ator: Usuario = Depends(exigir(Permissao.PROGRAMA_BUSCA_ATIVA)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-011 — busca ativa."""
     registro = await programas.atualizar_busca(
         db,
         tenant_id=tenant_id,

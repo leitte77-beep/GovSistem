@@ -35,6 +35,7 @@ async def check_in(
     ator: Usuario = Depends(exigir(Permissao.FILA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-001, B.6-003, B.6-005, B.3-008 — recepção por código ou identificação."""
     return await recepcao.check_in(
         db,
         tenant_id=tenant_id,
@@ -53,6 +54,7 @@ async def demanda_espontanea(
     ator: Usuario = Depends(exigir(Permissao.FILA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-001 — demanda espontânea."""
     registro = await recepcao.demanda_espontanea(
         db,
         tenant_id=tenant_id,
@@ -72,6 +74,7 @@ async def emitir_cartao(
     ator: Usuario = Depends(exigir(Permissao.CIDADAO_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-003 — cartão com código."""
     return await recepcao.cartao(
         db,
         tenant_id=tenant_id,

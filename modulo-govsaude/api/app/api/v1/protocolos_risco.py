@@ -38,6 +38,7 @@ async def listar_protocolos(
     usuario: Usuario = Depends(exigir(Permissao.FILA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-007, B.3-003 — protocolos de classificação de risco."""
     itens, proximo, total = await agendas.listar_protocolos(
         db,
         tenant_id,
@@ -62,6 +63,7 @@ async def criar_protocolo(
     ator: Usuario = Depends(exigir(Permissao.FILA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-007, B.3-003 — protocolos de classificação de risco."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -89,6 +91,7 @@ async def detalhar_protocolo(
     usuario: Usuario = Depends(exigir(Permissao.FILA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-007, B.3-003 — protocolos de classificação de risco."""
     from app.services.agenda_comum import obter_protocolo
     from app.services.rede_comum import exigir_acesso_estabelecimento
 
@@ -109,6 +112,7 @@ async def atualizar_protocolo(
     ator: Usuario = Depends(exigir(Permissao.FILA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-007, B.3-003 — protocolos de classificação de risco."""
     registro = await agendas.atualizar_protocolo(
         db,
         tenant_id=tenant_id,

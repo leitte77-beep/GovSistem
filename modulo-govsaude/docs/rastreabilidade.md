@@ -21,10 +21,11 @@ parte; a lacuna está descrita), `PENDENTE` (não feito, com a fase prevista) e
 | B.12-051 | Senha com bcrypt custo 12 | `POST /auth/login`, `POST /auth/alterar-senha` | `test_criptografia.py::test_bcrypt_custo_12` | IMPLEMENTADO |
 | B.12-052 | Login local por CPF, e-mail ou nome de acesso, com fallback ao SSO | `POST /auth/login`, `POST /auth/refresh`, `GET /auth/me` | `test_auth_tenant_rbac.py::test_login_local_e_bloqueio` | IMPLEMENTADO |
 | B.12-053 | Biometria nunca como único fator; autenticação por SSO/senha + MFA opcional | `POST /auth/login`, `POST /auth/mfa/confirmar` | `test_auth_tenant_rbac.py` | IMPLEMENTADO (não existe fator biométrico obrigatório) |
-| B.12-054 | Lista branca de extensões/MIME, magic number, limite de tamanho e porta ClamAV | `app/core/antivirus.py`; usado na foto do cidadão | `test_anexos.py` | PARCIAL (não há anexo genérico com perfil/sigilo; ver B.6-029) |
+| B.12-054 | Lista branca de extensões/MIME, magic number, limite de tamanho e porta ClamAV; anexos clínicos com perfil e sigilo | `app/core/antivirus.py`, `/anexos` | `test_anexos.py`, `test_lacunas_revisao.py::test_b12_054_b6_029_*` | IMPLEMENTADO |
 | B.12-056 | PostgreSQL (ACID, integridade referencial); unicidade parcial por tenant para CPF, CNS, e-mail, nome de acesso e CNES | constraints e índices em `models/nucleo.py` | `test_usuarios_idempotencia.py::test_cpf_duplicado_por_tenant_rejeitado` | IMPLEMENTADO |
 | B.12-057 | Endpoint de versão e notas de release | `GET /sistema/versao` | `test_auth_tenant_rbac.py::test_health_e_versao_publicos` | IMPLEMENTADO |
 | B.12-059 | API REST documentada em OpenAPI 3.1, contrato versionado | `openapi.json` | `test_openapi_contrato.py` | IMPLEMENTADO (FHIR na Fase 11) |
+| B.12-055 | Relatórios em JSON, CSV, XLSX e PDF com orientação de página | `/relatorios/*`, `?formato=&orientacao=` | `test_b6_048_049_b12_055_*` | IMPLEMENTADO |
 
 ## Infraestrutura transversal (seções 3–9)
 
@@ -91,7 +92,7 @@ B.12-004 e B.1-004.
 | B.1-015 | Animais do imóvel configuráveis | `/territorios/domicilios/{id}/animais` | idem | IMPLEMENTADO |
 | B.1-016 | Pesquisa de domicílio por termo | `GET /territorios/domicilios?termo=` | idem | PARCIAL (por responsável/integrante/histórico: pendente) |
 | B.1-018, B.1-024 | Domicílios não visitados e cobertura por competência | `/territorios/domicilios/nao-visitados`, `/territorios/cobertura` | idem | PARCIAL (por profissional/território e relatórios exportáveis: pendente) |
-| B.1-019 | Visita domiciliar com GPS, turno, resultado e assinatura | `/territorios/visitas` | idem | PARCIAL (motivos, antropometria, sinais vitais, glicemia e desfecho estruturados: pendente) |
+| B.1-019 | Visita com motivos, busca ativa, acompanhamento, controle ambiental, antropometria (IMC), sinais vitais, glicemia e desfecho; domínios configuráveis | `/territorios/visitas` | `test_b1_019_visita_estruturada_*` | PARCIAL (códigos oficiais da ficha e-SUS a carregar nos domínios) |
 | B.1-020 | Visita única por turno: ALERTAR/BLOQUEAR configurável | idem | idem | IMPLEMENTADO |
 | B.1-022, B.1-023 | Política de GPS configurável; assinatura do cidadão na visita | idem | idem | IMPLEMENTADO |
 | B.1-026 | Meta mensal de visitas | `/territorios/metas` | idem | PARCIAL (metas por ACS/equipe e por grupo prioritário: pendente) |
@@ -113,7 +114,7 @@ B.12-004 e B.1-004.
 | B.6-008 | Fila por classificação, prioridade legal e tempo, regra exposta | `/filas` | `test_b6_007_b6_008_*` | IMPLEMENTADO |
 | B.6-012 | Acolhimento: chamada, triagem, classificação, evasão, desfecho; sinais vitais no PEC | `/filas/{id}/…`, `/prontuarios/atendimentos/{id}/sinais-vitais` | `test_b6_012_*`, `test_b6_004_012_atendimento_continua_a_fila_da_recepcao` | IMPLEMENTADO |
 | B.6-045, B.6-046 | Painéis por setor, notícias, texto para voz, histórico, nome abreviado | `/paineis-chamada…`, `/tempo-real/filas` | `test_b6_045_b6_047_*` | IMPLEMENTADO |
-| B.6-047 | Tempos de recepção, triagem, espera e consulta por item | `/filas/{id}`, `/filas/{id}/eventos` | `test_b6_012_*` | PARCIAL (relatório agregado por unidade/setor/profissional: pendente) |
+| B.6-047 | Tempos médios de espera, triagem, consulta e permanência por unidade, setor ou mês | `/relatorios/filas/tempos`, `/filas/{id}/eventos` | `test_b6_047_relatorio_de_tempos_da_fila` | PARCIAL (por profissional/especialidade: a fila não registra o profissional) |
 | B.12-018 | Falta automática configurável com reversão auditada | `/agendamentos/{id}/falta`, `.../reverter-falta` | `test_b12_018_*` | IMPLEMENTADO |
 | B.6-050, B.12-019, B.12-020 | Listas de espera | — | — | PENDENTE (Fase 9, regulação) |
 
@@ -151,7 +152,9 @@ migrações `0006` e `0009`. Testes em `tests/test_fase5_prontuario.py` (10).
 | B.6-041 | Validade de consulta/reconsulta por tipo | `/cidadaos/{id}/validade-consulta` | idem | PARCIAL (só informa; alerta/bloqueio no agendamento: pendente) |
 | B.6-056 | Auditoria de consulta (`READ_SENSIVEL`), alteração e assinatura | todas as rotas | `test_b6_027_057_*` | PARCIAL (impressão/exportação do prontuário ainda não existem) |
 | B.6-057 | Retificação preserva o anterior com justificativa (evolução e registro) | `/evolucoes/{id}/retificar`, `/registros/{id}/retificar` | `test_b6_027_057_*`, `test_b6_025_057_*` | IMPLEMENTADO |
-| B.6-009, B.6-024, B.6-028, B.6-029, B.6-040, B.6-042…044, B.6-048, B.6-049, B.6-055, B.6-058 | Protocolos estruturados (dor torácica), RAAS, observação/internação, anexos, comorbidades × linhas de cuidado, ocorrências diárias, produção programada, benefícios custeados, relatórios clínicos/gerenciais e comparativos, contingência com reconciliação, busca no prontuário | — | — | PENDENTE |
+| B.6-029 | Anexos (imagem/PDF) com classificação, autoria, data, sigilo herdado e download auditado | `/anexos`, `/anexos/cidadaos/{id}`, `/anexos/{id}/conteudo` | `test_b12_054_b6_029_*` | IMPLEMENTADO |
+| B.6-048, B.6-049 | Relatório de atendimentos, diagnósticos, prescrições e registros por mês/unidade/tipo, com comparativo do período anterior | `/relatorios/prontuario/atendimentos` | `test_b6_048_049_b12_055_*` | IMPLEMENTADO |
+| B.6-009, B.6-024, B.6-028, B.6-040, B.6-042…044, B.6-055, B.6-058 | Protocolos estruturados (dor torácica), RAAS, observação/internação, comorbidades × linhas de cuidado, ocorrências diárias, produção programada, benefícios custeados, contingência com reconciliação, busca no prontuário | — | — | PENDENTE |
 | B.6-051…054 | Regulação e faturamento | — | — | PENDENTE (Fases 9 e 13) |
 
 Correções desta revisão: retroativo era citado como B.6-056 (é B.6-036);
@@ -203,7 +206,10 @@ Testes em `tests/test_fase7_odontologia.py`.
 | B.3-020 | Relatório por dente, face, procedimento e período | `/odontologia/relatorios/procedimentos` | IMPLEMENTADO |
 | B.3-026 | Escopo por estabelecimento e leitura auditada | todas as rotas | PARCIAL (nível de sigilo como no PEC: pendente) |
 | B.3-002, B.3-027 | Exportação LEDI | `/odontologia/atendimentos/{id}/exportacao-ledi` | PENDENTE_ESPECIFICACAO_OFICIAL (contrato `xfail`) |
-| B.3-007, B.3-012, B.3-014, B.3-015, B.3-017, B.3-019, B.3-021, B.3-023, B.3-025 | Histórico multiprofissional no atendimento, anexos, assinatura, estratificação de risco, ficha completa impressa, relatórios por profissional/território, comparativos, integração com estoque, modelos de documento | — | PENDENTE |
+| B.3-012 | Anexos do atendimento odontológico conforme permissão | `/anexos` (`contexto=ODONTOLOGIA`) | IMPLEMENTADO |
+| B.3-017 | Ficha completa (odontograma, procedimentos, receitas, exames, encaminhamentos) em JSON/PDF, impressão auditada | `/odontologia/atendimentos/{id}/ficha` | IMPLEMENTADO |
+| B.3-019, B.3-021 | Atendimentos e procedimentos por profissional, unidade, tipo, faixa etária e mês, com comparativo | `/relatorios/odontologia/atendimentos` | PARCIAL (recorte por território: pendente) |
+| B.3-007, B.3-014, B.3-015, B.3-023, B.3-025 | Histórico multiprofissional no atendimento, assinatura, estratificação de risco, integração com estoque, modelos de documento | — | PENDENTE |
 
 Correção desta revisão: retroativo era B.3-013 (é B.3-016); documentos eram
 B.3-014 (são B.3-013; B.3-014 é assinatura); relatório por dente/face era
@@ -231,7 +237,7 @@ Testes em `tests/test_fase8_estoque.py` (7).
 | B.4-016 | Alertas: mínimo, ponto de pedido, a vencer/vencido, lote bloqueado, consumo anormal | `.../alertas` | `test_b4_002_012_016_*`, `test_b4_005_016_*` | PARCIAL (frascos abertos: Fase 10) |
 | B.4-017 | Inventário por lote com bloqueio do local e ajuste referenciado | `/estoque/inventarios…` | `test_b4_017_018_*` | IMPLEMENTADO |
 | B.4-018 | Competências encerráveis e reabertura justificada | `/estoque/competencias/{AAAAMM}/…` | idem | IMPLEMENTADO |
-| B.4-019 | Disponibilidade por unidade na prescrição | prescrição do PEC | `test_b4_005_016_019_026_037_*` | PARCIAL (fila de prescrições para a farmácia: pendente) |
+| B.4-019 | Disponibilidade na prescrição; farmácia vê as prescrições do cidadão (só itens, sem dado clínico) com saldo no local e o já dispensado | prescrição do PEC, `/estoque/cidadaos/{id}/prescricoes` | `test_b4_005_016_019_*`, `test_b4_019_028_036_*` | IMPLEMENTADO |
 | B.4-020 | Dispensação total/parcial com profissional, cidadão, prescrição, lote, data e documento; estorno | `/estoque/dispensacoes…` | `test_b4_020_023_035_*` | IMPLEMENTADO |
 | B.4-021 | Duplicidade em qualquer unidade na janela configurada, com exceção justificada | idem | idem | IMPLEMENTADO |
 | B.4-022 | Documento obrigatório para controlado/antimicrobiano com campos configuráveis | idem | idem | PARCIAL (campos legais a configurar) |
@@ -239,9 +245,10 @@ Testes em `tests/test_fase8_estoque.py` (7).
 | B.4-026 | Curva ABC, consumo mensal, giro e cobertura | `.../curva-abc`, `.../sugestao-compra` | `test_b4_005_016_*` | PARCIAL (consumo diário/anual e perdas em relatório: pendentes) |
 | B.4-027 | Saldo em qualquer data por lote/custo/validade/local e pedidos pendentes | `.../saldos` | `test_b4_006_009_012_027_*`, `test_b4_014_015_*` | IMPLEMENTADO |
 | B.4-035 | Controlado só movimenta/dispensa/estorna com `estoque:controlados` | movimentações e dispensação | `test_b4_020_023_035_*` | IMPLEMENTADO |
-| B.4-036 | Ledger imutável com referência (requisição, inventário, dispensação) | `.../movimentacoes` (extrato) | todos | PARCIAL (consulta direta “do lote à dispensação”: pendente) |
+| B.4-028 | Comparativo de entradas, saídas, dispensações, transferências, perdas e ajustes (quantidade e valor) | `/relatorios/estoque/locais/{id}/movimentacoes` | `test_b4_019_028_036_*` | IMPLEMENTADO |
+| B.4-036 | Rastreabilidade do lote da aquisição (documento) à dispensação/perda; cidadão só com `dispensacao:ler` | `/estoque/lotes/{id}/rastreabilidade` | `test_b4_019_028_036_*` | IMPLEMENTADO |
 | B.4-037 | Temperatura com faixa do local, alerta e histórico | `.../temperaturas` | `test_b4_005_016_019_026_037_*` | IMPLEMENTADO |
-| B.4-008, B.4-010, B.4-011, B.4-013, B.4-024, B.4-025, B.4-028, B.4-029, B.4-038…040, B.4-043 | Kits/etiquetas, importação de compras, guias impressas, código de barras/QR, livros e balanços 344/BMPO, relatórios comparativos, integração contábil, importação de tabelas, APIs de equipamentos, contingência, conciliação | — | — | PENDENTE |
+| B.4-008, B.4-010, B.4-011, B.4-013, B.4-024, B.4-025, B.4-029, B.4-038…040, B.4-043 | Kits/etiquetas, importação de compras, guias impressas, código de barras/QR, livros e balanços 344/BMPO, integração contábil, importação de tabelas, APIs de equipamentos, contingência, conciliação | — | — | PENDENTE |
 | B.4-030…034, B.4-041, B.4-042 | BNAFAR/RNDS, Banco de Preços, migração | — | — | PENDENTE (Fases 11, 13 e 16) |
 
 Correção desta revisão: vários IDs estavam trocados (ex.: bloqueio era B.4-012

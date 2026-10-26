@@ -51,6 +51,7 @@ async def listar_inscricoes(
     usuario: Usuario = Depends(exigir(Permissao.PROGRAMA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-003 — inscrição no programa."""
     itens, proximo, total = await programas.listar_inscricoes(
         db,
         tenant_id,
@@ -78,6 +79,7 @@ async def criar_inscricao(
     ator: Usuario = Depends(exigir(Permissao.PROGRAMA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-003 — inscrição no programa."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -113,6 +115,7 @@ async def detalhar_inscricao(
     usuario: Usuario = Depends(exigir(Permissao.PROGRAMA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-003 — inscrição no programa."""
     registro = await programas.obter_inscricao(db, tenant_id, inscricao_id)
     await exigir_acesso_estabelecimento(
         db, usuario, Permissao.PROGRAMA_LER, registro.estabelecimento_id
@@ -132,6 +135,7 @@ async def atualizar_inscricao(
     ator: Usuario = Depends(exigir(Permissao.PROGRAMA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-003 — inscrição no programa."""
     registro = await programas.atualizar_inscricao(
         db,
         tenant_id=tenant_id,
@@ -156,6 +160,7 @@ async def encerrar_inscricao(
     ator: Usuario = Depends(exigir(Permissao.PROGRAMA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-003 — inscrição no programa."""
     registro = await programas.encerrar_inscricao(
         db,
         tenant_id=tenant_id,
@@ -181,6 +186,7 @@ async def gerar_programacoes(
     ator: Usuario = Depends(exigir(Permissao.PROGRAMA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-002 — programação do acompanhamento."""
     return await programas.gerar_programacoes_inscricao(
         db,
         tenant_id=tenant_id,

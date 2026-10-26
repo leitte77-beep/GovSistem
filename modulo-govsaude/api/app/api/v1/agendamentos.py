@@ -74,6 +74,7 @@ async def listar_agendamentos(
     usuario: Usuario = Depends(exigir(Permissao.AGENDA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-001, B.6-005 — agendamento."""
     itens, proximo, total = await agendamentos.listar(
         db,
         tenant_id,
@@ -105,6 +106,7 @@ async def criar_agendamento(
     ator: Usuario = Depends(exigir(Permissao.AGENDA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-001, B.6-005 — agendamento."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -136,6 +138,7 @@ async def detalhar_agendamento(
     usuario: Usuario = Depends(exigir(Permissao.AGENDA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-001, B.6-005 — agendamento."""
     registro = await agendamentos.obter_com_escopo(
         db, tenant_id, usuario, agendamento_id
     )
@@ -155,6 +158,7 @@ async def atualizar_agendamento(
     ator: Usuario = Depends(exigir(Permissao.AGENDA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-001, B.6-005 — agendamento."""
     registro = await agendamentos.atualizar(
         db,
         tenant_id=tenant_id,
@@ -177,6 +181,7 @@ async def confirmar_agendamento(
     ator: Usuario = Depends(exigir(Permissao.AGENDA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-001, B.6-005 — agendamento."""
     registro = await agendamentos.confirmar(
         db,
         tenant_id=tenant_id,
@@ -197,6 +202,7 @@ async def cancelar_agendamento(
     ator: Usuario = Depends(exigir(Permissao.AGENDA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-001, B.6-005 — agendamento."""
     registro = await agendamentos.cancelar(
         db,
         tenant_id=tenant_id,
@@ -218,6 +224,7 @@ async def reagendar_agendamento(
     ator: Usuario = Depends(exigir(Permissao.AGENDA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-001, B.6-005 — agendamento."""
     registro, codigo, alertas = await agendamentos.reagendar(
         db,
         tenant_id=tenant_id,
@@ -239,6 +246,7 @@ async def marcar_falta(
     ator: Usuario = Depends(exigir(Permissao.AGENDA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-018 — falta com prazo configurado."""
     registro = await agendamentos.marcar_falta(
         db,
         tenant_id=tenant_id,
@@ -260,6 +268,7 @@ async def reverter_falta(
     ator: Usuario = Depends(exigir(Permissao.AGENDA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.12-018 — reversão auditada da falta."""
     registro = await agendamentos.reverter_falta(
         db,
         tenant_id=tenant_id,
@@ -280,6 +289,7 @@ async def emitir_comprovante(
     ator: Usuario = Depends(exigir(Permissao.AGENDA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-001, B.6-003 — comprovante com código de barras/QR."""
     registro, codigo = await agendamentos.gerar_comprovante(
         db,
         tenant_id=tenant_id,

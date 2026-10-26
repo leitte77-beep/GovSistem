@@ -78,6 +78,7 @@ async def listar_fila(
     usuario: Usuario = Depends(exigir(Permissao.FILA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-008, B.6-012 — fila de atendimento."""
     itens, regra = await filas.listar(
         db,
         tenant_id,
@@ -109,6 +110,7 @@ async def entrar_na_fila(
     ator: Usuario = Depends(exigir(Permissao.FILA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-008, B.6-012 — fila de atendimento."""
     registro = await filas.entrar(
         db,
         tenant_id=tenant_id,
@@ -128,6 +130,7 @@ async def detalhar_fila(
     usuario: Usuario = Depends(exigir(Permissao.FILA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-008, B.6-012 — fila de atendimento."""
     registro = await filas.obter_com_escopo(db, tenant_id, usuario, fila_id)
     posicao = await _posicao(db, tenant_id, usuario, registro)
     await _auditar_leitura(db, request, usuario, fila_id=registro.id)
@@ -142,6 +145,7 @@ async def eventos_fila(
     usuario: Usuario = Depends(exigir(Permissao.FILA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-047 — eventos e tempos."""
     itens = await filas.eventos(db, tenant_id, usuario, fila_id)
     await _auditar_leitura(db, request, usuario, fila_id=fila_id)
     return [FilaEventoOut.model_validate(item) for item in itens]
@@ -156,6 +160,7 @@ async def classificar_fila(
     ator: Usuario = Depends(exigir(Permissao.FILA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-007, B.6-012 — classificação de risco."""
     registro = await filas.atualizar_classificacao(
         db,
         tenant_id=tenant_id,
@@ -177,6 +182,7 @@ async def chamar(
     ator: Usuario = Depends(exigir(Permissao.FILA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-012, B.6-045 — chamada no painel."""
     chamada = await filas.chamar(
         db,
         tenant_id=tenant_id,
@@ -198,6 +204,7 @@ async def rechamar(
     ator: Usuario = Depends(exigir(Permissao.FILA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-012, B.6-045 — rechamada."""
     dados = corpo.model_copy(update={"tipo": "RECHAMADA"})
     chamada = await filas.chamar(
         db,
@@ -219,6 +226,7 @@ async def iniciar_triagem(
     ator: Usuario = Depends(exigir(Permissao.FILA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-008, B.6-012 — fila de atendimento."""
     registro = await filas.iniciar_triagem(
         db,
         tenant_id=tenant_id,
@@ -238,6 +246,7 @@ async def finalizar_triagem(
     ator: Usuario = Depends(exigir(Permissao.FILA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-008, B.6-012 — fila de atendimento."""
     registro = await filas.finalizar_triagem(
         db,
         tenant_id=tenant_id,
@@ -257,6 +266,7 @@ async def iniciar_atendimento(
     ator: Usuario = Depends(exigir(Permissao.FILA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-008, B.6-012 — fila de atendimento."""
     registro = await filas.iniciar_atendimento(
         db,
         tenant_id=tenant_id,
@@ -277,6 +287,7 @@ async def finalizar(
     ator: Usuario = Depends(exigir(Permissao.FILA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-008, B.6-012 — fila de atendimento."""
     registro = await filas.finalizar(
         db,
         tenant_id=tenant_id,
@@ -297,6 +308,7 @@ async def evadir(
     ator: Usuario = Depends(exigir(Permissao.FILA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-008, B.6-012 — fila de atendimento."""
     registro = await filas.evadir(
         db,
         tenant_id=tenant_id,
@@ -317,6 +329,7 @@ async def cancelar(
     ator: Usuario = Depends(exigir(Permissao.FILA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.6-008, B.6-012 — fila de atendimento."""
     registro = await filas.cancelar(
         db,
         tenant_id=tenant_id,

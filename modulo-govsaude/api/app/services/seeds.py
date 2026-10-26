@@ -18,12 +18,7 @@ from app.models.rede import Prioridade
 
 
 async def garantir_permissoes(db: AsyncSession) -> None:
-    existentes = {
-        codigo
-        for (codigo,) in (
-            await db.execute(select(PermissaoGlobal.codigo))
-        ).all()
-    }
+    existentes = {codigo for (codigo,) in (await db.execute(select(PermissaoGlobal.codigo))).all()}
     for permissao in ALL_PERMISSIONS:
         if permissao.value in existentes:
             continue
@@ -46,9 +41,7 @@ async def garantir_grupos_tenant(db: AsyncSession, tenant_id: uuid.UUID) -> None
     await garantir_permissoes(db)
     existentes = {
         grupo.codigo: grupo
-        for grupo in (
-            await db.execute(select(Grupo).where(Grupo.tenant_id == tenant_id))
-        ).scalars()
+        for grupo in (await db.execute(select(Grupo).where(Grupo.tenant_id == tenant_id))).scalars()
     }
     for codigo, definicao in GRUPOS_NACIONAIS.items():
         grupo = existentes.get(codigo)
@@ -65,9 +58,7 @@ async def garantir_grupos_tenant(db: AsyncSession, tenant_id: uuid.UUID) -> None
         atuais = {
             gp.permissao_codigo
             for gp in (
-                await db.execute(
-                    select(GrupoPermissao).where(GrupoPermissao.grupo_id == grupo.id)
-                )
+                await db.execute(select(GrupoPermissao).where(GrupoPermissao.grupo_id == grupo.id))
             ).scalars()
         }
         desejadas = {p.value for p in definicao["permissoes"]}
@@ -94,27 +85,43 @@ CONFIGURACOES_PADRAO: dict[str, dict] = {
     "odontologia.retroativo_dias_maximos": {
         "valor": {"valor": 30},
         "tipo": "numero",
-        "descricao": "Dias máximos para digitação retroativa de atendimento odontológico (B.3-016); exige justificativa.",
+        "descricao": (
+            "Dias máximos para digitação retroativa de atendimento odontológico (B.3-016); "
+            "exige justificativa."
+        ),
     },
     "odontologia.classificacoes_risco": {
         "valor": {"valor": []},
         "tipo": "json",
-        "descricao": "Classificações de risco odontológico aceitas (B.3-004). Vazio = sem validação; preencher com o protocolo municipal.",
+        "descricao": (
+            "Classificações de risco odontológico aceitas (B.3-004). Vazio = sem validação; "
+            "preencher com o protocolo municipal."
+        ),
     },
     "prontuario.etapas": {
         "valor": {"valor": []},
         "tipo": "json",
-        "descricao": "Etapas ordenadas do atendimento (B.6-004), ex.: RECEPCAO, ACOLHIMENTO, TRIAGEM, CONSULTA. Vazio = sem fluxo de etapas.",
+        "descricao": (
+            "Etapas ordenadas do atendimento (B.6-004), ex.: RECEPCAO, ACOLHIMENTO, TRIAGEM, "
+            "CONSULTA. Vazio = sem fluxo de etapas."
+        ),
     },
     "prontuario.campos_obrigatorios": {
         "valor": {"valor": []},
         "tipo": "json",
-        "descricao": "Regras de campos obrigatórios no encerramento (B.6-014): lista de {tipo_atendimento, estabelecimento_id, sexo, idade_min_anos, idade_max_anos, campos}.",
+        "descricao": (
+            "Regras de campos obrigatórios no encerramento (B.6-014): lista de "
+            "{tipo_atendimento, estabelecimento_id, sexo, idade_min_anos, idade_max_anos, "
+            "campos}."
+        ),
     },
     "prontuario.retroativo_contingencia_ativa": {
         "valor": {"valor": False},
         "tipo": "booleano",
-        "descricao": "Liga a digitação retroativa em contingência (B.6-036). Desligada = retroativo recusado.",
+        "descricao": (
+            "Liga a digitação retroativa em contingência (B.6-036). Desligada = retroativo "
+            "recusado."
+        ),
     },
     "prontuario.retroativo_dias_maximos": {
         "valor": {"valor": 30},
@@ -124,37 +131,58 @@ CONFIGURACOES_PADRAO: dict[str, dict] = {
     "prontuario.tipos_registro": {
         "valor": {"valor": {}},
         "tipo": "json",
-        "descricao": "Tipos de registro assistencial aceitos ({tipo: {formulario_codigo}}); formulário valida escalas/fichas (B.6-025). Vazio = tipo livre.",
+        "descricao": (
+            "Tipos de registro assistencial aceitos ({tipo: {formulario_codigo}}); formulário"
+            " valida escalas/fichas (B.6-025). Vazio = tipo livre."
+        ),
     },
     "prontuario.tabelas_classificacao_nutricional": {
         "valor": {"valor": []},
         "tipo": "json",
-        "descricao": "Tabelas versionadas de classificação do IMC por ciclo de vida (B.6-010). Vazio = IMC sem classificação; preencher com a referência oficial vigente.",
+        "descricao": (
+            "Tabelas versionadas de classificação do IMC por ciclo de vida (B.6-010). Vazio ="
+            " IMC sem classificação; preencher com a referência oficial vigente."
+        ),
     },
     "prontuario.validade_consulta_dias": {
         "valor": {"valor": {}},
         "tipo": "json",
-        "descricao": "Validade de consulta para reconsulta por tipo de atendimento, em dias (B.6-041). Vazio = não controlado.",
+        "descricao": (
+            "Validade de consulta para reconsulta por tipo de atendimento, em dias (B.6-041)."
+            " Vazio = não controlado."
+        ),
     },
     "estoque.alerta_vencimento_dias": {
         "valor": {"valor": 90},
         "tipo": "numero",
-        "descricao": "Antecedência, em dias, do alerta de lote a vencer (B.4-016). Valor operacional; validar com a assistência farmacêutica.",
+        "descricao": (
+            "Antecedência, em dias, do alerta de lote a vencer (B.4-016). Valor operacional; "
+            "validar com a assistência farmacêutica."
+        ),
     },
     "estoque.janela_duplicidade_dias": {
         "valor": {"valor": 30},
         "tipo": "numero",
-        "descricao": "Janela, em dias, para bloquear dispensação duplicada do mesmo produto ao cidadão em qualquer unidade (B.4-021); 0 desliga. Valor operacional.",
+        "descricao": (
+            "Janela, em dias, para bloquear dispensação duplicada do mesmo produto ao cidadão"
+            " em qualquer unidade (B.4-021); 0 desliga. Valor operacional."
+        ),
     },
     "estoque.campos_documento_controlado": {
         "valor": {"valor": []},
         "tipo": "json",
-        "descricao": "Campos obrigatórios do documento na dispensação de controlado/antimicrobiano (B.4-022). Vazio = exige só o documento; preencher conforme a norma vigente.",
+        "descricao": (
+            "Campos obrigatórios do documento na dispensação de controlado/antimicrobiano "
+            "(B.4-022). Vazio = exige só o documento; preencher conforme a norma vigente."
+        ),
     },
     "estoque.consumo_anormal_desvios": {
         "valor": {"valor": 2},
         "tipo": "numero",
-        "descricao": "Número de desvios-padrão acima da média mensal que caracteriza consumo anormal (B.4-016).",
+        "descricao": (
+            "Número de desvios-padrão acima da média mensal que caracteriza consumo anormal "
+            "(B.4-016)."
+        ),
     },
     "estoque.consumo_meses_historico": {
         "valor": {"valor": 6},
@@ -175,6 +203,29 @@ CONFIGURACOES_PADRAO: dict[str, dict] = {
         "valor": {"valor": 1},
         "tipo": "numero",
         "descricao": "Cobertura alvo, em meses, quando o produto não tem estoque máximo (B.4-005).",
+    },
+    "territorio.motivos_visita": {
+        "valor": {"valor": []},
+        "tipo": "json",
+        "descricao": (
+            "Motivos da visita domiciliar (B.1-019). Vazio = texto livre; carregar os códigos"
+            " da ficha oficial de visita do e-SUS APS."
+        ),
+    },
+    "territorio.acompanhamentos_visita": {
+        "valor": {"valor": []},
+        "tipo": "json",
+        "descricao": (
+            "Condições acompanhadas na visita (B.1-019). Vazio = texto livre; carregar do "
+            "modelo oficial."
+        ),
+    },
+    "territorio.desfechos_visita": {
+        "valor": {"valor": []},
+        "tipo": "json",
+        "descricao": (
+            "Desfechos da visita (B.1-019). Vazio = texto livre; carregar do modelo oficial."
+        ),
     },
     "geral.fuso_horario": {
         "valor": {"valor": "America/Sao_Paulo"},
@@ -275,16 +326,12 @@ PRIORIDADES_CONFIGURAVEIS = [
 ]
 
 
-async def garantir_prioridades_configuraveis(
-    db: AsyncSession, tenant_id: uuid.UUID
-) -> None:
+async def garantir_prioridades_configuraveis(db: AsyncSession, tenant_id: uuid.UUID) -> None:
     """Seed idempotente de prioridades não legais, marcadas como configuráveis."""
     existentes = {
         codigo
         for (codigo,) in (
-            await db.execute(
-                select(Prioridade.codigo).where(Prioridade.tenant_id == tenant_id)
-            )
+            await db.execute(select(Prioridade.codigo).where(Prioridade.tenant_id == tenant_id))
         ).all()
     }
     for definicao in PRIORIDADES_CONFIGURAVEIS:
@@ -460,8 +507,7 @@ PROGRAMAS_SEED: list[dict] = [
         "tipo": "PROGRAMA",
         "linha_cuidado": "SAUDE_MULHER",
         "descricao": (
-            "Acompanhamento de colo/mama, planejamento reprodutivo e climatério. "
-            f"{_AVISO_SEED}"
+            f"Acompanhamento de colo/mama, planejamento reprodutivo e climatério. {_AVISO_SEED}"
         ),
         "formulario": "SAUDE_MULHER_DADOS",
         "criterios": {
@@ -486,8 +532,7 @@ PROGRAMAS_SEED: list[dict] = [
         "tipo": "PROGRAMA",
         "linha_cuidado": "SAUDE_CRIANCA",
         "descricao": (
-            "Crescimento, desenvolvimento, alimentação e situação vacinal. "
-            f"{_AVISO_SEED}"
+            f"Crescimento, desenvolvimento, alimentação e situação vacinal. {_AVISO_SEED}"
         ),
         "formulario": "SAUDE_CRIANCA_DADOS",
         "criterios": {
@@ -511,8 +556,7 @@ PROGRAMAS_SEED: list[dict] = [
         "tipo": "PROGRAMA",
         "linha_cuidado": "CONDICOES_CRONICAS",
         "descricao": (
-            "Acompanhamento de hipertensão com consultas, avaliação e fornecimento. "
-            f"{_AVISO_SEED}"
+            f"Acompanhamento de hipertensão com consultas, avaliação e fornecimento. {_AVISO_SEED}"
         ),
         "formulario": "CRONICAS_DADOS",
         "criterios": {
@@ -535,8 +579,7 @@ PROGRAMAS_SEED: list[dict] = [
         "tipo": "PROGRAMA",
         "linha_cuidado": "CONDICOES_CRONICAS",
         "descricao": (
-            "Acompanhamento de diabetes com consultas, exames e fornecimento. "
-            f"{_AVISO_SEED}"
+            f"Acompanhamento de diabetes com consultas, exames e fornecimento. {_AVISO_SEED}"
         ),
         "formulario": "CRONICAS_DADOS",
         "criterios": {
@@ -559,8 +602,7 @@ PROGRAMAS_SEED: list[dict] = [
         "tipo": "PROGRAMA",
         "linha_cuidado": "GESTACAO",
         "descricao": (
-            "Acompanhamento do pré-natal com consultas, exames e vacinação. "
-            f"{_AVISO_SEED}"
+            f"Acompanhamento do pré-natal com consultas, exames e vacinação. {_AVISO_SEED}"
         ),
         "formulario": "GESTANTE_DADOS",
         "marcador_gestante": True,
@@ -592,9 +634,7 @@ def _criterios_sem_regra_oficial(criterios: dict) -> dict:
     return base
 
 
-async def garantir_programas_padrao(
-    db: AsyncSession, tenant_id: uuid.UUID
-) -> None:
+async def garantir_programas_padrao(db: AsyncSession, tenant_id: uuid.UUID) -> None:
     """Seed idempotente dos modelos da Fase 6, marcados como A_VALIDAR."""
     from app.models.nucleo import FormularioDinamico
     from app.models.programa import Programa, ProgramaItem
@@ -633,9 +673,7 @@ async def garantir_programas_padrao(
     existentes_programa = {
         codigo
         for (codigo,) in (
-            await db.execute(
-                select(Programa.codigo).where(Programa.tenant_id == tenant_id)
-            )
+            await db.execute(select(Programa.codigo).where(Programa.tenant_id == tenant_id))
         ).all()
     }
     for definicao in PROGRAMAS_SEED:

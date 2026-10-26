@@ -52,6 +52,7 @@ async def listar_programacoes(
     usuario: Usuario = Depends(exigir(Permissao.PROGRAMA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-002 — acompanhamentos e fornecimentos programados."""
     itens, proximo, total = await programas.listar_programacoes(
         db,
         tenant_id,
@@ -82,6 +83,7 @@ async def criar_programacao(
     ator: Usuario = Depends(exigir(Permissao.PROGRAMA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-002 — acompanhamentos e fornecimentos programados."""
     chave, request_hash, cache = await cache_idempotencia(
         request, db, tenant_id, corpo.model_dump(mode="json")
     )
@@ -117,6 +119,7 @@ async def detalhar_programacao(
     usuario: Usuario = Depends(exigir(Permissao.PROGRAMA_LER)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-002 — acompanhamentos e fornecimentos programados."""
     registro = await programas.obter_programacao(db, tenant_id, programacao_id)
     await exigir_acesso_estabelecimento(
         db, usuario, Permissao.PROGRAMA_LER, registro.inscricao.estabelecimento_id
@@ -135,6 +138,7 @@ async def realizar_programacao(
     ator: Usuario = Depends(exigir(Permissao.PROGRAMA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-002 — acompanhamentos e fornecimentos programados."""
     registro = await programas.realizar_programacao(
         db,
         tenant_id=tenant_id,
@@ -157,6 +161,7 @@ async def remarcar_programacao(
     ator: Usuario = Depends(exigir(Permissao.PROGRAMA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-002 — acompanhamentos e fornecimentos programados."""
     registro = await programas.remarcar_programacao(
         db,
         tenant_id=tenant_id,
@@ -179,6 +184,7 @@ async def perder_programacao(
     ator: Usuario = Depends(exigir(Permissao.PROGRAMA_GERENCIAR)),
     db: AsyncSession = Depends(get_db),
 ):
+    """B.2-002 — acompanhamentos e fornecimentos programados."""
     registro = await programas.perder_programacao(
         db,
         tenant_id=tenant_id,
