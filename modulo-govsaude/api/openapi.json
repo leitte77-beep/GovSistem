@@ -2173,6 +2173,25 @@
         "title": "AtivacaoEsquema",
         "type": "object"
       },
+      "AtivacaoModelo": {
+        "additionalProperties": false,
+        "properties": {
+          "fonte_normativa": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fonte Normativa"
+          }
+        },
+        "title": "AtivacaoModelo",
+        "type": "object"
+      },
       "AuditoriaOut": {
         "properties": {
           "acao": {
@@ -2326,6 +2345,32 @@
           "resultado"
         ],
         "title": "AuditoriaOut",
+        "type": "object"
+      },
+      "Autorizacao": {
+        "additionalProperties": false,
+        "properties": {
+          "autorizado": {
+            "title": "Autorizado",
+            "type": "boolean"
+          },
+          "motivo": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivo"
+          }
+        },
+        "required": [
+          "autorizado"
+        ],
+        "title": "Autorizacao",
         "type": "object"
       },
       "Baixa": {
@@ -2944,6 +2989,190 @@
           "termo"
         ],
         "title": "BuscaProfissionalRequest",
+        "type": "object"
+      },
+      "CampoModelo": {
+        "additionalProperties": false,
+        "properties": {
+          "codigo": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Codigo",
+            "type": "string"
+          },
+          "nome": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Nome",
+            "type": "string"
+          },
+          "obrigatorio": {
+            "default": false,
+            "title": "Obrigatorio",
+            "type": "boolean"
+          },
+          "opcoes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opcoes"
+          },
+          "tipo": {
+            "default": "TEXTO",
+            "enum": [
+              "TEXTO",
+              "NUMERICO",
+              "DATA",
+              "OPCAO",
+              "BOOLEANO"
+            ],
+            "title": "Tipo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "codigo",
+          "nome"
+        ],
+        "title": "CampoModelo",
+        "type": "object"
+      },
+      "CampoResultado": {
+        "additionalProperties": false,
+        "properties": {
+          "codigo": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Codigo",
+            "type": "string"
+          },
+          "critico_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Critico Max"
+          },
+          "critico_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Critico Min"
+          },
+          "limite_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limite Max"
+          },
+          "limite_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limite Min"
+          },
+          "nome": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Nome",
+            "type": "string"
+          },
+          "obrigatorio": {
+            "default": true,
+            "title": "Obrigatorio",
+            "type": "boolean"
+          },
+          "opcoes": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Opcoes"
+          },
+          "referencia_max": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referencia Max"
+          },
+          "referencia_min": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Referencia Min"
+          },
+          "tipo": {
+            "default": "NUMERICO",
+            "enum": [
+              "NUMERICO",
+              "TEXTO",
+              "OPCAO"
+            ],
+            "title": "Tipo",
+            "type": "string"
+          },
+          "unidade": {
+            "anyOf": [
+              {
+                "maxLength": 30,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unidade"
+          }
+        },
+        "required": [
+          "codigo",
+          "nome"
+        ],
+        "title": "CampoResultado",
         "type": "object"
       },
       "CartaoCidadaoOut": {
@@ -4471,6 +4700,41 @@
         "title": "CoberturaOut",
         "type": "object"
       },
+      "Coleta": {
+        "additionalProperties": false,
+        "properties": {
+          "coletado_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coletado Em"
+          },
+          "etiqueta": {
+            "maxLength": 30,
+            "minLength": 4,
+            "title": "Etiqueta",
+            "type": "string"
+          },
+          "material": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Material",
+            "type": "string"
+          }
+        },
+        "required": [
+          "etiqueta",
+          "material"
+        ],
+        "title": "Coleta",
+        "type": "object"
+      },
       "CompetenciaOut": {
         "properties": {
           "competencia": {
@@ -5060,6 +5324,21 @@
           "versao"
         ],
         "title": "ContatoOut",
+        "type": "object"
+      },
+      "CopiarExame": {
+        "additionalProperties": false,
+        "properties": {
+          "estabelecimento_id": {
+            "format": "uuid",
+            "title": "Estabelecimento Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "estabelecimento_id"
+        ],
+        "title": "CopiarExame",
         "type": "object"
       },
       "CriteriosElegibilidade": {
@@ -6730,6 +7009,41 @@
         "title": "EnteConsorciadoUpdate",
         "type": "object"
       },
+      "Entrega": {
+        "additionalProperties": false,
+        "properties": {
+          "documento": {
+            "maxLength": 40,
+            "minLength": 3,
+            "title": "Documento",
+            "type": "string"
+          },
+          "parentesco": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parentesco"
+          },
+          "recebedor": {
+            "maxLength": 200,
+            "minLength": 3,
+            "title": "Recebedor",
+            "type": "string"
+          }
+        },
+        "required": [
+          "recebedor",
+          "documento"
+        ],
+        "title": "Entrega",
+        "type": "object"
+      },
       "EquipeCreate": {
         "additionalProperties": false,
         "properties": {
@@ -7686,6 +8000,565 @@
           "etapa"
         ],
         "title": "EtapaAvancar",
+        "type": "object"
+      },
+      "ExameCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "alto_custo": {
+            "default": false,
+            "title": "Alto Custo",
+            "type": "boolean"
+          },
+          "bancada": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bancada"
+          },
+          "campos": {
+            "items": {
+              "$ref": "#/components/schemas/CampoResultado"
+            },
+            "maxItems": 200,
+            "title": "Campos",
+            "type": "array"
+          },
+          "carencia_dias": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carencia Dias"
+          },
+          "cbos_liberacao": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cbos Liberacao"
+          },
+          "cids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cids"
+          },
+          "codigo": {
+            "maxLength": 30,
+            "minLength": 1,
+            "title": "Codigo",
+            "type": "string"
+          },
+          "equipamento_codigo": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Equipamento Codigo"
+          },
+          "estabelecimento_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estabelecimento Id"
+          },
+          "estabelecimentos_requisitantes": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estabelecimentos Requisitantes"
+          },
+          "exige_autorizacao": {
+            "default": false,
+            "title": "Exige Autorizacao",
+            "type": "boolean"
+          },
+          "integrado_equipamento": {
+            "default": false,
+            "title": "Integrado Equipamento",
+            "type": "boolean"
+          },
+          "layout_laudo": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Layout Laudo"
+          },
+          "material": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material"
+          },
+          "metodo": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metodo"
+          },
+          "nome": {
+            "maxLength": 240,
+            "minLength": 2,
+            "title": "Nome",
+            "type": "string"
+          },
+          "prazo_entrega_dias": {
+            "anyOf": [
+              {
+                "maximum": 365.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prazo Entrega Dias"
+          },
+          "procedimento_sigtap": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{10}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Procedimento Sigtap"
+          },
+          "regras_faturamento": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regras Faturamento"
+          },
+          "sigiloso": {
+            "default": false,
+            "title": "Sigiloso",
+            "type": "boolean"
+          },
+          "tipo": {
+            "default": "LABORATORIO",
+            "enum": [
+              "LABORATORIO",
+              "RADIOLOGIA"
+            ],
+            "title": "Tipo",
+            "type": "string"
+          },
+          "validade_autorizacao_dias": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validade Autorizacao Dias"
+          },
+          "validade_resultado_dias": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validade Resultado Dias"
+          },
+          "valor_unitario": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valor Unitario"
+          }
+        },
+        "required": [
+          "codigo",
+          "nome"
+        ],
+        "title": "ExameCreate",
+        "type": "object"
+      },
+      "ExameOut": {
+        "additionalProperties": false,
+        "properties": {
+          "alto_custo": {
+            "default": false,
+            "title": "Alto Custo",
+            "type": "boolean"
+          },
+          "ativo": {
+            "title": "Ativo",
+            "type": "boolean"
+          },
+          "bancada": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Bancada"
+          },
+          "campos": {
+            "items": {
+              "$ref": "#/components/schemas/CampoResultado"
+            },
+            "maxItems": 200,
+            "title": "Campos",
+            "type": "array"
+          },
+          "carencia_dias": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Carencia Dias"
+          },
+          "cbos_liberacao": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cbos Liberacao"
+          },
+          "cids": {
+            "anyOf": [
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cids"
+          },
+          "codigo": {
+            "maxLength": 30,
+            "minLength": 1,
+            "title": "Codigo",
+            "type": "string"
+          },
+          "copiado_de_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Copiado De Id"
+          },
+          "equipamento_codigo": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Equipamento Codigo"
+          },
+          "estabelecimento_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estabelecimento Id"
+          },
+          "estabelecimentos_requisitantes": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estabelecimentos Requisitantes"
+          },
+          "exige_autorizacao": {
+            "default": false,
+            "title": "Exige Autorizacao",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "integrado_equipamento": {
+            "default": false,
+            "title": "Integrado Equipamento",
+            "type": "boolean"
+          },
+          "layout_laudo": {
+            "anyOf": [
+              {
+                "maxLength": 20000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Layout Laudo"
+          },
+          "material": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material"
+          },
+          "metodo": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metodo"
+          },
+          "nome": {
+            "maxLength": 240,
+            "minLength": 2,
+            "title": "Nome",
+            "type": "string"
+          },
+          "numero_versao": {
+            "title": "Numero Versao",
+            "type": "integer"
+          },
+          "prazo_entrega_dias": {
+            "anyOf": [
+              {
+                "maximum": 365.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prazo Entrega Dias"
+          },
+          "procedimento_sigtap": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{10}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Procedimento Sigtap"
+          },
+          "regras_faturamento": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Regras Faturamento"
+          },
+          "sigiloso": {
+            "default": false,
+            "title": "Sigiloso",
+            "type": "boolean"
+          },
+          "tipo": {
+            "default": "LABORATORIO",
+            "enum": [
+              "LABORATORIO",
+              "RADIOLOGIA"
+            ],
+            "title": "Tipo",
+            "type": "string"
+          },
+          "validade_autorizacao_dias": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validade Autorizacao Dias"
+          },
+          "validade_resultado_dias": {
+            "anyOf": [
+              {
+                "maximum": 3650.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Validade Resultado Dias"
+          },
+          "valor_unitario": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valor Unitario"
+          },
+          "versao": {
+            "title": "Versao",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "codigo",
+          "nome",
+          "id",
+          "numero_versao",
+          "ativo",
+          "versao"
+        ],
+        "title": "ExameOut",
         "type": "object"
       },
       "ExportacaoLediOut": {
@@ -10289,6 +11162,252 @@
         "title": "ItemDispensacao",
         "type": "object"
       },
+      "ItemOut": {
+        "properties": {
+          "alertas": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Alertas"
+          },
+          "anexos": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anexos"
+          },
+          "assinatura_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assinatura Hash"
+          },
+          "autorizacao_situacao": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Autorizacao Situacao"
+          },
+          "autorizacao_valida_ate": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Autorizacao Valida Ate"
+          },
+          "avaliacao": {
+            "anyOf": [
+              {
+                "items": {},
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Avaliacao"
+          },
+          "coletado_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coletado Em"
+          },
+          "critico": {
+            "title": "Critico",
+            "type": "boolean"
+          },
+          "entregue_a": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entregue A"
+          },
+          "entregue_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entregue Em"
+          },
+          "etiqueta": {
+            "title": "Etiqueta",
+            "type": "string"
+          },
+          "exame_codigo": {
+            "title": "Exame Codigo",
+            "type": "string"
+          },
+          "exame_id": {
+            "format": "uuid",
+            "title": "Exame Id",
+            "type": "string"
+          },
+          "fora_referencia": {
+            "title": "Fora Referencia",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "incompleto": {
+            "title": "Incompleto",
+            "type": "boolean"
+          },
+          "liberado_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Liberado Em"
+          },
+          "liberado_por_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Liberado Por Id"
+          },
+          "material": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material"
+          },
+          "requisicao_id": {
+            "format": "uuid",
+            "title": "Requisicao Id",
+            "type": "string"
+          },
+          "resultado_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resultado Em"
+          },
+          "resultado_versao": {
+            "title": "Resultado Versao",
+            "type": "integer"
+          },
+          "sigiloso": {
+            "title": "Sigiloso",
+            "type": "boolean"
+          },
+          "situacao": {
+            "title": "Situacao",
+            "type": "string"
+          },
+          "texto_livre": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Texto Livre"
+          },
+          "valores": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valores"
+          },
+          "velado": {
+            "default": false,
+            "title": "Velado",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "requisicao_id",
+          "exame_id",
+          "exame_codigo",
+          "etiqueta",
+          "situacao",
+          "sigiloso",
+          "incompleto",
+          "fora_referencia",
+          "critico",
+          "resultado_versao"
+        ],
+        "title": "ItemOut",
+        "type": "object"
+      },
       "ItemRequisicao": {
         "additionalProperties": false,
         "properties": {
@@ -10389,6 +11508,22 @@
           "created_at"
         ],
         "title": "JobOut",
+        "type": "object"
+      },
+      "Liberacao": {
+        "additionalProperties": false,
+        "properties": {
+          "assinatura": {
+            "default": "ELETRONICA",
+            "enum": [
+              "ELETRONICA",
+              "DIGITAL"
+            ],
+            "title": "Assinatura",
+            "type": "string"
+          }
+        },
+        "title": "Liberacao",
         "type": "object"
       },
       "LinhaCuidadoOut": {
@@ -10741,6 +11876,25 @@
         "title": "LoteBloqueio",
         "type": "object"
       },
+      "LoteContingencia": {
+        "additionalProperties": false,
+        "properties": {
+          "requisicoes": {
+            "items": {
+              "$ref": "#/components/schemas/app__schemas__laboratorio__RequisicaoCreate"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Requisicoes",
+            "type": "array"
+          }
+        },
+        "required": [
+          "requisicoes"
+        ],
+        "title": "LoteContingencia",
+        "type": "object"
+      },
       "LoteOut": {
         "properties": {
           "bloqueado": {
@@ -11022,6 +12176,51 @@
         "title": "MedicoesVisita",
         "type": "object"
       },
+      "MensagemEquipamentoIn": {
+        "additionalProperties": false,
+        "properties": {
+          "equipamento": {
+            "maxLength": 60,
+            "minLength": 1,
+            "title": "Equipamento",
+            "type": "string"
+          },
+          "etiqueta": {
+            "maxLength": 30,
+            "minLength": 1,
+            "title": "Etiqueta",
+            "type": "string"
+          },
+          "id_mensagem": {
+            "maxLength": 80,
+            "minLength": 1,
+            "title": "Id Mensagem",
+            "type": "string"
+          },
+          "valores": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "title": "Valores",
+            "type": "object"
+          }
+        },
+        "required": [
+          "equipamento",
+          "id_mensagem",
+          "etiqueta",
+          "valores"
+        ],
+        "title": "MensagemEquipamentoIn",
+        "type": "object"
+      },
       "MetaTerritorialOut": {
         "properties": {
           "atingimento_percentual": {
@@ -11100,6 +12299,252 @@
           "codigo"
         ],
         "title": "MfaCodigoRequest",
+        "type": "object"
+      },
+      "ModeloSiscanCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "campos_requisicao": {
+            "items": {
+              "$ref": "#/components/schemas/CampoModelo"
+            },
+            "maxItems": 300,
+            "minItems": 1,
+            "title": "Campos Requisicao",
+            "type": "array"
+          },
+          "campos_resultado": {
+            "items": {
+              "$ref": "#/components/schemas/CampoModelo"
+            },
+            "maxItems": 300,
+            "minItems": 1,
+            "title": "Campos Resultado",
+            "type": "array"
+          },
+          "fonte_normativa": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fonte Normativa"
+          },
+          "intervalo_rastreamento_meses": {
+            "anyOf": [
+              {
+                "maximum": 120.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intervalo Rastreamento Meses"
+          },
+          "nome": {
+            "maxLength": 200,
+            "minLength": 2,
+            "title": "Nome",
+            "type": "string"
+          },
+          "prazo_resultado_dias": {
+            "anyOf": [
+              {
+                "maximum": 365.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prazo Resultado Dias"
+          },
+          "procedimento_coleta_sigtap": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{10}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Procedimento Coleta Sigtap"
+          },
+          "tipo": {
+            "enum": [
+              "CITO_COLO",
+              "HISTO_COLO",
+              "MAMOGRAFIA",
+              "CITO_MAMA",
+              "HISTO_MAMA"
+            ],
+            "title": "Tipo",
+            "type": "string"
+          },
+          "valores_alterados": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valores Alterados"
+          }
+        },
+        "required": [
+          "tipo",
+          "nome",
+          "campos_requisicao",
+          "campos_resultado"
+        ],
+        "title": "ModeloSiscanCreate",
+        "type": "object"
+      },
+      "ModeloSiscanOut": {
+        "additionalProperties": false,
+        "properties": {
+          "ativo": {
+            "title": "Ativo",
+            "type": "boolean"
+          },
+          "campos_requisicao": {
+            "items": {
+              "$ref": "#/components/schemas/CampoModelo"
+            },
+            "maxItems": 300,
+            "minItems": 1,
+            "title": "Campos Requisicao",
+            "type": "array"
+          },
+          "campos_resultado": {
+            "items": {
+              "$ref": "#/components/schemas/CampoModelo"
+            },
+            "maxItems": 300,
+            "minItems": 1,
+            "title": "Campos Resultado",
+            "type": "array"
+          },
+          "fonte_normativa": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fonte Normativa"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "intervalo_rastreamento_meses": {
+            "anyOf": [
+              {
+                "maximum": 120.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intervalo Rastreamento Meses"
+          },
+          "nome": {
+            "maxLength": 200,
+            "minLength": 2,
+            "title": "Nome",
+            "type": "string"
+          },
+          "numero_versao": {
+            "title": "Numero Versao",
+            "type": "integer"
+          },
+          "prazo_resultado_dias": {
+            "anyOf": [
+              {
+                "maximum": 365.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prazo Resultado Dias"
+          },
+          "procedimento_coleta_sigtap": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{10}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Procedimento Coleta Sigtap"
+          },
+          "tipo": {
+            "enum": [
+              "CITO_COLO",
+              "HISTO_COLO",
+              "MAMOGRAFIA",
+              "CITO_MAMA",
+              "HISTO_MAMA"
+            ],
+            "title": "Tipo",
+            "type": "string"
+          },
+          "valores_alterados": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valores Alterados"
+          }
+        },
+        "required": [
+          "tipo",
+          "nome",
+          "campos_requisicao",
+          "campos_resultado",
+          "id",
+          "numero_versao",
+          "ativo"
+        ],
+        "title": "ModeloSiscanOut",
         "type": "object"
       },
       "Motivo": {
@@ -13623,6 +15068,35 @@
         "title": "PlantaoCreate",
         "type": "object"
       },
+      "PortalLaudo": {
+        "additionalProperties": false,
+        "properties": {
+          "codigo_acesso": {
+            "maxLength": 20,
+            "minLength": 6,
+            "title": "Codigo Acesso",
+            "type": "string"
+          },
+          "data_nascimento": {
+            "format": "date",
+            "title": "Data Nascimento",
+            "type": "string"
+          },
+          "protocolo": {
+            "maxLength": 20,
+            "minLength": 4,
+            "title": "Protocolo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "protocolo",
+          "codigo_acesso",
+          "data_nascimento"
+        ],
+        "title": "PortalLaudo",
+        "type": "object"
+      },
       "PrescricaoCopiar": {
         "additionalProperties": false,
         "description": "B.6-019 — cópia assistida: o profissional confirma quais itens repetir.",
@@ -14106,6 +15580,38 @@
           }
         },
         "title": "PrioridadeUpdate",
+        "type": "object"
+      },
+      "Problema": {
+        "additionalProperties": false,
+        "properties": {
+          "categoria": {
+            "enum": [
+              "COLETA",
+              "AMOSTRA",
+              "TRANSPORTE",
+              "PROCESSAMENTO"
+            ],
+            "title": "Categoria",
+            "type": "string"
+          },
+          "motivo": {
+            "maxLength": 2000,
+            "minLength": 5,
+            "title": "Motivo",
+            "type": "string"
+          },
+          "nova_coleta": {
+            "default": false,
+            "title": "Nova Coleta",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "categoria",
+          "motivo"
+        ],
+        "title": "Problema",
         "type": "object"
       },
       "ProcedimentoAutorizadoCreate": {
@@ -17365,6 +18871,23 @@
         "title": "RecemNascidoCreate",
         "type": "object"
       },
+      "Recepcao": {
+        "additionalProperties": false,
+        "properties": {
+          "codigo": {
+            "description": "Protocolo, etiqueta ou QR",
+            "maxLength": 40,
+            "minLength": 4,
+            "title": "Codigo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "codigo"
+        ],
+        "title": "Recepcao",
+        "type": "object"
+      },
       "RefreshRequest": {
         "properties": {
           "refresh_token": {
@@ -17598,149 +19121,6 @@
           "itens"
         ],
         "title": "RequisicaoAtender",
-        "type": "object"
-      },
-      "RequisicaoCreate": {
-        "additionalProperties": false,
-        "properties": {
-          "destino_local_id": {
-            "format": "uuid",
-            "title": "Destino Local Id",
-            "type": "string"
-          },
-          "itens": {
-            "items": {
-              "$ref": "#/components/schemas/ItemRequisicao"
-            },
-            "maxItems": 200,
-            "minItems": 1,
-            "title": "Itens",
-            "type": "array"
-          },
-          "observacao": {
-            "anyOf": [
-              {
-                "maxLength": 2000,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Observacao"
-          },
-          "origem_local_id": {
-            "format": "uuid",
-            "title": "Origem Local Id",
-            "type": "string"
-          }
-        },
-        "required": [
-          "origem_local_id",
-          "destino_local_id",
-          "itens"
-        ],
-        "title": "RequisicaoCreate",
-        "type": "object"
-      },
-      "RequisicaoOut": {
-        "properties": {
-          "atendida_em": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Atendida Em"
-          },
-          "concluida_em": {
-            "anyOf": [
-              {
-                "format": "date-time",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Concluida Em"
-          },
-          "destino_local_id": {
-            "format": "uuid",
-            "title": "Destino Local Id",
-            "type": "string"
-          },
-          "id": {
-            "format": "uuid",
-            "title": "Id",
-            "type": "string"
-          },
-          "itens": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Itens",
-            "type": "array"
-          },
-          "motivo_recusa": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Motivo Recusa"
-          },
-          "numero": {
-            "title": "Numero",
-            "type": "string"
-          },
-          "observacao": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Observacao"
-          },
-          "origem_local_id": {
-            "format": "uuid",
-            "title": "Origem Local Id",
-            "type": "string"
-          },
-          "situacao": {
-            "title": "Situacao",
-            "type": "string"
-          },
-          "versao": {
-            "title": "Versao",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "id",
-          "numero",
-          "origem_local_id",
-          "destino_local_id",
-          "situacao",
-          "itens",
-          "observacao",
-          "motivo_recusa",
-          "atendida_em",
-          "concluida_em",
-          "versao"
-        ],
-        "title": "RequisicaoOut",
         "type": "object"
       },
       "RespostaCreate": {
@@ -18142,6 +19522,83 @@
           }
         },
         "title": "RestricaoHorarioUpdate",
+        "type": "object"
+      },
+      "ResultadoCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "anexos": {
+            "anyOf": [
+              {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Anexos"
+          },
+          "id_cliente": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Cliente"
+          },
+          "motivo_alteracao": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivo Alteracao"
+          },
+          "parcial": {
+            "default": false,
+            "title": "Parcial",
+            "type": "boolean"
+          },
+          "texto_livre": {
+            "anyOf": [
+              {
+                "maxLength": 50000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Texto Livre"
+          },
+          "valores": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            },
+            "title": "Valores",
+            "type": "object"
+          }
+        },
+        "title": "ResultadoCreate",
         "type": "object"
       },
       "ResumoItemOut": {
@@ -18881,6 +20338,439 @@
           "created_at"
         ],
         "title": "SinalVitalOut",
+        "type": "object"
+      },
+      "SiscanCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "cidadao_id": {
+            "format": "uuid",
+            "title": "Cidadao Id",
+            "type": "string"
+          },
+          "coletado_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coletado Em"
+          },
+          "dados": {
+            "additionalProperties": true,
+            "title": "Dados",
+            "type": "object"
+          },
+          "especialidade": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Especialidade"
+          },
+          "estabelecimento_id": {
+            "format": "uuid",
+            "title": "Estabelecimento Id",
+            "type": "string"
+          },
+          "informacoes_clinicas": {
+            "anyOf": [
+              {
+                "maxLength": 8000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Informacoes Clinicas"
+          },
+          "material": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material"
+          },
+          "profissional_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profissional Id"
+          },
+          "tipo": {
+            "enum": [
+              "CITO_COLO",
+              "HISTO_COLO",
+              "MAMOGRAFIA",
+              "CITO_MAMA",
+              "HISTO_MAMA"
+            ],
+            "title": "Tipo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "tipo",
+          "cidadao_id",
+          "estabelecimento_id"
+        ],
+        "title": "SiscanCreate",
+        "type": "object"
+      },
+      "SiscanOut": {
+        "properties": {
+          "assinado_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assinado Em"
+          },
+          "assinatura_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Assinatura Hash"
+          },
+          "cidadao_id": {
+            "format": "uuid",
+            "title": "Cidadao Id",
+            "type": "string"
+          },
+          "coletado_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coletado Em"
+          },
+          "comunicado_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Comunicado Em"
+          },
+          "dados_requisicao": {
+            "additionalProperties": true,
+            "title": "Dados Requisicao",
+            "type": "object"
+          },
+          "dados_resultado": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dados Resultado"
+          },
+          "enviado_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Enviado Em"
+          },
+          "especialidade": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Especialidade"
+          },
+          "estabelecimento_id": {
+            "format": "uuid",
+            "title": "Estabelecimento Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "informacoes_clinicas": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Informacoes Clinicas"
+          },
+          "material": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Material"
+          },
+          "modelo_id": {
+            "format": "uuid",
+            "title": "Modelo Id",
+            "type": "string"
+          },
+          "prestador": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prestador"
+          },
+          "profissional_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profissional Id"
+          },
+          "proximo_exame_em": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proximo Exame Em"
+          },
+          "resultado_alterado": {
+            "title": "Resultado Alterado",
+            "type": "boolean"
+          },
+          "resultado_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resultado Em"
+          },
+          "seguimento": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seguimento"
+          },
+          "situacao": {
+            "title": "Situacao",
+            "type": "string"
+          },
+          "tipo": {
+            "title": "Tipo",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "tipo",
+          "modelo_id",
+          "cidadao_id",
+          "estabelecimento_id",
+          "dados_requisicao",
+          "situacao",
+          "resultado_alterado"
+        ],
+        "title": "SiscanOut",
+        "type": "object"
+      },
+      "SiscanResultado": {
+        "additionalProperties": false,
+        "properties": {
+          "dados": {
+            "additionalProperties": true,
+            "title": "Dados",
+            "type": "object"
+          },
+          "prestador": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prestador"
+          },
+          "proximo_exame_em": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proximo Exame Em"
+          }
+        },
+        "required": [
+          "dados"
+        ],
+        "title": "SiscanResultado",
+        "type": "object"
+      },
+      "SiscanSituacao": {
+        "additionalProperties": false,
+        "properties": {
+          "coletado_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Coletado Em"
+          },
+          "meio": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meio"
+          },
+          "prestador": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Prestador"
+          },
+          "proximo_exame_em": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Proximo Exame Em"
+          },
+          "seguimento": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seguimento"
+          },
+          "situacao": {
+            "enum": [
+              "COLETADO",
+              "ENVIADO",
+              "COMUNICADO",
+              "EM_SEGUIMENTO",
+              "ENCERRADO"
+            ],
+            "title": "Situacao",
+            "type": "string"
+          }
+        },
+        "required": [
+          "situacao"
+        ],
+        "title": "SiscanSituacao",
         "type": "object"
       },
       "SyncOrganizacaoRequest": {
@@ -22326,6 +24216,149 @@
         "title": "DocumentoOut",
         "type": "object"
       },
+      "app__schemas__estoque__RequisicaoCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "destino_local_id": {
+            "format": "uuid",
+            "title": "Destino Local Id",
+            "type": "string"
+          },
+          "itens": {
+            "items": {
+              "$ref": "#/components/schemas/ItemRequisicao"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Itens",
+            "type": "array"
+          },
+          "observacao": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observacao"
+          },
+          "origem_local_id": {
+            "format": "uuid",
+            "title": "Origem Local Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "origem_local_id",
+          "destino_local_id",
+          "itens"
+        ],
+        "title": "RequisicaoCreate",
+        "type": "object"
+      },
+      "app__schemas__estoque__RequisicaoOut": {
+        "properties": {
+          "atendida_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Atendida Em"
+          },
+          "concluida_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Concluida Em"
+          },
+          "destino_local_id": {
+            "format": "uuid",
+            "title": "Destino Local Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "itens": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Itens",
+            "type": "array"
+          },
+          "motivo_recusa": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Motivo Recusa"
+          },
+          "numero": {
+            "title": "Numero",
+            "type": "string"
+          },
+          "observacao": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observacao"
+          },
+          "origem_local_id": {
+            "format": "uuid",
+            "title": "Origem Local Id",
+            "type": "string"
+          },
+          "situacao": {
+            "title": "Situacao",
+            "type": "string"
+          },
+          "versao": {
+            "title": "Versao",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "numero",
+          "origem_local_id",
+          "destino_local_id",
+          "situacao",
+          "itens",
+          "observacao",
+          "motivo_recusa",
+          "atendida_em",
+          "concluida_em",
+          "versao"
+        ],
+        "title": "RequisicaoOut",
+        "type": "object"
+      },
       "app__schemas__imunizacao__AgendamentoCreate": {
         "additionalProperties": false,
         "properties": {
@@ -22482,6 +24515,287 @@
           "versao"
         ],
         "title": "AgendamentoOut",
+        "type": "object"
+      },
+      "app__schemas__laboratorio__RequisicaoCreate": {
+        "additionalProperties": false,
+        "properties": {
+          "agendamento_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Agendamento Id"
+          },
+          "atendimento_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Atendimento Id"
+          },
+          "cidadao_id": {
+            "format": "uuid",
+            "title": "Cidadao Id",
+            "type": "string"
+          },
+          "contingencia": {
+            "default": false,
+            "title": "Contingencia",
+            "type": "boolean"
+          },
+          "estabelecimento_coleta_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Estabelecimento Coleta Id"
+          },
+          "estabelecimento_origem_id": {
+            "format": "uuid",
+            "title": "Estabelecimento Origem Id",
+            "type": "string"
+          },
+          "exames": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 60,
+            "minItems": 1,
+            "title": "Exames",
+            "type": "array"
+          },
+          "gestante": {
+            "default": false,
+            "title": "Gestante",
+            "type": "boolean"
+          },
+          "id_cliente": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Id Cliente"
+          },
+          "justificativa": {
+            "anyOf": [
+              {
+                "maxLength": 2000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Justificativa"
+          },
+          "observacoes": {
+            "anyOf": [
+              {
+                "maxLength": 4000,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observacoes"
+          },
+          "origem": {
+            "default": "AVULSA",
+            "enum": [
+              "PRONTUARIO",
+              "AGENDA",
+              "AVULSA"
+            ],
+            "title": "Origem",
+            "type": "string"
+          },
+          "profissional_solicitante_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Profissional Solicitante Id"
+          },
+          "registrada_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Registrada Em"
+          },
+          "solicitante_externo": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Solicitante Externo"
+          },
+          "urgente": {
+            "default": false,
+            "title": "Urgente",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "cidadao_id",
+          "estabelecimento_origem_id",
+          "exames"
+        ],
+        "title": "RequisicaoCreate",
+        "type": "object"
+      },
+      "app__schemas__laboratorio__RequisicaoOut": {
+        "properties": {
+          "cidadao_id": {
+            "format": "uuid",
+            "title": "Cidadao Id",
+            "type": "string"
+          },
+          "codigo_acesso": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codigo Acesso"
+          },
+          "contingencia": {
+            "title": "Contingencia",
+            "type": "boolean"
+          },
+          "duplicada": {
+            "default": false,
+            "title": "Duplicada",
+            "type": "boolean"
+          },
+          "estabelecimento_coleta_id": {
+            "format": "uuid",
+            "title": "Estabelecimento Coleta Id",
+            "type": "string"
+          },
+          "estabelecimento_origem_id": {
+            "format": "uuid",
+            "title": "Estabelecimento Origem Id",
+            "type": "string"
+          },
+          "gestante": {
+            "title": "Gestante",
+            "type": "boolean"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "itens": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/ItemOut"
+            },
+            "title": "Itens",
+            "type": "array"
+          },
+          "observacoes": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observacoes"
+          },
+          "origem": {
+            "title": "Origem",
+            "type": "string"
+          },
+          "previsao_retirada": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previsao Retirada"
+          },
+          "protocolo": {
+            "title": "Protocolo",
+            "type": "string"
+          },
+          "recebida_em": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Recebida Em"
+          },
+          "urgente": {
+            "title": "Urgente",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "protocolo",
+          "cidadao_id",
+          "estabelecimento_origem_id",
+          "estabelecimento_coleta_id",
+          "origem",
+          "urgente",
+          "gestante",
+          "contingencia"
+        ],
+        "title": "RequisicaoOut",
         "type": "object"
       },
       "app__schemas__odontologia__AtendimentoCreate": {
@@ -32283,7 +34597,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/RequisicaoCreate"
+                "$ref": "#/components/schemas/app__schemas__estoque__RequisicaoCreate"
               }
             }
           },
@@ -32294,7 +34608,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RequisicaoOut"
+                  "$ref": "#/components/schemas/app__schemas__estoque__RequisicaoOut"
                 }
               }
             },
@@ -32343,7 +34657,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RequisicaoOut"
+                  "$ref": "#/components/schemas/app__schemas__estoque__RequisicaoOut"
                 }
               }
             },
@@ -32402,7 +34716,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RequisicaoOut"
+                  "$ref": "#/components/schemas/app__schemas__estoque__RequisicaoOut"
                 }
               }
             },
@@ -32461,7 +34775,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RequisicaoOut"
+                  "$ref": "#/components/schemas/app__schemas__estoque__RequisicaoOut"
                 }
               }
             },
@@ -32510,7 +34824,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RequisicaoOut"
+                  "$ref": "#/components/schemas/app__schemas__estoque__RequisicaoOut"
                 }
               }
             },
@@ -32569,7 +34883,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/RequisicaoOut"
+                  "$ref": "#/components/schemas/app__schemas__estoque__RequisicaoOut"
                 }
               }
             },
@@ -35904,6 +38218,1727 @@
         "summary": "URL temporária do resultado",
         "tags": [
           "Tarefas"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/cidadaos/{cidadao_id}/requisicoes": {
+      "get": {
+        "description": "B.8-029 — exames do cidadão nas unidades do escopo.",
+        "operationId": "requisicoes_cidadao_api_govsaude_v1_laboratorio_cidadaos__cidadao_id__requisicoes_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cidadao_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Cidadao Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/app__schemas__laboratorio__RequisicaoOut"
+                  },
+                  "title": "Response Requisicoes Cidadao Api Govsaude V1 Laboratorio Cidadaos  Cidadao Id  Requisicoes Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Requisicoes Cidadao",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/coleta": {
+      "post": {
+        "description": "B.8-013 — coleta pela leitura da etiqueta (material, data/hora, coletador).",
+        "operationId": "coleta_api_govsaude_v1_laboratorio_coleta_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Coleta"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Coleta",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/contingencia/sincronizar": {
+      "post": {
+        "description": "B.8-034 — lote registrado em contingência; id_cliente evita duplicação.",
+        "operationId": "contingencia_api_govsaude_v1_laboratorio_contingencia_sincronizar_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoteContingencia"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Contingencia",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/equipamentos/mensagens": {
+      "get": {
+        "description": "B.8-009 — log de interfaceamento.",
+        "operationId": "mensagens_api_govsaude_v1_laboratorio_equipamentos_mensagens_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "situacao",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(PROCESSADA|ERRO)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Situacao"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Mensagens",
+        "tags": [
+          "Laboratório"
+        ]
+      },
+      "post": {
+        "description": "B.8-008, B.8-009 — resultado de equipamento (idempotente); falha fica no log.",
+        "operationId": "mensagem_equipamento_api_govsaude_v1_laboratorio_equipamentos_mensagens_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MensagemEquipamentoIn"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Mensagem Equipamento",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/equipamentos/mensagens/{id}/reprocessar": {
+      "post": {
+        "description": "B.8-009 — reprocessa mensagem com falha.",
+        "operationId": "reprocessar_api_govsaude_v1_laboratorio_equipamentos_mensagens__id__reprocessar_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reprocessar",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/estabelecimentos/{estabelecimento_id}/mapa-trabalho": {
+      "get": {
+        "description": "B.8-015 — mapa de trabalho por bancada, urgência, profissional, exame e situação.",
+        "operationId": "mapa_trabalho_api_govsaude_v1_laboratorio_estabelecimentos__estabelecimento_id__mapa_trabalho_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "estabelecimento_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Estabelecimento Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "bancada",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Bancada"
+            }
+          },
+          {
+            "in": "query",
+            "name": "urgente",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Urgente"
+            }
+          },
+          {
+            "in": "query",
+            "name": "exame",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Exame"
+            }
+          },
+          {
+            "in": "query",
+            "name": "situacao",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(COLETADO|EM_PROCESSAMENTO|RESULTADO)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Situacao"
+            }
+          },
+          {
+            "in": "query",
+            "name": "profissional_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Profissional Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "formato",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "pattern": "^(json|csv|xlsx|pdf)$",
+              "title": "Formato",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Mapa Trabalho",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/estabelecimentos/{estabelecimento_id}/pendencias": {
+      "get": {
+        "description": "B.8-020 — incompletos, pendentes, fora de referência, críticos e atrasados.",
+        "operationId": "pendencias_api_govsaude_v1_laboratorio_estabelecimentos__estabelecimento_id__pendencias_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "estabelecimento_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Estabelecimento Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Pendencias",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/exames": {
+      "get": {
+        "description": "B.8-001, B.8-003 — catálogo ativo (ou todas as versões).",
+        "operationId": "listar_exames_api_govsaude_v1_laboratorio_exames_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "estabelecimento_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Estabelecimento Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "todas",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Todas",
+              "type": "boolean"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ExameOut"
+                  },
+                  "title": "Response Listar Exames Api Govsaude V1 Laboratorio Exames Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Listar Exames",
+        "tags": [
+          "Laboratório"
+        ]
+      },
+      "post": {
+        "description": "B.8-001, B.8-004, B.8-005, B.8-008, B.8-021, B.8-025 — nova versão do exame.",
+        "operationId": "criar_exame_api_govsaude_v1_laboratorio_exames_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExameCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExameOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Criar Exame",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/exames/{id}/copiar": {
+      "post": {
+        "description": "B.8-003 — cópia para outra unidade com controle de versão.",
+        "operationId": "copiar_exame_api_govsaude_v1_laboratorio_exames__id__copiar_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CopiarExame"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExameOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Copiar Exame",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/itens/{id}/autorizacao": {
+      "post": {
+        "description": "B.8-005 — autoriza (com validade) ou nega exame que exige autorização/alto custo.",
+        "operationId": "autorizacao_api_govsaude_v1_laboratorio_itens__id__autorizacao_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Autorizacao"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Autorizacao",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/itens/{id}/cancelar": {
+      "post": {
+        "description": "Cancelamento com motivo (preservado no histórico).",
+        "operationId": "cancelar_api_govsaude_v1_laboratorio_itens__id__cancelar_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Motivo"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cancelar",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/itens/{id}/entrega": {
+      "post": {
+        "description": "B.8-007 — entrega com identificação de quem recebeu.",
+        "operationId": "entrega_api_govsaude_v1_laboratorio_itens__id__entrega_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Entrega"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Entrega",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/itens/{id}/etapas": {
+      "get": {
+        "description": "B.8-016 — acompanhamento visual das etapas.",
+        "operationId": "etapas_api_govsaude_v1_laboratorio_itens__id__etapas_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Etapas",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/itens/{id}/etiqueta": {
+      "post": {
+        "description": "B.8-012 — etiqueta com código; reimpressão exige motivo e é auditada.",
+        "operationId": "etiqueta_api_govsaude_v1_laboratorio_itens__id__etiqueta_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "formato",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "pattern": "^(json|pdf)$",
+              "title": "Formato",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/Motivo"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "C"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Etiqueta",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/itens/{id}/liberacao": {
+      "post": {
+        "description": "B.8-022, B.8-023 — liberação por profissional habilitado com assinatura eletrônica.",
+        "operationId": "liberacao_api_govsaude_v1_laboratorio_itens__id__liberacao_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Liberacao"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Liberacao",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/itens/{id}/problemas": {
+      "post": {
+        "description": "B.8-002 — problema de coleta, amostra, transporte ou processamento.",
+        "operationId": "problema_api_govsaude_v1_laboratorio_itens__id__problemas_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Problema"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Problema",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/itens/{id}/processamento": {
+      "post": {
+        "description": "B.8-016 — amostra entra em processamento.",
+        "operationId": "processamento_api_govsaude_v1_laboratorio_itens__id__processamento_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Processamento",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/itens/{id}/resultado": {
+      "post": {
+        "description": "B.8-017, B.8-018, B.8-019, B.8-020 — valida limites/unidades, marca referência e crítico.",
+        "operationId": "resultado_api_govsaude_v1_laboratorio_itens__id__resultado_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResultadoCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ItemOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Resultado",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/portal/{slug}/laudo": {
+      "post": {
+        "description": "B.8-024 — portal do cidadão: protocolo + código + nascimento; 5 tentativas e bloqueio.",
+        "operationId": "portal_laudo_api_govsaude_v1_laboratorio_portal__slug__laudo_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "slug",
+            "required": true,
+            "schema": {
+              "title": "Slug",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PortalLaudo"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Portal Laudo",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/producao": {
+      "get": {
+        "description": "B.8-004, B.8-027 — produção liberada por procedimento SIGTAP (BPA: Fase 13).",
+        "operationId": "producao_api_govsaude_v1_laboratorio_producao_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "competencia",
+            "required": true,
+            "schema": {
+              "pattern": "^\\d{4}-\\d{2}$",
+              "title": "Competencia",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "estabelecimento_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Estabelecimento Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Producao",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/recepcao": {
+      "post": {
+        "description": "B.8-010 — recepção por protocolo (código de barras/QR do comprovante) ou etiqueta.",
+        "operationId": "recepcao_api_govsaude_v1_laboratorio_recepcao_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Recepcao"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__schemas__laboratorio__RequisicaoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Recepcao",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/relatorios/exames": {
+      "get": {
+        "description": "B.8-028, B.8-030 — quantidade, valor, prazos; comparativo com o período anterior.",
+        "operationId": "relatorio_exames_api_govsaude_v1_laboratorio_relatorios_exames_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "inicio",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Inicio",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fim",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Fim",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agrupar_por",
+            "required": false,
+            "schema": {
+              "default": "mes",
+              "pattern": "^(mes|exame|estabelecimento|profissional|situacao|mapa)$",
+              "title": "Agrupar Por",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "comparar",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Comparar",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "formato",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "pattern": "^(json|csv|xlsx|pdf)$",
+              "title": "Formato",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Relatorio Exames",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/requisicoes": {
+      "post": {
+        "description": "B.8-005, B.8-006, B.8-010, B.8-011, B.8-021, B.8-034 — requisição.\n\nIdempotente por ``id_cliente``; o código de acesso ao portal só aparece aqui.",
+        "operationId": "requisitar_api_govsaude_v1_laboratorio_requisicoes_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/app__schemas__laboratorio__RequisicaoCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__schemas__laboratorio__RequisicaoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Requisitar",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/requisicoes/{id}": {
+      "get": {
+        "description": "B.8-006, B.8-025, B.8-032 — leitura auditada; sigilosos velados.",
+        "operationId": "obter_requisicao_api_govsaude_v1_laboratorio_requisicoes__id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/app__schemas__laboratorio__RequisicaoOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Obter Requisicao",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/requisicoes/{id}/comprovante": {
+      "post": {
+        "description": "B.8-014 — comprovante com previsão de retirada e novo código de acesso ao portal.",
+        "operationId": "comprovante_api_govsaude_v1_laboratorio_requisicoes__id__comprovante_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "formato",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "pattern": "^(json|pdf)$",
+              "title": "Formato",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Comprovante",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/requisicoes/{id}/declaracao-comparecimento": {
+      "get": {
+        "description": "B.8-026 — declaração de comparecimento em PDF.",
+        "operationId": "declaracao_api_govsaude_v1_laboratorio_requisicoes__id__declaracao_comparecimento_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Declaracao",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/requisicoes/{id}/historico": {
+      "get": {
+        "description": "B.8-029 — todas as etapas e ocorrências.",
+        "operationId": "historico_api_govsaude_v1_laboratorio_requisicoes__id__historico_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Historico",
+        "tags": [
+          "Laboratório"
+        ]
+      }
+    },
+    "/api/govsaude/v1/laboratorio/requisicoes/{id}/laudo": {
+      "get": {
+        "description": "B.8-024, B.8-032 — laudo em PDF na unidade (impressão auditada).",
+        "operationId": "laudo_api_govsaude_v1_laboratorio_requisicoes__id__laudo_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Laudo",
+        "tags": [
+          "Laboratório"
         ]
       }
     },
@@ -43293,6 +47328,749 @@
         "summary": "Baixar Restricao",
         "tags": [
           "Rede de atenção"
+        ]
+      }
+    },
+    "/api/govsaude/v1/siscan/busca-ativa": {
+      "get": {
+        "description": "B.5-013 — atrasos, alterados sem seguimento e rastreamento vencido (acesso restrito).",
+        "operationId": "busca_ativa_api_govsaude_v1_siscan_busca_ativa_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "estabelecimento_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Estabelecimento Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Busca Ativa",
+        "tags": [
+          "SISCAN"
+        ]
+      }
+    },
+    "/api/govsaude/v1/siscan/cidadaos/{cidadao_id}/historico": {
+      "get": {
+        "description": "B.5-012 — histórico por tipo, situação e período, com o próximo exame.",
+        "operationId": "historico_siscan_api_govsaude_v1_siscan_cidadaos__cidadao_id__historico_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "cidadao_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Cidadao Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tipo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tipo"
+            }
+          },
+          {
+            "in": "query",
+            "name": "situacao",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Situacao"
+            }
+          },
+          {
+            "in": "query",
+            "name": "inicio",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Inicio"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fim",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "date",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Fim"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Historico Siscan",
+        "tags": [
+          "SISCAN"
+        ]
+      }
+    },
+    "/api/govsaude/v1/siscan/exames": {
+      "post": {
+        "description": "B.5-001…004 — requisição de colo do útero/mama no modelo vigente.",
+        "operationId": "requisitar_siscan_api_govsaude_v1_siscan_exames_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiscanCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiscanOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Requisitar Siscan",
+        "tags": [
+          "SISCAN"
+        ]
+      }
+    },
+    "/api/govsaude/v1/siscan/exames/{id}/assinatura": {
+      "post": {
+        "description": "B.5-016 — assinatura eletrônica do resultado/laudo.",
+        "operationId": "assinar_siscan_api_govsaude_v1_siscan_exames__id__assinatura_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiscanOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Assinar Siscan",
+        "tags": [
+          "SISCAN"
+        ]
+      }
+    },
+    "/api/govsaude/v1/siscan/exames/{id}/guia": {
+      "get": {
+        "description": "B.5-005 — guia/modelo equivalente em PDF.",
+        "operationId": "guia_api_govsaude_v1_siscan_exames__id__guia_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Guia",
+        "tags": [
+          "SISCAN"
+        ]
+      }
+    },
+    "/api/govsaude/v1/siscan/exames/{id}/resultado": {
+      "post": {
+        "description": "B.5-006…010 — resultado a partir da requisição; marca alterado e próximo exame.",
+        "operationId": "resultado_siscan_api_govsaude_v1_siscan_exames__id__resultado_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiscanResultado"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiscanOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Resultado Siscan",
+        "tags": [
+          "SISCAN"
+        ]
+      }
+    },
+    "/api/govsaude/v1/siscan/exames/{id}/situacao": {
+      "post": {
+        "description": "B.5-011 — coleta, envio, comunicação, seguimento e encerramento.",
+        "operationId": "situacao_siscan_api_govsaude_v1_siscan_exames__id__situacao_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SiscanSituacao"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SiscanOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Situacao Siscan",
+        "tags": [
+          "SISCAN"
+        ]
+      }
+    },
+    "/api/govsaude/v1/siscan/modelos": {
+      "get": {
+        "description": "B.5-018 — versões dos modelos.",
+        "operationId": "modelos_api_govsaude_v1_siscan_modelos_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "tipo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tipo"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ModeloSiscanOut"
+                  },
+                  "title": "Response Modelos Api Govsaude V1 Siscan Modelos Get",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Modelos",
+        "tags": [
+          "SISCAN"
+        ]
+      },
+      "post": {
+        "description": "B.5-005, B.5-018 — nova versão do formulário (nasce inativa).",
+        "operationId": "criar_modelo_api_govsaude_v1_siscan_modelos_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ModeloSiscanCreate"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModeloSiscanOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Criar Modelo",
+        "tags": [
+          "SISCAN"
+        ]
+      }
+    },
+    "/api/govsaude/v1/siscan/modelos/{id}/ativacao": {
+      "post": {
+        "description": "B.5-018 — ativa com fonte normativa; a versão anterior é desativada.",
+        "operationId": "ativar_modelo_api_govsaude_v1_siscan_modelos__id__ativacao_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AtivacaoModelo"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModeloSiscanOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Ativar Modelo",
+        "tags": [
+          "SISCAN"
+        ]
+      }
+    },
+    "/api/govsaude/v1/siscan/producao": {
+      "get": {
+        "description": "B.5-014 — coletas por procedimento SIGTAP (arquivo BPA: Fase 13).",
+        "operationId": "producao_siscan_api_govsaude_v1_siscan_producao_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "competencia",
+            "required": true,
+            "schema": {
+              "pattern": "^\\d{4}-\\d{2}$",
+              "title": "Competencia",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Producao Siscan",
+        "tags": [
+          "SISCAN"
+        ]
+      }
+    },
+    "/api/govsaude/v1/siscan/relatorios": {
+      "get": {
+        "description": "B.5-017 — por unidade, profissional, resultado, faixa etária, território e período.",
+        "operationId": "relatorio_siscan_api_govsaude_v1_siscan_relatorios_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "inicio",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Inicio",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "fim",
+            "required": true,
+            "schema": {
+              "format": "date",
+              "title": "Fim",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "agrupar_por",
+            "required": false,
+            "schema": {
+              "default": "mes",
+              "pattern": "^(mes|estabelecimento|profissional|resultado|faixa_etaria|territorio)$",
+              "title": "Agrupar Por",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tipo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tipo"
+            }
+          },
+          {
+            "in": "query",
+            "name": "comparar",
+            "required": false,
+            "schema": {
+              "default": false,
+              "title": "Comparar",
+              "type": "boolean"
+            }
+          },
+          {
+            "in": "query",
+            "name": "formato",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "pattern": "^(json|csv|xlsx|pdf)$",
+              "title": "Formato",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Relatorio Siscan",
+        "tags": [
+          "SISCAN"
         ]
       }
     },

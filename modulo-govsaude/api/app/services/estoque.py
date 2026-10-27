@@ -1707,11 +1707,33 @@ async def alertas(db, tenant_id, local_id, ator) -> dict:
                 "temperatura_fora_da_faixa",
             )
         },
-        "frascos_abertos": {
-            "situacao": "PENDENTE",
-            "motivo": "regra de validade pós-abertura entra com imunização (Fase 10)",
-        },
+        "frascos_abertos": await _alertas_frascos(db, tenant_id, loc.id),
     }
+
+
+async def _alertas_frascos(db, tenant_id, local_id) -> list[dict]:
+    """B.4-016 — frascos multidose abertos com prazo pós-abertura (Fase 9)."""
+    from app.models.imunizacao import FrascoAberto
+
+    agora = _agora()
+    return [
+        {
+            "frasco_id": f.id,
+            "lote_id": f.lote_id,
+            "usar_ate": f.usar_ate,
+            "doses_restantes": f.doses_total - f.doses_aplicadas - f.doses_perdidas,
+            "vencido": bool(f.usar_ate and _utc(f.usar_ate) <= agora),
+        }
+        for f in (
+            await db.scalars(
+                select(FrascoAberto).where(
+                    FrascoAberto.tenant_id == tenant_id,
+                    FrascoAberto.local_id == local_id,
+                    FrascoAberto.situacao == "ABERTO",
+                )
+            )
+        ).all()
+    ]
 
 
 async def curva_abc(db, tenant_id, local_id, inicio: date, fim: date, ator) -> dict:

@@ -86,7 +86,7 @@ depende de artefato oficial fica atrás de uma porta e recebe o estado
 | BNAFAR (REPE/RESMPE) | Layouts oficiais e regras de envio diário | Ministério da Saúde/BNAFAR | Exportação entra na Fase 11 pela porta pendente |
 | CATMAT/OBM | Tabelas oficiais | Compras.gov.br / CMED-ANVISA | Códigos aceitos estruturalmente |
 | Limiares operacionais | Antecedência de vencimento, janela de duplicidade, desvios, ABC e cobertura | Assistência farmacêutica municipal | Seeds `estoque.*` com valores operacionais (90 dias, 30 dias, 2σ, 80/95%, 1 mês) a validar |
-| Frascos multidose abertos | Validade pós-abertura por imunobiológico | Manual de normas do PNI | Alerta `PENDENTE` até a Fase 10 |
+| Frascos multidose abertos | Validade pós-abertura por imunobiológico | Manual de normas do PNI | Alerta lista os frascos abertos; prazo é dado da vacina cadastrada |
 | Integração contábil/compras | Contrato de API do GovCompras/contábil (Lote 01) | Plataforma GovSistem | Sem integração; nenhum dado clínico trafega |
 
 ## Fase 6 — programas e linhas de cuidado
@@ -172,3 +172,14 @@ depende de artefato oficial fica atrás de uma porta e recebe o estado
     conferir no catálogo oficial do Lote 02.
 19. **Digitação retroativa**: considerada retroativa a data de início com mais
     de 24 h; limite padrão de 30 dias. Validar com a coordenação.
+
+## Fase 10 — laboratório e SISCAN
+
+| Item | Artefato necessário | Onde obter | Consequência |
+|---|---|---|---|
+| Layouts SISCAN (colo e mama) | Campos vigentes de requisição/resultado e classificações (ex.: BI-RADS) | INCA/DATASUS | Modelos versionados do tenant; nada semeado |
+| Valores de referência e críticos | Por método/equipamento do laboratório | Responsável técnico | Configuração do exame |
+| Interfaceamento | Protocolo de cada equipamento (ASTM/HL7/API) | Fabricante | Endpoint JSON genérico com log |
+| Assinatura digital ICP-Brasil | Provedor de assinatura do município | Prefeitura | Só assinatura eletrônica (hash); `DIGITAL` retorna 422 |
+| BPA / SIGTAP | Regras e layout | DATASUS | Produção listada; arquivo na Fase 13 |
+| RNDS — resultados | Modelo oficial | RNDS | Fase 11 |

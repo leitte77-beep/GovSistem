@@ -52,6 +52,15 @@ from app.models.integracoes import (
     IntegracaoEnvio,
     IntegracaoSistema,
 )
+from app.models.laboratorio import (
+    ExameLaboratorio,
+    ExameSiscan,
+    ItemExame,
+    MensagemEquipamento,
+    ModeloSiscan,
+    OcorrenciaExame,
+    RequisicaoExame,
+)
 from app.models.nucleo import (
     Anexo,
     ConfiguracaoTenant,
@@ -138,6 +147,13 @@ from app.models.territorio import (
 )
 
 __all__ = [
+    "ExameLaboratorio",
+    "ExameSiscan",
+    "ItemExame",
+    "MensagemEquipamento",
+    "ModeloSiscan",
+    "OcorrenciaExame",
+    "RequisicaoExame",
     "AgendamentoVacina",
     "AplicacaoVacina",
     "EsquemaVacinal",

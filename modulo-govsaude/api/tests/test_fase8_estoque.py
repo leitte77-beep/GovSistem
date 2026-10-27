@@ -143,7 +143,7 @@ async def test_b4_002_012_016_lote_bloqueado_vencido_e_alertas(client, token, mu
     assert [x["numero"] for x in alertas["a_vencer"]] == ["L-PERTO"]
     assert alertas["vencidos"] == []
     assert alertas["lote_bloqueado"][0]["motivo"] == "Alerta sanitário"
-    assert alertas["frascos_abertos"]["situacao"] == "PENDENTE"
+    assert alertas["frascos_abertos"] == [], "sem frasco multidose aberto no local"
     assert (await client.get(f"{API}/locais/{loc['id']}/alertas", headers=token("admin_b"))).status_code == 404
 
 

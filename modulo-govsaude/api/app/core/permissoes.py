@@ -93,6 +93,8 @@ class Permissao(str, Enum):
     LABORATORIO_COLETAR = "laboratorio:coletar"
     LABORATORIO_RESULTADO = "laboratorio:resultado"
     LABORATORIO_LIBERAR = "laboratorio:liberar"
+    LABORATORIO_GERENCIAR = "laboratorio:gerenciar"
+    SISCAN_ACOMPANHAR = "siscan:acompanhar"
 
     # Regulação / faturamento / vigilância
     REGULACAO_LER = "regulacao:ler"
@@ -261,7 +263,11 @@ GRUPOS_NACIONAIS: dict[str, dict] = {
         | _LABORATORIO
         | _IMUNIZACAO
         | _VIGILANCIA
-        | _p(Permissao.IMUNIZACAO_GERENCIAR),
+        | _p(
+            Permissao.IMUNIZACAO_GERENCIAR,
+            Permissao.LABORATORIO_GERENCIAR,
+            Permissao.SISCAN_ACOMPANHAR,
+        ),
         "requer_consentimento": False,
     },
     "coordenador_unidade": {
@@ -273,7 +279,11 @@ GRUPOS_NACIONAIS: dict[str, dict] = {
         | _FARMACIA
         | _LABORATORIO
         | _IMUNIZACAO
-        | _p(Permissao.IMUNIZACAO_GERENCIAR),
+        | _p(
+            Permissao.IMUNIZACAO_GERENCIAR,
+            Permissao.LABORATORIO_GERENCIAR,
+            Permissao.SISCAN_ACOMPANHAR,
+        ),
         "requer_consentimento": False,
     },
     "recepcao": {
@@ -283,12 +293,14 @@ GRUPOS_NACIONAIS: dict[str, dict] = {
     },
     "medico": {
         "nome": "Médico",
-        "permissoes": _LEITURA | _CLINICO | _p(Permissao.PRONTUARIO_LER_SIGILOSO),
+        "permissoes": _LEITURA
+        | _CLINICO
+        | _p(Permissao.PRONTUARIO_LER_SIGILOSO, Permissao.SISCAN_ACOMPANHAR),
         "requer_consentimento": False,
     },
     "enfermeiro": {
         "nome": "Enfermeiro",
-        "permissoes": _LEITURA | _CLINICO | _IMUNIZACAO,
+        "permissoes": _LEITURA | _CLINICO | _IMUNIZACAO | _p(Permissao.SISCAN_ACOMPANHAR),
         "requer_consentimento": False,
     },
     "tecnico_enfermagem": {
@@ -380,7 +392,9 @@ GRUPOS_NACIONAIS: dict[str, dict] = {
     },
     "laboratorio_responsavel": {
         "nome": "Responsável pelo laboratório",
-        "permissoes": _LEITURA | _LABORATORIO | _p(Permissao.LABORATORIO_LIBERAR),
+        "permissoes": _LEITURA
+        | _LABORATORIO
+        | _p(Permissao.LABORATORIO_LIBERAR, Permissao.LABORATORIO_GERENCIAR),
         "requer_consentimento": False,
     },
     "regulador": {

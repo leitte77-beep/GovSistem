@@ -234,7 +234,7 @@ Testes em `tests/test_fase8_estoque.py` (7).
 | B.4-012 | Saídas: consumo interno, perda, quebra, vencimento, devolução, doação; FEFO | idem | `test_b4_002_012_016_*` | IMPLEMENTADO |
 | B.4-014 | Requisição com atendimento parcial, numeração e observação | `/estoque/requisicoes…` | `test_b4_014_015_*` | PARCIAL (previsão de entrega: pendente) |
 | B.4-015 | Aceite/recusa com reintegração na origem | `.../receber`, `.../recusar` | idem | IMPLEMENTADO |
-| B.4-016 | Alertas: mínimo, ponto de pedido, a vencer/vencido, lote bloqueado, consumo anormal | `.../alertas` | `test_b4_002_012_016_*`, `test_b4_005_016_*` | PARCIAL (frascos abertos: Fase 10) |
+| B.4-016 | Alertas: mínimo, ponto de pedido, a vencer/vencido, lote bloqueado, consumo anormal | `.../alertas` | `test_b4_002_012_016_*`, `test_b4_005_016_*` | IMPLEMENTADO |
 | B.4-017 | Inventário por lote com bloqueio do local e ajuste referenciado | `/estoque/inventarios…` | `test_b4_017_018_*` | IMPLEMENTADO |
 | B.4-018 | Competências encerráveis e reabertura justificada | `/estoque/competencias/{AAAAMM}/…` | idem | IMPLEMENTADO |
 | B.4-019 | Disponibilidade na prescrição; farmácia vê as prescrições do cidadão (só itens, sem dado clínico) com saldo no local e o já dispensado | prescrição do PEC, `/estoque/cidadaos/{id}/prescricoes` | `test_b4_005_016_019_*`, `test_b4_019_028_036_*` | IMPLEMENTADO |
@@ -284,7 +284,55 @@ normativa.
 | B.7-028 | Retificação com nova versão e justificativa; invalidação sem apagar; auditoria de leitura e escrita | `.../retificar`, `.../invalidar`, `/cidadaos/{id}/aplicacoes?todas=` | `test_b7_012_028_*` | IMPLEMENTADO |
 | B.7-029 | Esquemas versionados por vigência; ativação encerra a versão anterior | `/imunizacao/esquemas/{id}/ativacao` | `test_b7_001_029_*` | IMPLEMENTADO |
 
-## Fases 10–16
+## Fase 10 — laboratório e SISCAN
+
+Regras em `app/services/laboratorio.py` e `app/services/siscan.py`, rotas em
+`app/api/v1/laboratorio.py` (`/laboratorio`, `/siscan`), migração `0013`.
+Testes em `tests/test_fase10_laboratorio.py` (11). Nenhuma faixa de
+referência, layout SISCAN ou regra de faturamento oficial está no código: o
+tenant cadastra exames e modelos versionados (modelos SISCAN só ativam com
+fonte normativa).
+
+| Requisito | O que foi entregue | Endpoints | Testes | Status |
+|---|---|---|---|---|
+| B.8-001 | Exame configurável e versionado: método, material, bancada, campos (unidade, referência, crítico, limite, opções), layout de laudo (Jinja sandbox) | `/laboratorio/exames` | `test_b8_001_003_004_*` | IMPLEMENTADO |
+| B.8-002 | Problemas de coleta/amostra/transporte/processamento com motivo e responsável; nova coleta | `/itens/{id}/problemas` | `test_b8_002_015_*` | IMPLEMENTADO |
+| B.8-003 | Cópia entre unidades como nova versão rastreável | `/exames/{id}/copiar` | `test_b8_001_003_004_*` | IMPLEMENTADO |
+| B.8-004 | Procedimento SIGTAP, CIDs e regras de faturamento no exame | `/laboratorio/exames` | idem | PARCIAL (consistências SIGTAP: Fase 13) |
+| B.8-005 | Autorização (exige/alto custo) com validade; carência bloqueia sem justificativa | `/itens/{id}/autorizacao`, requisição | `test_b8_005_021_*` | IMPLEMENTADO |
+| B.8-006 | Requisição por unidade permitida e escopo de unidade; impressão restrita | requisição, laudo | `test_b8_006_*`, `test_b8_025_*` | IMPLEMENTADO |
+| B.8-007 | Entrega com recebedor, documento mascarado e parentesco | `/itens/{id}/entrega` | `test_b8_007_*` | IMPLEMENTADO |
+| B.8-008, B.8-009 | Exame integrado a equipamento; mensagens idempotentes com log de falha e reprocessamento | `/equipamentos/mensagens…` | `test_b8_008_009_034_*` | PARCIAL (JSON genérico; ASTM/HL7 por equipamento: pendente) |
+| B.8-010, B.8-011 | Requisição do prontuário/agenda/avulsa; recepção por protocolo ou etiqueta; urgência, gestação, observações | `/requisicoes`, `/recepcao` | `test_b8_006_010_*` | IMPLEMENTADO |
+| B.8-012 | Etiqueta com código (QR) e reimpressão com motivo auditada | `/itens/{id}/etiqueta` | idem | IMPLEMENTADO |
+| B.8-013 | Coleta pela etiqueta com material, data/hora e coletador | `/coleta` | idem | IMPLEMENTADO |
+| B.8-014 | Comprovante com previsão de retirada e código do portal | `/requisicoes/{id}/comprovante` | idem | IMPLEMENTADO |
+| B.8-015 | Mapa de trabalho por bancada, urgência, profissional, exame, situação (JSON/CSV/XLSX/PDF) | `/estabelecimentos/{id}/mapa-trabalho` | `test_b8_002_015_*` | IMPLEMENTADO |
+| B.8-016, B.8-029 | Etapas com instante de cada uma; histórico completo de ocorrências | `/itens/{id}/etapas`, `/requisicoes/{id}/historico` | idem | IMPLEMENTADO |
+| B.8-017, B.8-020 | Limites/unidades bloqueiam; fora de referência e crítico marcados; pendências | `/itens/{id}/resultado`, `/pendencias` | idem | IMPLEMENTADO |
+| B.8-018, B.8-019 | Estruturado, texto livre, anexos do cidadão; radiologia com laudo textual | `/itens/{id}/resultado` | `test_b8_025_018_019_*` | IMPLEMENTADO |
+| B.8-021 | Alerta de exame recente ainda válido | requisição | `test_b8_005_021_*` | IMPLEMENTADO |
+| B.8-022, B.8-023 | Liberação só com permissão e CBO habilitado; assinatura eletrônica (hash) | `/itens/{id}/liberacao` | `test_b8_007_022_*` | PARCIAL (ICP-Brasil: pendência oficial) |
+| B.8-024 | Laudo PDF na unidade; portal com protocolo+código+nascimento, 5 tentativas e bloqueio | `/requisicoes/{id}/laudo`, `/portal/{slug}/laudo` | idem | IMPLEMENTADO |
+| B.8-025 | Exame sigiloso velado; fora do portal; entrega restrita | idem | `test_b8_025_*` | IMPLEMENTADO |
+| B.8-026 | Declaração de comparecimento | `/requisicoes/{id}/declaracao-comparecimento` | `test_b8_007_*` | IMPLEMENTADO |
+| B.8-027 | Produção liberada por SIGTAP e inconsistências | `/laboratorio/producao` | `test_b8_027_*` | PARCIAL (arquivo BPA: Fase 13) |
+| B.8-028, B.8-030 | Relatórios por quantidade, valor, unidade, exame, profissional, mapa, situação, prazo; comparativo | `/relatorios/exames` | idem | IMPLEMENTADO |
+| B.8-032 | Auditoria de leitura, alteração, impressão, download e entrega | todos | `test_b8_007_*` | IMPLEMENTADO |
+| B.8-034 | Contingência idempotente por `id_cliente` | `/contingencia/sincronizar` | `test_b8_008_009_034_*` | IMPLEMENTADO |
+| B.5-001…004 | Requisições colo/mama no modelo vigente, identificação completa | `/siscan/exames` | `test_b5_001_*` | IMPLEMENTADO (layouts oficiais a carregar) |
+| B.5-005, B.5-018 | Modelos versionados com fonte normativa; guia PDF | `/siscan/modelos…`, `/exames/{id}/guia` | `test_b5_005_018_*` | IMPLEMENTADO |
+| B.5-006…010 | Resultados pelo modelo; alterado por regra do modelo | `/exames/{id}/resultado` | `test_b5_001_*` | IMPLEMENTADO |
+| B.5-011, B.5-012 | Ciclo requisição→coleta→envio→resultado→comunicação→seguimento; histórico e próximo exame | `/exames/{id}/situacao`, `/cidadaos/{id}/historico` | idem | IMPLEMENTADO |
+| B.5-013 | Busca ativa restrita (`siscan:acompanhar`) | `/siscan/busca-ativa` | `test_b5_013_*` | IMPLEMENTADO |
+| B.5-014 | Coletas por SIGTAP por competência | `/siscan/producao` | idem | PARCIAL (BPA: Fase 13) |
+| B.5-016 | Assinatura eletrônica do laudo | `/exames/{id}/assinatura` | `test_b5_001_*` | PARCIAL (ICP-Brasil pendente) |
+| B.5-017 | Relatórios por unidade, profissional, resultado, faixa etária, território, período | `/siscan/relatorios` | `test_b5_013_*` | IMPLEMENTADO |
+
+Também: alerta de frascos abertos do estoque (B.4-016) agora lista os frascos
+multidose da Fase 9.
+
+## Fases 11–16
 
 Não iniciadas.
 
