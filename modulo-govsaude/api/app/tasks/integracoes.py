@@ -1,9 +1,9 @@
-"""Worker do outbox de integrações.
+"""Worker da central de integrações (Fase 11, B.7-022/023, B.12-061).
 
-Fase 0 entrega a infraestrutura: o worker encontra envios pendentes e respeita
-o estado. Os adaptadores oficiais só entram na Fase 11, quando o artefato
-oficial estiver em ``app/integracoes/especificacoes``. Sem especificação, o
-registro permanece ``PENDENTE_ESPECIFICACAO_OFICIAL`` e não é transmitido.
+A cada minuto verifica as configurações com transmissão automática cuja
+periodicidade venceu e executa geração → validação → transmissão das
+competências abertas. Desligado por padrão (``INTEGRACOES_AUTOMATICAS``).
+Sem manifesto oficial, nada é transmitido.
 """
 
 from __future__ import annotations
@@ -11,51 +11,27 @@ from __future__ import annotations
 import asyncio
 import logging
 
-from sqlalchemy import select
-
+from app.core.config import settings
 from app.core.database import async_session
-from app.models.enums import SituacaoEnvio
-from app.models.integracoes import IntegracaoEnvio
 from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger("govsaude.tasks.integracoes")
 
-ADAPTADORES_DISPONIVEIS: set[str] = set()
 
+async def _processar() -> dict:
+    from app.services.integracoes import executar_automaticas
 
-async def _processar() -> int:
+    if not settings.INTEGRACOES_AUTOMATICAS:
+        return {"desligado": True}
     async with async_session() as db:
-        pendentes = (
-            await db.execute(
-                select(IntegracaoEnvio)
-                .where(
-                    IntegracaoEnvio.situacao.in_(
-                        [SituacaoEnvio.PENDENTE.value, SituacaoEnvio.VALIDADO.value]
-                    )
-                )
-                .order_by(IntegracaoEnvio.created_at)
-                .limit(100)
-            )
-        ).scalars().all()
-        processados = 0
-        for envio in pendentes:
-            if envio.sistema not in ADAPTADORES_DISPONIVEIS:
-                # Não há artefato oficial: nada é enviado nem inventado.
-                envio.mensagens = [
-                    {
-                        "codigo": "PENDENTE_ESPECIFICACAO_OFICIAL",
-                        "texto": (
-                            "Adaptador oficial ainda não disponível. "
-                            "Consulte docs/pendencias-oficiais.md."
-                        ),
-                    }
-                ]
-                continue
-            processados += 1
-        await db.commit()
-        return processados
+        try:
+            return await executar_automaticas(db)
+        except Exception:  # noqa: BLE001 - mantém a tarefa viva para a próxima rodada
+            await db.rollback()
+            logger.exception("Falha na execução automática de integrações")
+            raise
 
 
 @celery_app.task(name="govsaude.processar_outbox")
-def processar_outbox() -> int:
+def processar_outbox() -> dict:
     return asyncio.run(_processar())

@@ -332,7 +332,36 @@ fonte normativa).
 Também: alerta de frascos abertos do estoque (B.4-016) agora lista os frascos
 multidose da Fase 9.
 
-## Fases 11–16
+## Fase 11 — central de integrações (LEDI/SIAPS, RNDS, BNAFAR)
+
+Ver [integracoes.md](integracoes.md#central-de-integrações-fase-11). Testes em
+`tests/test_fase11_integracoes.py` (5) e `tests/test_integracoes_porta.py`.
+Nenhum artefato oficial (thrift LEDI, StructureDefinitions RNDS, layouts
+BNAFAR) está no repositório; os testes usam manifestos **sintéticos**. A
+mecânica de transmissão e retorno (requisito crítico do B.12-060) está
+pronta. A conformidade de campo depende de carregar cada manifesto oficial.
+
+| Requisito | O que foi entregue | Endpoints | Testes | Status |
+|---|---|---|---|---|
+| B.1-033, B.3-027, B.5-015 | Exportação LEDI por lote (arquivo) com protocolo/retorno | `/LEDI_APS/execucoes`, `/lotes`, `/retornos` | `test_b4_030_*` (motor) | PENDENTE_ESPECIFICACAO_OFICIAL (layout LEDI) |
+| B.1-034 | Exportações múltiplas na competência sem duplicar; novos/alterados/rejeitados/enviados | `/execucoes`, `/competencias/{c}` | `test_b7_013_*` | IMPLEMENTADO |
+| B.1-035, B.7-020 | Validação prévia de domínio e layout, mensagens legíveis, correção e reprocessamento | `/inconsistencias`, `/envios/{id}/reprocessar` | `test_b7_016_*` | IMPLEMENTADO |
+| B.3-002 | Procedimentos odontológicos no payload do atendimento LEDI | idem | — | PENDENTE_ESPECIFICACAO_OFICIAL |
+| B.4-030, B.4-031, B.12-030 | BNAFAR: dispensação e movimentação por manifesto (REPE/RESMPE… quando carregados) | `/BNAFAR/…` | `test_b4_030_*` | PENDENTE_ESPECIFICACAO_OFICIAL (layouts) |
+| B.4-032, B.7-019 | Fila com pendentes, enviados, rejeitados, reenvios, protocolos, histórico do registro | `/envios`, `/registros/{tipo}/{id}` | `test_b7_013_*`, `test_b4_030_*` | IMPLEMENTADO |
+| B.4-033, B.12-059 | Transporte REST/JSON (FHIR JSON por manifesto) ou arquivo, sem depender de SOAP | — | idem | IMPLEMENTADO |
+| B.4-034, B.7-014, B.7-015, B.8-031 | RNDS: vacina, resultado de exame e dispensação pelo manifesto do modelo oficial | `/RNDS/…` | `test_b7_013_*` | PENDENTE_ESPECIFICACAO_OFICIAL (modelos RIA/resultado) |
+| B.7-013, B.7-017, B.7-018 | Inclusão, alteração e exclusão; versões preservadas | `/execucoes` | `test_b7_013_*` | IMPLEMENTADO (motor) |
+| B.7-016 | mTLS com certificado do ente fora do banco; produção RNDS só após homologação; manifesto sintético barrado em produção | `/configuracoes/{sistema}` | `test_b7_016_*` | IMPLEMENTADO |
+| B.7-021 | Inconsistências por cidadão, vacina/tipo, unidade e motivo; CSV/XLSX/PDF | `/inconsistencias` | `test_b7_016_*` | IMPLEMENTADO |
+| B.7-022 | Transmissão automática com periodicidade por tenant | tarefa `govsaude.processar_outbox` | `test_b7_022_*` | IMPLEMENTADO |
+| B.7-023, B.12-061 | Painel com alertas (pendência oficial, correção, rejeição, falha repetida, execução falha); idempotência; retentativa | `/integracoes/painel` | `test_b7_013_*`, `test_b7_022_*` | IMPLEMENTADO |
+| B.12-060 | Mecanismo de transmissão e retorno; layout por manifesto versionado | — | `test_b12_060_*` | PARCIAL (manifestos oficiais a carregar) |
+
+Correção colateral: a aplicação de vacina passa a gravar o profissional
+vinculado ao usuário que aplica (B.7-009), exigido pela validação RNDS.
+
+## Fases 12–16
 
 Não iniciadas.
 

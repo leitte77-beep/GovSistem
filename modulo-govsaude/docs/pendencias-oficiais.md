@@ -183,3 +183,12 @@ depende de artefato oficial fica atrás de uma porta e recebe o estado
 | Assinatura digital ICP-Brasil | Provedor de assinatura do município | Prefeitura | Só assinatura eletrônica (hash); `DIGITAL` retorna 422 |
 | BPA / SIGTAP | Regras e layout | DATASUS | Produção listada; arquivo na Fase 13 |
 | RNDS — resultados | Modelo oficial | RNDS | Fase 11 |
+
+## Fase 11 — central de integrações
+
+| Item | Artefato necessário | Onde obter | Consequência |
+|---|---|---|---|
+| LEDI/SIAPS | `.thrift` e regras da versão vigente, convertidos em `especificacoes/LEDI_APS/<versao>/manifest.json` | Ministério da Saúde (LEDI APS) | Envios ficam `PENDENTE` com `PENDENTE_ESPECIFICACAO_OFICIAL` |
+| RNDS | StructureDefinitions/perfis (RIA, resultado de exame, dispensação), endpoints e credencial do estabelecimento | Portal RNDS/DATASUS | Idem; produção exige homologação aprovada |
+| BNAFAR | Layouts REPE, RESMPE, REDFM, REPM e periodicidade | Ministério da Saúde/BNAFAR | Idem |
+| Certificado ICP-Brasil do ente | PEM (cert/key) em volume de segredos | Prefeitura | Transmissão HTTP recusa sem `credenciais_ref` resolvível |

@@ -50,6 +50,7 @@ from app.models.imunizacao import (
 from app.models.integracoes import (
     IntegracaoConfiguracao,
     IntegracaoEnvio,
+    IntegracaoExecucao,
     IntegracaoSistema,
 )
 from app.models.laboratorio import (
@@ -147,6 +148,7 @@ from app.models.territorio import (
 )
 
 __all__ = [
+    "IntegracaoExecucao",
     "ExameLaboratorio",
     "ExameSiscan",
     "ItemExame",

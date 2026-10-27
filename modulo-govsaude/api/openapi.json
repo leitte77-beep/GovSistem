@@ -4894,6 +4894,62 @@
         "title": "CondicaoUpdate",
         "type": "object"
       },
+      "ConfiguracaoIntegracao": {
+        "additionalProperties": false,
+        "properties": {
+          "ambiente": {
+            "default": "HOMOLOGACAO",
+            "enum": [
+              "HOMOLOGACAO",
+              "PRODUCAO"
+            ],
+            "title": "Ambiente",
+            "type": "string"
+          },
+          "ativo": {
+            "default": true,
+            "title": "Ativo",
+            "type": "boolean"
+          },
+          "credenciais_ref": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "pattern": "^(env:[A-Z0-9_]+|arquivo:/[\\w./-]+)$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Credenciais Ref"
+          },
+          "parametros": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ParametrosIntegracao"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "versao_layout": {
+            "anyOf": [
+              {
+                "maxLength": 40,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Versao Layout"
+          }
+        },
+        "title": "ConfiguracaoIntegracao",
+        "type": "object"
+      },
       "ConfiguracaoOut": {
         "properties": {
           "chave": {
@@ -11429,6 +11485,80 @@
         "title": "ItemRequisicao",
         "type": "object"
       },
+      "ItemRetorno": {
+        "additionalProperties": false,
+        "properties": {
+          "envio_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Envio Id"
+          },
+          "lote_id": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Lote Id"
+          },
+          "mensagens": {
+            "items": {
+              "$ref": "#/components/schemas/MensagemRetorno"
+            },
+            "maxItems": 50,
+            "title": "Mensagens",
+            "type": "array"
+          },
+          "protocolo": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Protocolo"
+          },
+          "registro_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Registro Id"
+          },
+          "situacao": {
+            "enum": [
+              "ACEITO",
+              "REJEITADO"
+            ],
+            "title": "Situacao",
+            "type": "string"
+          }
+        },
+        "required": [
+          "situacao"
+        ],
+        "title": "ItemRetorno",
+        "type": "object"
+      },
       "JobOut": {
         "properties": {
           "concluido_em": {
@@ -12219,6 +12349,46 @@
           "valores"
         ],
         "title": "MensagemEquipamentoIn",
+        "type": "object"
+      },
+      "MensagemRetorno": {
+        "additionalProperties": false,
+        "properties": {
+          "campo": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Campo"
+          },
+          "codigo": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Codigo"
+          },
+          "texto": {
+            "maxLength": 2000,
+            "minLength": 1,
+            "title": "Texto",
+            "type": "string"
+          }
+        },
+        "required": [
+          "texto"
+        ],
+        "title": "MensagemRetorno",
         "type": "object"
       },
       "MetaTerritorialOut": {
@@ -14521,6 +14691,74 @@
           "produto_id"
         ],
         "title": "ParametroSet",
+        "type": "object"
+      },
+      "ParametrosIntegracao": {
+        "additionalProperties": false,
+        "properties": {
+          "competencias_abertas": {
+            "anyOf": [
+              {
+                "maximum": 6.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Competencias Abertas"
+          },
+          "homologacao_aprovada_em": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Homologacao Aprovada Em"
+          },
+          "periodicidade_minutos": {
+            "anyOf": [
+              {
+                "maximum": 10080.0,
+                "minimum": 15.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Periodicidade Minutos"
+          },
+          "transmissao_automatica": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Transmissao Automatica"
+          },
+          "url_base": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Url Base"
+          }
+        },
+        "title": "ParametrosIntegracao",
         "type": "object"
       },
       "PendenciaBuscaAtivaOut": {
@@ -19803,6 +20041,25 @@
           "justificativa"
         ],
         "title": "RetificacaoSOAPCreate",
+        "type": "object"
+      },
+      "Retornos": {
+        "additionalProperties": false,
+        "properties": {
+          "itens": {
+            "items": {
+              "$ref": "#/components/schemas/ItemRetorno"
+            },
+            "maxItems": 5000,
+            "minItems": 1,
+            "title": "Itens",
+            "type": "array"
+          }
+        },
+        "required": [
+          "itens"
+        ],
+        "title": "Retornos",
         "type": "object"
       },
       "ReversaoUnificacaoRequest": {
@@ -37929,6 +38186,816 @@
         "summary": "Gerar Programacoes",
         "tags": [
           "Programas — inscrições"
+        ]
+      }
+    },
+    "/api/govsaude/v1/integracoes/configuracoes/{sistema}": {
+      "get": {
+        "description": "B.7-016, B.7-022 — versão do layout, ambiente, credencial (referência) e periodicidade.",
+        "operationId": "obter_configuracao_api_govsaude_v1_integracoes_configuracoes__sistema__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sistema",
+            "required": true,
+            "schema": {
+              "pattern": "^(LEDI_APS|RNDS|BNAFAR)$",
+              "title": "Sistema",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Obter Configuracao",
+        "tags": [
+          "Integrações"
+        ]
+      },
+      "put": {
+        "description": "B.7-016 — produção RNDS exige homologação aprovada; segredo fica fora do banco.",
+        "operationId": "salvar_configuracao_api_govsaude_v1_integracoes_configuracoes__sistema__put",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sistema",
+            "required": true,
+            "schema": {
+              "pattern": "^(LEDI_APS|RNDS|BNAFAR)$",
+              "title": "Sistema",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfiguracaoIntegracao"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Salvar Configuracao",
+        "tags": [
+          "Integrações"
+        ]
+      }
+    },
+    "/api/govsaude/v1/integracoes/envios": {
+      "get": {
+        "description": "B.4-032, B.7-019 — fila: pendentes, enviados, rejeitados, reenvios e protocolos.",
+        "operationId": "envios_api_govsaude_v1_integracoes_envios_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "sistema",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(LEDI_APS|RNDS|BNAFAR)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sistema"
+            }
+          },
+          {
+            "in": "query",
+            "name": "situacao",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Situacao"
+            }
+          },
+          {
+            "in": "query",
+            "name": "competencia",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Competencia"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tipo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tipo"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cidadao_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cidadao Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "estabelecimento_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Estabelecimento Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limite",
+            "required": false,
+            "schema": {
+              "default": 200,
+              "maximum": 1000,
+              "minimum": 1,
+              "title": "Limite",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Envios",
+        "tags": [
+          "Integrações"
+        ]
+      }
+    },
+    "/api/govsaude/v1/integracoes/envios/{id}/cancelar": {
+      "post": {
+        "description": "Cancela envio ainda não transmitido, com motivo.",
+        "operationId": "cancelar_api_govsaude_v1_integracoes_envios__id__cancelar_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Motivo"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Cancelar",
+        "tags": [
+          "Integrações"
+        ]
+      }
+    },
+    "/api/govsaude/v1/integracoes/envios/{id}/reprocessar": {
+      "post": {
+        "description": "B.1-035, B.12-061 — após a correção, revalida e volta à fila.",
+        "operationId": "reprocessar_api_govsaude_v1_integracoes_envios__id__reprocessar_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Reprocessar",
+        "tags": [
+          "Integrações"
+        ]
+      }
+    },
+    "/api/govsaude/v1/integracoes/inconsistencias": {
+      "get": {
+        "description": "B.1-035, B.7-021 — fila de correção por cidadão, unidade, tipo e motivo; exportável.",
+        "operationId": "inconsistencias_api_govsaude_v1_integracoes_inconsistencias_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "sistema",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "pattern": "^(LEDI_APS|RNDS|BNAFAR)$",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sistema"
+            }
+          },
+          {
+            "in": "query",
+            "name": "motivo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Motivo"
+            }
+          },
+          {
+            "in": "query",
+            "name": "tipo",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tipo"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cidadao_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cidadao Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "estabelecimento_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Estabelecimento Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "competencia",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Competencia"
+            }
+          },
+          {
+            "in": "query",
+            "name": "formato",
+            "required": false,
+            "schema": {
+              "default": "json",
+              "pattern": "^(json|csv|xlsx|pdf)$",
+              "title": "Formato",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Inconsistencias",
+        "tags": [
+          "Integrações"
+        ]
+      }
+    },
+    "/api/govsaude/v1/integracoes/painel": {
+      "get": {
+        "description": "B.7-019, B.7-023, B.12-061 — situação, última execução e alertas por sistema.",
+        "operationId": "painel_api_govsaude_v1_integracoes_painel_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Painel",
+        "tags": [
+          "Integrações"
+        ]
+      }
+    },
+    "/api/govsaude/v1/integracoes/registros/{tipo}/{registro_id}": {
+      "get": {
+        "description": "B.4-032, B.7-018 — histórico de envios do registro (versões preservadas).",
+        "operationId": "historico_api_govsaude_v1_integracoes_registros__tipo___registro_id__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "tipo",
+            "required": true,
+            "schema": {
+              "title": "Tipo",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "registro_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Registro Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Historico",
+        "tags": [
+          "Integrações"
+        ]
+      }
+    },
+    "/api/govsaude/v1/integracoes/{sistema}/competencias/{competencia}": {
+      "get": {
+        "description": "B.1-034 — novos, alterados, rejeitados e enviados na competência.",
+        "operationId": "resumo_api_govsaude_v1_integracoes__sistema__competencias__competencia__get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sistema",
+            "required": true,
+            "schema": {
+              "pattern": "^(LEDI_APS|RNDS|BNAFAR)$",
+              "title": "Sistema",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "competencia",
+            "required": true,
+            "schema": {
+              "pattern": "^\\d{4}(0[1-9]|1[0-2])$",
+              "title": "Competencia",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Resumo",
+        "tags": [
+          "Integrações"
+        ]
+      }
+    },
+    "/api/govsaude/v1/integracoes/{sistema}/execucoes": {
+      "post": {
+        "description": "B.1-033/034, B.7-013 — gera, valida e transmite a competência (pode repetir).",
+        "operationId": "executar_api_govsaude_v1_integracoes__sistema__execucoes_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sistema",
+            "required": true,
+            "schema": {
+              "pattern": "^(LEDI_APS|RNDS|BNAFAR)$",
+              "title": "Sistema",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "competencia",
+            "required": true,
+            "schema": {
+              "pattern": "^\\d{4}(0[1-9]|1[0-2])$",
+              "title": "Competencia",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Executar",
+        "tags": [
+          "Integrações"
+        ]
+      }
+    },
+    "/api/govsaude/v1/integracoes/{sistema}/lotes": {
+      "post": {
+        "description": "B.1-033, B.3-027, B.5-015 — arquivo do lote para envio por centralizador.",
+        "operationId": "lote_api_govsaude_v1_integracoes__sistema__lotes_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sistema",
+            "required": true,
+            "schema": {
+              "pattern": "^(LEDI_APS|RNDS|BNAFAR)$",
+              "title": "Sistema",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "competencia",
+            "required": true,
+            "schema": {
+              "pattern": "^\\d{4}(0[1-9]|1[0-2])$",
+              "title": "Competencia",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Lote",
+        "tags": [
+          "Integrações"
+        ]
+      }
+    },
+    "/api/govsaude/v1/integracoes/{sistema}/retornos": {
+      "post": {
+        "description": "B.1-033, B.4-032 — protocolo e retorno oficial (aceite/rejeição com mensagens).",
+        "operationId": "retornos_api_govsaude_v1_integracoes__sistema__retornos_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sistema",
+            "required": true,
+            "schema": {
+              "pattern": "^(LEDI_APS|RNDS|BNAFAR)$",
+              "title": "Sistema",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Retornos"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          }
+        ],
+        "summary": "Retornos",
+        "tags": [
+          "Integrações"
         ]
       }
     },

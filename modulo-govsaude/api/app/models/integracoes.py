@@ -88,3 +88,23 @@ class IntegracaoEnvio(Base, UUIDPrimaryKeyMixin, TimestampMixin, TenantMixin):
     enviado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     aceito_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     erro_transitorio: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Fase 11 — recortes da fila de correção (B.7-021) sem abrir o registro clínico.
+    estabelecimento_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    cidadao_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+    substituido_por_id: Mapped[uuid.UUID | None] = mapped_column(Uuid, nullable=True)
+
+
+class IntegracaoExecucao(Base, UUIDPrimaryKeyMixin, TimestampMixin, TenantMixin):
+    """B.7-022/023, B.12-061 — cada rodada (manual ou automática) e seu resultado."""
+
+    __tablename__ = "integracao_execucoes"
+    __table_args__ = (Index("ix_integracao_exec_tenant", "tenant_id", "sistema", "iniciada_em"),)
+
+    sistema: Mapped[str] = mapped_column(String(40), nullable=False)
+    competencia: Mapped[str | None] = mapped_column(String(6), nullable=True)
+    origem: Mapped[str] = mapped_column(String(12), default="MANUAL", nullable=False)
+    iniciada_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    finalizada_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resumo: Mapped[dict | None] = mapped_column(JSONType, nullable=True)
+    falhou: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    erro: Mapped[str | None] = mapped_column(Text, nullable=True)

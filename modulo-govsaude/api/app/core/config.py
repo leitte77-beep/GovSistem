@@ -92,6 +92,10 @@ class Settings(BaseSettings):
 
     # ── Redis / fila ────────────────────────────────────────────────────────
     REDIS_URL: str = ""
+    # Central de integrações (Fase 11). Vazio = app/integracoes/especificacoes.
+    INTEGRACOES_ESPECIFICACOES_DIR: str = ""
+    INTEGRACOES_MAX_TENTATIVAS: int = 8
+    INTEGRACOES_TIMEOUT_SEGUNDOS: float = 30.0
     # Base pública usada no QR de verificação de documentos (ex.: https://saude.municipio.gov.br).
     PUBLIC_BASE_URL: str = ""
     REDIS_HOST: str = "localhost"

@@ -33,7 +33,7 @@ from app.models.imunizacao import (
     FrascoAberto,
     Vacina,
 )
-from app.models.nucleo import Estabelecimento, Usuario
+from app.models.nucleo import Estabelecimento, Profissional, Usuario
 from app.schemas.imunizacao import (
     AgendamentoCreate,
     AplicacaoCreate,
@@ -575,6 +575,15 @@ async def aplicar(db, tenant_id, dados: AplicacaoCreate, ator: Usuario, cliente)
             raise Conflict(
                 "Agendamento não corresponde a esta aplicação.", code="agendamento_divergente"
             )
+    if dados.origem == "LOCAL" and not valores.get("profissional_id"):
+        # B.7-009 — o vacinador é o profissional vinculado ao usuário que registra.
+        valores["profissional_id"] = await db.scalar(
+            select(Profissional.id).where(
+                Profissional.tenant_id == tenant_id,
+                Profissional.usuario_id == ator.id,
+                Profissional.baixa_em.is_(None),
+            )
+        )
     item = AplicacaoVacina(
         tenant_id=tenant_id,
         **valores,
