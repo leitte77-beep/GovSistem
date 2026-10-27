@@ -26,6 +26,15 @@ def _hora_no_intervalo(agora_local: time, inicio: time, fim: time) -> bool:
     return agora_local >= inicio or agora_local <= fim
 
 
+async def fuso_do_tenant(db: AsyncSession, tenant_id: uuid.UUID | None) -> ZoneInfo:
+    organizacao = await db.get(Organizacao, tenant_id) if tenant_id else None
+    fuso = (organizacao.fuso_horario if organizacao else None) or settings.DEFAULT_TIMEZONE
+    try:
+        return ZoneInfo(fuso)
+    except Exception:  # noqa: BLE001
+        return ZoneInfo(settings.DEFAULT_TIMEZONE)
+
+
 async def acesso_bloqueado(
     db: AsyncSession,
     usuario: Usuario,
@@ -40,12 +49,7 @@ async def acesso_bloqueado(
     unidade. Um dia fora de ``dias_semana`` **bloqueia** (a lista é a janela
     permitida), assim como um horário fora de ``hora_inicio``/``hora_fim``.
     """
-    organizacao = await db.get(Organizacao, usuario.tenant_id)
-    fuso = (organizacao.fuso_horario if organizacao else None) or settings.DEFAULT_TIMEZONE
-    try:
-        tz = ZoneInfo(fuso)
-    except Exception:  # noqa: BLE001
-        tz = ZoneInfo(settings.DEFAULT_TIMEZONE)
+    tz = await fuso_do_tenant(db, usuario.tenant_id)
     referencia = momento.astimezone(tz) if momento else datetime.now(tz)
     dia = referencia.weekday()
     hora = referencia.time().replace(tzinfo=None)

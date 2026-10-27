@@ -12,6 +12,7 @@ alterado, busca ativa restrita. Inclui negativos de tenant e RBAC.
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import select
@@ -19,6 +20,11 @@ from sqlalchemy import select
 from app.models.auditoria import AuditTrail
 from app.models.nucleo import Profissional
 from tests.conftest import _criar_usuario
+
+
+def _hoje() -> date:
+    """Dia local do município: os relatórios recortam o período no fuso do tenant."""
+    return datetime.now(ZoneInfo("America/Sao_Paulo")).date()
 
 V1 = "/api/govsaude/v1"
 API = f"{V1}/laboratorio"
@@ -188,7 +194,7 @@ async def test_b8_006_010_011_012_013_014_requisicao_recepcao_etiqueta_coleta(cl
     assert req.status_code == 201, req.text
     dados = req.json()
     assert dados["urgente"] and dados["gestante"] and dados["codigo_acesso"]
-    assert dados["previsao_retirada"] == (date.today() + timedelta(days=2)).isoformat()
+    assert dados["previsao_retirada"] == (_hoje() + timedelta(days=2)).isoformat()
     item = dados["itens"][0]
 
     recebida = await client.post(f"{API}/recepcao", json={"codigo": dados["protocolo"]}, headers=token("tecnico"))
@@ -368,11 +374,11 @@ async def test_b8_027_028_030_producao_e_relatorios(client, token, mundo, lab):
         _, item = await _coletado(client, token, mundo, cidadao, exame)
         await client.post(f"{API}/itens/{item['id']}/resultado", json={"valores": {"glicose": 80}}, headers=token("tecnico"))
         await client.post(f"{API}/itens/{item['id']}/liberacao", json={}, headers=token("responsavel"))
-    comp = date.today().strftime("%Y-%m")
+    comp = _hoje().strftime("%Y-%m")
     prod = (await client.get(f"{API}/producao", params={"competencia": comp}, headers=token("faturista"))).json()
     assert prod["linhas"][0]["procedimento"] == "0000000001" and prod["linhas"][0]["quantidade"] == 2
     assert prod["linhas"][0]["valor"] == 3.7 and prod["inconsistencias"][0]["erro"] == "SEM_PROCEDIMENTO_SIGTAP"
-    params = {"inicio": (date.today() - timedelta(days=1)).isoformat(), "fim": date.today().isoformat(), "agrupar_por": "exame", "comparar": True}
+    params = {"inicio": (_hoje() - timedelta(days=1)).isoformat(), "fim": _hoje().isoformat(), "agrupar_por": "exame", "comparar": True}
     rel = (await client.get(f"{API}/relatorios/exames", params=params, headers=token("gestor"))).json()
     linhas = {linha["chave"]: linha for linha in rel["linhas"]}
     assert linhas["GLI"]["quantidade"] == 2 and linhas["GLI"]["liberados"] == 2 and "quantidade_anterior" in linhas["GLI"]
@@ -445,7 +451,7 @@ async def test_b5_001_004_006_011_012_016_ciclo_resultado_e_historico(client, to
     assert env.json()["enviado_em"]
     res = await client.post(f"{SIS}/exames/{eid}/resultado", json={"dados": {"adequabilidade": "SATISFATORIA", "conclusao": "NEGATIVO"}}, headers=token("tecnico"))
     assert res.status_code == 200 and res.json()["resultado_alterado"] is False
-    assert res.json()["proximo_exame_em"][:4] == str(date.today().year + 3), "rastreamento pelo intervalo do modelo"
+    assert res.json()["proximo_exame_em"][:4] == str(_hoje().year + 3), "rastreamento pelo intervalo do modelo"
     assert (await client.post(f"{SIS}/exames/{eid}/assinatura", headers=token("tecnico"))).status_code == 403
     ass = await client.post(f"{SIS}/exames/{eid}/assinatura", headers=token("responsavel"))
     assert ass.status_code == 200 and len(ass.json()["assinatura_hash"]) == 64
@@ -475,10 +481,10 @@ async def test_b5_013_014_017_busca_ativa_producao_e_relatorios(client, token, m
     assert [b["exame_id"] for b in busca["resultado_atrasado"]] == [atrasado.json()["id"]]
     assert [b["exame_id"] for b in busca["alterado_sem_seguimento"]] == [alterado.json()["id"]]
 
-    comp = date.today().strftime("%Y-%m")
+    comp = _hoje().strftime("%Y-%m")
     prod = (await client.get(f"{SIS}/producao", params={"competencia": comp}, headers=token("gestor"))).json()
     assert prod["linhas"] == [{"estabelecimento_id": str(mundo["estab_a"].id), "procedimento": "0000000002", "quantidade": 1}]
-    params = {"inicio": (date.today() - timedelta(days=1)).isoformat(), "fim": date.today().isoformat(), "agrupar_por": "resultado"}
+    params = {"inicio": (_hoje() - timedelta(days=1)).isoformat(), "fim": _hoje().isoformat(), "agrupar_por": "resultado"}
     rel = {linha["chave"]: linha for linha in (await client.get(f"{SIS}/relatorios", params=params, headers=token("gestor"))).json()["linhas"]}
     assert rel["ALTERADO"]["requisicoes"] == 1 and rel["SEM_RESULTADO"]["requisicoes"] == 1
     for agrupar in ("faixa_etaria", "territorio", "estabelecimento"):

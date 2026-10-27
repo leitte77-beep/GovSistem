@@ -100,6 +100,13 @@ def _utc(v: datetime) -> datetime:
     return v if v.tzinfo else v.replace(tzinfo=timezone.utc)
 
 
+async def _hoje_local(db, tenant_id, quando: datetime | None = None) -> date:
+    """Dia no fuso do município (prazos e validades são contados em dias locais)."""
+    from app.services.janela_acesso import fuso_do_tenant
+
+    return (quando or _agora()).astimezone(await fuso_do_tenant(db, tenant_id)).date()
+
+
 def _hash(texto: str) -> str:
     return hashlib.sha256(texto.encode()).hexdigest()
 
@@ -446,7 +453,7 @@ async def requisitar(
         await db.flush()
         prazo = max(prazo, exame.prazo_entrega_dias or 0)
         _ocorrencia(db, item, req, "ETAPA", ator, etapa=item.situacao, ocorrido_em=quando)
-    req.previsao_retirada = quando.date() + timedelta(days=prazo)
+    req.previsao_retirada = await _hoje_local(db, tenant_id, quando) + timedelta(days=prazo)
     await _auditar(
         db,
         ator,
@@ -577,7 +584,9 @@ async def autorizar(db, tenant_id, item_id, autorizado: bool, motivo, ator, clie
     item.autorizado_em = agora
     item.situacao = "REQUISITADO" if autorizado else "NEGADO"
     if autorizado and exame.validade_autorizacao_dias:
-        item.autorizacao_valida_ate = agora.date() + timedelta(days=exame.validade_autorizacao_dias)
+        item.autorizacao_valida_ate = await _hoje_local(db, tenant_id, agora) + timedelta(
+            days=exame.validade_autorizacao_dias
+        )
     item.versao += 1
     _ocorrencia(db, item, req, "AUTORIZACAO", ator, etapa=item.situacao, motivo=motivo)
     await _auditar(
@@ -680,7 +689,9 @@ async def coletar(db, tenant_id, dados: Coleta, ator, cliente) -> dict:
         raise Conflict("Exame aguarda autorização.", code="aguardando_autorizacao")
     if item.situacao not in COLETAVEIS:
         raise Conflict(f"Exame em situação {item.situacao}.", code="situacao_invalida")
-    if item.autorizacao_valida_ate and item.autorizacao_valida_ate < _agora().date():
+    if item.autorizacao_valida_ate and item.autorizacao_valida_ate < await _hoje_local(
+        db, tenant_id
+    ):
         raise Conflict("Autorização vencida.", code="autorizacao_vencida")
     if item.material and item.material.strip().lower() != dados.material.strip().lower():
         raise Unprocessable(
@@ -1167,7 +1178,7 @@ async def mapa_trabalho(
 
 async def pendencias(db, tenant_id, estabelecimento_id, ator) -> dict:
     """B.8-020 — incompletos, pendentes, fora de referência, críticos e atrasados."""
-    hoje = _agora().date()
+    hoje = await _hoje_local(db, tenant_id)
     saida = defaultdict(list)
     for item, req in await _itens_da_unidade(
         db,

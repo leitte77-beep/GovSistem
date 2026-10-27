@@ -27,7 +27,7 @@ from app.schemas.laboratorio import (
     SiscanSituacao,
 )
 from app.services.auditoria import registrar
-from app.services.laboratorio import _hash
+from app.services.laboratorio import _hash, _hoje_local
 
 # Transições manuais permitidas; RESULTADO entra pelo endpoint de resultado.
 TRANSICOES = {
@@ -356,7 +356,7 @@ async def registrar_resultado(
     if dados.proximo_exame_em:
         item.proximo_exame_em = dados.proximo_exame_em
     elif not item.resultado_alterado and modelo.intervalo_rastreamento_meses:
-        base = _utc(item.coletado_em or item.resultado_em).date()
+        base = await _hoje_local(db, tenant_id, _utc(item.coletado_em or item.resultado_em))
         item.proximo_exame_em = _somar_meses(base, modelo.intervalo_rastreamento_meses)
     item.situacao = "RESULTADO"
     item.versao += 1
@@ -518,8 +518,9 @@ async def busca_ativa(db, tenant_id, ator, cliente, estabelecimento_id=None) -> 
         chave = (item.cidadao_id, item.tipo)
         if chave not in ultimos or item.created_at > ultimos[chave].created_at:
             ultimos[chave] = item
+    hoje = await _hoje_local(db, tenant_id, agora)
     for item in ultimos.values():
-        if item.proximo_exame_em and item.proximo_exame_em < agora.date():
+        if item.proximo_exame_em and item.proximo_exame_em < hoje:
             saida["rastreamento_vencido"].append(
                 {
                     "exame_id": item.id,

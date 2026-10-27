@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, time
+from datetime import datetime, time
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +19,7 @@ from app.schemas.rede import (
     RestricaoHorarioUpdate,
 )
 from app.services.auditoria import instantaneo, registrar
-from app.services.janela_acesso import acesso_bloqueado
+from app.services.janela_acesso import acesso_bloqueado, fuso_do_tenant
 from app.services.paginacao import aplicar_cursor, codificar
 from app.services.rede_comum import (
     conferir_versao,
@@ -165,7 +165,9 @@ async def criar(
         dias_semana=sorted(set(dados.dias_semana)),
         hora_inicio=dados.hora_inicio,
         hora_fim=dados.hora_fim,
-        vigencia_inicio=dados.vigencia_inicio or date.today(),
+        # A vigência começa no dia local do município, não no dia UTC.
+        vigencia_inicio=dados.vigencia_inicio
+        or datetime.now(await fuso_do_tenant(db, tenant_id)).date(),
         vigencia_fim=dados.vigencia_fim,
         motivo=dados.motivo,
         ativo=True,

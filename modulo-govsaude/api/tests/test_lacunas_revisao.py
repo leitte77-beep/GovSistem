@@ -9,11 +9,17 @@ farmácia (B.4-019) e visita estruturada do ACS (B.1-019).
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import select
 
 from app.models.auditoria import AuditTrail
+
+
+def _hoje() -> date:
+    """Dia local do município: os relatórios recortam o período no fuso do tenant."""
+    return datetime.now(ZoneInfo("America/Sao_Paulo")).date()
 
 V1 = "/api/govsaude/v1"
 PDF = b"%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF\n"
@@ -77,7 +83,7 @@ async def test_b6_048_049_b12_055_relatorio_pec_formatos_e_comparativo(client, t
     await client.post(f"{V1}/prontuarios/atendimentos/{at['id']}/prescricoes", json={"itens": [{"descricao": "Item", "posologia": "1x"}]}, headers=token("medico"))
     await client.post(f"{V1}/prontuarios/registros", json={"cidadao_id": cidadao, "atendimento_id": at["id"], "tipo": "EXAME", "dados": {"exame": "hemograma"}}, headers=token("medico"))
     await client.post(f"{V1}/cidadaos/{cidadao}/condicoes", json={"tipo_codigo": "CID10", "codigo": "I10"}, headers=token("medico"))
-    hoje = date.today().isoformat()
+    hoje = _hoje().isoformat()
     url = f"{V1}/relatorios/prontuario/atendimentos"
     r = await client.get(url, params={"inicio": hoje, "fim": hoje, "agrupar_por": "tipo", "comparar": True}, headers=token("gestor"))
     assert r.status_code == 200, r.text
@@ -103,7 +109,7 @@ async def test_b3_017_019_021_ficha_e_relatorio_odontologico(client, token, mund
     cond = await client.post(f"{V1}/odontologia/condicoes", json={"codigo": "REST", "nome": "Restauração", "tipo": "PROCEDIMENTO", "aplicavel_a": ["DENTE", "FACE"]}, headers=token("admin"))
     at = await client.post(f"{V1}/odontologia/atendimentos", json={"cidadao_id": cidadao, "estabelecimento_id": str(mundo["estab_a"].id), "tipo": "PRIMEIRA_CONSULTA"}, headers=token("medico"))
     assert at.status_code == 201, at.text
-    proc = await client.post(f"{V1}/odontologia/procedimentos", json={"cidadao_id": cidadao, "condicao_id": cond.json()["id"], "dente": 16, "faces": ["O"], "programado_para": date.today().isoformat()}, headers=token("medico"))
+    proc = await client.post(f"{V1}/odontologia/procedimentos", json={"cidadao_id": cidadao, "condicao_id": cond.json()["id"], "dente": 16, "faces": ["O"], "programado_para": _hoje().isoformat()}, headers=token("medico"))
     await client.post(f"{V1}/odontologia/procedimentos/{proc.json()['id']}/realizar", json={"atendimento_id": at.json()["id"]}, headers=token("medico"))
     await client.post(f"{V1}/odontologia/atendimentos/{at.json()['id']}/documentos", json={"tipo": "ENCAMINHAMENTO", "titulo": "Encaminhamento", "conteudo": "Endodontia"}, headers=token("medico"))
 
@@ -115,7 +121,7 @@ async def test_b3_017_019_021_ficha_e_relatorio_odontologico(client, token, mund
     assert pdf.content[:5] == b"%PDF-"
     assert (await client.get(f"{V1}/odontologia/atendimentos/{at.json()['id']}/ficha", headers=token("admin_b"))).status_code == 404
 
-    hoje = date.today().isoformat()
+    hoje = _hoje().isoformat()
     rel = await client.get(f"{V1}/relatorios/odontologia/atendimentos", params={"inicio": hoje, "fim": hoje, "agrupar_por": "faixa_etaria", "comparar": True}, headers=token("gestor"))
     assert rel.status_code == 200, rel.text
     assert rel.json()["linhas"][0]["chave"] == "40-59" and rel.json()["linhas"][0]["procedimentos"] == 1
@@ -129,7 +135,7 @@ async def test_b4_019_028_036_farmacia_rastreabilidade_e_relatorio(client, token
     await db.commit()
     prod = await client.post(f"{V1}/estoque/produtos", json={"codigo": "LOS50", "nome": "Losartana 50", "tipo": "MEDICAMENTO", "unidade": "CP", "codigo_obm": "OBM-LOS"}, headers=token("admin"))
     loc = await client.post(f"{V1}/estoque/locais", json={"estabelecimento_id": str(mundo["estab_a"].id), "nome": "Farmácia lacunas", "tipo": "FARMACIA"}, headers=token("admin"))
-    ent = await client.post(f"{V1}/estoque/movimentacoes", json={"local_id": loc.json()["id"], "produto_id": prod.json()["id"], "tipo": "ENTRADA", "quantidade": 60, "lote_numero": "LOS-1", "validade": (date.today() + timedelta(days=300)).isoformat(), "custo_unitario": 0.2, "documento": {"tipo": "NF", "numero": "123"}}, headers=token("admin"))
+    ent = await client.post(f"{V1}/estoque/movimentacoes", json={"local_id": loc.json()["id"], "produto_id": prod.json()["id"], "tipo": "ENTRADA", "quantidade": 60, "lote_numero": "LOS-1", "validade": (_hoje() + timedelta(days=300)).isoformat(), "custo_unitario": 0.2, "documento": {"tipo": "NF", "numero": "123"}}, headers=token("admin"))
     lote_id = ent.json()[0]["lote_id"]
 
     cidadao = await _cidadao(client, token)
@@ -159,7 +165,7 @@ async def test_b4_019_028_036_farmacia_rastreabilidade_e_relatorio(client, token
     assert sem_disp.status_code == 200 and "cidadao_id" not in sem_disp.text, "sem dispensacao:ler não vê o cidadão"
     assert (await client.get(f"{V1}/estoque/lotes/{lote_id}/rastreabilidade", headers=token("admin_b"))).status_code == 404
 
-    hoje = date.today().isoformat()
+    hoje = _hoje().isoformat()
     rel = await client.get(f"{V1}/relatorios/estoque/locais/{loc.json()['id']}/movimentacoes", params={"inicio": hoje, "fim": hoje, "agrupar_por": "tipo"}, headers=token("gestor"))
     assert rel.status_code == 200, rel.text
     linhas = {l["chave"]: l for l in rel.json()["linhas"]}
@@ -177,7 +183,7 @@ async def test_b6_047_relatorio_de_tempos_da_fila(client, token, mundo, db):
     cidadao = await _cidadao(client, token)
     fila = await client.post(f"{V1}/filas", json={"estabelecimento_id": str(mundo["estab_a"].id), "setor_id": str(setor.id), "cidadao_id": cidadao, "origem": "DEMANDA_ESPONTANEA"}, headers=token("admin"))
     assert fila.status_code == 201, fila.text
-    hoje = date.today().isoformat()
+    hoje = _hoje().isoformat()
     r = await client.get(f"{V1}/relatorios/filas/tempos", params={"inicio": hoje, "fim": hoje, "agrupar_por": "setor"}, headers=token("gestor"))
     assert r.status_code == 200, r.text
     assert r.json()["linhas"] == [{"chave": str(setor.id), "registros": 1, "media_espera_chamada_min": None, "media_triagem_min": None, "media_espera_consulta_min": None, "media_consulta_min": None, "media_permanencia_min": None}]
